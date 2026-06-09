@@ -1305,9 +1305,14 @@
         <div class="input-card">
           <h3>資料同步</h3>
           <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到 Supabase。</p>
+          <div class="preview" style="margin-bottom:0">
+            <div class="preview-row"><span>本機資料</span><strong id="localDataSummary">-</strong></div>
+            <div class="preview-row"><span>雲端備份</span><strong id="cloudBackupSummary">尚未檢查</strong></div>
+          </div>
           <div class="action-grid">
             <button id="syncCloudButton" class="soft-btn" type="button" onclick="syncCloudSnapshot()">同步到雲端</button>
             <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">從雲端還原</button>
+            <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">檢查雲端</button>
           </div>
         </div>
         <div class="input-card">
@@ -1640,6 +1645,8 @@
     let isApplyingCloudSnapshot = false;
     let cloudSyncInProgress = false;
     let cloudLastSyncedAt = localStorage.getItem("floatpay-cloud-last-sync") || "";
+    let cloudBackupCheckedAt = "";
+    let cloudBackupSummary = "尚未檢查";
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -1841,12 +1848,14 @@
           localStorage.removeItem("floatpay-auth");
           await ensureCloudProfile();
           await createInitialCloudSnapshot();
+          await checkCloudSnapshot({ silent: true });
         }
         applyAuthState();
       });
       if (cloudUser) {
         localStorage.removeItem("floatpay-auth");
         await ensureCloudProfile();
+        await checkCloudSnapshot({ silent: true });
       }
       applyAuthState();
     }
@@ -1857,15 +1866,26 @@
       const meta = document.getElementById("cloudSyncMeta");
       const syncButton = document.getElementById("syncCloudButton");
       const restoreButton = document.getElementById("restoreCloudButton");
+      const checkButton = document.getElementById("checkCloudButton");
+      const localSummary = document.getElementById("localDataSummary");
+      const backupSummary = document.getElementById("cloudBackupSummary");
       const authStatus = document.getElementById("authStatus");
       if (!label || !pill) return;
+      if (localSummary) localSummary.textContent = localDataSummary();
+      if (backupSummary) backupSummary.textContent = cloudBackupSummary;
       if (cloudUser) {
         label.textContent = `Supabase 已登入 · ${cloudUser.email || "雲端帳號"}`;
         pill.textContent = cloudSyncInProgress ? "同步中" : "已同步";
-        if (meta) meta.textContent = cloudSyncInProgress ? "正在與 Supabase 同步資料..." : (cloudLastSyncedAt ? `最後同步：${formatDateTime(cloudLastSyncedAt)}` : "尚未同步，新增或修改資料後會自動同步。");
+        if (meta) meta.textContent = cloudSyncInProgress
+          ? "正在與 Supabase 同步資料..."
+          : [
+              cloudLastSyncedAt ? `最後同步：${formatDateTime(cloudLastSyncedAt)}` : "尚未同步，新增或修改資料後會自動同步。",
+              cloudBackupCheckedAt ? `雲端檢查：${formatDateTime(cloudBackupCheckedAt)}` : ""
+            ].filter(Boolean).join(" · ");
         if (authStatus) authStatus.textContent = "已連接 Supabase，資料可同步到雲端。";
         if (syncButton) syncButton.disabled = cloudSyncInProgress;
         if (restoreButton) restoreButton.disabled = cloudSyncInProgress;
+        if (checkButton) checkButton.disabled = cloudSyncInProgress;
       } else if (cloudConfig.configured) {
         label.textContent = "Supabase 已設定 · 登入後可同步資料";
         pill.textContent = "可登入";
@@ -1873,6 +1893,7 @@
         if (authStatus) authStatus.textContent = "使用 Email 登入後可啟用 Supabase 雲端同步。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
+        if (checkButton) checkButton.disabled = false;
       } else {
         label.textContent = "本機模式 · 尚未連接 Supabase";
         pill.textContent = "本機";
@@ -1880,7 +1901,12 @@
         if (authStatus) authStatus.textContent = "Supabase 尚未設定，請先使用本機模式。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
+        if (checkButton) checkButton.disabled = false;
       }
+    }
+
+    function localDataSummary() {
+      return `${groups.length} 群組 · ${expenses.length} 支出 · ${paymentRecords.length} 付款`;
     }
 
     function setAuthStatus(message) {
@@ -1987,6 +2013,8 @@
       }
       cloudLastSyncedAt = new Date().toISOString();
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
+      cloudBackupSummary = `${groups.length} 群組 · ${expenses.length} 支出`;
+      cloudBackupCheckedAt = cloudLastSyncedAt;
       cloudSyncInProgress = false;
       if (!options.silent) showToast("資料已同步到 Supabase");
       renderCloudStatus();
@@ -2023,6 +2051,31 @@
       }
     }
 
+    function describeSnapshot(payload) {
+      if (!payload) return "沒有備份";
+      const groupCount = payload.groups?.length || 0;
+      const expenseCount = payload.expenses?.length || 0;
+      const paymentCount = payload.paymentRecords?.length || 0;
+      const savedAt = payload.savedAt ? ` · ${formatDateTime(payload.savedAt)}` : "";
+      return `${groupCount} 群組 · ${expenseCount} 支出 · ${paymentCount} 付款${savedAt}`;
+    }
+
+    async function checkCloudSnapshot(options = {}) {
+      if (!supabaseClient || !cloudUser) {
+        if (!options.silent) showToast("請先用 Email 登入 Supabase");
+        return null;
+      }
+      cloudSyncInProgress = true;
+      renderCloudStatus();
+      const payload = await fetchCloudSnapshot();
+      cloudBackupSummary = describeSnapshot(payload);
+      cloudBackupCheckedAt = new Date().toISOString();
+      cloudSyncInProgress = false;
+      renderCloudStatus();
+      if (!options.silent) showToast(payload ? "已檢查雲端備份" : "目前沒有雲端備份");
+      return payload;
+    }
+
     async function restoreCloudSnapshot() {
       if (!supabaseClient || !cloudUser) {
         showToast("請先用 Email 登入 Supabase");
@@ -2033,10 +2086,19 @@
       const payload = await fetchCloudSnapshot();
       if (!payload) {
         cloudSyncInProgress = false;
+        cloudBackupSummary = "沒有備份";
+        cloudBackupCheckedAt = new Date().toISOString();
         renderCloudStatus();
         showToast("目前沒有可還原的雲端資料");
         return;
       }
+      cloudSyncInProgress = false;
+      cloudBackupSummary = describeSnapshot(payload);
+      cloudBackupCheckedAt = new Date().toISOString();
+      renderCloudStatus();
+      if (!confirm(`要用雲端備份覆蓋目前本機資料嗎？\n\n雲端：${cloudBackupSummary}\n本機：${localDataSummary()}`)) return;
+      cloudSyncInProgress = true;
+      renderCloudStatus();
       applyCloudSnapshot(payload);
       cloudLastSyncedAt = new Date().toISOString();
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
