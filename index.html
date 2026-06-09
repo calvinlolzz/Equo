@@ -1,0 +1,2567 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FloatPay 分帳 App 原型</title>
+  <style>
+    :root {
+      --text: #1c1c1e;
+      --muted: #6e6e73;
+      --line: rgba(255,255,255,.54);
+      --glass: rgba(255,255,255,.58);
+      --glass-strong: rgba(255,255,255,.76);
+      --blue: #0a84ff;
+      --green: #30d158;
+      --purple: #bf5af2;
+      --red: #ff453a;
+      --amber: #ff9f0a;
+      --shadow: 0 24px 70px rgba(20, 32, 70, .18);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    .hidden {
+      display: none !important;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        linear-gradient(132deg, rgba(235, 247, 255, .98) 0%, rgba(248, 251, 255, 1) 38%, rgba(249, 246, 255, .98) 100%),
+        linear-gradient(40deg, rgba(10,132,255,.16), rgba(48,209,88,.10), rgba(191,90,242,.14));
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(115deg, transparent 0 14%, rgba(10,132,255,.12) 15% 24%, transparent 25% 100%),
+        linear-gradient(24deg, transparent 0 48%, rgba(48,209,88,.12) 49% 58%, transparent 59% 100%),
+        linear-gradient(158deg, transparent 0 66%, rgba(191,90,242,.12) 67% 76%, transparent 77% 100%);
+      filter: blur(18px);
+      opacity: .95;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      color: inherit;
+    }
+
+    .shell {
+      width: min(430px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      position: relative;
+      padding: 18px 16px 104px;
+    }
+
+    .auth-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background:
+        linear-gradient(132deg, rgba(235,247,255,.98), rgba(249,246,255,.98)),
+        linear-gradient(40deg, rgba(10,132,255,.18), rgba(48,209,88,.10), rgba(191,90,242,.16));
+    }
+
+    .auth-panel {
+      width: min(390px, 100%);
+      border-radius: 32px;
+      padding: 22px;
+      background: rgba(255,255,255,.68);
+      border: 1px solid rgba(255,255,255,.76);
+      box-shadow: 0 28px 88px rgba(20,32,70,.22);
+      backdrop-filter: blur(30px) saturate(1.45);
+      -webkit-backdrop-filter: blur(30px) saturate(1.45);
+    }
+
+    .auth-logo {
+      width: 62px;
+      height: 62px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-size: 26px;
+      font-weight: 900;
+      background: linear-gradient(145deg, #0a84ff, #30d158);
+      box-shadow: 0 18px 38px rgba(10,132,255,.26);
+      margin-bottom: 16px;
+    }
+
+    .auth-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px 14px;
+      color: rgba(28,28,30,.82);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .status-icons {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .signal {
+      width: 16px;
+      height: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+      align-items: end;
+    }
+
+    .signal span {
+      width: 2px;
+      border-radius: 3px;
+      background: #1c1c1e;
+    }
+
+    .signal span:nth-child(1) { height: 4px; opacity: .45; }
+    .signal span:nth-child(2) { height: 6px; opacity: .6; }
+    .signal span:nth-child(3) { height: 8px; opacity: .78; }
+    .signal span:nth-child(4) { height: 10px; }
+
+    .battery {
+      width: 23px;
+      height: 11px;
+      border: 1.7px solid #1c1c1e;
+      border-radius: 4px;
+      padding: 1px;
+      position: relative;
+    }
+
+    .battery::after {
+      content: "";
+      position: absolute;
+      right: -4px;
+      top: 3px;
+      width: 2px;
+      height: 5px;
+      background: #1c1c1e;
+      border-radius: 0 2px 2px 0;
+    }
+
+    .battery span {
+      display: block;
+      width: 72%;
+      height: 100%;
+      border-radius: 2px;
+      background: #1c1c1e;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .eyebrow {
+      margin: 0 0 3px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.06;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 21px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    .avatar, .member-avatar {
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 800;
+      background: linear-gradient(145deg, #0a84ff, #30d158);
+      border: 2px solid rgba(255,255,255,.75);
+      box-shadow: 0 10px 22px rgba(10,132,255,.20);
+    }
+
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+    }
+
+    .glass {
+      background: var(--glass);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(28px) saturate(1.45);
+      -webkit-backdrop-filter: blur(28px) saturate(1.45);
+    }
+
+    .summary {
+      border-radius: 28px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .summary::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(115deg, rgba(255,255,255,.55), transparent 38%, rgba(255,255,255,.2));
+    }
+
+    .summary > * { position: relative; z-index: 1; }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .total-label {
+      margin: 0 0 5px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .total {
+      margin: 0;
+      font-size: 35px;
+      font-weight: 820;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      border-radius: 999px;
+      padding: 7px 11px;
+      background: rgba(255,255,255,.58);
+      border: 1px solid rgba(255,255,255,.68);
+      color: rgba(28,28,30,.78);
+      font-size: 13px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .metric {
+      border-radius: 20px;
+      padding: 12px;
+      background: rgba(255,255,255,.48);
+      border: 1px solid rgba(255,255,255,.58);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+      margin-bottom: 5px;
+    }
+
+    .metric strong {
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .section {
+      margin-top: 22px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 11px;
+      padding: 0 2px;
+    }
+
+    .small-action {
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 760;
+      background: transparent;
+      padding: 5px;
+    }
+
+    .card-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .group-card, .expense-row, .settlement-row, .input-card {
+      border-radius: 22px;
+      padding: 13px;
+      background: rgba(255,255,255,.62);
+      border: 1px solid rgba(255,255,255,.74);
+      backdrop-filter: blur(22px) saturate(1.35);
+      -webkit-backdrop-filter: blur(22px) saturate(1.35);
+      box-shadow: 0 12px 34px rgba(35, 45, 75, .10);
+    }
+
+    .group-card {
+      display: grid;
+      grid-template-columns: 54px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      transition: transform .18s ease, background .18s ease;
+      width: 100%;
+      text-align: left;
+    }
+
+    .group-card:active, .icon-btn:active, .primary:active, .floating-add:active {
+      transform: scale(.97);
+    }
+
+    .floating-add:active {
+      transform: translateX(122px) scale(.97);
+    }
+
+    .group-art {
+      width: 54px;
+      height: 54px;
+      border-radius: 19px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 850;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 14px 30px rgba(10,132,255,.18);
+    }
+
+    .group-card:nth-child(1) .group-art { background: linear-gradient(145deg, #0a84ff, #30d158); }
+    .group-card:nth-child(2) .group-art { background: linear-gradient(145deg, #bf5af2, #ff9f0a); }
+    .group-card:nth-child(3) .group-art { background: linear-gradient(145deg, #30d158, #64d2ff); }
+
+    .group-meta strong, .expense-main strong {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 4px;
+      letter-spacing: 0;
+    }
+
+    .group-meta span, .expense-main span, .settlement-row span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .amount {
+      font-weight: 850;
+      font-size: 15px;
+      white-space: nowrap;
+    }
+
+    .amount.positive { color: var(--green); }
+    .amount.negative { color: var(--red); }
+    .amount.neutral { color: var(--text); }
+
+    .expense-row {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .category {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(145deg, var(--blue), var(--purple));
+    }
+
+    .category svg, .tab svg, .icon-btn svg, .floating-add svg, .primary svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .nav {
+      position: fixed;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      width: min(398px, calc(100% - 28px));
+      border-radius: 28px;
+      padding: 9px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 3px;
+      z-index: 10;
+    }
+
+    .tab {
+      height: 52px;
+      border-radius: 20px;
+      display: grid;
+      place-items: center;
+      color: rgba(28,28,30,.55);
+      background: transparent;
+      position: relative;
+    }
+
+    .tab.active {
+      color: var(--blue);
+      background: rgba(255,255,255,.62);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 8px 20px rgba(10,132,255,.12);
+    }
+
+    .floating-add {
+      position: fixed;
+      left: 50%;
+      bottom: 84px;
+      transform: translateX(122px);
+      width: 58px;
+      height: 58px;
+      border-radius: 22px;
+      color: white;
+      background: linear-gradient(145deg, #0a84ff, #64d2ff);
+      box-shadow: 0 18px 34px rgba(10,132,255,.28);
+      z-index: 25;
+      display: grid;
+      place-items: center;
+      pointer-events: auto;
+      touch-action: manipulation;
+    }
+
+    .screen {
+      display: none;
+      animation: fade .22s ease both;
+    }
+
+    .screen.active { display: block; }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .backbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.62);
+      border: 1px solid rgba(255,255,255,.72);
+      color: rgba(28,28,30,.78);
+      box-shadow: 0 10px 24px rgba(35,45,75,.09);
+    }
+
+    .group-hero {
+      border-radius: 30px;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .hero-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .member-stack {
+      display: flex;
+      margin-top: 9px;
+    }
+
+    .member-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 12px;
+      margin-left: -8px;
+      font-size: 12px;
+      background: linear-gradient(145deg, #0a84ff, #bf5af2);
+    }
+
+    .member-avatar:first-child { margin-left: 0; }
+
+    .segmented {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      padding: 5px;
+      border-radius: 20px;
+      background: rgba(255,255,255,.42);
+      border: 1px solid rgba(255,255,255,.54);
+    }
+
+    .segment {
+      min-height: 36px;
+      border-radius: 16px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .segment.active {
+      background: rgba(255,255,255,.78);
+      color: var(--text);
+      box-shadow: 0 8px 18px rgba(35,45,75,.10);
+    }
+
+    .settlement-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .flow strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 3px;
+    }
+
+    .arrow-dot {
+      min-width: 28px;
+      width: 28px;
+      height: 28px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(10,132,255,.12);
+      color: var(--blue);
+    }
+
+    .primary {
+      min-height: 48px;
+      border-radius: 18px;
+      padding: 0 16px;
+      color: white;
+      background: linear-gradient(145deg, #0a84ff, #64d2ff);
+      box-shadow: 0 14px 30px rgba(10,132,255,.24);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 820;
+      width: 100%;
+    }
+
+    .sheet {
+      position: fixed;
+      inset: auto 0 0;
+      z-index: 30;
+      display: none;
+      justify-content: center;
+      background: linear-gradient(to top, rgba(20,26,40,.28), transparent);
+      padding: 20px 14px;
+    }
+
+    .sheet.open { display: flex; }
+
+    .sheet-panel {
+      width: min(430px, 100%);
+      max-height: calc(100vh - 36px);
+      overflow: auto;
+      border-radius: 32px;
+      padding: 18px;
+      background: rgba(255,255,255,.76);
+      border: 1px solid rgba(255,255,255,.76);
+      box-shadow: 0 -24px 70px rgba(20,32,70,.22);
+      backdrop-filter: blur(32px) saturate(1.45);
+      -webkit-backdrop-filter: blur(32px) saturate(1.45);
+      animation: rise .22s ease both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,.78);
+      border-radius: 18px;
+      min-height: 46px;
+      padding: 12px 13px;
+      color: var(--text);
+      background: rgba(255,255,255,.64);
+      outline: none;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.65);
+    }
+
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .three {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .preview {
+      display: grid;
+      gap: 8px;
+      margin: 13px 0;
+    }
+
+    .preview-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: rgba(28,28,30,.78);
+      font-size: 14px;
+      font-weight: 720;
+    }
+
+    .mini-note {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+    }
+
+    .participant-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .participant-chip {
+      min-height: 42px;
+      border-radius: 16px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,.54);
+      border: 1px solid rgba(255,255,255,.68);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 760;
+      box-shadow: 0 8px 20px rgba(35,45,75,.08);
+    }
+
+    .participant-chip input {
+      width: 18px;
+      height: 18px;
+      min-height: 18px;
+      padding: 0;
+      accent-color: var(--blue);
+      box-shadow: none;
+    }
+
+    .ai-card {
+      border-radius: 24px;
+      padding: 14px;
+      background:
+        linear-gradient(145deg, rgba(10,132,255,.16), rgba(191,90,242,.14)),
+        rgba(255,255,255,.58);
+      border: 1px solid rgba(255,255,255,.72);
+      box-shadow: 0 14px 34px rgba(35,45,75,.12);
+    }
+
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-top: 10px;
+    }
+
+    .soft-btn, .mini-btn {
+      border-radius: 16px;
+      background: rgba(255,255,255,.58);
+      border: 1px solid rgba(255,255,255,.68);
+      color: var(--text);
+      font-weight: 780;
+      box-shadow: 0 8px 20px rgba(35,45,75,.08);
+    }
+
+    .soft-btn {
+      min-height: 42px;
+      padding: 0 12px;
+    }
+
+    .mini-actions {
+      display: flex;
+      gap: 7px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      margin-top: 7px;
+    }
+
+    .mini-btn {
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+      color: var(--blue);
+    }
+
+    .recurring-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 5px rgba(48,209,88,.14);
+    }
+
+    .empty {
+      padding: 24px 12px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: 650;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 154px;
+      transform: translateX(-50%) translateY(14px);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 40;
+      border-radius: 18px;
+      padding: 12px 14px;
+      background: rgba(28,28,30,.78);
+      color: white;
+      font-size: 13px;
+      font-weight: 760;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      transition: .22s ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .switch {
+      width: 58px;
+      height: 34px;
+      border-radius: 999px;
+      padding: 3px;
+      background: rgba(120,120,128,.28);
+      border: 1px solid rgba(255,255,255,.58);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,.08), 0 8px 18px rgba(35,45,75,.08);
+      transition: background .22s ease, border-color .22s ease;
+      flex: 0 0 auto;
+    }
+
+    .switch span {
+      display: block;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.96);
+      box-shadow: 0 4px 12px rgba(0,0,0,.18);
+      transition: transform .22s ease;
+    }
+
+    .switch[aria-pressed="true"] {
+      background: linear-gradient(135deg, #0a84ff, #5e5ce6);
+      border-color: rgba(120,170,255,.72);
+    }
+
+    .switch[aria-pressed="true"] span {
+      transform: translateX(24px);
+    }
+
+    body[data-theme="dark"] {
+      --text: #f5f7fb;
+      --muted: rgba(235,239,248,.68);
+      --line: rgba(255,255,255,.14);
+      --glass: rgba(25,29,42,.58);
+      --glass-strong: rgba(31,36,52,.78);
+      --blue: #64d2ff;
+      --green: #32d74b;
+      --purple: #bf5af2;
+      --red: #ff6961;
+      --amber: #ffd60a;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .36);
+      background:
+        linear-gradient(132deg, #080b12 0%, #101625 44%, #151125 100%),
+        linear-gradient(40deg, rgba(100,210,255,.12), rgba(50,215,75,.08), rgba(191,90,242,.13));
+    }
+
+    body[data-theme="dark"]::before {
+      background:
+        linear-gradient(115deg, transparent 0 12%, rgba(100,210,255,.14) 13% 23%, transparent 24% 100%),
+        linear-gradient(24deg, transparent 0 48%, rgba(50,215,75,.11) 49% 58%, transparent 59% 100%),
+        linear-gradient(158deg, transparent 0 66%, rgba(191,90,242,.13) 67% 76%, transparent 77% 100%);
+      opacity: .72;
+    }
+
+    body[data-theme="dark"] .status,
+    body[data-theme="dark"] .group-meta strong,
+    body[data-theme="dark"] .expense-main strong,
+    body[data-theme="dark"] h1,
+    body[data-theme="dark"] h2,
+    body[data-theme="dark"] h3 {
+      color: var(--text);
+    }
+
+    body[data-theme="dark"] .signal span,
+    body[data-theme="dark"] .battery::after,
+    body[data-theme="dark"] .battery span {
+      background: var(--text);
+    }
+
+    body[data-theme="dark"] .battery {
+      border-color: var(--text);
+    }
+
+    body[data-theme="dark"] .summary,
+    body[data-theme="dark"] .group-hero,
+    body[data-theme="dark"] .nav,
+    body[data-theme="dark"] .sheet-panel,
+    body[data-theme="dark"] .auth-panel {
+      background: rgba(22,26,38,.66);
+      border-color: rgba(255,255,255,.16);
+      box-shadow: 0 24px 74px rgba(0,0,0,.38);
+    }
+
+    body[data-theme="dark"] .auth-screen {
+      background:
+        linear-gradient(132deg, #080b12 0%, #101625 48%, #151125 100%),
+        linear-gradient(40deg, rgba(100,210,255,.12), rgba(50,215,75,.08), rgba(191,90,242,.13));
+    }
+
+    body[data-theme="dark"] .summary::after {
+      background: linear-gradient(115deg, rgba(255,255,255,.11), transparent 44%, rgba(255,255,255,.05));
+    }
+
+    body[data-theme="dark"] .metric,
+    body[data-theme="dark"] .group-card,
+    body[data-theme="dark"] .expense-row,
+    body[data-theme="dark"] .settlement-row,
+    body[data-theme="dark"] .input-card,
+    body[data-theme="dark"] .ai-card,
+    body[data-theme="dark"] .soft-btn,
+    body[data-theme="dark"] .mini-btn,
+    body[data-theme="dark"] .participant-chip,
+    body[data-theme="dark"] .icon-btn,
+    body[data-theme="dark"] .pill,
+    body[data-theme="dark"] .tab.active,
+    body[data-theme="dark"] .segmented,
+    body[data-theme="dark"] input,
+    body[data-theme="dark"] select,
+    body[data-theme="dark"] textarea {
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.14);
+      color: var(--text);
+      box-shadow: 0 12px 34px rgba(0,0,0,.18);
+    }
+
+    body[data-theme="dark"] input,
+    body[data-theme="dark"] select,
+    body[data-theme="dark"] textarea {
+      background: rgba(10,13,22,.42);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    body[data-theme="dark"] .segment.active {
+      background: rgba(255,255,255,.14);
+      color: var(--text);
+    }
+
+    body[data-theme="dark"] .tab {
+      color: rgba(245,247,251,.62);
+    }
+
+    body[data-theme="dark"] .tab.active {
+      color: #64d2ff;
+    }
+
+    body[data-theme="dark"] .preview-row {
+      color: rgba(245,247,251,.82);
+    }
+
+    body[data-theme="dark"] .toast {
+      background: rgba(245,247,251,.88);
+      color: #101625;
+    }
+
+    @media (min-width: 760px) {
+      .shell {
+        padding-top: 26px;
+      }
+
+      body {
+        display: grid;
+        place-items: start center;
+      }
+
+      .shell::after {
+        content: "";
+        position: fixed;
+        top: 20px;
+        width: min(462px, calc(100% - 24px));
+        height: calc(100vh - 40px);
+        border-radius: 44px;
+        border: 1px solid rgba(255,255,255,.62);
+        box-shadow: 0 36px 110px rgba(25,38,80,.18);
+        pointer-events: none;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <section id="authScreen" class="auth-screen">
+    <div class="auth-panel">
+      <div class="auth-logo">F</div>
+      <p class="eyebrow">歡迎使用</p>
+      <h1>FloatPay</h1>
+      <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。此原型先使用本機登入狀態，之後可接 Firebase 或 Supabase。</p>
+      <div class="auth-actions">
+        <button class="primary" type="button" onclick="loginWith('Apple')">使用 Apple 登入</button>
+        <button class="soft-btn" type="button" onclick="loginWith('Google')">使用 Google 登入</button>
+        <button class="soft-btn" type="button" onclick="loginWith('Email')">使用 Email 登入</button>
+      </div>
+    </div>
+  </section>
+
+  <main class="shell">
+    <div class="status">
+      <span>9:41</span>
+      <div class="status-icons">
+        <div class="signal" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <span style="font-size:12px;font-weight:800">5G</span>
+        <div class="battery" aria-hidden="true"><span></span></div>
+      </div>
+    </div>
+
+    <section id="home" class="screen active">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">今天要結哪一筆？</p>
+          <h1>FloatPay</h1>
+        </div>
+        <div class="avatar">W</div>
+      </header>
+
+      <section class="summary glass">
+        <div class="summary-row">
+          <div>
+            <p class="total-label">目前淨額</p>
+            <p id="netTotal" class="total">$0</p>
+          </div>
+          <span id="netPill" class="pill"></span>
+        </div>
+        <div class="metric-grid">
+          <div class="metric">
+            <span>待付款</span>
+            <strong id="payable">$0</strong>
+          </div>
+          <div class="metric">
+            <span>待收款</span>
+            <strong id="receivable">$0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>群組</h2>
+          <button class="small-action" type="button" onclick="openGroupSheet()">新增群組</button>
+        </div>
+        <div id="groups" class="card-list"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>待辦提醒</h2>
+          <button class="small-action" type="button" onclick="markAllRemindersRead()">全部已讀</button>
+        </div>
+        <div id="reminders" class="card-list"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>最近支出</h2>
+          <button class="small-action" type="button" onclick="openAddSheet()">新增</button>
+        </div>
+        <div id="recentExpenses" class="card-list"></div>
+      </section>
+    </section>
+
+    <section id="group" class="screen">
+      <div class="backbar">
+        <button class="icon-btn" type="button" onclick="goHome()" aria-label="返回">
+          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div style="display:flex;gap:8px">
+          <button class="icon-btn" type="button" onclick="showToast('群組邀請連結已複製')" aria-label="邀請">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+          </button>
+          <button class="icon-btn" type="button" onclick="openGroupSettingsSheet()" aria-label="群組設定">
+            <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.65V21a2.1 2.1 0 0 1-4.2 0v-.06a1.8 1.8 0 0 0-1.1-1.65 1.8 1.8 0 0 0-1.98.36l-.04.04a2.1 2.1 0 0 1-2.97-2.97l.04-.04A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-1.65-1.1H3a2.1 2.1 0 0 1 0-4.2h.06A1.8 1.8 0 0 0 4.7 8.6a1.8 1.8 0 0 0-.36-1.98l-.04-.04A2.1 2.1 0 0 1 7.27 3.6l.04.04a1.8 1.8 0 0 0 1.98.36A1.8 1.8 0 0 0 10.4 2.35V2a2.1 2.1 0 0 1 4.2 0v.06A1.8 1.8 0 0 0 15.7 3.7a1.8 1.8 0 0 0 1.98-.36l.04-.04a2.1 2.1 0 0 1 2.97 2.97l-.04.04a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.1H22a2.1 2.1 0 0 1 0 4.2h-.06A1.8 1.8 0 0 0 19.4 15z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <section class="group-hero glass">
+        <div class="hero-title">
+          <div>
+            <p class="eyebrow" id="groupSubtitle">群組</p>
+            <h1 id="groupTitle">日本旅遊</h1>
+            <div id="memberStack" class="member-stack"></div>
+          </div>
+          <span class="pill" id="groupCurrency">TWD</span>
+        </div>
+        <div class="metric-grid">
+          <div class="metric">
+            <span>群組總花費</span>
+            <strong id="groupSpent">$0</strong>
+          </div>
+          <div class="metric">
+            <span>我的狀態</span>
+            <strong id="groupMine">$0</strong>
+          </div>
+        </div>
+        <div class="segmented">
+          <button class="segment active" type="button" data-panel="activity" onclick="switchPanel('activity')">動態</button>
+          <button class="segment" type="button" data-panel="settle" onclick="switchPanel('settle')">結算</button>
+          <button class="segment" type="button" data-panel="analysis" onclick="switchPanel('analysis')">分析</button>
+          <button class="segment" type="button" data-panel="members" onclick="switchPanel('members')">成員</button>
+        </div>
+      </section>
+
+      <section class="section group-panel" id="activityPanel">
+        <div class="section-head">
+          <h2>支出流水</h2>
+          <button class="small-action" type="button" onclick="openAddSheet()">新增</button>
+        </div>
+        <div class="input-card" style="margin-bottom:10px">
+          <div class="two">
+            <label>搜尋
+              <input id="expenseSearch" placeholder="項目、付款人、備註" oninput="updateExpenseFilters()" />
+            </label>
+            <label>分類
+              <select id="expenseFilterCategory" onchange="updateExpenseFilters()">
+                <option value="all">全部</option>
+                <option value="餐飲">餐飲</option>
+                <option value="住宿">住宿</option>
+                <option value="交通">交通</option>
+                <option value="娛樂">娛樂</option>
+                <option value="購物">購物</option>
+                <option value="其他">其他</option>
+              </select>
+            </label>
+          </div>
+          <div class="mini-actions" style="justify-content:flex-start">
+            <button class="mini-btn" type="button" onclick="clearExpenseFilters()">清除篩選</button>
+            <span id="filterSummary" class="mini-note">顯示全部支出</span>
+          </div>
+        </div>
+        <div id="groupExpenses" class="card-list"></div>
+      </section>
+
+      <section class="section group-panel" id="settlePanel" style="display:none">
+        <div class="section-head">
+          <h2>最少轉帳</h2>
+          <button class="small-action" type="button" onclick="shareSettlement()">LINE 分享</button>
+        </div>
+        <div id="settlements" class="card-list"></div>
+      </section>
+
+      <section class="section group-panel" id="analysisPanel" style="display:none">
+        <div class="section-head">
+          <h2>群組分析</h2>
+          <button class="small-action" type="button" onclick="showToast('群組分析已更新')">更新</button>
+        </div>
+        <div id="groupBudget" class="card-list" style="margin-bottom:10px"></div>
+        <div class="section-head">
+          <h2>類別花費</h2>
+        </div>
+        <div id="groupCategoryStats" class="card-list" style="margin-bottom:10px"></div>
+        <div class="section-head">
+          <h2>成員墊付</h2>
+        </div>
+        <div id="groupMemberStats" class="card-list"></div>
+      </section>
+
+      <section class="section group-panel" id="membersPanel" style="display:none">
+        <div class="section-head">
+          <h2>成員</h2>
+          <button class="small-action" type="button" onclick="openMemberSheet()">新增成員</button>
+        </div>
+        <div id="members" class="card-list"></div>
+      </section>
+    </section>
+
+    <section id="stats" class="screen">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">本月分析</p>
+          <h1>統計</h1>
+        </div>
+      </header>
+      <section class="summary glass">
+        <p class="total-label">本月總支出</p>
+        <p id="monthSpent" class="total">$0</p>
+        <div style="height:18px"></div>
+        <div id="bars" class="card-list"></div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <h2>成員排行</h2>
+          <button class="small-action" type="button" onclick="showToast('統計報表已同步')">同步</button>
+        </div>
+        <div id="memberRank" class="card-list"></div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <h2>幣別分布</h2>
+        </div>
+        <div id="currencyMix" class="card-list"></div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <h2>匯出報表</h2>
+        </div>
+        <div class="input-card">
+          <h3>本月分帳報表</h3>
+          <p class="eyebrow" style="margin-top:6px">包含支出明細、成員排行、幣別換算與結算建議</p>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="exportReport('Excel')">Excel 匯出</button>
+            <button class="soft-btn" type="button" onclick="exportReport('PDF')">PDF 匯出</button>
+          </div>
+          <p id="latestExport" class="mini-note">尚未匯出報表</p>
+        </div>
+      </section>
+    </section>
+
+    <section id="me" class="screen">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">帳號與設定</p>
+          <h1>我的</h1>
+        </div>
+        <div class="avatar">W</div>
+      </header>
+      <div class="card-list">
+        <div class="input-card setting-row">
+          <div>
+            <h3 id="profileName">Wukec</h3>
+            <p id="profileSync" class="eyebrow" style="margin-top:6px">本機同步 · 原型帳號</p>
+          </div>
+          <button class="small-action" type="button" onclick="logout()">登出</button>
+        </div>
+        <div class="input-card setting-row">
+          <div>
+            <h3>夜間模式</h3>
+            <p id="themeModeLabel" class="eyebrow" style="margin-top:6px">保護眼睛，降低夜晚使用亮度</p>
+          </div>
+          <button id="themeToggle" class="switch" type="button" aria-label="切換夜間模式" aria-pressed="false" onclick="toggleTheme()">
+            <span></span>
+          </button>
+        </div>
+        <div class="input-card">
+          <h3>Premium</h3>
+          <p class="eyebrow" style="margin-top:6px">AI 發票辨識、多幣別、Excel 與 PDF 匯出</p>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="exportReport('Excel')">Excel</button>
+            <button class="soft-btn" type="button" onclick="exportReport('PDF')">PDF</button>
+          </div>
+        </div>
+        <div class="input-card"><h3>預設幣別</h3><p class="eyebrow" style="margin-top:6px">TWD</p></div>
+        <div class="input-card setting-row">
+          <div>
+            <h3>雲端同步</h3>
+            <p class="eyebrow" style="margin-top:6px">剛剛同步 · 跨裝置備份已開啟</p>
+          </div>
+          <span class="pill">已連線</span>
+        </div>
+        <div class="input-card">
+          <div class="setting-row">
+            <div>
+              <h3>固定帳單</h3>
+              <p class="eyebrow" style="margin-top:6px">每月 5 日自動建立房租、水電與網路費</p>
+            </div>
+            <div class="recurring-dot"></div>
+          </div>
+          <div class="preview" style="margin-bottom:0">
+            <div class="preview-row"><span>房租</span><strong>$28,000</strong></div>
+            <div class="preview-row"><span>網路費</span><strong>$999</strong></div>
+            <div class="preview-row"><span>電費預估</span><strong>$1,680</strong></div>
+          </div>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="generateRecurringBills()">產生本月帳單</button>
+            <button class="soft-btn" type="button" onclick="showToast('固定帳單提醒已排程')">設定提醒</button>
+          </div>
+        </div>
+        <div class="input-card">
+          <h3>家庭模式</h3>
+          <p class="eyebrow" style="margin-top:6px">支援擁有者、管理員、家長、子女、訪客權限</p>
+          <div class="preview" style="margin-bottom:0">
+            <div class="preview-row"><span>管理員/家長</span><strong>可管理帳務</strong></div>
+            <div class="preview-row"><span>子女</span><strong>僅看個人帳務</strong></div>
+            <div class="preview-row"><span>訪客</span><strong>僅檢視</strong></div>
+          </div>
+        </div>
+        <div class="input-card">
+          <h3>付款方式</h3>
+          <p class="eyebrow" style="margin-top:6px">LINE Pay、街口支付、全支付、Apple Pay</p>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="showToast('付款方式已連結')">連結支付</button>
+            <button class="soft-btn" type="button" onclick="showToast('已開啟 1% 服務費試算')">服務費試算</button>
+          </div>
+        </div>
+        <div class="input-card">
+          <div class="setting-row">
+            <div>
+              <h3>付款紀錄</h3>
+              <p class="eyebrow" style="margin-top:6px">查看付款、收款確認與服務費</p>
+            </div>
+            <button class="small-action" type="button" onclick="renderPayments(); showToast('付款紀錄已更新')">更新</button>
+          </div>
+          <div id="paymentRecords" class="preview"></div>
+        </div>
+        <div class="input-card">
+          <h3>資料管理</h3>
+          <p class="eyebrow" style="margin-top:6px">備份或重設本機測試資料</p>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="backupData()">備份資料</button>
+            <button class="soft-btn" type="button" onclick="resetLocalData()">重設資料</button>
+          </div>
+        </div>
+        <div class="input-card"><h3>通知</h3><p class="eyebrow" style="margin-top:6px">付款提醒、收款提醒、固定帳單</p></div>
+      </div>
+    </section>
+  </main>
+
+  <button class="floating-add" type="button" onclick="openAddSheet()" aria-label="新增支出">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+  </button>
+
+  <nav class="nav glass" aria-label="主要導覽">
+    <button class="tab active" type="button" data-screen="home" onclick="showScreen('home')" aria-label="首頁"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></button>
+    <button class="tab" type="button" data-screen="group" onclick="openGroup(activeGroupId)" aria-label="群組"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
+    <button class="tab" type="button" onclick="openAddSheet()" aria-label="新增"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+    <button class="tab" type="button" data-screen="stats" onclick="showScreen('stats')" aria-label="統計"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M8 17V9"/><path d="M13 17V5"/><path d="M18 17v-6"/></svg></button>
+    <button class="tab" type="button" data-screen="me" onclick="showScreen('me')" aria-label="我的"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
+  </nav>
+
+  <section id="sheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>新增支出</h2>
+        <button class="icon-btn" type="button" onclick="closeAddSheet()" aria-label="關閉">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="expenseForm" class="form-grid">
+        <div class="ai-card">
+          <h3>AI 記帳助手</h3>
+          <p class="mini-note">輸入一句話或模擬掃描發票，系統會先填入表單，再讓你確認。</p>
+          <textarea id="aiPrompt">今天聚餐 4200 元，阿華付款，4 人平均分攤</textarea>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="parseAiPrompt()">解析文字</button>
+            <button class="soft-btn" type="button" onclick="scanReceipt()">掃描發票</button>
+          </div>
+        </div>
+        <label>群組
+          <select id="expenseGroup"></select>
+        </label>
+        <label>項目名稱
+          <input id="expenseTitle" required value="晚餐" />
+        </label>
+        <div class="three">
+          <label>金額
+            <input id="expenseAmount" required type="number" min="1" value="1200" />
+          </label>
+          <label>幣別
+            <select id="expenseCurrency">
+              <option value="TWD">TWD</option>
+              <option value="JPY">JPY</option>
+              <option value="USD">USD</option>
+              <option value="KRW">KRW</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </label>
+          <label>付款人
+            <select id="expensePayer"></select>
+          </label>
+        </div>
+        <div class="two">
+          <label>分類
+            <select id="expenseCategory">
+              <option>餐飲</option>
+              <option>住宿</option>
+              <option>交通</option>
+              <option>娛樂</option>
+              <option>購物</option>
+              <option>其他</option>
+            </select>
+          </label>
+          <label>分攤方式
+            <select id="splitType">
+              <option value="average">平均分攤</option>
+              <option value="selected">指定成員</option>
+            </select>
+          </label>
+        </div>
+        <div class="input-card">
+          <h3>參與分攤成員</h3>
+          <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。</p>
+          <div id="participantGrid" class="participant-grid"></div>
+        </div>
+        <label>備註
+          <textarea id="expenseNote">含服務費</textarea>
+        </label>
+        <div class="input-card">
+          <h3>預覽分攤</h3>
+          <p id="exchangeHint" class="mini-note"></p>
+          <div id="splitPreview" class="preview"></div>
+        </div>
+        <button class="primary" type="submit">
+          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          建立支出
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <section id="groupSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>新增群組</h2>
+        <button class="icon-btn" type="button" onclick="closeGroupSheet()" aria-label="關閉群組表單">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="groupForm" class="form-grid">
+        <label>群組名稱
+          <input id="groupName" required value="週末露營" />
+        </label>
+        <div class="two">
+          <label>群組類型
+            <select id="groupType">
+              <option>旅遊</option>
+              <option>聚餐</option>
+              <option>家庭</option>
+              <option>室友</option>
+              <option>公司</option>
+            </select>
+          </label>
+          <label>主幣別
+            <select id="groupBaseCurrency">
+              <option value="TWD">TWD</option>
+              <option value="JPY">JPY</option>
+              <option value="USD">USD</option>
+              <option value="KRW">KRW</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </label>
+        </div>
+        <div class="input-card">
+          <h3>預設成員</h3>
+          <p class="mini-note">原型會先加入你、阿華、小美，之後可再用邀請連結加入其他人。</p>
+        </div>
+        <button class="primary" type="submit">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          建立群組
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <section id="memberSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>新增成員</h2>
+        <button class="icon-btn" type="button" onclick="closeMemberSheet()" aria-label="關閉成員表單">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="memberForm" class="form-grid">
+        <label>成員名稱
+          <input id="memberName" required value="新朋友" />
+        </label>
+        <label>角色
+          <select id="memberRole">
+            <option value="成員">成員</option>
+            <option value="管理員">管理員</option>
+            <option value="家長">家長</option>
+            <option value="子女">子女</option>
+            <option value="訪客">訪客</option>
+          </select>
+        </label>
+        <button class="primary" type="submit">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+          加入群組
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <section id="expenseDetailSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>支出明細</h2>
+        <button class="icon-btn" type="button" onclick="closeExpenseSheet()" aria-label="關閉支出明細">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="expenseDetailContent" class="card-list"></div>
+    </div>
+  </section>
+
+  <section id="groupSettingsSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>群組設定</h2>
+        <button class="icon-btn" type="button" onclick="closeGroupSettingsSheet()" aria-label="關閉群組設定">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="groupSettingsForm" class="form-grid">
+        <label>群組名稱
+          <input id="settingsGroupName" required />
+        </label>
+        <label>主幣別
+          <select id="settingsGroupCurrency">
+            <option value="TWD">TWD</option>
+            <option value="JPY">JPY</option>
+            <option value="USD">USD</option>
+            <option value="KRW">KRW</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </label>
+        <label>群組預算
+          <input id="settingsGroupBudget" type="number" min="0" />
+        </label>
+        <button class="primary" type="submit">
+          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          儲存設定
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const currentUserId = "u1";
+    let activeGroupId = "g1";
+    let activePanel = "activity";
+    let expenseFilters = { query: "", category: "all" };
+    let themeMode = localStorage.getItem("floatpay-theme") || "light";
+
+    const defaultGroups = [
+      { id: "g1", name: "日本旅遊", currency: "TWD", subtitle: "5 位成員 · 旅遊", members: ["u1", "u2", "u3", "u4", "u5"] },
+      { id: "g2", name: "公司聚餐", currency: "TWD", subtitle: "4 位成員 · 聚餐", members: ["u1", "u2", "u3", "u4"] },
+      { id: "g3", name: "室友生活費", currency: "TWD", subtitle: "3 位成員 · 固定帳單", members: ["u1", "u3", "u5"] }
+    ];
+
+    const defaultUsers = {
+      u1: { name: "我", initial: "W" },
+      u2: { name: "阿華", initial: "華" },
+      u3: { name: "小美", initial: "美" },
+      u4: { name: "小明", initial: "明" },
+      u5: { name: "阿強", initial: "強" }
+    };
+
+    let users = loadSaved("floatpay-users", defaultUsers);
+
+    const exchangeRates = {
+      TWD: 1,
+      JPY: 0.22,
+      USD: 32.1,
+      KRW: 0.024,
+      EUR: 35.2
+    };
+
+    const currencySymbols = {
+      TWD: "$",
+      JPY: "¥",
+      USD: "US$",
+      KRW: "₩",
+      EUR: "€"
+    };
+
+    const defaultExpenses = [
+      { id: 1, groupId: "g1", title: "築地午餐", amount: 4200, currency: "TWD", payerId: "u2", participants: ["u1","u2","u3","u4"], category: "餐飲", note: "4 人平均", date: "今天" },
+      { id: 2, groupId: "g1", title: "地鐵三日券", amount: 3150, currency: "TWD", payerId: "u1", participants: ["u1","u2","u3","u4","u5"], category: "交通", note: "5 人平均", date: "昨天" },
+      { id: 3, groupId: "g1", title: "淺草伴手禮", amount: 9800, currency: "JPY", payerId: "u5", participants: ["u1","u2","u5"], category: "購物", note: "自動換算 TWD", date: "昨天" },
+      { id: 4, groupId: "g2", title: "火鍋晚餐", amount: 3000, currency: "TWD", payerId: "u4", participants: ["u1","u2","u3","u4"], category: "餐飲", note: "指定成員", date: "週六" },
+      { id: 5, groupId: "g3", title: "六月網路費", amount: 999, currency: "TWD", payerId: "u3", participants: ["u1","u3","u5"], category: "其他", note: "固定帳單", date: "6/1" }
+    ];
+
+    let groups = loadSaved("floatpay-groups", defaultGroups);
+    let expenses = loadSaved("floatpay-expenses", defaultExpenses);
+    let settlementStatus = loadSaved("floatpay-settlements", {});
+    let reminderStatus = loadSaved("floatpay-reminders", {});
+    let recurringStatus = loadSaved("floatpay-recurring", {});
+    let paymentRecords = loadSaved("floatpay-payments", []);
+
+    const categoryIcon = {
+      "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
+      "住宿": '<svg viewBox="0 0 24 24"><path d="M3 21V8a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v13"/><path d="M7 21v-5h10v5"/><path d="M7 10h.01"/><path d="M12 10h.01"/><path d="M17 10h.01"/></svg>',
+      "交通": '<svg viewBox="0 0 24 24"><path d="M6 17h12l2-7H4l2 7z"/><path d="M8 17l-2 4"/><path d="M16 17l2 4"/><path d="M8 10V5h8v5"/></svg>',
+      "娛樂": '<svg viewBox="0 0 24 24"><path d="M6 12h4"/><path d="M8 10v4"/><path d="M15 11h.01"/><path d="M18 13h.01"/><path d="M7 18h10a4 4 0 0 0 3.9-4.9l-1-4A4 4 0 0 0 16 6H8a4 4 0 0 0-3.9 3.1l-1 4A4 4 0 0 0 7 18z"/></svg>',
+      "購物": '<svg viewBox="0 0 24 24"><path d="M6 8h12l-1 13H7L6 8z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>',
+      "其他": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>'
+    };
+
+    function money(value) {
+      return "$" + Math.round(value).toLocaleString("zh-TW");
+    }
+
+    function loadSaved(key, fallback) {
+      try {
+        const saved = localStorage.getItem(key);
+        return saved ? JSON.parse(saved) : structuredClone(fallback);
+      } catch {
+        return structuredClone(fallback);
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem("floatpay-users", JSON.stringify(users));
+      localStorage.setItem("floatpay-groups", JSON.stringify(groups));
+      localStorage.setItem("floatpay-expenses", JSON.stringify(expenses));
+      localStorage.setItem("floatpay-settlements", JSON.stringify(settlementStatus));
+      localStorage.setItem("floatpay-reminders", JSON.stringify(reminderStatus));
+      localStorage.setItem("floatpay-recurring", JSON.stringify(recurringStatus));
+      localStorage.setItem("floatpay-payments", JSON.stringify(paymentRecords));
+    }
+
+    function currentUserRole(group = getGroup(activeGroupId)) {
+      return group?.roles?.[currentUserId] || "擁有者";
+    }
+
+    function canManageGroup(group = getGroup(activeGroupId)) {
+      return ["擁有者", "管理員", "家長"].includes(currentUserRole(group));
+    }
+
+    function canEditExpense(group = getGroup(activeGroupId)) {
+      return ["擁有者", "管理員", "家長", "成員"].includes(currentUserRole(group));
+    }
+
+    function requirePermission(type = "manage") {
+      const ok = type === "edit" ? canEditExpense() : canManageGroup();
+      if (!ok) showToast("目前角色沒有此操作權限");
+      return ok;
+    }
+
+    function loginWith(provider) {
+      const user = {
+        name: provider === "Email" ? "Email 使用者" : `${provider} 使用者`,
+        provider,
+        loggedInAt: new Date().toISOString()
+      };
+      localStorage.setItem("floatpay-auth", JSON.stringify(user));
+      applyAuthState();
+      showToast(`${provider} 登入成功`);
+    }
+
+    function logout() {
+      localStorage.removeItem("floatpay-auth");
+      applyAuthState();
+    }
+
+    function applyAuthState() {
+      const user = loadSaved("floatpay-auth", null);
+      const loggedIn = Boolean(user);
+      document.getElementById("authScreen").classList.toggle("hidden", loggedIn);
+      document.querySelector(".shell").classList.toggle("hidden", !loggedIn);
+      document.querySelector(".nav").classList.toggle("hidden", !loggedIn);
+      document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn);
+      if (loggedIn) {
+        document.getElementById("profileName").textContent = user.name;
+        document.getElementById("profileSync").textContent = `${user.provider} 登入 · 本機同步已啟用`;
+      }
+    }
+
+    function backupData() {
+      const payload = {
+        users,
+        groups,
+        expenses,
+        settlementStatus,
+        reminderStatus,
+        recurringStatus,
+        paymentRecords,
+        exportedAt: new Date().toISOString()
+      };
+      downloadFile("FloatPay-本機資料備份.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+      showToast("本機資料備份已下載");
+    }
+
+    function resetLocalData() {
+      if (!confirm("確定要重設本機資料嗎？這會清除群組、支出、付款狀態與提醒。")) return;
+      ["floatpay-users", "floatpay-groups", "floatpay-expenses", "floatpay-settlements", "floatpay-reminders", "floatpay-recurring", "floatpay-payments"].forEach(key => localStorage.removeItem(key));
+      users = structuredClone(defaultUsers);
+      groups = structuredClone(defaultGroups);
+      expenses = structuredClone(defaultExpenses);
+      settlementStatus = {};
+      reminderStatus = {};
+      recurringStatus = {};
+      paymentRecords = [];
+      activeGroupId = "g1";
+      saveData();
+      renderHome();
+      renderGroup();
+      renderStats();
+      renderPayments();
+      showScreen("home");
+      showToast("本機資料已重設");
+    }
+
+    function formatCurrency(value, currency = "TWD") {
+      const rounded = currency === "JPY" || currency === "KRW" ? Math.round(value) : Math.round(value);
+      return `${currencySymbols[currency] || ""}${rounded.toLocaleString("zh-TW")}`;
+    }
+
+    function baseAmount(expense) {
+      return expense.amount * (exchangeRates[expense.currency || "TWD"] || 1);
+    }
+
+    function getGroup(id) {
+      return groups.find(group => group.id === id);
+    }
+
+    function groupExpenses(id) {
+      return expenses.filter(expense => expense.groupId === id);
+    }
+
+    function filteredGroupExpenses(groupId) {
+      const query = expenseFilters.query.trim().toLowerCase();
+      return groupExpenses(groupId).filter(expense => {
+        const payerName = users[expense.payerId]?.name || "";
+        const haystack = `${expense.title} ${expense.note || ""} ${payerName} ${expense.category}`.toLowerCase();
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesCategory = expenseFilters.category === "all" || expense.category === expenseFilters.category;
+        return matchesQuery && matchesCategory;
+      });
+    }
+
+    function balances(groupId) {
+      const group = getGroup(groupId);
+      const result = Object.fromEntries(group.members.map(id => [id, 0]));
+      groupExpenses(groupId).forEach(expense => {
+        const amount = baseAmount(expense);
+        const each = amount / expense.participants.length;
+        result[expense.payerId] += amount;
+        expense.participants.forEach(id => {
+          result[id] -= each;
+        });
+      });
+      return result;
+    }
+
+    function settlements(groupId) {
+      const b = balances(groupId);
+      const debtors = [];
+      const creditors = [];
+      Object.entries(b).forEach(([id, value]) => {
+        const rounded = Math.round(value);
+        if (rounded < 0) debtors.push({ id, amount: -rounded });
+        if (rounded > 0) creditors.push({ id, amount: rounded });
+      });
+      const rows = [];
+      let d = 0;
+      let c = 0;
+      while (d < debtors.length && c < creditors.length) {
+        const amount = Math.min(debtors[d].amount, creditors[c].amount);
+        rows.push({ from: debtors[d].id, to: creditors[c].id, amount });
+        debtors[d].amount -= amount;
+        creditors[c].amount -= amount;
+        if (debtors[d].amount === 0) d++;
+        if (creditors[c].amount === 0) c++;
+      }
+      return rows;
+    }
+
+    function settlementKey(groupId, row) {
+      return `${groupId}:${row.from}:${row.to}:${Math.round(row.amount)}`;
+    }
+
+    function settlementLabel(groupId, row) {
+      const status = settlementStatus[settlementKey(groupId, row)];
+      if (status === "confirmed") return "已完成";
+      if (status === true || status === "paid") return "已付款待確認";
+      return "未付款";
+    }
+
+    function totalForGroup(groupId) {
+      return groupExpenses(groupId).reduce((sum, expense) => sum + baseAmount(expense), 0);
+    }
+
+    function renderHome() {
+      const allBalances = groups.map(group => balances(group.id)[currentUserId] || 0);
+      const payable = allBalances.filter(v => v < 0).reduce((sum, v) => sum + Math.abs(v), 0);
+      const receivable = allBalances.filter(v => v > 0).reduce((sum, v) => sum + v, 0);
+      const net = receivable - payable;
+      document.getElementById("netTotal").textContent = (net >= 0 ? "+" : "-") + money(Math.abs(net));
+      document.getElementById("netPill").textContent = net >= 0 ? "應收較多" : "應付較多";
+      document.getElementById("payable").textContent = money(payable);
+      document.getElementById("receivable").textContent = money(receivable);
+
+      document.getElementById("groups").innerHTML = groups.map((group, index) => {
+        const mine = Math.round(balances(group.id)[currentUserId] || 0);
+        const statusClass = mine >= 0 ? "positive" : "negative";
+        const statusText = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
+        return `<button class="group-card" type="button" onclick="openGroup('${group.id}')">
+          <div class="group-art">${index + 1}</div>
+          <div class="group-meta">
+            <strong>${group.name}</strong>
+            <span>${group.subtitle}</span>
+          </div>
+          <div class="amount ${statusClass}">${statusText}</div>
+        </button>`;
+      }).join("");
+
+      renderReminders();
+      document.getElementById("recentExpenses").innerHTML = expenses.slice().reverse().slice(0, 4).map(expenseRow).join("");
+      renderStats();
+    }
+
+    function currentReminders() {
+      const settlementItems = groups.flatMap(group => settlements(group.id)
+        .filter(row => row.from === currentUserId || row.to === currentUserId)
+        .map(row => ({
+          id: `settle:${group.id}:${row.from}:${row.to}:${Math.round(row.amount)}`,
+          title: row.from === currentUserId ? `你需付款給 ${users[row.to].name}` : `${users[row.from].name} 尚未付款`,
+          body: `${group.name} · ${money(row.amount)}`,
+          action: row.from === currentUserId ? "前往付款" : "提醒對方",
+          groupId: group.id
+        })));
+      return [
+        ...settlementItems,
+        {
+          id: "recurring:g3:this-month",
+          title: recurringStatus["this-month"] ? "本月固定帳單已建立" : "本月固定帳單待建立",
+          body: "室友生活費 · 房租 / 網路 / 電費",
+          action: recurringStatus["this-month"] ? "查看帳單" : "產生帳單",
+          groupId: "g3"
+        },
+        {
+          id: "export:monthly",
+          title: "本月報表可匯出",
+          body: "包含支出明細、幣別換算與結算建議",
+          action: "前往匯出",
+          groupId: null
+        }
+      ].filter(item => !reminderStatus[item.id]);
+    }
+
+    function renderReminders() {
+      const items = currentReminders().slice(0, 4);
+      document.getElementById("reminders").innerHTML = items.map(item => `
+        <div class="settlement-row">
+          <div>
+            <strong>${item.title}</strong>
+            <span>${item.body}</span>
+            <div class="mini-actions" style="justify-content:flex-start">
+              <button class="mini-btn" type="button" onclick="handleReminderAction('${item.id}', '${item.groupId || ""}')">${item.action}</button>
+              <button class="mini-btn" type="button" onclick="markReminderRead('${item.id}')">已讀</button>
+            </div>
+          </div>
+          <span class="pill">待辦</span>
+        </div>
+      `).join("") || `<div class="empty">目前沒有待辦提醒</div>`;
+    }
+
+    function markReminderRead(id) {
+      reminderStatus[id] = true;
+      saveData();
+      renderHome();
+      showToast("提醒已標記為已讀");
+    }
+
+    function markAllRemindersRead() {
+      currentReminders().forEach(item => reminderStatus[item.id] = true);
+      saveData();
+      renderHome();
+      showToast("所有提醒已標記為已讀");
+    }
+
+    function handleReminderAction(id, groupId) {
+      if (id.startsWith("recurring:")) {
+        generateRecurringBills();
+        return;
+      }
+      if (id.startsWith("export:")) {
+        showScreen("stats");
+        showToast("可在下方匯出 Excel 或 PDF");
+        return;
+      }
+      if (groupId) {
+        activeGroupId = groupId;
+        showScreen("group");
+        switchPanel("settle");
+      }
+    }
+
+    function expenseRow(expense) {
+      const group = getGroup(expense.groupId);
+      const converted = baseAmount(expense);
+      const mine = expense.participants.includes(currentUserId)
+        ? (expense.payerId === currentUserId ? converted - converted / expense.participants.length : -converted / expense.participants.length)
+        : (expense.payerId === currentUserId ? converted : 0);
+      const cls = mine >= 0 ? "positive" : "negative";
+      const label = mine >= 0 ? "+" + money(mine) : "-" + money(Math.abs(mine));
+      const currencyNote = (expense.currency || "TWD") === group.currency ? "" : ` · ${formatCurrency(expense.amount, expense.currency)} ≈ ${money(converted)}`;
+      return `<button class="expense-row" type="button" onclick="openExpenseSheet(${expense.id})">
+        <div class="category">${categoryIcon[expense.category] || categoryIcon["其他"]}</div>
+        <div class="expense-main">
+          <strong>${expense.title}</strong>
+          <span>${group.name} · ${users[expense.payerId].name}付款 · ${expense.date}${currencyNote}</span>
+        </div>
+        <div class="amount ${cls}">${label}</div>
+      </button>`;
+    }
+
+    function renderGroup() {
+      const group = getGroup(activeGroupId);
+      const b = balances(activeGroupId);
+      const mine = Math.round(b[currentUserId] || 0);
+      document.getElementById("groupTitle").textContent = group.name;
+      document.getElementById("groupSubtitle").textContent = group.subtitle;
+      document.getElementById("groupCurrency").textContent = group.currency;
+      document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
+      document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
+      document.getElementById("memberStack").innerHTML = group.members.map(id => `<div class="member-avatar">${users[id].initial}</div>`).join("");
+      const visibleExpenses = filteredGroupExpenses(activeGroupId);
+      document.getElementById("groupExpenses").innerHTML = visibleExpenses.slice().reverse().map(expenseRow).join("") || `<div class="empty">沒有符合條件的支出</div>`;
+      updateFilterSummary(visibleExpenses.length, groupExpenses(activeGroupId).length);
+      const settlementRows = settlements(activeGroupId);
+      document.getElementById("settlements").innerHTML = settlementRows.map(row => `
+        <div class="settlement-row">
+          <div>
+            <div class="flow">
+              <div class="member-avatar">${users[row.from].initial}</div>
+              <div class="arrow-dot"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+              <div class="member-avatar">${users[row.to].initial}</div>
+              <div>
+                <strong>${users[row.from].name} 轉給 ${users[row.to].name}</strong>
+                <span>${settlementLabel(activeGroupId, row)} · 可用 LINE Pay / 街口 / Apple Pay</span>
+              </div>
+            </div>
+            <div class="mini-actions">
+              <button class="mini-btn" type="button" onclick="paySettlement('${row.from}', '${row.to}', ${row.amount})">${settlementStatus[settlementKey(activeGroupId, row)] ? "已付款" : "一鍵付款"}</button>
+              <button class="mini-btn" type="button" onclick="confirmSettlement('${row.from}', '${row.to}', ${row.amount})">確認收款</button>
+              <button class="mini-btn" type="button" onclick="remindSettlement('${row.from}')">提醒</button>
+            </div>
+          </div>
+          <div>
+            <div class="amount neutral">${money(row.amount)}</div>
+            <div>
+              <span>服務費 ${money(row.amount * 0.01)}</span>
+            </div>
+          </div>
+        </div>`).join("") || `<div class="empty">目前不需要結算</div>`;
+      document.getElementById("members").innerHTML = group.members.map(id => {
+        const value = Math.round(b[id] || 0);
+        const cls = value >= 0 ? "positive" : "negative";
+        const role = group.roles?.[id] || (id === currentUserId ? "擁有者" : "成員");
+        return `<div class="settlement-row">
+          <div class="flow">
+            <div class="member-avatar">${users[id].initial}</div>
+            <div><strong>${users[id].name}</strong><span>${role}${id === currentUserId ? " · 目前使用者" : ""}</span></div>
+          </div>
+          <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
+        </div>`;
+      }).join("");
+      renderGroupAnalysis(group);
+    }
+
+    function renderGroupAnalysis(group) {
+      const rows = groupExpenses(group.id);
+      const total = rows.reduce((sum, expense) => sum + baseAmount(expense), 0);
+      const budget = group.budget || (group.name.includes("旅遊") ? 15000 : group.name.includes("室友") ? 35000 : 8000);
+      const percent = budget ? Math.min(100, Math.round(total / budget * 100)) : 0;
+      const status = total > budget ? "已超出預算" : total > budget * 0.8 ? "接近預算" : "預算內";
+      document.getElementById("groupBudget").innerHTML = `
+        <div class="input-card">
+          <h3>${status}</h3>
+          <p class="mini-note">${group.name} 目前花費 ${money(total)} / 預算 ${money(budget)}</p>
+          <div style="height:10px;border-radius:999px;background:rgba(255,255,255,.58);overflow:hidden;margin-top:12px">
+            <div style="width:${percent}%;height:100%;border-radius:999px;background:linear-gradient(90deg,#30d158,#ffd60a,#ff453a)"></div>
+          </div>
+        </div>`;
+
+      const categoryTotals = rows.reduce((map, expense) => {
+        map[expense.category] = (map[expense.category] || 0) + baseAmount(expense);
+        return map;
+      }, {});
+      document.getElementById("groupCategoryStats").innerHTML = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).map(([category, value]) => {
+        const pct = total ? Math.max(6, Math.round(value / total * 100)) : 0;
+        return `<div class="input-card">
+          <div class="preview-row"><span>${category}</span><strong>${money(value)}</strong></div>
+          <div style="height:9px;border-radius:999px;background:rgba(255,255,255,.58);overflow:hidden;margin-top:8px">
+            <div style="width:${pct}%;height:100%;border-radius:999px;background:linear-gradient(90deg,#0a84ff,#bf5af2)"></div>
+          </div>
+        </div>`;
+      }).join("") || `<div class="empty">目前沒有可分析的支出</div>`;
+
+      const payerTotals = {};
+      rows.forEach(expense => {
+        payerTotals[expense.payerId] = (payerTotals[expense.payerId] || 0) + baseAmount(expense);
+      });
+      document.getElementById("groupMemberStats").innerHTML = Object.entries(payerTotals).sort((a, b) => b[1] - a[1]).map(([id, value]) => `
+        <div class="settlement-row">
+          <div class="flow">
+            <div class="member-avatar">${users[id]?.initial || "?"}</div>
+            <div><strong>${users[id]?.name || "未知成員"}</strong><span>群組內墊付款</span></div>
+          </div>
+          <div class="amount neutral">${money(value)}</div>
+        </div>
+      `).join("") || `<div class="empty">目前沒有成員墊付資料</div>`;
+    }
+
+    function renderStats() {
+      const totals = expenses.reduce((map, expense) => {
+        map[expense.category] = (map[expense.category] || 0) + baseAmount(expense);
+        return map;
+      }, {});
+      const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+      document.getElementById("monthSpent").textContent = money(sum);
+      document.getElementById("bars").innerHTML = Object.entries(totals).sort((a,b) => b[1] - a[1]).map(([name, value]) => {
+        const pct = sum ? Math.max(6, Math.round(value / sum * 100)) : 0;
+        return `<div>
+          <div class="preview-row"><span>${name}</span><strong>${money(value)}</strong></div>
+          <div style="height:10px;border-radius:999px;background:rgba(255,255,255,.58);overflow:hidden;margin-top:7px">
+            <div style="width:${pct}%;height:100%;border-radius:999px;background:linear-gradient(90deg,#0a84ff,#30d158,#bf5af2)"></div>
+          </div>
+        </div>`;
+      }).join("");
+
+      const memberTotals = {};
+      expenses.forEach(expense => {
+        const amount = baseAmount(expense);
+        memberTotals[expense.payerId] = (memberTotals[expense.payerId] || 0) + amount;
+      });
+      document.getElementById("memberRank").innerHTML = Object.entries(memberTotals).sort((a, b) => b[1] - a[1]).map(([id, value]) => `
+        <div class="settlement-row">
+          <div class="flow">
+            <div class="member-avatar">${users[id].initial}</div>
+            <div><strong>${users[id].name}</strong><span>本月墊付款</span></div>
+          </div>
+          <div class="amount neutral">${money(value)}</div>
+        </div>
+      `).join("");
+
+      const currencyTotals = expenses.reduce((map, expense) => {
+        const currency = expense.currency || "TWD";
+        map[currency] = (map[currency] || 0) + expense.amount;
+        return map;
+      }, {});
+      document.getElementById("currencyMix").innerHTML = Object.entries(currencyTotals).map(([currency, value]) => {
+        const converted = value * (exchangeRates[currency] || 1);
+        return `<div class="settlement-row">
+          <div>
+            <strong>${currency}</strong>
+            <span>${currency === "TWD" ? "主要幣別" : `匯率 ${exchangeRates[currency]} TWD`}</span>
+          </div>
+          <div class="amount neutral">${formatCurrency(value, currency)} · ${money(converted)}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function renderPayments() {
+      const target = document.getElementById("paymentRecords");
+      if (!target) return;
+      target.innerHTML = paymentRecords.slice(0, 5).map(record => {
+        const group = getGroup(record.groupId);
+        return `<div class="preview-row">
+          <span>${group?.name || "群組"} · ${users[record.fromId]?.name || "付款人"} → ${users[record.toId]?.name || "收款人"}</span>
+          <strong>${money(record.amount)} · ${record.status}</strong>
+        </div>`;
+      }).join("") || `<p class="mini-note">目前沒有付款紀錄</p>`;
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll(".screen").forEach(screen => screen.classList.toggle("active", screen.id === id));
+      document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.screen === id));
+      if (id === "group") renderGroup();
+      if (id === "home") renderHome();
+      if (id === "stats") renderStats();
+      if (id === "me") renderPayments();
+    }
+
+    function openGroup(id) {
+      activeGroupId = id;
+      expenseFilters = { query: "", category: "all" };
+      const search = document.getElementById("expenseSearch");
+      const category = document.getElementById("expenseFilterCategory");
+      if (search) search.value = "";
+      if (category) category.value = "all";
+      showScreen("group");
+      switchPanel(activePanel);
+    }
+
+    function goHome() {
+      showScreen("home");
+    }
+
+    function switchPanel(panel) {
+      activePanel = panel;
+      document.querySelectorAll(".segment").forEach(segment => segment.classList.toggle("active", segment.dataset.panel === panel));
+      document.getElementById("activityPanel").style.display = panel === "activity" ? "" : "none";
+      document.getElementById("settlePanel").style.display = panel === "settle" ? "" : "none";
+      document.getElementById("analysisPanel").style.display = panel === "analysis" ? "" : "none";
+      document.getElementById("membersPanel").style.display = panel === "members" ? "" : "none";
+    }
+
+    function updateExpenseFilters() {
+      expenseFilters = {
+        query: document.getElementById("expenseSearch")?.value || "",
+        category: document.getElementById("expenseFilterCategory")?.value || "all"
+      };
+      renderGroup();
+    }
+
+    function clearExpenseFilters() {
+      expenseFilters = { query: "", category: "all" };
+      const search = document.getElementById("expenseSearch");
+      const category = document.getElementById("expenseFilterCategory");
+      if (search) search.value = "";
+      if (category) category.value = "all";
+      renderGroup();
+      showToast("篩選已清除");
+    }
+
+    function updateFilterSummary(visible, total) {
+      const summary = document.getElementById("filterSummary");
+      if (!summary) return;
+      if (!expenseFilters.query && expenseFilters.category === "all") {
+        summary.textContent = `顯示全部 ${total} 筆支出`;
+      } else {
+        summary.textContent = `顯示 ${visible} / ${total} 筆支出`;
+      }
+    }
+
+    function openAddSheet() {
+      if (!requirePermission("edit")) return;
+      document.getElementById("sheet").classList.add("open");
+      document.getElementById("expenseGroup").value = activeGroupId;
+      syncPayerOptions();
+      updatePreview();
+      showToast("新增支出已開啟");
+    }
+
+    function closeAddSheet() {
+      document.getElementById("sheet").classList.remove("open");
+    }
+
+    function openGroupSheet() {
+      document.getElementById("groupSheet").classList.add("open");
+      showToast("新增群組已開啟");
+    }
+
+    function closeGroupSheet() {
+      document.getElementById("groupSheet").classList.remove("open");
+    }
+
+    function openMemberSheet() {
+      if (!requirePermission("manage")) return;
+      document.getElementById("memberSheet").classList.add("open");
+      showToast("新增成員已開啟");
+    }
+
+    function closeMemberSheet() {
+      document.getElementById("memberSheet").classList.remove("open");
+    }
+
+    function openExpenseSheet(expenseId) {
+      const expense = expenses.find(item => item.id === expenseId);
+      if (!expense) return;
+      const group = getGroup(expense.groupId);
+      const converted = baseAmount(expense);
+      const each = converted / expense.participants.length;
+      document.getElementById("expenseDetailContent").innerHTML = `
+        <div class="input-card">
+          <h3>${expense.title}</h3>
+          <p class="mini-note">${group.name} · ${expense.category} · ${expense.date}</p>
+          <div class="preview">
+            <div class="preview-row"><span>原始金額</span><strong>${formatCurrency(expense.amount, expense.currency || "TWD")}</strong></div>
+            <div class="preview-row"><span>換算金額</span><strong>${money(converted)}</strong></div>
+            <div class="preview-row"><span>付款人</span><strong>${users[expense.payerId].name}</strong></div>
+            <div class="preview-row"><span>每人分攤</span><strong>${money(each)}</strong></div>
+          </div>
+        </div>
+        <div class="input-card">
+          <h3>參與成員</h3>
+          <div class="preview">${expense.participants.map(id => `<div class="preview-row"><span>${users[id]?.name || "未知成員"}</span><strong>${money(each)}</strong></div>`).join("")}</div>
+        </div>
+        <div class="input-card">
+          <h3>備註</h3>
+          <p class="mini-note">${expense.note || "無備註"}</p>
+        </div>
+        <button class="primary" type="button" style="background:linear-gradient(145deg,#ff453a,#ff9f0a)" onclick="deleteExpense(${expense.id})">刪除這筆支出</button>
+      `;
+      document.getElementById("expenseDetailSheet").classList.add("open");
+    }
+
+    function closeExpenseSheet() {
+      document.getElementById("expenseDetailSheet").classList.remove("open");
+    }
+
+    function deleteExpense(expenseId) {
+      if (!requirePermission("edit")) return;
+      if (!confirm("確定要刪除這筆支出嗎？刪除後會重新計算結算。")) return;
+      const target = expenses.find(item => item.id === expenseId);
+      expenses = expenses.filter(item => item.id !== expenseId);
+      settlementStatus = {};
+      saveData();
+      closeExpenseSheet();
+      renderHome();
+      renderGroup();
+      renderStats();
+      showToast(`${target?.title || "支出"} 已刪除，結算已重算`);
+    }
+
+    function openGroupSettingsSheet() {
+      if (!requirePermission("manage")) return;
+      const group = getGroup(activeGroupId);
+      document.getElementById("settingsGroupName").value = group.name;
+      document.getElementById("settingsGroupCurrency").value = group.currency;
+      document.getElementById("settingsGroupBudget").value = group.budget || (group.name.includes("旅遊") ? 15000 : group.name.includes("室友") ? 35000 : 8000);
+      document.getElementById("groupSettingsSheet").classList.add("open");
+    }
+
+    function closeGroupSettingsSheet() {
+      document.getElementById("groupSettingsSheet").classList.remove("open");
+    }
+
+    function syncPayerOptions() {
+      const group = getGroup(document.getElementById("expenseGroup").value);
+      document.getElementById("expensePayer").innerHTML = group.members.map(id => `<option value="${id}">${users[id].name}</option>`).join("");
+      document.getElementById("expensePayer").value = currentUserId;
+      renderParticipantOptions(group);
+    }
+
+    function renderParticipantOptions(group) {
+      document.getElementById("participantGrid").innerHTML = group.members.map(id => `
+        <label class="participant-chip">
+          <input type="checkbox" class="participant-input" value="${id}" checked onchange="updatePreview()" />
+          <span>${users[id].name}</span>
+        </label>
+      `).join("");
+    }
+
+    function selectedParticipants() {
+      const checked = [...document.querySelectorAll(".participant-input:checked")].map(input => input.value);
+      if (checked.length) return checked;
+      return [document.getElementById("expensePayer").value || currentUserId];
+    }
+
+    function updatePreview() {
+      const group = getGroup(document.getElementById("expenseGroup").value);
+      const amount = Number(document.getElementById("expenseAmount").value || 0);
+      const currency = document.getElementById("expenseCurrency").value;
+      const converted = amount * (exchangeRates[currency] || 1);
+      const participants = selectedParticipants();
+      const each = participants.length ? converted / participants.length : 0;
+      document.getElementById("exchangeHint").textContent = currency === group.currency
+        ? `以 ${group.currency} 計算，${participants.length} 位成員每位平均 ${money(each)}`
+        : `${formatCurrency(amount, currency)} 會換算為 ${money(converted)}，再由 ${participants.length} 位成員分攤`;
+      document.getElementById("splitPreview").innerHTML = participants.map(id => `
+        <div class="preview-row"><span>${users[id].name}</span><strong>${money(each)}</strong></div>
+      `).join("");
+    }
+
+    function shareSettlement() {
+      const group = getGroup(activeGroupId);
+      const lines = settlements(activeGroupId).map(row => `${users[row.from].name} → ${users[row.to].name} ${money(row.amount)}`);
+      const text = `本次 ${group.name} 結算：${lines.join("，") || "目前不需轉帳"}。付款連結：https://floatpay.app/pay/${group.id}`;
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {});
+      }
+      showToast("LINE 分享摘要已複製");
+    }
+
+    function parseAiPrompt() {
+      const text = document.getElementById("aiPrompt").value;
+      const amountMatch = text.match(/(\d[\d,]*)\s*(元|塊|twd|TWD)?/);
+      const payer = Object.entries(users).find(([, user]) => text.includes(user.name) && user.name !== "我");
+      if (amountMatch) {
+        document.getElementById("expenseAmount").value = amountMatch[1].replaceAll(",", "");
+      }
+      document.getElementById("expenseTitle").value = text.includes("聚餐") ? "AI 聚餐記帳" : "AI 快速記帳";
+      document.getElementById("expenseCategory").value = text.includes("交通") ? "交通" : "餐飲";
+      document.getElementById("expenseCurrency").value = "TWD";
+      if (payer) document.getElementById("expensePayer").value = payer[0];
+      document.getElementById("expenseNote").value = "AI 已解析：金額、付款人、平均分攤";
+      updatePreview();
+      showToast("AI 已填入表單，請確認後建立");
+    }
+
+    function scanReceipt() {
+      document.getElementById("expenseTitle").value = "發票辨識：超商補給";
+      document.getElementById("expenseAmount").value = "865";
+      document.getElementById("expenseCurrency").value = "TWD";
+      document.getElementById("expenseCategory").value = "購物";
+      document.getElementById("expenseNote").value = "AI 發票辨識：店家、日期、總金額已擷取";
+      updatePreview();
+      showToast("發票辨識完成，已帶入金額與分類");
+    }
+
+    function paySettlement(fromId, toId, amount) {
+      const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
+      settlementStatus[key] = "paid";
+      if (!paymentRecords.some(record => record.key === key)) {
+        paymentRecords.unshift({
+          key,
+          groupId: activeGroupId,
+          fromId,
+          toId,
+          amount: Math.round(amount),
+          status: "待確認",
+          date: "剛剛"
+        });
+      }
+      saveData();
+      renderGroup();
+      renderPayments();
+      showToast(`${users[fromId].name} 已透過付款連結轉給 ${users[toId].name} ${money(amount)}`);
+    }
+
+    function confirmSettlement(fromId, toId, amount) {
+      const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
+      settlementStatus[key] = "confirmed";
+      paymentRecords = paymentRecords.map(record => record.key === key ? { ...record, status: "已完成" } : record);
+      saveData();
+      renderGroup();
+      renderPayments();
+      showToast(`${users[toId].name} 已確認收到 ${users[fromId].name} 的款項`);
+    }
+
+    function remindSettlement(userId) {
+      showToast(`已透過 Push 與 LINE 提醒 ${users[userId].name}`);
+    }
+
+    function generateRecurringBills() {
+      if (!requirePermission("manage")) return;
+      if (recurringStatus["this-month"]) {
+        activeGroupId = "g3";
+        showScreen("group");
+        showToast("本月固定帳單已建立過");
+        return;
+      }
+      const group = getGroup("g3") || groups.find(group => group.name.includes("室友")) || groups[0];
+      const bills = [
+        { title: "本月房租", amount: 28000, category: "住宿" },
+        { title: "本月網路費", amount: 999, category: "其他" },
+        { title: "本月電費", amount: 1680, category: "其他" }
+      ];
+      bills.forEach((bill, index) => {
+        expenses.push({
+          id: Date.now() + index,
+          groupId: group.id,
+          title: bill.title,
+          amount: bill.amount,
+          currency: group.currency || "TWD",
+          payerId: currentUserId,
+          participants: [...group.members],
+          category: bill.category,
+          note: "固定帳單自動建立",
+          date: "本月"
+        });
+      });
+      recurringStatus["this-month"] = true;
+      activeGroupId = group.id;
+      saveData();
+      renderHome();
+      renderGroup();
+      renderStats();
+      showScreen("group");
+      showToast("本月固定帳單已建立");
+    }
+
+    function exportReport(type) {
+      const total = expenses.reduce((sum, expense) => sum + baseAmount(expense), 0);
+      let fileName;
+      let content;
+      let mimeType;
+      if (type === "Excel") {
+        const rows = [
+          ["群組", "項目", "原始金額", "幣別", "換算TWD", "付款人", "參與人數", "分類", "日期"],
+          ...expenses.map(expense => [
+            getGroup(expense.groupId).name,
+            expense.title,
+            expense.amount,
+            expense.currency || "TWD",
+            Math.round(baseAmount(expense)),
+            users[expense.payerId].name,
+            expense.participants.length,
+            expense.category,
+            expense.date
+          ])
+        ];
+        fileName = "FloatPay-本月分帳報表.csv";
+        content = "\ufeff" + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+        mimeType = "text/csv;charset=utf-8";
+      } else {
+        fileName = "FloatPay-本月分帳報表.html";
+        content = `<!doctype html><html><head><meta charset="utf-8"><title>FloatPay 本月分帳報表</title>
+          <style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:32px;color:#1c1c1e}h1{margin:0 0 8px}table{border-collapse:collapse;width:100%;margin-top:18px}td,th{border:1px solid #ddd;padding:10px;text-align:left}th{background:#f5f7fa}.total{font-size:28px;font-weight:800}</style>
+          </head><body><h1>FloatPay 本月分帳報表</h1><div class="total">總支出 ${money(total)}</div><p>支出筆數 ${expenses.length} · 支援多幣別換算 · 可用瀏覽器另存為 PDF</p>
+          <table><thead><tr><th>群組</th><th>項目</th><th>金額</th><th>換算 TWD</th><th>付款人</th><th>分類</th></tr></thead><tbody>
+          ${expenses.map(expense => `<tr><td>${getGroup(expense.groupId).name}</td><td>${expense.title}</td><td>${formatCurrency(expense.amount, expense.currency || "TWD")}</td><td>${money(baseAmount(expense))}</td><td>${users[expense.payerId].name}</td><td>${expense.category}</td></tr>`).join("")}
+          </tbody></table></body></html>`;
+        mimeType = "text/html;charset=utf-8";
+      }
+      downloadFile(fileName, content, mimeType);
+      showToast(`${type} 報表已下載`);
+    }
+
+    function downloadFile(fileName, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      window.latestReportUrl = url;
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      const latest = document.getElementById("latestExport");
+      if (latest) {
+        latest.innerHTML = `最新匯出：<a href="${url}" download="${fileName}">${fileName}</a>`;
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => toast.classList.remove("show"), 2200);
+    }
+
+    function applyTheme(mode) {
+      themeMode = mode === "dark" ? "dark" : "light";
+      document.body.dataset.theme = themeMode;
+      localStorage.setItem("floatpay-theme", themeMode);
+      const toggle = document.getElementById("themeToggle");
+      const label = document.getElementById("themeModeLabel");
+      if (toggle) toggle.setAttribute("aria-pressed", String(themeMode === "dark"));
+      if (label) label.textContent = themeMode === "dark" ? "夜間模式已開啟，畫面亮度已降低" : "保護眼睛，降低夜晚使用亮度";
+    }
+
+    function toggleTheme() {
+      applyTheme(themeMode === "dark" ? "light" : "dark");
+      showToast(themeMode === "dark" ? "夜間模式已開啟" : "已切換回日間模式");
+    }
+
+    document.getElementById("expenseGroup").addEventListener("change", () => {
+      syncPayerOptions();
+      updatePreview();
+    });
+    document.getElementById("expenseAmount").addEventListener("input", updatePreview);
+    document.getElementById("expenseCurrency").addEventListener("change", updatePreview);
+
+    document.getElementById("expenseForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const group = getGroup(document.getElementById("expenseGroup").value);
+      const amount = Number(document.getElementById("expenseAmount").value || 0);
+      const participants = selectedParticipants();
+      if (!amount || amount <= 0) {
+        showToast("金額必須大於 0");
+        return;
+      }
+      if (!participants.length) {
+        showToast("至少需要一位分攤成員");
+        return;
+      }
+      expenses.push({
+        id: Date.now(),
+        groupId: group.id,
+        title: document.getElementById("expenseTitle").value.trim() || "未命名支出",
+        amount,
+        currency: document.getElementById("expenseCurrency").value,
+        payerId: document.getElementById("expensePayer").value,
+        participants,
+        category: document.getElementById("expenseCategory").value,
+        note: document.getElementById("expenseNote").value,
+        date: "剛剛"
+      });
+      activeGroupId = group.id;
+      saveData();
+      closeAddSheet();
+      renderHome();
+      renderGroup();
+      showScreen("group");
+      showToast("支出已建立，結算已更新");
+    });
+
+    document.getElementById("groupForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const name = document.getElementById("groupName").value.trim() || "未命名群組";
+      const type = document.getElementById("groupType").value;
+      const currency = document.getElementById("groupBaseCurrency").value;
+      const id = `g${Date.now()}`;
+      groups.push({
+        id,
+        name,
+        currency,
+        subtitle: `3 位成員 · ${type}`,
+        members: ["u1", "u2", "u3"],
+        roles: { u1: "擁有者", u2: "成員", u3: "成員" }
+      });
+      document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${id}">${name}</option>`);
+      activeGroupId = id;
+      saveData();
+      closeGroupSheet();
+      renderHome();
+      renderGroup();
+      showScreen("group");
+      showToast(`${name} 已建立`);
+    });
+
+    document.getElementById("memberForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const group = getGroup(activeGroupId);
+      const name = document.getElementById("memberName").value.trim() || "新成員";
+      const role = document.getElementById("memberRole").value;
+      const id = `u${Date.now()}`;
+      users[id] = { name, initial: name.trim().slice(0, 1).toUpperCase() || "新" };
+      group.members.push(id);
+      group.roles = { ...(group.roles || {}), [id]: role };
+      group.subtitle = `${group.members.length} 位成員 · ${group.subtitle.split("·").pop().trim()}`;
+      saveData();
+      closeMemberSheet();
+      renderHome();
+      renderGroup();
+      showToast(`${name} 已加入 ${group.name}`);
+    });
+
+    document.getElementById("groupSettingsForm").addEventListener("submit", event => {
+      event.preventDefault();
+      const group = getGroup(activeGroupId);
+      const oldName = group.name;
+      group.name = document.getElementById("settingsGroupName").value.trim() || oldName;
+      group.currency = document.getElementById("settingsGroupCurrency").value;
+      group.budget = Number(document.getElementById("settingsGroupBudget").value || 0);
+      saveData();
+      closeGroupSettingsSheet();
+      renderHome();
+      renderGroup();
+      renderStats();
+      showToast(`${oldName} 設定已更新`);
+    });
+
+    groups.forEach(group => {
+      document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${group.id}">${group.name}</option>`);
+    });
+
+    applyTheme(themeMode);
+    applyAuthState();
+    renderHome();
+    renderGroup();
+    renderPayments();
+    syncPayerOptions();
+    updatePreview();
+  </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local runtime
+*.log
+tmp/
+dist/
+node_modules/
+
+# Environment secrets
+.env
+.env.*
+
