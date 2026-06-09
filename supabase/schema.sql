@@ -25,7 +25,7 @@ create table if not exists public.group_members (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
-  role text not null default '成員' check (role in ('擁有者', '管理員', '家長', '成員', '子女', '訪客')),
+  role text not null default 'member' check (role in ('admin', 'parent', 'child', 'member', 'guest')),
   joined_at timestamptz not null default now(),
   unique (group_id, user_id)
 );
@@ -38,7 +38,7 @@ create table if not exists public.expenses (
   currency text not null default 'TWD',
   exchange_rate numeric(12, 6) not null default 1,
   payer_id uuid not null references public.profiles(id),
-  category text not null default '其他',
+  category text not null default 'other',
   note text,
   receipt_image_url text,
   expense_date date not null default current_date,
@@ -92,7 +92,7 @@ create table if not exists public.recurring_bills (
   amount numeric(12, 2) not null check (amount > 0),
   currency text not null default 'TWD',
   payer_id uuid not null references public.profiles(id),
-  category text not null default '其他',
+  category text not null default 'other',
   schedule_rule text not null default 'monthly',
   next_run_at date,
   enabled boolean not null default true,
@@ -136,6 +136,9 @@ $$;
 create policy "profiles_select_self" on public.profiles
   for select using (id = auth.uid());
 
+create policy "profiles_insert_self" on public.profiles
+  for insert with check (id = auth.uid());
+
 create policy "profiles_update_self" on public.profiles
   for update using (id = auth.uid());
 
@@ -151,12 +154,57 @@ create policy "groups_update_owner_or_admin" on public.groups
       select 1 from public.group_members
       where group_id = groups.id
         and user_id = auth.uid()
-        and role in ('擁有者', '管理員', '家長')
+        and role in ('admin', 'parent')
     )
   );
 
 create policy "members_select_group_member" on public.group_members
   for select using (public.is_group_member(group_id));
+
+create policy "members_insert_owner_or_admin" on public.group_members
+  for insert with check (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_members.group_id
+        and groups.owner_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.group_members existing_member
+      where existing_member.group_id = group_members.group_id
+        and existing_member.user_id = auth.uid()
+        and existing_member.role in ('admin', 'parent')
+    )
+  );
+
+create policy "members_update_owner_or_admin" on public.group_members
+  for update using (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_members.group_id
+        and groups.owner_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.group_members existing_member
+      where existing_member.group_id = group_members.group_id
+        and existing_member.user_id = auth.uid()
+        and existing_member.role in ('admin', 'parent')
+    )
+  );
+
+create policy "members_delete_owner_or_admin" on public.group_members
+  for delete using (
+    exists (
+      select 1 from public.groups
+      where groups.id = group_members.group_id
+        and groups.owner_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.group_members existing_member
+      where existing_member.group_id = group_members.group_id
+        and existing_member.user_id = auth.uid()
+        and existing_member.role in ('admin', 'parent')
+    )
+  );
 
 create policy "expenses_select_group_member" on public.expenses
   for select using (public.is_group_member(group_id));
@@ -179,14 +227,73 @@ create policy "splits_select_via_expense_group" on public.expense_splits
     )
   );
 
+create policy "splits_insert_via_expense_group" on public.expense_splits
+  for insert with check (
+    exists (
+      select 1 from public.expenses
+      where expenses.id = expense_splits.expense_id
+        and public.is_group_member(expenses.group_id)
+    )
+  );
+
+create policy "splits_update_via_expense_group" on public.expense_splits
+  for update using (
+    exists (
+      select 1 from public.expenses
+      where expenses.id = expense_splits.expense_id
+        and public.is_group_member(expenses.group_id)
+    )
+  );
+
+create policy "splits_delete_via_expense_group" on public.expense_splits
+  for delete using (
+    exists (
+      select 1 from public.expenses
+      where expenses.id = expense_splits.expense_id
+        and public.is_group_member(expenses.group_id)
+    )
+  );
+
 create policy "settlements_select_group_member" on public.settlements
   for select using (public.is_group_member(group_id));
+
+create policy "settlements_insert_group_member" on public.settlements
+  for insert with check (public.is_group_member(group_id));
+
+create policy "settlements_update_group_member" on public.settlements
+  for update using (public.is_group_member(group_id));
 
 create policy "payments_select_group_member" on public.payment_records
   for select using (public.is_group_member(group_id));
 
+create policy "payments_insert_group_member" on public.payment_records
+  for insert with check (public.is_group_member(group_id));
+
 create policy "recurring_select_group_member" on public.recurring_bills
   for select using (public.is_group_member(group_id));
 
+create policy "recurring_insert_admin_or_parent" on public.recurring_bills
+  for insert with check (
+    exists (
+      select 1 from public.group_members
+      where group_id = recurring_bills.group_id
+        and user_id = auth.uid()
+        and role in ('admin', 'parent')
+    )
+  );
+
+create policy "recurring_update_admin_or_parent" on public.recurring_bills
+  for update using (
+    exists (
+      select 1 from public.group_members
+      where group_id = recurring_bills.group_id
+        and user_id = auth.uid()
+        and role in ('admin', 'parent')
+    )
+  );
+
 create policy "notifications_select_self" on public.notifications
   for select using (user_id = auth.uid());
+
+create policy "notifications_update_self" on public.notifications
+  for update using (user_id = auth.uid());
