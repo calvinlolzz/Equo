@@ -9,7 +9,7 @@
 - Netlify：適合靜態網站與表單整合
 - Cloudflare Pages：適合全球 CDN 與免費流量
 
-建議先用 GitHub Pages 或 Vercel。
+目前決策：使用 Vercel + Supabase。
 
 ## GitHub Pages
 
@@ -24,14 +24,22 @@
 
 1. 登入 Vercel。
 2. Import GitHub repository。
-3. Framework 選 `Other`。
-4. Build command 留空。
-5. Output directory 留空或使用根目錄。
-6. 部署後取得測試網址。
+3. 選擇 `calvinlolzz/Equo`。
+4. Framework Preset 選 `Other`。
+5. Build command 留空。
+6. Output directory 留空。
+7. 在 Environment Variables 加入：
+
+```text
+SUPABASE_URL
+SUPABASE_ANON_KEY
+```
+
+8. 部署後取得測試網址。
 
 ## 第二階段：線上資料庫
 
-正式用戶測試不建議使用 localStorage，建議二選一。
+正式用戶測試不建議使用 localStorage。目前決策：Supabase。
 
 ### Firebase
 
@@ -73,4 +81,3 @@
 5. 遷移 settlements / payment_records。
 6. 加入 Storage 與發票照片。
 7. 加入通知與排程。
-

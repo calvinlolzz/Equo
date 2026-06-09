@@ -1274,9 +1274,9 @@
         <div class="input-card setting-row">
           <div>
             <h3>雲端同步</h3>
-            <p class="eyebrow" style="margin-top:6px">剛剛同步 · 跨裝置備份已開啟</p>
+            <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">本機模式 · 尚未連接 Supabase</p>
           </div>
-          <span class="pill">已連線</span>
+          <span id="cloudSyncPill" class="pill">本機</span>
         </div>
         <div class="input-card">
           <div class="setting-row">
@@ -1600,6 +1600,7 @@
     let reminderStatus = loadSaved("floatpay-reminders", {});
     let recurringStatus = loadSaved("floatpay-recurring", {});
     let paymentRecords = loadSaved("floatpay-payments", []);
+    let cloudConfig = { configured: false };
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -1677,6 +1678,31 @@
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
         document.getElementById("profileSync").textContent = `${user.provider} 登入 · 本機同步已啟用`;
+      }
+    }
+
+    async function initCloudConfig() {
+      try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        if (!response.ok) throw new Error("config unavailable");
+        const config = await response.json();
+        cloudConfig = config.supabase || { configured: false };
+      } catch {
+        cloudConfig = { configured: false };
+      }
+      renderCloudStatus();
+    }
+
+    function renderCloudStatus() {
+      const label = document.getElementById("cloudSyncLabel");
+      const pill = document.getElementById("cloudSyncPill");
+      if (!label || !pill) return;
+      if (cloudConfig.configured) {
+        label.textContent = "Supabase 已設定 · 可進入多人同步開發";
+        pill.textContent = "雲端";
+      } else {
+        label.textContent = "本機模式 · 尚未連接 Supabase";
+        pill.textContent = "本機";
       }
     }
 
@@ -2557,6 +2583,7 @@
 
     applyTheme(themeMode);
     applyAuthState();
+    initCloudConfig();
     renderHome();
     renderGroup();
     renderPayments();

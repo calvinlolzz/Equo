@@ -43,19 +43,11 @@ http://127.0.0.1:4173/index.html
 - 群組邀請不會真的多人共用
 - 清除瀏覽器資料會遺失
 
-正式用戶測試建議下一階段接：
-
-- Firebase：最快接登入、Firestore、Storage、通知
-- Supabase：適合正式資料模型、SQL 查詢與報表
+正式用戶測試建議接線上資料庫。目前決策：Vercel + Supabase。
 
 ## 上線建議
 
-可先部署為網頁版試用：
-
-- Vercel
-- Netlify
-- GitHub Pages
-- Cloudflare Pages
+可先部署為網頁版試用。目前決策：Vercel。
 
 之後再依用戶回饋決定是否包成 iOS / Android App。
 
@@ -64,11 +56,11 @@ http://127.0.0.1:4173/index.html
 1. 整理專案結構
 2. 初始化 Git
 3. 上傳 GitHub
-4. 部署免費網頁版
-5. 接 Firebase 或 Supabase 做多人資料同步
+4. 部署 Vercel 免費網頁版
+5. 接 Supabase 做多人資料同步
 
 ## 文件
 
 - 產品規劃：[docs/分帳APP產品規劃.md](docs/分帳APP產品規劃.md)
 - 部署規劃：[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-
+- Supabase 接入：[docs/SUPABASE.md](docs/SUPABASE.md)
