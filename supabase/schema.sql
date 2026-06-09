@@ -110,6 +110,12 @@ create table if not exists public.notifications (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.user_snapshots (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  payload jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.profiles enable row level security;
 alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
@@ -119,6 +125,7 @@ alter table public.settlements enable row level security;
 alter table public.payment_records enable row level security;
 alter table public.recurring_bills enable row level security;
 alter table public.notifications enable row level security;
+alter table public.user_snapshots enable row level security;
 
 create or replace function public.is_group_member(target_group_id uuid)
 returns boolean
@@ -296,4 +303,13 @@ create policy "notifications_select_self" on public.notifications
   for select using (user_id = auth.uid());
 
 create policy "notifications_update_self" on public.notifications
+  for update using (user_id = auth.uid());
+
+create policy "snapshots_select_self" on public.user_snapshots
+  for select using (user_id = auth.uid());
+
+create policy "snapshots_insert_self" on public.user_snapshots
+  for insert with check (user_id = auth.uid());
+
+create policy "snapshots_update_self" on public.user_snapshots
   for update using (user_id = auth.uid());

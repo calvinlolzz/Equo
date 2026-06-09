@@ -110,6 +110,17 @@
       margin-top: 18px;
     }
 
+    .auth-form {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .auth-form .auth-actions {
+      grid-template-columns: 1fr 1fr;
+      margin-top: 2px;
+    }
+
     .status {
       display: flex;
       align-items: center;
@@ -1018,10 +1029,22 @@
       <p class="eyebrow">歡迎使用</p>
       <h1>Equo 算好</h1>
       <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。此原型先使用本機登入狀態，之後可接 Supabase。</p>
+      <form id="authForm" class="auth-form">
+        <label>Email
+          <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <label>密碼
+          <input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="至少 6 碼" />
+        </label>
+        <div class="auth-actions">
+          <button class="primary" type="submit">Email 登入</button>
+          <button class="soft-btn" type="button" onclick="signUpWithEmail()">建立帳號</button>
+        </div>
+      </form>
       <div class="auth-actions">
         <button class="primary" type="button" onclick="loginWith('Apple')">使用 Apple 登入</button>
         <button class="soft-btn" type="button" onclick="loginWith('Google')">使用 Google 登入</button>
-        <button class="soft-btn" type="button" onclick="loginWith('Email')">使用 Email 登入</button>
+        <button class="soft-btn" type="button" onclick="loginWith('Demo')">先用本機模式試用</button>
       </div>
     </div>
   </section>
@@ -1277,6 +1300,14 @@
             <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">本機模式 · 尚未連接 Supabase</p>
           </div>
           <span id="cloudSyncPill" class="pill">本機</span>
+        </div>
+        <div class="input-card">
+          <h3>資料同步</h3>
+          <p class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到 Supabase。</p>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="syncCloudSnapshot()">同步到雲端</button>
+            <button class="soft-btn" type="button" onclick="restoreCloudSnapshot()">從雲端還原</button>
+          </div>
         </div>
         <div class="input-card">
           <div class="setting-row">
@@ -1547,6 +1578,7 @@
 
   <div id="toast" class="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const currentUserId = "u1";
     let activeGroupId = "g1";
@@ -1601,6 +1633,10 @@
     let recurringStatus = loadSaved("floatpay-recurring", {});
     let paymentRecords = loadSaved("floatpay-payments", []);
     let cloudConfig = { configured: false };
+    let supabaseClient = null;
+    let cloudUser = null;
+    let cloudSyncTimer = null;
+    let isApplyingCloudSnapshot = false;
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -1632,6 +1668,7 @@
       localStorage.setItem("floatpay-reminders", JSON.stringify(reminderStatus));
       localStorage.setItem("floatpay-recurring", JSON.stringify(recurringStatus));
       localStorage.setItem("floatpay-payments", JSON.stringify(paymentRecords));
+      scheduleCloudSync();
     }
 
     function currentUserRole(group = getGroup(activeGroupId)) {
@@ -1652,24 +1689,104 @@
       return ok;
     }
 
-    function loginWith(provider) {
+    async function loginWith(provider) {
+      if (provider === "Apple" || provider === "Google") {
+        await loginWithOAuth(provider.toLowerCase());
+        return;
+      }
       const user = {
-        name: provider === "Email" ? "Email 使用者" : `${provider} 使用者`,
-        provider,
+        name: "本機試用使用者",
+        provider: "本機模式",
         loggedInAt: new Date().toISOString()
       };
       localStorage.setItem("floatpay-auth", JSON.stringify(user));
       applyAuthState();
-      showToast(`${provider} 登入成功`);
+      showToast("已進入本機試用模式");
     }
 
-    function logout() {
+    async function loginWithOAuth(provider) {
+      if (!supabaseClient) {
+        showToast("Supabase 尚未完成設定，請先用本機模式試用");
+        return;
+      }
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) showToast(`${provider} 登入尚未開啟`);
+    }
+
+    async function signInWithEmail(event) {
+      event.preventDefault();
+      if (!supabaseClient) {
+        showToast("Supabase 尚未完成設定，請先用本機模式試用");
+        return;
+      }
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      if (!email || password.length < 6) {
+        showToast("請輸入 Email 與至少 6 碼密碼");
+        return;
+      }
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) {
+        showToast("登入失敗，請確認帳號密碼或先建立帳號");
+        return;
+      }
+      cloudUser = data.user;
+      localStorage.removeItem("floatpay-auth");
+      await ensureCloudProfile();
+      await createInitialCloudSnapshot();
+      applyAuthState();
+      showToast("Email 登入成功");
+    }
+
+    async function signUpWithEmail() {
+      if (!supabaseClient) {
+        showToast("Supabase 尚未完成設定，請先用本機模式試用");
+        return;
+      }
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      if (!email || password.length < 6) {
+        showToast("請輸入 Email 與至少 6 碼密碼");
+        return;
+      }
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin }
+      });
+      if (error) {
+        showToast("建立帳號失敗，請換一組 Email 或密碼");
+        return;
+      }
+      if (data.user && data.session) {
+        cloudUser = data.user;
+        localStorage.removeItem("floatpay-auth");
+        await ensureCloudProfile();
+        await createInitialCloudSnapshot();
+        applyAuthState();
+        showToast("帳號已建立並登入");
+      } else {
+        showToast("帳號已建立，請到信箱完成確認");
+      }
+    }
+
+    async function logout() {
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      cloudUser = null;
       localStorage.removeItem("floatpay-auth");
       applyAuthState();
     }
 
     function applyAuthState() {
-      const user = loadSaved("floatpay-auth", null);
+      const localUser = loadSaved("floatpay-auth", null);
+      const user = cloudUser ? {
+        name: cloudUser.email || "Supabase 使用者",
+        provider: "Supabase",
+        loggedInAt: cloudUser.last_sign_in_at
+      } : localUser;
       const loggedIn = Boolean(user);
       document.getElementById("authScreen").classList.toggle("hidden", loggedIn);
       document.querySelector(".shell").classList.toggle("hidden", !loggedIn);
@@ -1677,8 +1794,9 @@
       document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn);
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
-        document.getElementById("profileSync").textContent = `${user.provider} 登入 · 本機同步已啟用`;
+        document.getElementById("profileSync").textContent = cloudUser ? "Supabase 登入 · 雲端同步可用" : `${user.provider} · 本機同步已啟用`;
       }
+      renderCloudStatus();
     }
 
     async function initCloudConfig() {
@@ -1690,20 +1808,174 @@
       } catch {
         cloudConfig = { configured: false };
       }
+      await initSupabaseClient();
       renderCloudStatus();
+    }
+
+    async function initSupabaseClient() {
+      if (!cloudConfig.configured || !window.supabase?.createClient) return;
+      supabaseClient = window.supabase.createClient(cloudConfig.url, cloudConfig.anonKey);
+      const { data } = await supabaseClient.auth.getSession();
+      cloudUser = data.session?.user || null;
+      supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+        cloudUser = session?.user || null;
+        if (cloudUser) {
+          localStorage.removeItem("floatpay-auth");
+          await ensureCloudProfile();
+          await createInitialCloudSnapshot();
+        }
+        applyAuthState();
+      });
+      if (cloudUser) {
+        localStorage.removeItem("floatpay-auth");
+        await ensureCloudProfile();
+      }
+      applyAuthState();
     }
 
     function renderCloudStatus() {
       const label = document.getElementById("cloudSyncLabel");
       const pill = document.getElementById("cloudSyncPill");
       if (!label || !pill) return;
-      if (cloudConfig.configured) {
-        label.textContent = "Supabase 已設定 · 可進入多人同步開發";
-        pill.textContent = "雲端";
+      if (cloudUser) {
+        label.textContent = `Supabase 已登入 · ${cloudUser.email || "雲端帳號"}`;
+        pill.textContent = "已同步";
+      } else if (cloudConfig.configured) {
+        label.textContent = "Supabase 已設定 · 登入後可同步資料";
+        pill.textContent = "可登入";
       } else {
         label.textContent = "本機模式 · 尚未連接 Supabase";
         pill.textContent = "本機";
       }
+    }
+
+    function refreshExpenseGroupOptions() {
+      const select = document.getElementById("expenseGroup");
+      if (!select) return;
+      select.innerHTML = groups.map(group => `<option value="${group.id}">${group.name}</option>`).join("");
+      if (groups.some(group => group.id === activeGroupId)) select.value = activeGroupId;
+    }
+
+    function buildCloudSnapshot() {
+      return {
+        users,
+        groups,
+        expenses,
+        settlementStatus,
+        reminderStatus,
+        recurringStatus,
+        paymentRecords,
+        savedAt: new Date().toISOString(),
+        version: 1
+      };
+    }
+
+    function applyCloudSnapshot(payload) {
+      if (!payload) return false;
+      isApplyingCloudSnapshot = true;
+      users = payload.users || structuredClone(defaultUsers);
+      groups = payload.groups || structuredClone(defaultGroups);
+      expenses = payload.expenses || structuredClone(defaultExpenses);
+      settlementStatus = payload.settlementStatus || {};
+      reminderStatus = payload.reminderStatus || {};
+      recurringStatus = payload.recurringStatus || {};
+      paymentRecords = payload.paymentRecords || [];
+      activeGroupId = groups[0]?.id || "g1";
+      saveData();
+      isApplyingCloudSnapshot = false;
+      refreshExpenseGroupOptions();
+      renderHome();
+      renderGroup();
+      renderStats();
+      renderPayments();
+      syncPayerOptions();
+      updatePreview();
+      return true;
+    }
+
+    async function ensureCloudProfile() {
+      if (!supabaseClient || !cloudUser) return;
+      await supabaseClient.from("profiles").upsert({
+        id: cloudUser.id,
+        display_name: cloudUser.email || "Equo 使用者",
+        default_currency: "TWD"
+      });
+    }
+
+    async function createInitialCloudSnapshot() {
+      if (!supabaseClient || !cloudUser) return;
+      const snapshot = await fetchCloudSnapshot();
+      if (!snapshot) await syncCloudSnapshot({ silent: true });
+    }
+
+    function scheduleCloudSync() {
+      if (isApplyingCloudSnapshot || !supabaseClient || !cloudUser) return;
+      clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = setTimeout(() => syncCloudSnapshot({ silent: true }), 900);
+    }
+
+    async function syncCloudSnapshot(options = {}) {
+      if (!supabaseClient || !cloudUser) {
+        if (!options.silent) showToast("請先用 Email 登入 Supabase");
+        return false;
+      }
+      const payload = buildCloudSnapshot();
+      const { error } = await supabaseClient.from("user_snapshots").upsert({
+        user_id: cloudUser.id,
+        payload,
+        updated_at: new Date().toISOString()
+      });
+      if (error && !(await syncCloudSnapshotToProfile(payload))) {
+        if (!options.silent) showToast("雲端同步失敗，請稍後再試");
+        return false;
+      }
+      if (!options.silent) showToast("資料已同步到 Supabase");
+      renderCloudStatus();
+      return true;
+    }
+
+    async function syncCloudSnapshotToProfile(payload) {
+      const { error } = await supabaseClient
+        .from("profiles")
+        .update({ avatar_url: JSON.stringify(payload), updated_at: new Date().toISOString() })
+        .eq("id", cloudUser.id);
+      return !error;
+    }
+
+    async function fetchCloudSnapshot() {
+      const { data, error } = await supabaseClient
+        .from("user_snapshots")
+        .select("payload, updated_at")
+        .eq("user_id", cloudUser.id)
+        .maybeSingle();
+      if (!error && data?.payload) return data.payload;
+
+      const fallback = await supabaseClient
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", cloudUser.id)
+        .maybeSingle();
+      const raw = fallback.data?.avatar_url;
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+
+    async function restoreCloudSnapshot() {
+      if (!supabaseClient || !cloudUser) {
+        showToast("請先用 Email 登入 Supabase");
+        return;
+      }
+      const payload = await fetchCloudSnapshot();
+      if (!payload) {
+        showToast("目前沒有可還原的雲端資料");
+        return;
+      }
+      applyCloudSnapshot(payload);
+      showToast("已從 Supabase 還原資料");
     }
 
     function backupData() {
@@ -2486,6 +2758,7 @@
     });
     document.getElementById("expenseAmount").addEventListener("input", updatePreview);
     document.getElementById("expenseCurrency").addEventListener("change", updatePreview);
+    document.getElementById("authForm").addEventListener("submit", signInWithEmail);
 
     document.getElementById("expenseForm").addEventListener("submit", event => {
       event.preventDefault();
@@ -2577,9 +2850,7 @@
       showToast(`${oldName} 設定已更新`);
     });
 
-    groups.forEach(group => {
-      document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${group.id}">${group.name}</option>`);
-    });
+    refreshExpenseGroupOptions();
 
     applyTheme(themeMode);
     applyAuthState();
