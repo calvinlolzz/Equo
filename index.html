@@ -1036,6 +1036,7 @@
         <label>密碼
           <input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="至少 6 碼" />
         </label>
+        <p id="authStatus" class="mini-note">使用 Email 可啟用 Supabase 雲端同步。</p>
         <div class="auth-actions">
           <button class="primary" type="submit">Email 登入</button>
           <button class="soft-btn" type="button" onclick="signUpWithEmail()">建立帳號</button>
@@ -1303,10 +1304,10 @@
         </div>
         <div class="input-card">
           <h3>資料同步</h3>
-          <p class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到 Supabase。</p>
+          <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到 Supabase。</p>
           <div class="action-grid">
-            <button class="soft-btn" type="button" onclick="syncCloudSnapshot()">同步到雲端</button>
-            <button class="soft-btn" type="button" onclick="restoreCloudSnapshot()">從雲端還原</button>
+            <button id="syncCloudButton" class="soft-btn" type="button" onclick="syncCloudSnapshot()">同步到雲端</button>
+            <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">從雲端還原</button>
           </div>
         </div>
         <div class="input-card">
@@ -1637,6 +1638,8 @@
     let cloudUser = null;
     let cloudSyncTimer = null;
     let isApplyingCloudSnapshot = false;
+    let cloudSyncInProgress = false;
+    let cloudLastSyncedAt = localStorage.getItem("floatpay-cloud-last-sync") || "";
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -1706,6 +1709,7 @@
 
     async function loginWithOAuth(provider) {
       if (!supabaseClient) {
+        setAuthStatus("Supabase 尚未完成設定，請先用本機模式試用。");
         showToast("Supabase 尚未完成設定，請先用本機模式試用");
         return;
       }
@@ -1713,23 +1717,30 @@
         provider,
         options: { redirectTo: window.location.origin }
       });
-      if (error) showToast(`${provider} 登入尚未開啟`);
+      if (error) {
+        setAuthStatus(`${provider} 登入尚未開啟，請先使用 Email 登入。`);
+        showToast(`${provider} 登入尚未開啟`);
+      }
     }
 
     async function signInWithEmail(event) {
       event.preventDefault();
       if (!supabaseClient) {
+        setAuthStatus("Supabase 尚未完成設定，請先用本機模式試用。");
         showToast("Supabase 尚未完成設定，請先用本機模式試用");
         return;
       }
       const email = document.getElementById("authEmail").value.trim();
       const password = document.getElementById("authPassword").value;
       if (!email || password.length < 6) {
+        setAuthStatus("請輸入有效 Email 與至少 6 碼密碼。");
         showToast("請輸入 Email 與至少 6 碼密碼");
         return;
       }
+      setAuthStatus("正在登入 Supabase...");
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (error) {
+        setAuthStatus("登入失敗，請確認帳號密碼，或先建立帳號。");
         showToast("登入失敗，請確認帳號密碼或先建立帳號");
         return;
       }
@@ -1738,26 +1749,31 @@
       await ensureCloudProfile();
       await createInitialCloudSnapshot();
       applyAuthState();
+      setAuthStatus("Email 登入成功，已啟用雲端同步。");
       showToast("Email 登入成功");
     }
 
     async function signUpWithEmail() {
       if (!supabaseClient) {
+        setAuthStatus("Supabase 尚未完成設定，請先用本機模式試用。");
         showToast("Supabase 尚未完成設定，請先用本機模式試用");
         return;
       }
       const email = document.getElementById("authEmail").value.trim();
       const password = document.getElementById("authPassword").value;
       if (!email || password.length < 6) {
+        setAuthStatus("請輸入有效 Email 與至少 6 碼密碼。");
         showToast("請輸入 Email 與至少 6 碼密碼");
         return;
       }
+      setAuthStatus("正在建立 Supabase 帳號...");
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: window.location.origin }
       });
       if (error) {
+        setAuthStatus("建立帳號失敗，請換一組 Email 或密碼。");
         showToast("建立帳號失敗，請換一組 Email 或密碼");
         return;
       }
@@ -1767,8 +1783,10 @@
         await ensureCloudProfile();
         await createInitialCloudSnapshot();
         applyAuthState();
+        setAuthStatus("帳號已建立並登入，已啟用雲端同步。");
         showToast("帳號已建立並登入");
       } else {
+        setAuthStatus("帳號已建立，請到信箱完成確認後再登入。");
         showToast("帳號已建立，請到信箱完成確認");
       }
     }
@@ -1836,16 +1854,50 @@
     function renderCloudStatus() {
       const label = document.getElementById("cloudSyncLabel");
       const pill = document.getElementById("cloudSyncPill");
+      const meta = document.getElementById("cloudSyncMeta");
+      const syncButton = document.getElementById("syncCloudButton");
+      const restoreButton = document.getElementById("restoreCloudButton");
+      const authStatus = document.getElementById("authStatus");
       if (!label || !pill) return;
       if (cloudUser) {
         label.textContent = `Supabase 已登入 · ${cloudUser.email || "雲端帳號"}`;
-        pill.textContent = "已同步";
+        pill.textContent = cloudSyncInProgress ? "同步中" : "已同步";
+        if (meta) meta.textContent = cloudSyncInProgress ? "正在與 Supabase 同步資料..." : (cloudLastSyncedAt ? `最後同步：${formatDateTime(cloudLastSyncedAt)}` : "尚未同步，新增或修改資料後會自動同步。");
+        if (authStatus) authStatus.textContent = "已連接 Supabase，資料可同步到雲端。";
+        if (syncButton) syncButton.disabled = cloudSyncInProgress;
+        if (restoreButton) restoreButton.disabled = cloudSyncInProgress;
       } else if (cloudConfig.configured) {
         label.textContent = "Supabase 已設定 · 登入後可同步資料";
         pill.textContent = "可登入";
+        if (meta) meta.textContent = "請先用 Email 登入，才會啟用雲端同步與跨裝置還原。";
+        if (authStatus) authStatus.textContent = "使用 Email 登入後可啟用 Supabase 雲端同步。";
+        if (syncButton) syncButton.disabled = false;
+        if (restoreButton) restoreButton.disabled = false;
       } else {
         label.textContent = "本機模式 · 尚未連接 Supabase";
         pill.textContent = "本機";
+        if (meta) meta.textContent = "目前資料只會存在這台裝置的瀏覽器。";
+        if (authStatus) authStatus.textContent = "Supabase 尚未設定，請先使用本機模式。";
+        if (syncButton) syncButton.disabled = false;
+        if (restoreButton) restoreButton.disabled = false;
+      }
+    }
+
+    function setAuthStatus(message) {
+      const target = document.getElementById("authStatus");
+      if (target) target.textContent = message;
+    }
+
+    function formatDateTime(value) {
+      try {
+        return new Intl.DateTimeFormat("zh-TW", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        }).format(new Date(value));
+      } catch {
+        return "剛剛";
       }
     }
 
@@ -1920,15 +1972,22 @@
         return false;
       }
       const payload = buildCloudSnapshot();
+      cloudSyncInProgress = true;
+      renderCloudStatus();
       const { error } = await supabaseClient.from("user_snapshots").upsert({
         user_id: cloudUser.id,
         payload,
         updated_at: new Date().toISOString()
       });
       if (error && !(await syncCloudSnapshotToProfile(payload))) {
+        cloudSyncInProgress = false;
         if (!options.silent) showToast("雲端同步失敗，請稍後再試");
+        renderCloudStatus();
         return false;
       }
+      cloudLastSyncedAt = new Date().toISOString();
+      localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
+      cloudSyncInProgress = false;
       if (!options.silent) showToast("資料已同步到 Supabase");
       renderCloudStatus();
       return true;
@@ -1969,12 +2028,20 @@
         showToast("請先用 Email 登入 Supabase");
         return;
       }
+      cloudSyncInProgress = true;
+      renderCloudStatus();
       const payload = await fetchCloudSnapshot();
       if (!payload) {
+        cloudSyncInProgress = false;
+        renderCloudStatus();
         showToast("目前沒有可還原的雲端資料");
         return;
       }
       applyCloudSnapshot(payload);
+      cloudLastSyncedAt = new Date().toISOString();
+      localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
+      cloudSyncInProgress = false;
+      renderCloudStatus();
       showToast("已從 Supabase 還原資料");
     }
 
