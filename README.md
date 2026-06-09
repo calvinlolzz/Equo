@@ -1,66 +1,49 @@
-# FloatPay 分帳 App 原型
+# Equo 算好 分帳 App 原型
 
-這是一個可展示的分帳 App 網頁原型，風格採 iOS 液態毛玻璃設計。現階段使用單一 `index.html` 實作，方便快速預覽、修改與部署成免費網頁版。
+Equo 算好是一個分帳 App 網頁原型，設計方向為 iOS 液態毛玻璃風格。現階段使用單一 `index.html` 實作，方便快速預覽、修改與部署成免費網頁版。
 
 ## 目前功能
 
-- Apple / Google / Email 原型登入
-- 群組建立、群組設定、群組預算
-- 成員管理與角色權限：擁有者、管理員、家長、成員、子女、訪客
-- 支出新增、AI 文字記帳、AI 發票辨識模擬
-- 平均分攤、指定成員分攤、多幣別換算
-- 自動最佳化結算
-- 一鍵付款、確認收款、付款紀錄
-- LINE 分享摘要
-- 固定帳單產生
-- 首頁待辦提醒與已讀
-- 統計分析、群組分析、成員墊付排行
-- Excel CSV 匯出、PDF HTML 報表匯出
-- 本機資料備份與重設
-- 夜間模式
+- Apple / Google / Email 登入入口原型
+- 群組建立、群組設定、成員與家庭權限
+- 新增支出、分帳成員選擇、多幣別換算
+- 結算建議、付款狀態、確認收款與提醒
+- 固定帳單、防重複產生、付款紀錄
+- 月報表、分類分析、成員排行
+- CSV / HTML 報表匯出與本機資料備份
+- 夜間模式與 iOS 風格底部導覽
+- Vercel 靜態部署設定
+- Supabase 資料庫結構草稿
 
-## 試用方式
-
-目前可用本機伺服器開啟：
+## 本機預覽
 
 ```bash
 python -m http.server 4173 --bind 127.0.0.1
 ```
 
-瀏覽器打開：
+開啟：
 
 ```text
 http://127.0.0.1:4173/index.html
 ```
 
-## 資料儲存
+## 資料狀態
 
-目前資料存在瀏覽器 `localStorage`，適合展示與早期原型測試。
+目前 App 先使用瀏覽器 `localStorage` 保存展示資料。這適合產品展示、流程測試與早期用戶訪談。
 
-不適合正式多人測試，原因：
+若要讓真實用戶跨裝置同步資料，下一步會接 Supabase：
 
-- 換裝置資料不會同步
-- 群組邀請不會真的多人共用
-- 清除瀏覽器資料會遺失
+- Supabase Auth：登入與使用者身分
+- PostgreSQL：群組、支出、分帳、付款紀錄
+- Row Level Security：不同群組與角色的資料權限
+- Storage：未來可放發票或收據圖片
 
-正式用戶測試建議接線上資料庫。目前決策：Vercel + Supabase。
+## 部署
 
-## 上線建議
+目前選定路線：
 
-可先部署為網頁版試用。目前決策：Vercel。
+1. GitHub 保存原始碼
+2. Vercel 部署免費網頁版
+3. Supabase 作為多人測試資料庫
 
-之後再依用戶回饋決定是否包成 iOS / Android App。
-
-## 下一步
-
-1. 整理專案結構
-2. 初始化 Git
-3. 上傳 GitHub
-4. 部署 Vercel 免費網頁版
-5. 接 Supabase 做多人資料同步
-
-## 文件
-
-- 產品規劃：[docs/分帳APP產品規劃.md](docs/分帳APP產品規劃.md)
-- 部署規劃：[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- Supabase 接入：[docs/SUPABASE.md](docs/SUPABASE.md)
+詳細步驟請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 與 [docs/SUPABASE.md](docs/SUPABASE.md)。

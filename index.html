@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FloatPay 分帳 App 原型</title>
+  <title>Equo 算好 分帳 App 原型</title>
   <style>
     :root {
       --text: #1c1c1e;
@@ -1014,10 +1014,10 @@
 <body>
   <section id="authScreen" class="auth-screen">
     <div class="auth-panel">
-      <div class="auth-logo">F</div>
+      <div class="auth-logo">E</div>
       <p class="eyebrow">歡迎使用</p>
-      <h1>FloatPay</h1>
-      <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。此原型先使用本機登入狀態，之後可接 Firebase 或 Supabase。</p>
+      <h1>Equo 算好</h1>
+      <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。此原型先使用本機登入狀態，之後可接 Supabase。</p>
       <div class="auth-actions">
         <button class="primary" type="button" onclick="loginWith('Apple')">使用 Apple 登入</button>
         <button class="soft-btn" type="button" onclick="loginWith('Google')">使用 Google 登入</button>
@@ -1040,7 +1040,7 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">今天要結哪一筆？</p>
-          <h1>FloatPay</h1>
+          <h1>Equo 算好</h1>
         </div>
         <div class="avatar">W</div>
       </header>
@@ -1717,7 +1717,7 @@
         paymentRecords,
         exportedAt: new Date().toISOString()
       };
-      downloadFile("FloatPay-本機資料備份.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+      downloadFile("Equo-算好-本機資料備份.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
       showToast("本機資料備份已下載");
     }
 
@@ -2424,14 +2424,14 @@
             expense.date
           ])
         ];
-        fileName = "FloatPay-本月分帳報表.csv";
+        fileName = "Equo-算好-本月分帳報表.csv";
         content = "\ufeff" + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
         mimeType = "text/csv;charset=utf-8";
       } else {
-        fileName = "FloatPay-本月分帳報表.html";
-        content = `<!doctype html><html><head><meta charset="utf-8"><title>FloatPay 本月分帳報表</title>
+        fileName = "Equo-算好-本月分帳報表.html";
+        content = `<!doctype html><html><head><meta charset="utf-8"><title>Equo 算好 本月分帳報表</title>
           <style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:32px;color:#1c1c1e}h1{margin:0 0 8px}table{border-collapse:collapse;width:100%;margin-top:18px}td,th{border:1px solid #ddd;padding:10px;text-align:left}th{background:#f5f7fa}.total{font-size:28px;font-weight:800}</style>
-          </head><body><h1>FloatPay 本月分帳報表</h1><div class="total">總支出 ${money(total)}</div><p>支出筆數 ${expenses.length} · 支援多幣別換算 · 可用瀏覽器另存為 PDF</p>
+          </head><body><h1>Equo 算好 本月分帳報表</h1><div class="total">總支出 ${money(total)}</div><p>支出筆數 ${expenses.length} · 支援多幣別換算 · 可用瀏覽器另存為 PDF</p>
           <table><thead><tr><th>群組</th><th>項目</th><th>金額</th><th>換算 TWD</th><th>付款人</th><th>分類</th></tr></thead><tbody>
           ${expenses.map(expense => `<tr><td>${getGroup(expense.groupId).name}</td><td>${expense.title}</td><td>${formatCurrency(expense.amount, expense.currency || "TWD")}</td><td>${money(baseAmount(expense))}</td><td>${users[expense.payerId].name}</td><td>${expense.category}</td></tr>`).join("")}
           </tbody></table></body></html>`;

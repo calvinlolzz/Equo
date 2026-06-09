@@ -1,83 +1,46 @@
 # 部署與資料庫接入規劃
 
-## 第一階段：免費網頁版
+## 目前路線
 
-目前是純靜態網站，可直接部署：
+Equo 算好目前採用：
 
-- GitHub Pages：適合公開展示與快速分享
-- Vercel：適合之後升級成 React / Next.js
-- Netlify：適合靜態網站與表單整合
-- Cloudflare Pages：適合全球 CDN 與免費流量
+- GitHub：保存專案原始碼
+- Vercel：部署免費網頁版
+- Supabase：後續提供登入、多人同步與線上資料庫
 
-目前決策：使用 Vercel + Supabase。
-
-## GitHub Pages
-
-1. 建立 GitHub repository。
-2. 推送本專案。
-3. 到 repository Settings > Pages。
-4. Source 選 `Deploy from a branch`。
-5. Branch 選 `main`，資料夾選 `/root`。
-6. 等待 GitHub 產生網址。
-
-## Vercel
+## Vercel 部署
 
 1. 登入 Vercel。
-2. Import GitHub repository。
+2. Import Git Repository。
 3. 選擇 `calvinlolzz/Equo`。
 4. Framework Preset 選 `Other`。
-5. Build command 留空。
-6. Output directory 留空。
-7. 在 Environment Variables 加入：
+5. Build Command 留空。
+6. Output Directory 留空。
+7. 先不填 Supabase 環境變數也可以部署；App 會維持本機資料模式。
+8. 點選 Deploy。
+
+完成後，Vercel 會產生一個 `*.vercel.app` 正式網址。之後每次推送 GitHub `main` 分支，Vercel 會自動重新部署。
+
+## Supabase 環境變數
+
+建立 Supabase 專案後，請在 Vercel Project Settings > Environment Variables 加入：
 
 ```text
 SUPABASE_URL
 SUPABASE_ANON_KEY
 ```
 
-8. 部署後取得測試網址。
+加入後需要重新部署一次，正式站才會讀到新的設定。
 
-## 第二階段：線上資料庫
+## Supabase 接入順序
 
-正式用戶測試不建議使用 localStorage。目前決策：Supabase。
+1. 建立 Supabase 專案。
+2. 在 SQL Editor 執行 `supabase/schema.sql`。
+3. 開啟 Auth Provider。
+4. 將 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY` 放到 Vercel。
+5. 將目前 `localStorage` 資料流程逐步改成 Supabase API。
+6. 測試不同帳號、不同群組、不同家庭角色的資料權限。
 
-### Firebase
+## 交付狀態
 
-適合快速 MVP：
-
-- Firebase Auth：Apple / Google / Email 登入
-- Firestore：群組、支出、結算資料
-- Firebase Storage：發票照片
-- Firebase Cloud Messaging：付款提醒
-
-### Supabase
-
-適合正式資料結構：
-
-- Supabase Auth：登入
-- PostgreSQL：使用者、群組、支出、分攤、付款紀錄
-- Row Level Security：群組權限
-- Storage：發票照片
-- Edge Functions：結算、提醒、AI 處理
-
-## 建議資料表
-
-- users
-- groups
-- group_members
-- expenses
-- expense_splits
-- settlements
-- payment_records
-- recurring_bills
-- notifications
-
-## 遷移順序
-
-1. 把 localStorage 存取包成資料層函式。
-2. 建立 Auth。
-3. 建立 groups / group_members。
-4. 遷移 expenses / expense_splits。
-5. 遷移 settlements / payment_records。
-6. 加入 Storage 與發票照片。
-7. 加入通知與排程。
+目前 Vercel 部署可以先供用戶試用 App 原型。Supabase 尚未接上前，資料會留在使用者自己的瀏覽器裡，不會跨裝置同步。
