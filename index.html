@@ -886,57 +886,69 @@
       box-shadow: 0 12px 26px rgba(255,69,58,.08) !important;
     }
 
-    .trash-btn {
-      width: 46px;
-      height: 46px;
-      min-width: 46px;
-      min-height: 46px;
-      border-radius: 50%;
-      display: inline-grid;
-      place-items: center;
-      background:
-        linear-gradient(145deg, rgba(255,255,255,.64), rgba(255,255,255,.28)),
-        rgba(255,69,58,.14);
+    .delete-action,
+    .delete-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       color: #ff3b30;
       border: 1px solid rgba(255,255,255,.68);
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.7), rgba(255,255,255,.3)),
+        rgba(255,59,48,.1);
       box-shadow:
-        0 12px 28px rgba(255,59,48,.12),
-        inset 0 1px 0 rgba(255,255,255,.78),
-        inset 0 -10px 22px rgba(255,59,48,.08);
+        0 14px 34px rgba(255,59,48,.1),
+        inset 0 1px 0 rgba(255,255,255,.82),
+        inset 0 -12px 26px rgba(255,59,48,.06);
+      backdrop-filter: blur(20px) saturate(1.45);
+      -webkit-backdrop-filter: blur(20px) saturate(1.45);
       cursor: pointer;
-      backdrop-filter: blur(18px) saturate(1.35);
-      -webkit-backdrop-filter: blur(18px) saturate(1.35);
       transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
     }
 
-    .trash-btn svg {
-      width: 19px;
-      height: 19px;
+    .delete-action {
+      width: 100%;
+      min-height: 54px;
+      border-radius: 22px;
+      gap: 10px;
+      padding: 0 16px;
+      font-weight: 820;
+    }
+
+    .delete-chip {
+      min-height: 34px;
+      border-radius: 999px;
+      gap: 6px;
+      padding: 0 11px;
+      font-size: 12px;
+      font-weight: 820;
+    }
+
+    .delete-action svg,
+    .delete-chip svg {
+      width: 18px;
+      height: 18px;
       stroke-width: 2.25;
-      filter: drop-shadow(0 1px 0 rgba(255,255,255,.5));
     }
 
-    .trash-btn:hover {
+    .delete-action:hover,
+    .delete-chip:hover {
       background:
-        linear-gradient(145deg, rgba(255,255,255,.74), rgba(255,255,255,.34)),
-        rgba(255,69,58,.18);
+        linear-gradient(145deg, rgba(255,255,255,.78), rgba(255,255,255,.36)),
+        rgba(255,59,48,.14);
       box-shadow:
-        0 16px 34px rgba(255,59,48,.16),
-        inset 0 1px 0 rgba(255,255,255,.84),
-        inset 0 -10px 22px rgba(255,59,48,.1);
+        0 18px 40px rgba(255,59,48,.14),
+        inset 0 1px 0 rgba(255,255,255,.88),
+        inset 0 -12px 26px rgba(255,59,48,.08);
     }
 
-    .trash-btn:active {
-      transform: scale(.94);
-      box-shadow:
-        0 8px 18px rgba(255,59,48,.12),
-        inset 0 1px 0 rgba(255,255,255,.72);
+    .delete-action:active,
+    .delete-chip:active {
+      transform: scale(.98);
     }
 
     .danger-zone {
-      display: flex;
-      justify-content: center;
-      padding-top: 4px;
+      padding-top: 6px;
     }
 
     .danger-confirm {
@@ -1170,7 +1182,8 @@
       color: #101625;
     }
 
-    body[data-theme="dark"] .trash-btn,
+    body[data-theme="dark"] .delete-action,
+    body[data-theme="dark"] .delete-chip,
     body[data-theme="dark"] .confirm-icon {
       background:
         linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.04)),
@@ -1878,8 +1891,9 @@
           儲存設定
         </button>
         <div class="danger-zone">
-          <button class="trash-btn" type="button" onclick="deleteCurrentGroup()" aria-label="刪除群組">
+          <button class="delete-action" type="button" onclick="deleteCurrentGroup()">
             <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+            刪除群組
           </button>
         </div>
       </form>
@@ -3603,8 +3617,9 @@
           <div>
             <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
             <div class="mini-actions" ${canRemove ? "" : "hidden"}>
-              <button class="trash-btn" type="button" onclick="deleteMember('${id}')" aria-label="刪除成員">
+              <button class="delete-chip" type="button" onclick="deleteMember('${id}')">
                 <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+                移除
               </button>
             </div>
           </div>
@@ -3847,8 +3862,9 @@
           <h3>備註</h3>
           <p class="mini-note">${expense.note || "無備註"}</p>
         </div>
-        <button class="trash-btn" type="button" onclick="deleteExpense('${expense.id}')" aria-label="刪除支出">
+        <button class="delete-action" type="button" onclick="deleteExpense('${expense.id}')">
           <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+          刪除這筆支出
         </button>
       `;
       document.getElementById("expenseDetailSheet").classList.add("open");
