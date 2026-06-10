@@ -336,7 +336,16 @@ begin
     raise exception 'login_required';
   end if;
 
-  if not public.is_group_member(group_id_input) then
+  if not exists (
+    select 1 from public.groups
+    where id = group_id_input
+      and owner_id = auth.uid()
+  ) and not exists (
+    select 1 from public.group_members
+    where group_id = group_id_input
+      and user_id = auth.uid()
+      and role in ('admin', 'parent', 'member')
+  ) then
     raise exception 'permission_denied';
   end if;
 

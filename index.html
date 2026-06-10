@@ -1260,10 +1260,10 @@
           <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
         <div style="display:flex;gap:8px">
-          <button class="icon-btn" type="button" onclick="createGroupInvite()" aria-label="邀請">
+          <button id="groupInviteButton" class="icon-btn" type="button" onclick="createGroupInvite()" aria-label="邀請">
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
           </button>
-          <button class="icon-btn" type="button" onclick="openGroupSettingsSheet()" aria-label="群組設定">
+          <button id="groupSettingsButton" class="icon-btn" type="button" onclick="openGroupSettingsSheet()" aria-label="群組設定">
             <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.65V21a2.1 2.1 0 0 1-4.2 0v-.06a1.8 1.8 0 0 0-1.1-1.65 1.8 1.8 0 0 0-1.98.36l-.04.04a2.1 2.1 0 0 1-2.97-2.97l.04-.04A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-1.65-1.1H3a2.1 2.1 0 0 1 0-4.2h.06A1.8 1.8 0 0 0 4.7 8.6a1.8 1.8 0 0 0-.36-1.98l-.04-.04A2.1 2.1 0 0 1 7.27 3.6l.04.04a1.8 1.8 0 0 0 1.98.36A1.8 1.8 0 0 0 10.4 2.35V2a2.1 2.1 0 0 1 4.2 0v.06A1.8 1.8 0 0 0 15.7 3.7a1.8 1.8 0 0 0 1.98-.36l.04-.04a2.1 2.1 0 0 1 2.97 2.97l-.04.04a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.1H22a2.1 2.1 0 0 1 0 4.2h-.06A1.8 1.8 0 0 0 19.4 15z"/></svg>
           </button>
         </div>
@@ -1299,7 +1299,7 @@
       <section class="section group-panel" id="activityPanel">
         <div class="section-head">
           <h2>支出流水</h2>
-          <button class="small-action" type="button" onclick="openAddSheet()">新增</button>
+          <button id="groupAddExpenseButton" class="small-action" type="button" onclick="openAddSheet()">新增</button>
         </div>
         <div class="input-card" style="margin-bottom:10px">
           <div class="two">
@@ -1329,7 +1329,7 @@
       <section class="section group-panel" id="settlePanel" style="display:none">
         <div class="section-head">
           <h2>最少轉帳</h2>
-          <button class="small-action" type="button" onclick="shareSettlement()">LINE 分享</button>
+          <button id="shareSettlementButton" class="small-action" type="button" onclick="shareSettlement()">LINE 分享</button>
         </div>
         <div id="settlements" class="card-list"></div>
       </section>
@@ -1353,7 +1353,7 @@
       <section class="section group-panel" id="membersPanel" style="display:none">
         <div class="section-head">
           <h2>成員</h2>
-          <button class="small-action" type="button" onclick="openMemberSheet()">新增成員</button>
+          <button id="addMemberButton" class="small-action" type="button" onclick="openMemberSheet()">新增成員</button>
         </div>
         <div id="members" class="card-list"></div>
       </section>
@@ -1949,16 +1949,49 @@
     }
 
     function currentUserRole(group = getGroup(activeGroupId)) {
-      return group?.roles?.[currentUserId] || "擁有者";
+      if (group?.roles?.[currentUserId]) return group.roles[currentUserId];
+      return isGroupOwner(group) ? "擁有者" : "訪客";
+    }
+
+    function isGroupOwner(group = getGroup(activeGroupId)) {
+      return !group?.cloudOwnerId || group.cloudOwnerId === cloudUser?.id;
+    }
+
+    function isAdminRole(role) {
+      return ["擁有者", "管理員", "家長"].includes(role);
+    }
+
+    function isExpenseEditorRole(role) {
+      return ["擁有者", "管理員", "家長", "成員"].includes(role);
     }
 
     function canManageGroup(group = getGroup(activeGroupId)) {
-      if (group?.cloudOwnerId && group.cloudOwnerId !== cloudUser?.id) return false;
-      return ["擁有者", "管理員", "家長"].includes(currentUserRole(group));
+      if (group?.cloudOwnerId && group.cloudOwnerId !== cloudUser?.id) {
+        return ["管理員", "家長"].includes(currentUserRole(group));
+      }
+      return isAdminRole(currentUserRole(group));
     }
 
     function canEditExpense(group = getGroup(activeGroupId)) {
-      return ["擁有者", "管理員", "家長", "成員"].includes(currentUserRole(group));
+      return isExpenseEditorRole(currentUserRole(group));
+    }
+
+    function updateGroupPermissionUi(group = getGroup(activeGroupId)) {
+      const canManage = !!group && canManageGroup(group);
+      const canEdit = !!group && canEditExpense(group);
+      const controls = [
+        ["groupInviteButton", canManage],
+        ["groupSettingsButton", canManage],
+        ["addMemberButton", canManage],
+        ["groupAddExpenseButton", canEdit],
+        ["shareSettlementButton", canEdit]
+      ];
+      controls.forEach(([id, allowed]) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.hidden = !allowed;
+        element.disabled = !allowed;
+      });
     }
 
     function requirePermission(type = "manage") {
@@ -2495,8 +2528,8 @@
       return map[role] || "member";
     }
 
-    function roleFromDb(role, isSelf = false) {
-      if (isSelf) return "擁有者";
+    function roleFromDb(role, isSelf = false, isOwner = false) {
+      if (isSelf && isOwner) return "擁有者";
       const map = { admin: "管理員", parent: "家長", child: "子女", guest: "訪客", member: "成員" };
       return map[role] || "成員";
     }
@@ -2593,12 +2626,16 @@
 
       const membersByGroup = {};
       const rolesByGroup = {};
+      const ownerByGroup = Object.fromEntries(groupRows.map(row => [row.id, row.owner_id]));
       (memberRows || []).forEach(row => {
         const localGroupId = groupIdMap[row.group_id];
         const memberId = row.user_id === cloudUser.id ? currentUserId : (row.app_member_id || "");
         if (!memberId) return;
         membersByGroup[localGroupId] = [...(membersByGroup[localGroupId] || []), memberId];
-        rolesByGroup[localGroupId] = { ...(rolesByGroup[localGroupId] || {}), [memberId]: roleFromDb(row.role, memberId === currentUserId) };
+        rolesByGroup[localGroupId] = {
+          ...(rolesByGroup[localGroupId] || {}),
+          [memberId]: roleFromDb(row.role, memberId === currentUserId, ownerByGroup[row.group_id] === cloudUser.id)
+        };
       });
 
       users = normalizeUsers(nextUsers);
@@ -2644,8 +2681,8 @@
       if (!supabaseClient || !cloudUser || isApplyingCloudSnapshot) return false;
       cloudSyncInProgress = true;
       renderCloudStatus();
-      const ownedGroups = groups.filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id);
-      if (!ownedGroups.length) {
+      const writableGroups = groups.filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id || canEditExpense(group));
+      if (!writableGroups.length) {
         cloudLastSyncedAt = new Date().toISOString();
         localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
         cloudSyncInProgress = false;
@@ -2654,19 +2691,24 @@
       }
 
       const cloudIdByLocalId = {};
-      for (const group of ownedGroups) {
-        const { data: groupId, error } = await supabaseClient.rpc("upsert_owned_group", cloudGroupRpcPayload(group));
-        if (error || !groupId) {
-          cloudSyncInProgress = false;
-          if (!options.silent) showToast("群組同步失敗");
-          renderCloudStatus();
-          return false;
+      for (const group of writableGroups) {
+        if (group.cloudGroupId && group.cloudOwnerId && group.cloudOwnerId !== cloudUser.id) {
+          cloudIdByLocalId[group.id] = group.cloudGroupId;
+        } else {
+          const { data: groupId, error } = await supabaseClient.rpc("upsert_owned_group", cloudGroupRpcPayload(group));
+          if (error || !groupId) {
+            cloudSyncInProgress = false;
+            if (!options.silent) showToast("群組同步失敗");
+            renderCloudStatus();
+            return false;
+          }
+          cloudIdByLocalId[group.id] = groupId;
+          group.cloudGroupId = groupId;
+          group.cloudOwnerId = cloudUser.id;
         }
-        cloudIdByLocalId[group.id] = groupId;
-        group.cloudGroupId = groupId;
-        group.cloudOwnerId = cloudUser.id;
       }
-      const memberRows = ownedGroups.flatMap(group => group.members.map(memberId =>
+      const manageableGroups = writableGroups.filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id || canManageGroup(group));
+      const memberRows = manageableGroups.flatMap(group => group.members.map(memberId =>
         cloudMemberPayload(cloudIdByLocalId[group.id], memberId, group.roles?.[memberId] || (memberId === currentUserId ? "擁有者" : "成員"))
       ));
       for (const member of memberRows) {
@@ -3235,6 +3277,7 @@
     function renderGroup() {
       const group = getGroup(activeGroupId);
       if (!group) {
+        updateGroupPermissionUi(null);
         document.getElementById("groupTitle").textContent = "尚未建立群組";
         document.getElementById("groupSubtitle").textContent = "建立第一個群組後，就能開始分帳。";
         document.getElementById("groupCurrency").textContent = "TWD";
@@ -3252,6 +3295,7 @@
       }
       const b = balances(activeGroupId);
       const mine = Math.round(b[currentUserId] || 0);
+      updateGroupPermissionUi(group);
       document.getElementById("groupTitle").textContent = group.name;
       document.getElementById("groupSubtitle").textContent = group.cloudOwnerId && group.cloudOwnerId !== cloudUser?.id
         ? `${group.subtitle} · 受邀群組`
@@ -3292,7 +3336,7 @@
       document.getElementById("members").innerHTML = group.members.map(id => {
         const value = Math.round(b[id] || 0);
         const cls = value >= 0 ? "positive" : "negative";
-        const role = group.roles?.[id] || (id === currentUserId ? "擁有者" : "成員");
+        const role = group.roles?.[id] || (id === currentUserId && isGroupOwner(group) ? "擁有者" : "成員");
         return `<div class="settlement-row">
           <div class="flow">
             ${avatarHtml(id)}
