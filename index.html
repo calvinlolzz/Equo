@@ -1926,6 +1926,23 @@
       return isExpenseEditorRole(currentUserRole(group));
     }
 
+    function canViewExpense(expense, group = getGroup(expense?.groupId)) {
+      if (!expense || !group) return false;
+      const role = currentUserRole(group);
+      if (role === "子女") {
+        return expense.payerId === currentUserId || expense.participants.includes(currentUserId);
+      }
+      return group.members.includes(currentUserId) || isGroupOwner(group);
+    }
+
+    function canActOnSettlement(row, group = getGroup(activeGroupId)) {
+      if (!row || !group) return false;
+      if (canEditExpense(group)) return true;
+      const role = currentUserRole(group);
+      if (role === "子女") return row.from === currentUserId || row.to === currentUserId;
+      return false;
+    }
+
     function updateGroupPermissionUi(group = getGroup(activeGroupId)) {
       const canManage = !!group && canManageGroup(group);
       const canEdit = !!group && canEditExpense(group);
@@ -3094,8 +3111,17 @@
       return groups.find(group => group.id === id);
     }
 
-    function groupExpenses(id) {
+    function allGroupExpenses(id) {
       return expenses.filter(expense => expense.groupId === id);
+    }
+
+    function groupExpenses(id) {
+      const group = getGroup(id);
+      return allGroupExpenses(id).filter(expense => canViewExpense(expense, group));
+    }
+
+    function visibleExpenses() {
+      return expenses.filter(expense => canViewExpense(expense));
     }
 
     function filteredGroupExpenses(groupId) {
@@ -3188,8 +3214,9 @@
       }).join("") : `<div class="empty">尚未建立群組。先新增一個分帳群組，就能開始記錄支出。</div>`;
 
       renderReminders();
-      document.getElementById("recentExpenses").innerHTML = expenses.length
-        ? expenses.slice().reverse().slice(0, 4).map(expenseRow).join("")
+      const recentVisibleExpenses = visibleExpenses();
+      document.getElementById("recentExpenses").innerHTML = recentVisibleExpenses.length
+        ? recentVisibleExpenses.slice().reverse().slice(0, 4).map(expenseRow).join("")
         : `<div class="empty">尚未有支出紀錄</div>`;
       renderStats();
     }
@@ -3204,22 +3231,23 @@
           action: row.from === currentUserId ? "前往付款" : "提醒對方",
           groupId: group.id
         })));
+      const recurringGroup = getGroup("g3") || groups.find(group => group.name.includes("室友")) || groups[0];
       const fixedReminders = groups.length ? [
         ...settlementItems,
-        {
+        ...(recurringGroup && canManageGroup(recurringGroup) ? [{
           id: "recurring:g3:this-month",
           title: recurringStatus["this-month"] ? "本月固定帳單已建立" : "本月固定帳單待建立",
           body: "室友生活費 · 房租 / 網路 / 電費",
           action: recurringStatus["this-month"] ? "查看帳單" : "產生帳單",
           groupId: "g3"
-        },
-        {
+        }] : []),
+        ...(visibleExpenses().length ? [{
           id: "export:monthly",
           title: "本月報表可匯出",
           body: "包含支出明細、幣別換算與結算建議",
           action: "前往匯出",
           groupId: null
-        }
+        }] : [])
       ] : [];
       return fixedReminders.filter(item => !reminderStatus[item.id]);
     }
@@ -3325,7 +3353,9 @@
       const visibleExpenses = filteredGroupExpenses(activeGroupId);
       document.getElementById("groupExpenses").innerHTML = visibleExpenses.slice().reverse().map(expenseRow).join("") || `<div class="empty">沒有符合條件的支出</div>`;
       updateFilterSummary(visibleExpenses.length, groupExpenses(activeGroupId).length);
-      const settlementRows = settlements(activeGroupId);
+      const settlementRows = settlements(activeGroupId).filter(row =>
+        currentUserRole(group) === "子女" ? row.from === currentUserId || row.to === currentUserId : true
+      );
       document.getElementById("settlements").innerHTML = settlementRows.map(row => `
         <div class="settlement-row">
           <div>
@@ -3338,7 +3368,7 @@
                 <span>${settlementLabel(activeGroupId, row)} · 可用 LINE Pay / 街口 / Apple Pay</span>
               </div>
             </div>
-            <div class="mini-actions">
+            <div class="mini-actions" ${canActOnSettlement(row, group) ? "" : "hidden"}>
               <button class="mini-btn" type="button" onclick="paySettlement('${row.from}', '${row.to}', ${row.amount})">${settlementStatus[settlementKey(activeGroupId, row)] ? "已付款" : "一鍵付款"}</button>
               <button class="mini-btn" type="button" onclick="confirmSettlement('${row.from}', '${row.to}', ${row.amount})">確認收款</button>
               <button class="mini-btn" type="button" onclick="remindSettlement('${row.from}')">提醒</button>
@@ -3351,7 +3381,8 @@
             </div>
           </div>
         </div>`).join("") || `<div class="empty">目前不需要結算</div>`;
-      document.getElementById("members").innerHTML = group.members.map(id => {
+      const visibleMembers = currentUserRole(group) === "子女" ? [currentUserId] : group.members;
+      document.getElementById("members").innerHTML = visibleMembers.map(id => {
         const value = Math.round(b[id] || 0);
         const cls = value >= 0 ? "positive" : "negative";
         const role = group.roles?.[id] || (id === currentUserId && isGroupOwner(group) ? "擁有者" : "成員");
@@ -3411,7 +3442,8 @@
     }
 
     function renderStats() {
-      const totals = expenses.reduce((map, expense) => {
+      const scopedExpenses = visibleExpenses();
+      const totals = scopedExpenses.reduce((map, expense) => {
         map[expense.category] = (map[expense.category] || 0) + baseAmount(expense);
         return map;
       }, {});
@@ -3428,7 +3460,7 @@
       }).join("");
 
       const memberTotals = {};
-      expenses.forEach(expense => {
+      scopedExpenses.forEach(expense => {
         const amount = baseAmount(expense);
         memberTotals[expense.payerId] = (memberTotals[expense.payerId] || 0) + amount;
       });
@@ -3442,7 +3474,7 @@
         </div>
       `).join("");
 
-      const currencyTotals = expenses.reduce((map, expense) => {
+      const currencyTotals = scopedExpenses.reduce((map, expense) => {
         const currency = expense.currency || "TWD";
         map[currency] = (map[currency] || 0) + expense.amount;
         return map;
@@ -3685,6 +3717,7 @@
     }
 
     function shareSettlement() {
+      if (!requirePermission("edit")) return;
       const group = getGroup(activeGroupId);
       const lines = settlements(activeGroupId).map(row => `${users[row.from].name} → ${users[row.to].name} ${money(row.amount)}`);
       const text = `本次 ${group.name} 結算：${lines.join("，") || "目前不需轉帳"}。付款連結：https://floatpay.app/pay/${group.id}`;
@@ -3721,6 +3754,11 @@
     }
 
     function paySettlement(fromId, toId, amount) {
+      const row = { from: fromId, to: toId, amount };
+      if (!canActOnSettlement(row)) {
+        showToast("目前角色沒有此操作權限");
+        return;
+      }
       const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
       settlementStatus[key] = "paid";
       if (!paymentRecords.some(record => record.key === key)) {
@@ -3741,6 +3779,11 @@
     }
 
     function confirmSettlement(fromId, toId, amount) {
+      const row = { from: fromId, to: toId, amount };
+      if (!canActOnSettlement(row)) {
+        showToast("目前角色沒有此操作權限");
+        return;
+      }
       const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
       settlementStatus[key] = "confirmed";
       paymentRecords = paymentRecords.map(record => record.key === key ? { ...record, status: "已完成" } : record);
@@ -3751,6 +3794,7 @@
     }
 
     function remindSettlement(userId) {
+      if (!requirePermission("edit")) return;
       showToast(`已透過 Push 與 LINE 提醒 ${users[userId].name}`);
     }
 
@@ -3793,14 +3837,19 @@
     }
 
     function exportReport(type) {
-      const total = expenses.reduce((sum, expense) => sum + baseAmount(expense), 0);
+      const reportExpenses = visibleExpenses();
+      if (!reportExpenses.length) {
+        showToast("目前沒有可匯出的支出");
+        return;
+      }
+      const total = reportExpenses.reduce((sum, expense) => sum + baseAmount(expense), 0);
       let fileName;
       let content;
       let mimeType;
       if (type === "Excel") {
         const rows = [
           ["群組", "項目", "原始金額", "幣別", "換算TWD", "付款人", "參與人數", "分類", "日期"],
-          ...expenses.map(expense => [
+          ...reportExpenses.map(expense => [
             getGroup(expense.groupId).name,
             expense.title,
             expense.amount,
@@ -3819,9 +3868,9 @@
         fileName = "Equo-算好-本月分帳報表.html";
         content = `<!doctype html><html><head><meta charset="utf-8"><title>Equo 算好 本月分帳報表</title>
           <style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:32px;color:#1c1c1e}h1{margin:0 0 8px}table{border-collapse:collapse;width:100%;margin-top:18px}td,th{border:1px solid #ddd;padding:10px;text-align:left}th{background:#f5f7fa}.total{font-size:28px;font-weight:800}</style>
-          </head><body><h1>Equo 算好 本月分帳報表</h1><div class="total">總支出 ${money(total)}</div><p>支出筆數 ${expenses.length} · 支援多幣別換算 · 可用瀏覽器另存為 PDF</p>
+          </head><body><h1>Equo 算好 本月分帳報表</h1><div class="total">總支出 ${money(total)}</div><p>支出筆數 ${reportExpenses.length} · 支援多幣別換算 · 可用瀏覽器另存為 PDF</p>
           <table><thead><tr><th>群組</th><th>項目</th><th>金額</th><th>換算 TWD</th><th>付款人</th><th>分類</th></tr></thead><tbody>
-          ${expenses.map(expense => `<tr><td>${getGroup(expense.groupId).name}</td><td>${expense.title}</td><td>${formatCurrency(expense.amount, expense.currency || "TWD")}</td><td>${money(baseAmount(expense))}</td><td>${users[expense.payerId].name}</td><td>${expense.category}</td></tr>`).join("")}
+          ${reportExpenses.map(expense => `<tr><td>${getGroup(expense.groupId).name}</td><td>${expense.title}</td><td>${formatCurrency(expense.amount, expense.currency || "TWD")}</td><td>${money(baseAmount(expense))}</td><td>${users[expense.payerId].name}</td><td>${expense.category}</td></tr>`).join("")}
           </tbody></table></body></html>`;
         mimeType = "text/html;charset=utf-8";
       }
@@ -3879,6 +3928,10 @@
     document.getElementById("expenseForm").addEventListener("submit", event => {
       event.preventDefault();
       const group = getGroup(document.getElementById("expenseGroup").value);
+      if (!canEditExpense(group)) {
+        showToast("目前角色沒有此操作權限");
+        return;
+      }
       const amount = Number(document.getElementById("expenseAmount").value || 0);
       const participants = selectedParticipants();
       if (!amount || amount <= 0) {
@@ -3938,6 +3991,7 @@
 
     document.getElementById("memberForm").addEventListener("submit", event => {
       event.preventDefault();
+      if (!requirePermission("manage")) return;
       const group = getGroup(activeGroupId);
       const name = document.getElementById("memberName").value.trim() || "新成員";
       const role = document.getElementById("memberRole").value;
@@ -3956,6 +4010,7 @@
 
     document.getElementById("groupSettingsForm").addEventListener("submit", event => {
       event.preventDefault();
+      if (!requirePermission("manage")) return;
       const group = getGroup(activeGroupId);
       const oldName = group.name;
       group.name = document.getElementById("settingsGroupName").value.trim() || oldName;
