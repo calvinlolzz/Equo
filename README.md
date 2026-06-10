@@ -46,7 +46,7 @@ http://127.0.0.1:4173/index.html
 2. Vercel 部署免費網頁版
 3. Supabase 作為多人測試資料庫
 
-詳細步驟請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 與 [docs/SUPABASE.md](docs/SUPABASE.md)。
+詳細步驟請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)、[docs/SUPABASE.md](docs/SUPABASE.md) 與 [docs/OAUTH.md](docs/OAUTH.md)。
 
 ## 測試流程
 

@@ -41,6 +41,10 @@ SUPABASE_ANON_KEY
 5. 將目前 `localStorage` 資料流程逐步改成 Supabase API。
 6. 測試不同帳號、不同群組、不同家庭角色的資料權限。
 
+## Apple / Google 登入
+
+Email 登入可先作為測試入口。Apple / Google 登入需要另外設定 OAuth Provider，請看 [OAUTH.md](OAUTH.md)。
+
 ## 交付狀態
 
 目前 Vercel 部署可以先供用戶試用 App 原型。Supabase 尚未接上前，資料會留在使用者自己的瀏覽器裡，不會跨裝置同步。

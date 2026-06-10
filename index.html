@@ -1846,14 +1846,21 @@
         showToast("雲端服務尚未完成設定");
         return;
       }
+      setAuthStatus(`${providerLabel(provider)} 登入即將開啟，若無法完成請先使用 Email。`);
       const { error } = await supabaseClient.auth.signInWithOAuth({
         provider,
         options: { redirectTo: window.location.origin }
       });
       if (error) {
-        setAuthStatus(`${provider} 登入尚未開啟，請先使用 Email 登入。`);
-        showToast(`${provider} 登入尚未開啟`);
+        setAuthStatus(`${providerLabel(provider)} 登入尚未開放，請先使用 Email 登入。`);
+        showToast(`${providerLabel(provider)} 登入尚未開放`);
       }
+    }
+
+    function providerLabel(provider) {
+      if (provider === "google") return "Google";
+      if (provider === "apple") return "Apple";
+      return provider;
     }
 
     async function signInWithEmail(event) {
