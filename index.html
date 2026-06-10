@@ -2513,6 +2513,11 @@
       };
     }
 
+    function subtitleWithMemberCount(subtitle = "", memberCount = 0) {
+      const suffix = String(subtitle).split("·").slice(1).join("·").trim();
+      return suffix ? `${memberCount} 位成員 · ${suffix}` : `${memberCount} 位成員`;
+    }
+
     function cloudMemberPayload(groupId, memberId, role) {
       const user = users[memberId] || {};
       return {
@@ -2603,7 +2608,7 @@
           id,
           name: row.name,
           currency: row.base_currency || "TWD",
-          subtitle: row.subtitle || `${members.length} 位成員`,
+          subtitle: subtitleWithMemberCount(row.subtitle, members.length),
           budget: Number(row.budget || 0),
           cloudGroupId: row.id,
           cloudOwnerId: row.owner_id,
