@@ -134,71 +134,6 @@
       margin-bottom: 0;
     }
 
-    .status {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 8px 14px;
-      color: rgba(28,28,30,.82);
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0;
-    }
-
-    .status-icons {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-    }
-
-    .signal {
-      width: 16px;
-      height: 10px;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 2px;
-      align-items: end;
-    }
-
-    .signal span {
-      width: 2px;
-      border-radius: 3px;
-      background: #1c1c1e;
-    }
-
-    .signal span:nth-child(1) { height: 4px; opacity: .45; }
-    .signal span:nth-child(2) { height: 6px; opacity: .6; }
-    .signal span:nth-child(3) { height: 8px; opacity: .78; }
-    .signal span:nth-child(4) { height: 10px; }
-
-    .battery {
-      width: 23px;
-      height: 11px;
-      border: 1.7px solid #1c1c1e;
-      border-radius: 4px;
-      padding: 1px;
-      position: relative;
-    }
-
-    .battery::after {
-      content: "";
-      position: absolute;
-      right: -4px;
-      top: 3px;
-      width: 2px;
-      height: 5px;
-      background: #1c1c1e;
-      border-radius: 0 2px 2px 0;
-    }
-
-    .battery span {
-      display: block;
-      width: 72%;
-      height: 100%;
-      border-radius: 2px;
-      background: #1c1c1e;
-    }
-
     .topbar {
       display: flex;
       align-items: center;
@@ -1023,23 +958,12 @@
       opacity: .72;
     }
 
-    body[data-theme="dark"] .status,
     body[data-theme="dark"] .group-meta strong,
     body[data-theme="dark"] .expense-main strong,
     body[data-theme="dark"] h1,
     body[data-theme="dark"] h2,
     body[data-theme="dark"] h3 {
       color: var(--text);
-    }
-
-    body[data-theme="dark"] .signal span,
-    body[data-theme="dark"] .battery::after,
-    body[data-theme="dark"] .battery span {
-      background: var(--text);
-    }
-
-    body[data-theme="dark"] .battery {
-      border-color: var(--text);
     }
 
     body[data-theme="dark"] .summary,
@@ -1189,15 +1113,6 @@
   </section>
 
   <main class="shell">
-    <div class="status">
-      <span>9:41</span>
-      <div class="status-icons">
-        <div class="signal" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-        <span style="font-size:12px;font-weight:800">5G</span>
-        <div class="battery" aria-hidden="true"><span></span></div>
-      </div>
-    </div>
-
     <section id="home" class="screen active">
       <header class="topbar">
         <div>
