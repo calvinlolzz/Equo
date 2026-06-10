@@ -311,6 +311,85 @@ begin
 end;
 $$;
 
+create or replace function public.upsert_group_expense(
+  group_id_input uuid,
+  app_expense_id_input text,
+  title_input text,
+  amount_input numeric,
+  currency_input text,
+  exchange_rate_input numeric,
+  payer_member_id_input text,
+  participant_member_ids_input text[],
+  category_input text,
+  note_input text,
+  date_label_input text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  expense_uuid uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  if not public.is_group_member(group_id_input) then
+    raise exception 'permission_denied';
+  end if;
+
+  insert into public.expenses (
+    group_id,
+    app_expense_id,
+    title,
+    amount,
+    currency,
+    exchange_rate,
+    payer_id,
+    payer_member_id,
+    participant_member_ids,
+    category,
+    note,
+    date_label,
+    created_by,
+    updated_at
+  ) values (
+    group_id_input,
+    app_expense_id_input,
+    coalesce(nullif(title_input, ''), '未命名支出'),
+    greatest(round(coalesce(amount_input, 0)::numeric, 2), 0.01),
+    coalesce(nullif(currency_input, ''), 'TWD'),
+    coalesce(exchange_rate_input, 1),
+    auth.uid(),
+    payer_member_id_input,
+    coalesce(participant_member_ids_input, array[]::text[]),
+    coalesce(nullif(category_input, ''), 'other'),
+    coalesce(note_input, ''),
+    date_label_input,
+    auth.uid(),
+    now()
+  )
+  on conflict (group_id, app_expense_id) where app_expense_id is not null do update set
+    title = excluded.title,
+    amount = excluded.amount,
+    currency = excluded.currency,
+    exchange_rate = excluded.exchange_rate,
+    payer_id = excluded.payer_id,
+    payer_member_id = excluded.payer_member_id,
+    participant_member_ids = excluded.participant_member_ids,
+    category = excluded.category,
+    note = excluded.note,
+    date_label = excluded.date_label,
+    created_by = excluded.created_by,
+    updated_at = now()
+  returning id into expense_uuid;
+
+  return expense_uuid;
+end;
+$$;
+
 revoke all on function public.ensure_profile(text, text, text) from public;
 grant execute on function public.ensure_profile(text, text, text) to authenticated;
 
@@ -319,6 +398,9 @@ grant execute on function public.upsert_owned_group(text, text, text, text, nume
 
 revoke all on function public.upsert_group_member(uuid, text, uuid, text, text, text, text, text, text) from public;
 grant execute on function public.upsert_group_member(uuid, text, uuid, text, text, text, text, text, text) to authenticated;
+
+revoke all on function public.upsert_group_expense(uuid, text, text, numeric, text, numeric, text, text[], text, text, text) from public;
+grant execute on function public.upsert_group_expense(uuid, text, text, numeric, text, numeric, text, text[], text, text, text) to authenticated;
 
 create unique index if not exists groups_owner_app_group_id_key
   on public.groups(owner_id, app_group_id)

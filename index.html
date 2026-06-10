@@ -1846,12 +1846,39 @@
       { id: 5, groupId: "g3", title: "六月網路費", amount: 999, currency: "TWD", payerId: "u3", participants: ["u1","u3","u5"], category: "其他", note: "固定帳單", date: "6/1" }
     ];
 
-    let groups = loadSaved("floatpay-groups", defaultGroups);
-    let expenses = loadSaved("floatpay-expenses", defaultExpenses);
+    const localDataKeys = [
+      "floatpay-users",
+      "floatpay-groups",
+      "floatpay-expenses",
+      "floatpay-settlements",
+      "floatpay-reminders",
+      "floatpay-recurring",
+      "floatpay-payments",
+      "floatpay-cloud-last-sync",
+      "floatpay-onboarding-dismissed"
+    ];
+
+    function clearLocalTestDataFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has("clearLocal")) return;
+      localDataKeys.forEach(key => localStorage.removeItem(key));
+      localStorage.setItem("floatpay-demo-cleared", "true");
+      params.delete("clearLocal");
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash || ""}`;
+      window.history.replaceState({}, "", nextUrl);
+    }
+
+    clearLocalTestDataFromUrl();
+
+    const demoDataCleared = localStorage.getItem("floatpay-demo-cleared") === "true";
+    let groups = loadSaved("floatpay-groups", demoDataCleared ? [] : defaultGroups);
+    let expenses = loadSaved("floatpay-expenses", demoDataCleared ? [] : defaultExpenses);
     let settlementStatus = loadSaved("floatpay-settlements", {});
     let reminderStatus = loadSaved("floatpay-reminders", {});
     let recurringStatus = loadSaved("floatpay-recurring", {});
     let paymentRecords = loadSaved("floatpay-payments", []);
+    activeGroupId = groups[0]?.id || "";
     let cloudConfig = { configured: false };
     let supabaseClient = null;
     let cloudUser = null;
@@ -2416,7 +2443,7 @@
       reminderStatus = payload.reminderStatus || {};
       recurringStatus = payload.recurringStatus || {};
       paymentRecords = payload.paymentRecords || [];
-      activeGroupId = groups[0]?.id || "g1";
+      activeGroupId = groups[0]?.id || "";
       syncCurrentUserFromCloud();
       saveData();
       isApplyingCloudSnapshot = false;
@@ -2670,15 +2697,19 @@
         .filter(expense => cloudIdByLocalId[expense.groupId])
         .map(expense => cloudExpensePayload(expense, cloudIdByLocalId[expense.groupId]));
       for (const expense of expenseRows) {
-        const { data: existing } = await supabaseClient
-          .from("expenses")
-          .select("id")
-          .eq("group_id", expense.group_id)
-          .eq("app_expense_id", expense.app_expense_id)
-          .maybeSingle();
-        const { error } = existing?.id
-          ? await supabaseClient.from("expenses").update(expense).eq("id", existing.id)
-          : await supabaseClient.from("expenses").insert(expense);
+        const { error } = await supabaseClient.rpc("upsert_group_expense", {
+          group_id_input: expense.group_id,
+          app_expense_id_input: expense.app_expense_id,
+          title_input: expense.title,
+          amount_input: expense.amount,
+          currency_input: expense.currency,
+          exchange_rate_input: expense.exchange_rate,
+          payer_member_id_input: expense.payer_member_id,
+          participant_member_ids_input: expense.participant_member_ids,
+          category_input: expense.category,
+          note_input: expense.note,
+          date_label_input: expense.date_label
+        });
         if (error) {
           cloudSyncInProgress = false;
           if (!options.silent) showToast("支出同步失敗");
@@ -2975,19 +3006,20 @@
 
     function resetLocalData() {
       if (!confirm("確定要重設此裝置資料嗎？這會清除群組、支出、付款狀態與提醒。")) return;
-      ["floatpay-users", "floatpay-groups", "floatpay-expenses", "floatpay-settlements", "floatpay-reminders", "floatpay-recurring", "floatpay-payments"].forEach(key => localStorage.removeItem(key));
+      localDataKeys.forEach(key => localStorage.removeItem(key));
+      localStorage.setItem("floatpay-demo-cleared", "true");
       if (cloudUser) {
         resetToEmptyCloudData();
         syncCloudTables({ silent: true });
       } else {
-        users = structuredClone(defaultUsers);
-        groups = structuredClone(defaultGroups);
-        expenses = structuredClone(defaultExpenses);
+        users = { [currentUserId]: normalizeUsers({ [currentUserId]: defaultUsers[currentUserId] })[currentUserId] };
+        groups = [];
+        expenses = [];
         settlementStatus = {};
         reminderStatus = {};
         recurringStatus = {};
         paymentRecords = [];
-        activeGroupId = "g1";
+        activeGroupId = "";
         saveData();
       }
       renderAll();
