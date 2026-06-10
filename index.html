@@ -406,6 +406,41 @@
       margin-top: 22px;
     }
 
+    .start-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 28px;
+    }
+
+    .start-steps {
+      display: grid;
+      gap: 8px;
+    }
+
+    .start-step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.46);
+      border: 1px solid rgba(255,255,255,.58);
+    }
+
+    .step-dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 13px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 850;
+      background: linear-gradient(145deg, #0a84ff, #64d2ff);
+      box-shadow: 0 10px 22px rgba(10,132,255,.18);
+    }
+
     .section-head {
       display: flex;
       align-items: center;
@@ -1192,6 +1227,8 @@
         </div>
       </section>
 
+      <section id="onboardingCard" class="section"></section>
+
       <section class="section">
         <div class="section-head">
           <h2>群組</h2>
@@ -1432,6 +1469,8 @@
           </div>
           <div class="action-grid">
             <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">檢查同步狀態</button>
+            <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
+            <button class="soft-btn" type="button" onclick="startFreshData()">清除範例</button>
           </div>
         </div>
         <div class="input-card">
@@ -1584,6 +1623,44 @@
     </div>
   </section>
 
+  <section id="guideSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>快速導覽</h2>
+        <button class="icon-btn" type="button" onclick="closeGuide()" aria-label="關閉導覽">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="start-steps">
+        <div class="start-step">
+          <div class="step-dot">1</div>
+          <div>
+            <strong>建立群組</strong>
+            <p class="mini-note" style="margin-top:4px">先建立旅遊、聚餐、家庭或室友群組。</p>
+          </div>
+        </div>
+        <div class="start-step">
+          <div class="step-dot">2</div>
+          <div>
+            <strong>加入成員</strong>
+            <p class="mini-note" style="margin-top:4px">把會一起分攤的人加入群組，之後可再改角色。</p>
+          </div>
+        </div>
+        <div class="start-step">
+          <div class="step-dot">3</div>
+          <div>
+            <strong>新增支出</strong>
+            <p class="mini-note" style="margin-top:4px">選付款人與分攤成員，系統會自動算出誰該付給誰。</p>
+          </div>
+        </div>
+      </div>
+      <div class="action-grid" style="margin-top:14px">
+        <button class="primary" type="button" onclick="closeGuide(); openGroupSheet()">建立第一個群組</button>
+        <button class="soft-btn" type="button" onclick="closeGuide()">稍後再看</button>
+      </div>
+    </div>
+  </section>
+
   <section id="groupSheet" class="sheet" aria-modal="true">
     <div class="sheet-panel">
       <div class="sheet-head">
@@ -1618,7 +1695,7 @@
         </div>
         <div class="input-card">
           <h3>預設成員</h3>
-          <p class="mini-note">原型會先加入你、阿華、小美，之後可再用邀請連結加入其他人。</p>
+          <p id="groupMemberHint" class="mini-note">會先加入你自己，建立後可再新增成員。</p>
         </div>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
@@ -2120,6 +2197,70 @@
 
     function localDataSummary() {
       return `${groups.length} 群組 · ${expenses.length} 支出 · ${paymentRecords.length} 付款`;
+    }
+
+    function hasDemoData() {
+      const demoGroupNames = ["日本旅遊", "公司聚餐", "室友生活費"];
+      return groups.some(group => demoGroupNames.includes(group.name));
+    }
+
+    function renderOnboardingCard() {
+      const card = document.getElementById("onboardingCard");
+      if (!card) return;
+      const shouldShow = cloudUser ? (!groups.length || hasDemoData()) : hasDemoData();
+      if (!shouldShow) {
+        card.innerHTML = "";
+        card.style.display = "none";
+        return;
+      }
+      card.style.display = "";
+      const title = groups.length ? "準備用自己的資料測試" : "開始建立你的第一個分帳";
+      const note = groups.length
+        ? "目前畫面中有範例資料。清除後會進入乾淨狀態，再建立自己的群組。"
+        : "目前還沒有群組。照著導覽建立群組、加入成員、記第一筆支出。";
+      card.innerHTML = `
+        <div class="start-card glass">
+          <div>
+            <p class="eyebrow">開始使用</p>
+            <h2>${title}</h2>
+            <p class="mini-note" style="margin-top:6px">${note}</p>
+          </div>
+          <div class="action-grid">
+            <button class="primary" type="button" onclick="startFreshData()">清除範例並開始</button>
+            <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function openGuide() {
+      document.getElementById("guideSheet").classList.add("open");
+    }
+
+    function closeGuide() {
+      document.getElementById("guideSheet").classList.remove("open");
+    }
+
+    async function startFreshData() {
+      if (groups.length && !confirm("要清除目前畫面上的範例資料，改用乾淨資料開始嗎？")) return;
+      if (cloudUser) {
+        resetToEmptyCloudData();
+        await syncCloudTables({ silent: true });
+      } else {
+        users = { [currentUserId]: { ...defaultUsers[currentUserId], name: "我" } };
+        groups = [];
+        expenses = [];
+        settlementStatus = {};
+        reminderStatus = {};
+        recurringStatus = {};
+        paymentRecords = [];
+        activeGroupId = "";
+        saveData();
+      }
+      renderAll();
+      showScreen("home");
+      showToast("已清除範例資料");
+      openGuide();
     }
 
     function setAuthStatus(message) {
@@ -2814,6 +2955,7 @@
       document.getElementById("netPill").textContent = net >= 0 ? "應收較多" : "應付較多";
       document.getElementById("payable").textContent = money(payable);
       document.getElementById("receivable").textContent = money(receivable);
+      renderOnboardingCard();
 
       document.getElementById("groups").innerHTML = groups.length ? groups.map((group, index) => {
         const mine = Math.round(balances(group.id)[currentUserId] || 0);
@@ -3189,6 +3331,10 @@
     }
 
     function openGroupSheet() {
+      const hint = document.getElementById("groupMemberHint");
+      if (hint) hint.textContent = cloudUser
+        ? "會先加入你自己，建立後可再新增成員。"
+        : "本機試用會先加入你、阿華、小美，方便快速體驗。";
       document.getElementById("groupSheet").classList.add("open");
       showToast("新增群組已開啟");
     }
