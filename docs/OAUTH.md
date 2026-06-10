@@ -4,7 +4,9 @@
 
 App 內已經有 Apple / Google 登入入口，Email 登入可先作為正式測試用入口。
 
-Apple / Google 登入要正式可用，還需要到對應平台建立 OAuth 憑證，並回填到 Supabase Auth Provider。
+Google 登入已完成正式站設定，測試結果可正常從 `https://equo-mu.vercel.app` 跳到 Google 帳號選擇頁。
+
+Apple 登入尚未啟用。後續需要 Apple Developer 帳號，並到 Apple Developer 與 Supabase 兩邊完成設定。
 
 ## 正式站資訊
 
