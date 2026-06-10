@@ -240,11 +240,85 @@ begin
 end;
 $$;
 
+create or replace function public.upsert_group_member(
+  group_id_input uuid,
+  app_member_id_input text,
+  user_id_input uuid,
+  role_input text,
+  display_name_input text,
+  initial_input text,
+  avatar_input text,
+  avatar_color_input text,
+  photo_url_input text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  member_uuid uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  if not exists (
+    select 1 from public.groups
+    where id = group_id_input
+      and owner_id = auth.uid()
+  ) and not exists (
+    select 1 from public.group_members
+    where group_id = group_id_input
+      and user_id = auth.uid()
+      and role in ('admin', 'parent')
+  ) then
+    raise exception 'permission_denied';
+  end if;
+
+  insert into public.group_members (
+    group_id,
+    user_id,
+    app_member_id,
+    role,
+    display_name,
+    initial,
+    avatar,
+    avatar_color,
+    photo_url
+  ) values (
+    group_id_input,
+    user_id_input,
+    app_member_id_input,
+    coalesce(nullif(role_input, ''), 'member'),
+    coalesce(nullif(display_name_input, ''), '未命名成員'),
+    initial_input,
+    avatar_input,
+    avatar_color_input,
+    photo_url_input
+  )
+  on conflict (group_id, app_member_id) where app_member_id is not null do update set
+    user_id = excluded.user_id,
+    role = excluded.role,
+    display_name = excluded.display_name,
+    initial = excluded.initial,
+    avatar = excluded.avatar,
+    avatar_color = excluded.avatar_color,
+    photo_url = excluded.photo_url
+  returning id into member_uuid;
+
+  return member_uuid;
+end;
+$$;
+
 revoke all on function public.ensure_profile(text, text, text) from public;
 grant execute on function public.ensure_profile(text, text, text) to authenticated;
 
 revoke all on function public.upsert_owned_group(text, text, text, text, numeric) from public;
 grant execute on function public.upsert_owned_group(text, text, text, text, numeric) to authenticated;
+
+revoke all on function public.upsert_group_member(uuid, text, uuid, text, text, text, text, text, text) from public;
+grant execute on function public.upsert_group_member(uuid, text, uuid, text, text, text, text, text, text) to authenticated;
 
 create unique index if not exists groups_owner_app_group_id_key
   on public.groups(owner_id, app_group_id)

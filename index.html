@@ -2648,15 +2648,17 @@
         cloudMemberPayload(cloudIdByLocalId[group.id], memberId, group.roles?.[memberId] || (memberId === currentUserId ? "擁有者" : "成員"))
       ));
       for (const member of memberRows) {
-        const { data: existing } = await supabaseClient
-          .from("group_members")
-          .select("id")
-          .eq("group_id", member.group_id)
-          .eq("app_member_id", member.app_member_id)
-          .maybeSingle();
-        const { error } = existing?.id
-          ? await supabaseClient.from("group_members").update(member).eq("id", existing.id)
-          : await supabaseClient.from("group_members").insert(member);
+        const { error } = await supabaseClient.rpc("upsert_group_member", {
+          group_id_input: member.group_id,
+          app_member_id_input: member.app_member_id,
+          user_id_input: member.user_id,
+          role_input: member.role,
+          display_name_input: member.display_name,
+          initial_input: member.initial,
+          avatar_input: member.avatar,
+          avatar_color_input: member.avatar_color,
+          photo_url_input: member.photo_url
+        });
         if (error) {
           cloudSyncInProgress = false;
           if (!options.silent) showToast("成員同步失敗");
