@@ -248,6 +248,45 @@
       border-radius: 16px;
     }
 
+    .avatar, .member-avatar {
+      overflow: hidden;
+    }
+
+    .avatar.emoji, .member-avatar.emoji {
+      color: white;
+      font-size: 20px;
+      text-shadow: 0 1px 10px rgba(0,0,0,.18);
+    }
+
+    .profile-avatar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .avatar-picker {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .avatar-choice {
+      min-height: 40px;
+      border-radius: 15px;
+      color: white;
+      font-size: 19px;
+      font-weight: 800;
+      border: 1px solid rgba(255,255,255,.7);
+      box-shadow: 0 8px 20px rgba(35,45,75,.10);
+    }
+
+    .avatar-choice.active {
+      outline: 3px solid rgba(10,132,255,.36);
+      outline-offset: 2px;
+    }
+
     .glass {
       background: var(--glass);
       border: 1px solid var(--line);
@@ -1063,7 +1102,7 @@
       <div class="auth-logo">E</div>
       <p class="eyebrow">歡迎使用</p>
       <h1>Equo 算好</h1>
-      <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。此原型先使用本機登入狀態，之後可接 Supabase。</p>
+      <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。也可以先用本機模式體驗。</p>
       <form id="authForm" class="auth-form">
         <label>Email
           <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -1074,7 +1113,7 @@
           </label>
           <button id="passwordToggle" class="soft-btn" type="button" onclick="togglePasswordVisibility()">顯示</button>
         </div>
-        <p id="authStatus" class="mini-note">使用 Email 可啟用 Supabase 雲端同步。</p>
+        <p id="authStatus" class="mini-note">使用 Email 可啟用雲端同步。</p>
         <div class="auth-actions">
           <button class="primary" type="submit">Email 登入</button>
           <button class="soft-btn" type="button" onclick="signUpWithEmail()">建立帳號</button>
@@ -1104,7 +1143,7 @@
           <p class="eyebrow">今天要結哪一筆？</p>
           <h1>Equo 算好</h1>
         </div>
-        <div class="avatar">W</div>
+        <div id="homeAvatar" class="avatar">W</div>
       </header>
 
       <section class="summary glass">
@@ -1305,15 +1344,27 @@
           <p class="eyebrow">帳號與設定</p>
           <h1>我的</h1>
         </div>
-        <div class="avatar">W</div>
+        <div id="meAvatar" class="avatar">W</div>
       </header>
       <div class="card-list">
         <div class="input-card setting-row">
           <div>
             <h3 id="profileName">Wukec</h3>
-            <p id="profileSync" class="eyebrow" style="margin-top:6px">本機同步 · 原型帳號</p>
+            <p id="profileSync" class="eyebrow" style="margin-top:6px">此裝置資料 · 試用帳號</p>
           </div>
           <button class="small-action" type="button" onclick="logout()">登出</button>
+        </div>
+        <div class="input-card">
+          <h3>頭像</h3>
+          <p class="eyebrow" style="margin-top:6px">選一個容易辨識的頭像，群組成員也會同步顯示。</p>
+          <div class="profile-avatar-row">
+            <div id="profileAvatarPreview" class="avatar">W</div>
+            <div>
+              <strong id="profileAvatarName">我</strong>
+              <p class="mini-note" style="margin-top:4px">目前顯示在首頁、我的與群組成員中。</p>
+            </div>
+          </div>
+          <div id="avatarPicker" class="avatar-picker"></div>
         </div>
         <div class="input-card setting-row">
           <div>
@@ -1336,15 +1387,15 @@
         <div class="input-card setting-row">
           <div>
             <h3>雲端同步</h3>
-            <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">本機模式 · 尚未連接 Supabase</p>
+            <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">目前只保存在此裝置</p>
           </div>
-          <span id="cloudSyncPill" class="pill">本機</span>
+          <span id="cloudSyncPill" class="pill">此裝置</span>
         </div>
         <div class="input-card">
           <h3>資料同步</h3>
-          <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到 Supabase。</p>
+          <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到雲端。</p>
           <div class="preview" style="margin-bottom:0">
-            <div class="preview-row"><span>本機資料</span><strong id="localDataSummary">-</strong></div>
+            <div class="preview-row"><span>此裝置資料</span><strong id="localDataSummary">-</strong></div>
             <div class="preview-row"><span>雲端備份</span><strong id="cloudBackupSummary">尚未檢查</strong></div>
           </div>
           <div class="action-grid three-actions">
@@ -1353,7 +1404,7 @@
             <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">檢查雲端</button>
           </div>
           <div class="action-grid">
-            <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">執行同步自檢</button>
+            <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">檢查同步狀態</button>
           </div>
         </div>
         <div class="input-card">
@@ -1403,7 +1454,7 @@
         </div>
         <div class="input-card">
           <h3>資料管理</h3>
-          <p class="eyebrow" style="margin-top:6px">備份或重設本機測試資料</p>
+          <p class="eyebrow" style="margin-top:6px">備份或重設此裝置資料</p>
           <div class="action-grid">
             <button class="soft-btn" type="button" onclick="backupData()">備份資料</button>
             <button class="soft-btn" type="button" onclick="resetLocalData()">重設資料</button>
@@ -1640,14 +1691,32 @@
     ];
 
     const defaultUsers = {
-      u1: { name: "我", initial: "W" },
-      u2: { name: "阿華", initial: "華" },
-      u3: { name: "小美", initial: "美" },
-      u4: { name: "小明", initial: "明" },
-      u5: { name: "阿強", initial: "強" }
+      u1: { name: "我", initial: "W", avatar: "🙂", avatarColor: "blue" },
+      u2: { name: "阿華", initial: "華", avatar: "🍵", avatarColor: "green" },
+      u3: { name: "小美", initial: "美", avatar: "🌸", avatarColor: "pink" },
+      u4: { name: "小明", initial: "明", avatar: "⚡", avatarColor: "amber" },
+      u5: { name: "阿強", initial: "強", avatar: "🧢", avatarColor: "purple" }
     };
 
-    let users = loadSaved("floatpay-users", defaultUsers);
+    const avatarChoices = [
+      { icon: "🙂", color: "blue" },
+      { icon: "🌸", color: "pink" },
+      { icon: "🍵", color: "green" },
+      { icon: "⚡", color: "amber" },
+      { icon: "🧢", color: "purple" },
+      { icon: "🌙", color: "indigo" }
+    ];
+
+    const avatarGradients = {
+      blue: "linear-gradient(145deg,#0a84ff,#64d2ff)",
+      green: "linear-gradient(145deg,#30d158,#5eead4)",
+      pink: "linear-gradient(145deg,#ff375f,#bf5af2)",
+      amber: "linear-gradient(145deg,#ff9f0a,#ffd60a)",
+      purple: "linear-gradient(145deg,#7c3aed,#bf5af2)",
+      indigo: "linear-gradient(145deg,#5856d6,#0a84ff)"
+    };
+
+    let users = normalizeUsers(loadSaved("floatpay-users", defaultUsers));
 
     const exchangeRates = {
       TWD: 1,
@@ -1711,6 +1780,22 @@
       }
     }
 
+    function normalizeUsers(source) {
+      const normalized = { ...structuredClone(defaultUsers), ...(source || {}) };
+      Object.entries(normalized).forEach(([id, user], index) => {
+        const fallback = defaultUsers[id] || {};
+        const choice = avatarChoices[index % avatarChoices.length];
+        normalized[id] = {
+          ...fallback,
+          ...user,
+          initial: user.initial || fallback.initial || user.name?.slice(0, 1) || "?",
+          avatar: user.avatar || fallback.avatar || choice.icon,
+          avatarColor: user.avatarColor || fallback.avatarColor || choice.color
+        };
+      });
+      return normalized;
+    }
+
     function saveData() {
       localStorage.setItem("floatpay-users", JSON.stringify(users));
       localStorage.setItem("floatpay-groups", JSON.stringify(groups));
@@ -1757,8 +1842,8 @@
 
     async function loginWithOAuth(provider) {
       if (!supabaseClient) {
-        setAuthStatus("Supabase 尚未完成設定，請先用本機模式試用。");
-        showToast("Supabase 尚未完成設定，請先用本機模式試用");
+        setAuthStatus("雲端服務尚未完成設定，請先用本機模式試用。");
+        showToast("雲端服務尚未完成設定");
         return;
       }
       const { error } = await supabaseClient.auth.signInWithOAuth({
@@ -1774,8 +1859,8 @@
     async function signInWithEmail(event) {
       event.preventDefault();
       if (!supabaseClient) {
-        setAuthStatus("Supabase 尚未完成設定，請先用本機模式試用。");
-        showToast("Supabase 尚未完成設定，請先用本機模式試用");
+        setAuthStatus("雲端服務尚未完成設定，請先用本機模式試用。");
+        showToast("雲端服務尚未完成設定");
         return;
       }
       const email = document.getElementById("authEmail").value.trim();
@@ -1785,7 +1870,7 @@
         showToast("請輸入 Email 與至少 6 碼密碼");
         return;
       }
-      setAuthStatus("正在登入 Supabase...");
+      setAuthStatus("正在登入...");
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (error) {
         setAuthStatus("登入失敗，請確認帳號密碼，或先建立帳號。");
@@ -1803,8 +1888,8 @@
 
     async function signUpWithEmail() {
       if (!supabaseClient) {
-        setAuthStatus("Supabase 尚未完成設定，請先用本機模式試用。");
-        showToast("Supabase 尚未完成設定，請先用本機模式試用");
+        setAuthStatus("雲端服務尚未完成設定，請先用本機模式試用。");
+        showToast("雲端服務尚未完成設定");
         return;
       }
       const email = document.getElementById("authEmail").value.trim();
@@ -1814,7 +1899,7 @@
         showToast("請輸入 Email 與至少 6 碼密碼");
         return;
       }
-      setAuthStatus("正在建立 Supabase 帳號...");
+      setAuthStatus("正在建立帳號...");
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
@@ -1849,8 +1934,8 @@
     function applyAuthState() {
       const localUser = loadSaved("floatpay-auth", null);
       const user = cloudUser ? {
-        name: cloudUser.email || "Supabase 使用者",
-        provider: "Supabase",
+        name: cloudUser.email || "雲端使用者",
+        provider: "雲端帳號",
         loggedInAt: cloudUser.last_sign_in_at
       } : localUser;
       const loggedIn = Boolean(user);
@@ -1860,8 +1945,9 @@
       document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn);
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
-        document.getElementById("profileSync").textContent = cloudUser ? "Supabase 登入 · 雲端同步可用" : `${user.provider} · 本機同步已啟用`;
+        document.getElementById("profileSync").textContent = cloudUser ? "雲端帳號 · 同步可用" : `${user.provider} · 此裝置資料`;
       }
+      renderAvatars();
       renderCloudStatus();
     }
 
@@ -1916,33 +2002,33 @@
       if (localSummary) localSummary.textContent = localDataSummary();
       if (backupSummary) backupSummary.textContent = cloudBackupSummary;
       if (cloudUser) {
-        label.textContent = `Supabase 已登入 · ${cloudUser.email || "雲端帳號"}`;
+        label.textContent = `已登入雲端 · ${cloudUser.email || "雲端帳號"}`;
         pill.textContent = cloudSyncInProgress ? "同步中" : "已同步";
         if (meta) meta.textContent = cloudSyncInProgress
-          ? "正在與 Supabase 同步資料..."
+          ? "正在同步資料..."
           : [
               cloudLastSyncedAt ? `最後同步：${formatDateTime(cloudLastSyncedAt)}` : "尚未同步，新增或修改資料後會自動同步。",
               cloudBackupCheckedAt ? `雲端檢查：${formatDateTime(cloudBackupCheckedAt)}` : ""
             ].filter(Boolean).join(" · ");
-        if (authStatus) authStatus.textContent = "已連接 Supabase，資料可同步到雲端。";
+        if (authStatus) authStatus.textContent = "已登入雲端帳號，資料可同步。";
         if (syncButton) syncButton.disabled = cloudSyncInProgress;
         if (restoreButton) restoreButton.disabled = cloudSyncInProgress;
         if (checkButton) checkButton.disabled = cloudSyncInProgress;
         if (selfTestButton) selfTestButton.disabled = cloudSyncInProgress;
       } else if (cloudConfig.configured) {
-        label.textContent = "Supabase 已設定 · 登入後可同步資料";
+        label.textContent = "雲端同步可用 · 登入後啟用";
         pill.textContent = "可登入";
         if (meta) meta.textContent = "請先用 Email 登入，才會啟用雲端同步與跨裝置還原。";
-        if (authStatus) authStatus.textContent = "使用 Email 登入後可啟用 Supabase 雲端同步。";
+        if (authStatus) authStatus.textContent = "使用 Email 登入後可啟用雲端同步。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
         if (selfTestButton) selfTestButton.disabled = false;
       } else {
-        label.textContent = "本機模式 · 尚未連接 Supabase";
-        pill.textContent = "本機";
-        if (meta) meta.textContent = "目前資料只會存在這台裝置的瀏覽器。";
-        if (authStatus) authStatus.textContent = "Supabase 尚未設定，請先使用本機模式。";
+        label.textContent = "目前只保存在此裝置";
+        pill.textContent = "此裝置";
+        if (meta) meta.textContent = "目前資料只會保存在此裝置。";
+        if (authStatus) authStatus.textContent = "雲端服務尚未設定，請先使用本機模式。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
@@ -1979,6 +2065,63 @@
       const visible = input.type === "text";
       input.type = visible ? "password" : "text";
       button.textContent = visible ? "顯示" : "隱藏";
+    }
+
+    function avatarStyle(user = users[currentUserId]) {
+      return avatarGradients[user?.avatarColor] || avatarGradients.blue;
+    }
+
+    function avatarContent(user = users[currentUserId]) {
+      return user?.avatar || user?.initial || "?";
+    }
+
+    function avatarClass(user = users[currentUserId]) {
+      return user?.avatar ? "emoji" : "";
+    }
+
+    function renderAvatarElement(element, user = users[currentUserId]) {
+      if (!element) return;
+      element.textContent = avatarContent(user);
+      element.style.background = avatarStyle(user);
+      element.classList.toggle("emoji", Boolean(user?.avatar));
+    }
+
+    function avatarHtml(id, className = "member-avatar") {
+      const user = users[id] || {};
+      return `<div class="${className} ${avatarClass(user)}" style="background:${avatarStyle(user)}">${avatarContent(user)}</div>`;
+    }
+
+    function renderAvatars() {
+      const user = users[currentUserId] || defaultUsers.u1;
+      renderAvatarElement(document.getElementById("homeAvatar"), user);
+      renderAvatarElement(document.getElementById("meAvatar"), user);
+      renderAvatarElement(document.getElementById("profileAvatarPreview"), user);
+      const name = document.getElementById("profileAvatarName");
+      if (name) name.textContent = user.name || "我";
+      renderAvatarPicker();
+    }
+
+    function renderAvatarPicker() {
+      const picker = document.getElementById("avatarPicker");
+      if (!picker) return;
+      const current = users[currentUserId] || defaultUsers.u1;
+      picker.innerHTML = avatarChoices.map(choice => {
+        const active = current.avatar === choice.icon && current.avatarColor === choice.color ? "active" : "";
+        return `<button class="avatar-choice ${active}" type="button" style="background:${avatarGradients[choice.color]}" onclick="selectAvatar('${choice.icon}', '${choice.color}')">${choice.icon}</button>`;
+      }).join("");
+    }
+
+    function selectAvatar(icon, color) {
+      users[currentUserId] = {
+        ...(users[currentUserId] || defaultUsers.u1),
+        avatar: icon,
+        avatarColor: color
+      };
+      saveData();
+      renderAvatars();
+      renderHome();
+      renderGroup();
+      showToast("頭像已更新");
     }
 
     function refreshExpenseGroupOptions() {
@@ -2048,7 +2191,7 @@
 
     async function syncCloudSnapshot(options = {}) {
       if (!supabaseClient || !cloudUser) {
-        if (!options.silent) showToast("請先用 Email 登入 Supabase");
+        if (!options.silent) showToast("請先用 Email 登入");
         return false;
       }
       const payload = buildCloudSnapshot();
@@ -2070,7 +2213,7 @@
       cloudBackupSummary = `${groups.length} 群組 · ${expenses.length} 支出`;
       cloudBackupCheckedAt = cloudLastSyncedAt;
       cloudSyncInProgress = false;
-      if (!options.silent) showToast("資料已同步到 Supabase");
+      if (!options.silent) showToast("資料已同步到雲端");
       renderCloudStatus();
       return true;
     }
@@ -2116,7 +2259,7 @@
 
     async function checkCloudSnapshot(options = {}) {
       if (!supabaseClient || !cloudUser) {
-        if (!options.silent) showToast("請先用 Email 登入 Supabase");
+        if (!options.silent) showToast("請先用 Email 登入");
         return null;
       }
       cloudSyncInProgress = true;
@@ -2132,9 +2275,9 @@
 
     async function runSyncSelfTest() {
       const results = [];
-      results.push(cloudConfig.configured ? "Supabase 設定正常" : "Supabase 尚未設定");
+      results.push(cloudConfig.configured ? "雲端服務正常" : "雲端服務尚未設定");
       results.push(cloudUser ? "已登入雲端帳號" : "尚未登入雲端帳號");
-      results.push(`本機：${localDataSummary()}`);
+      results.push(`此裝置：${localDataSummary()}`);
       if (cloudUser) {
         const payload = await checkCloudSnapshot({ silent: true });
         results.push(`雲端：${describeSnapshot(payload)}`);
@@ -2143,12 +2286,12 @@
       }
       const meta = document.getElementById("cloudSyncMeta");
       if (meta) meta.textContent = results.join(" · ");
-      showToast("同步自檢完成");
+      showToast("同步狀態檢查完成");
     }
 
     async function restoreCloudSnapshot() {
       if (!supabaseClient || !cloudUser) {
-        showToast("請先用 Email 登入 Supabase");
+        showToast("請先用 Email 登入");
         return;
       }
       cloudSyncInProgress = true;
@@ -2166,7 +2309,7 @@
       cloudBackupSummary = describeSnapshot(payload);
       cloudBackupCheckedAt = new Date().toISOString();
       renderCloudStatus();
-      if (!confirm(`要用雲端備份覆蓋目前本機資料嗎？\n\n雲端：${cloudBackupSummary}\n本機：${localDataSummary()}`)) return;
+      if (!confirm(`要用雲端備份覆蓋目前此裝置資料嗎？\n\n雲端：${cloudBackupSummary}\n此裝置：${localDataSummary()}`)) return;
       cloudSyncInProgress = true;
       renderCloudStatus();
       applyCloudSnapshot(payload);
@@ -2174,7 +2317,7 @@
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
       cloudSyncInProgress = false;
       renderCloudStatus();
-      showToast("已從 Supabase 還原資料");
+      showToast("已從雲端還原資料");
     }
 
     function backupData() {
@@ -2188,12 +2331,12 @@
         paymentRecords,
         exportedAt: new Date().toISOString()
       };
-      downloadFile("Equo-算好-本機資料備份.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
-      showToast("本機資料備份已下載");
+      downloadFile("Equo-算好-此裝置資料備份.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+      showToast("此裝置資料備份已下載");
     }
 
     function resetLocalData() {
-      if (!confirm("確定要重設本機資料嗎？這會清除群組、支出、付款狀態與提醒。")) return;
+      if (!confirm("確定要重設此裝置資料嗎？這會清除群組、支出、付款狀態與提醒。")) return;
       ["floatpay-users", "floatpay-groups", "floatpay-expenses", "floatpay-settlements", "floatpay-reminders", "floatpay-recurring", "floatpay-payments"].forEach(key => localStorage.removeItem(key));
       users = structuredClone(defaultUsers);
       groups = structuredClone(defaultGroups);
@@ -2209,7 +2352,7 @@
       renderStats();
       renderPayments();
       showScreen("home");
-      showToast("本機資料已重設");
+      showToast("此裝置資料已重設");
     }
 
     function formatCurrency(value, currency = "TWD") {
@@ -2426,7 +2569,7 @@
       document.getElementById("groupCurrency").textContent = group.currency;
       document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
       document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
-      document.getElementById("memberStack").innerHTML = group.members.map(id => `<div class="member-avatar">${users[id].initial}</div>`).join("");
+      document.getElementById("memberStack").innerHTML = group.members.map(id => avatarHtml(id)).join("");
       const visibleExpenses = filteredGroupExpenses(activeGroupId);
       document.getElementById("groupExpenses").innerHTML = visibleExpenses.slice().reverse().map(expenseRow).join("") || `<div class="empty">沒有符合條件的支出</div>`;
       updateFilterSummary(visibleExpenses.length, groupExpenses(activeGroupId).length);
@@ -2435,9 +2578,9 @@
         <div class="settlement-row">
           <div>
             <div class="flow">
-              <div class="member-avatar">${users[row.from].initial}</div>
+              ${avatarHtml(row.from)}
               <div class="arrow-dot"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
-              <div class="member-avatar">${users[row.to].initial}</div>
+              ${avatarHtml(row.to)}
               <div>
                 <strong>${users[row.from].name} 轉給 ${users[row.to].name}</strong>
                 <span>${settlementLabel(activeGroupId, row)} · 可用 LINE Pay / 街口 / Apple Pay</span>
@@ -2462,7 +2605,7 @@
         const role = group.roles?.[id] || (id === currentUserId ? "擁有者" : "成員");
         return `<div class="settlement-row">
           <div class="flow">
-            <div class="member-avatar">${users[id].initial}</div>
+            ${avatarHtml(id)}
             <div><strong>${users[id].name}</strong><span>${role}${id === currentUserId ? " · 目前使用者" : ""}</span></div>
           </div>
           <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
@@ -2507,7 +2650,7 @@
       document.getElementById("groupMemberStats").innerHTML = Object.entries(payerTotals).sort((a, b) => b[1] - a[1]).map(([id, value]) => `
         <div class="settlement-row">
           <div class="flow">
-            <div class="member-avatar">${users[id]?.initial || "?"}</div>
+            ${avatarHtml(id)}
             <div><strong>${users[id]?.name || "未知成員"}</strong><span>群組內墊付款</span></div>
           </div>
           <div class="amount neutral">${money(value)}</div>
@@ -2540,7 +2683,7 @@
       document.getElementById("memberRank").innerHTML = Object.entries(memberTotals).sort((a, b) => b[1] - a[1]).map(([id, value]) => `
         <div class="settlement-row">
           <div class="flow">
-            <div class="member-avatar">${users[id].initial}</div>
+            ${avatarHtml(id)}
             <div><strong>${users[id].name}</strong><span>本月墊付款</span></div>
           </div>
           <div class="amount neutral">${money(value)}</div>
@@ -3023,7 +3166,8 @@
       const name = document.getElementById("memberName").value.trim() || "新成員";
       const role = document.getElementById("memberRole").value;
       const id = `u${Date.now()}`;
-      users[id] = { name, initial: name.trim().slice(0, 1).toUpperCase() || "新" };
+      const choice = avatarChoices[group.members.length % avatarChoices.length];
+      users[id] = { name, initial: name.trim().slice(0, 1).toUpperCase() || "新", avatar: choice.icon, avatarColor: choice.color };
       group.members.push(id);
       group.roles = { ...(group.roles || {}), [id]: role };
       group.subtitle = `${group.members.length} 位成員 · ${group.subtitle.split("·").pop().trim()}`;
