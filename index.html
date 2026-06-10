@@ -311,6 +311,21 @@
       white-space: nowrap;
     }
 
+    .role-strip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .role-note {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+      line-height: 1.45;
+    }
+
     .metric-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1163,7 +1178,7 @@
       <section class="section">
         <div class="section-head">
           <h2>最近支出</h2>
-          <button class="small-action" type="button" onclick="openAddSheet()">新增</button>
+          <button id="homeAddExpenseButton" class="small-action" type="button" onclick="openAddSheet()">新增</button>
         </div>
         <div id="recentExpenses" class="card-list"></div>
       </section>
@@ -1190,12 +1205,16 @@
             <p class="eyebrow" id="groupSubtitle">群組</p>
             <h1 id="groupTitle">日本旅遊</h1>
             <div id="memberStack" class="member-stack"></div>
+            <div class="role-strip">
+              <span id="groupRolePill" class="pill">成員</span>
+              <span id="groupRoleNote" class="role-note">可新增支出與查看結算</span>
+            </div>
           </div>
           <span class="pill" id="groupCurrency">TWD</span>
         </div>
         <div class="metric-grid">
           <div class="metric">
-            <span>群組總花費</span>
+            <span id="groupSpentLabel">群組總花費</span>
             <strong id="groupSpent">$0</strong>
           </div>
           <div class="metric">
@@ -1943,6 +1962,18 @@
       return false;
     }
 
+    function roleHint(role) {
+      const hints = {
+        "擁有者": "可管理群組、成員、支出與結算",
+        "管理員": "可管理群組、成員、支出與結算",
+        "家長": "可管理家庭帳務與成員",
+        "成員": "可新增支出與查看結算",
+        "子女": "只顯示與你有關的支出與結算",
+        "訪客": "可查看群組，無法新增或變更資料"
+      };
+      return hints[role] || "依群組設定顯示可用功能";
+    }
+
     function updateGroupPermissionUi(group = getGroup(activeGroupId)) {
       const canManage = !!group && canManageGroup(group);
       const canEdit = !!group && canEditExpense(group);
@@ -1951,7 +1982,8 @@
         ["groupSettingsButton", canManage],
         ["addMemberButton", canManage],
         ["groupAddExpenseButton", canEdit],
-        ["shareSettlementButton", canEdit]
+        ["shareSettlementButton", canEdit],
+        ["homeAddExpenseButton", groups.some(item => canEditExpense(item))]
       ];
       controls.forEach(([id, allowed]) => {
         const element = document.getElementById(id);
@@ -1959,11 +1991,16 @@
         element.hidden = !allowed;
         element.disabled = !allowed;
       });
+      const role = group ? currentUserRole(group) : "";
+      const rolePill = document.getElementById("groupRolePill");
+      const roleNote = document.getElementById("groupRoleNote");
+      if (rolePill) rolePill.textContent = role || "尚未加入";
+      if (roleNote) roleNote.textContent = group ? roleHint(role) : "建立群組後會顯示你的角色";
     }
 
     function requirePermission(type = "manage") {
       const ok = type === "edit" ? canEditExpense() : canManageGroup();
-      if (!ok) showToast("目前角色沒有此操作權限");
+      if (!ok) showToast("你目前的角色無法使用這個功能");
       return ok;
     }
 
@@ -2838,7 +2875,7 @@
       const group = getGroup(groupId);
       if (!group) return;
       if (!canManageGroup(group)) {
-        showToast("目前角色無法邀請成員");
+        showToast("你目前的角色無法邀請成員");
         return;
       }
       await syncCloudTables({ silent: true });
@@ -3327,6 +3364,7 @@
         document.getElementById("groupTitle").textContent = "尚未建立群組";
         document.getElementById("groupSubtitle").textContent = "建立第一個群組後，就能開始分帳。";
         document.getElementById("groupCurrency").textContent = "TWD";
+        document.getElementById("groupSpentLabel").textContent = "群組總花費";
         document.getElementById("groupSpent").textContent = money(0);
         document.getElementById("groupMine").textContent = money(0);
         document.getElementById("memberStack").innerHTML = avatarHtml(currentUserId);
@@ -3342,11 +3380,13 @@
       const b = balances(activeGroupId);
       const mine = Math.round(b[currentUserId] || 0);
       updateGroupPermissionUi(group);
+      const role = currentUserRole(group);
       document.getElementById("groupTitle").textContent = group.name;
       document.getElementById("groupSubtitle").textContent = group.cloudOwnerId && group.cloudOwnerId !== cloudUser?.id
         ? `${group.subtitle} · 受邀群組`
         : group.subtitle;
       document.getElementById("groupCurrency").textContent = group.currency;
+      document.getElementById("groupSpentLabel").textContent = role === "子女" ? "我的相關支出" : "群組總花費";
       document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
       document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
       document.getElementById("memberStack").innerHTML = group.members.map(id => avatarHtml(id)).join("");
@@ -3756,7 +3796,7 @@
     function paySettlement(fromId, toId, amount) {
       const row = { from: fromId, to: toId, amount };
       if (!canActOnSettlement(row)) {
-        showToast("目前角色沒有此操作權限");
+        showToast("你目前的角色無法使用這個功能");
         return;
       }
       const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
@@ -3781,7 +3821,7 @@
     function confirmSettlement(fromId, toId, amount) {
       const row = { from: fromId, to: toId, amount };
       if (!canActOnSettlement(row)) {
-        showToast("目前角色沒有此操作權限");
+        showToast("你目前的角色無法使用這個功能");
         return;
       }
       const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
@@ -3929,7 +3969,7 @@
       event.preventDefault();
       const group = getGroup(document.getElementById("expenseGroup").value);
       if (!canEditExpense(group)) {
-        showToast("目前角色沒有此操作權限");
+        showToast("你目前的角色無法使用這個功能");
         return;
       }
       const amount = Number(document.getElementById("expenseAmount").value || 0);
