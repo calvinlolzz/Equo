@@ -2149,6 +2149,7 @@
         cloudConfig = { configured: false };
       }
       await initSupabaseClient();
+      applyAuthState();
       renderCloudStatus();
     }
 
