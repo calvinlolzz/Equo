@@ -200,8 +200,11 @@ create policy "profiles_insert_self" on public.profiles
 create policy "profiles_update_self" on public.profiles
   for update using (id = auth.uid());
 
-create policy "groups_select_member" on public.groups
-  for select using (public.is_group_member(id));
+create policy "groups_select_member_or_owner" on public.groups
+  for select using (
+    owner_id = auth.uid()
+    or public.is_group_member(id)
+  );
 
 create policy "groups_insert_owner" on public.groups
   for insert with check (owner_id = auth.uid());
@@ -215,6 +218,9 @@ create policy "groups_update_owner_or_admin" on public.groups
         and role in ('admin', 'parent')
     )
   );
+
+create policy "groups_update_owner" on public.groups
+  for update using (owner_id = auth.uid());
 
 create policy "groups_delete_owner" on public.groups
   for delete using (owner_id = auth.uid());
