@@ -2711,6 +2711,23 @@
           return false;
         }
       }
+      for (const group of writableGroups) {
+        const cloudGroupId = cloudIdByLocalId[group.id];
+        if (!cloudGroupId) continue;
+        const keepExpenseIds = expenses
+          .filter(expense => expense.groupId === group.id)
+          .map(expense => String(expense.id));
+        const { error } = await supabaseClient.rpc("sync_group_expense_deletions", {
+          group_id_input: cloudGroupId,
+          keep_app_expense_ids: keepExpenseIds
+        });
+        if (error) {
+          cloudSyncInProgress = false;
+          if (!options.silent) showToast("支出刪除同步失敗");
+          renderCloudStatus();
+          return false;
+        }
+      }
       const statusRows = Object.entries(settlementStatus).map(([key, status]) => {
         const [groupId, fromId, toId, amount] = key.split(":");
         return cloudIdByLocalId[groupId] ? {
