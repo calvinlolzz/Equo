@@ -2791,12 +2791,11 @@
       }
       const token = makeInviteToken();
       const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
-      const { error } = await supabaseClient.from("group_invites").insert({
-        group_id: cloudGroupId,
-        token,
-        role: "member",
-        created_by: cloudUser.id,
-        expires_at: expiresAt
+      const { error } = await supabaseClient.rpc("create_group_invite", {
+        group_id_input: cloudGroupId,
+        token_input: token,
+        role_input: "member",
+        expires_at_input: expiresAt
       });
       if (error) {
         showToast("邀請連結建立失敗");

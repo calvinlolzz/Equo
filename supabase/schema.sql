@@ -597,6 +597,53 @@ create policy "group_invites_update_invitee_or_creator" on public.group_invites
     )
   );
 
+create or replace function public.create_group_invite(
+  group_id_input uuid,
+  token_input text,
+  role_input text,
+  expires_at_input timestamptz
+)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  if not exists (
+    select 1 from public.groups
+    where id = group_id_input
+      and owner_id = auth.uid()
+  ) and not exists (
+    select 1 from public.group_members
+    where group_id = group_id_input
+      and user_id = auth.uid()
+      and role in ('admin', 'parent')
+  ) then
+    raise exception 'permission_denied';
+  end if;
+
+  insert into public.group_invites (
+    group_id,
+    token,
+    role,
+    created_by,
+    expires_at
+  ) values (
+    group_id_input,
+    token_input,
+    coalesce(nullif(role_input, ''), 'member'),
+    auth.uid(),
+    expires_at_input
+  );
+
+  return token_input;
+end;
+$$;
+
 create or replace function public.accept_group_invite(
   invite_token text,
   member_id text,
@@ -665,6 +712,9 @@ begin
   return invite_row.group_id;
 end;
 $$;
+
+revoke all on function public.create_group_invite(uuid, text, text, timestamptz) from public;
+grant execute on function public.create_group_invite(uuid, text, text, timestamptz) to authenticated;
 
 revoke all on function public.accept_group_invite(text, text, text, text, text, text, text) from public;
 grant execute on function public.accept_group_invite(text, text, text, text, text, text, text) to authenticated;
