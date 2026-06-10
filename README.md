@@ -47,3 +47,7 @@ http://127.0.0.1:4173/index.html
 3. Supabase 作為多人測試資料庫
 
 詳細步驟請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 與 [docs/SUPABASE.md](docs/SUPABASE.md)。
+
+## 測試流程
+
+登入、同步、手機畫面與交付前檢查請看 [docs/TESTING.md](docs/TESTING.md)。

@@ -121,6 +121,19 @@
       margin-top: 2px;
     }
 
+    .password-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .password-row .soft-btn {
+      min-width: 64px;
+      height: 46px;
+      margin-bottom: 0;
+    }
+
     .status {
       display: flex;
       align-items: center;
@@ -775,6 +788,10 @@
       margin-top: 10px;
     }
 
+    .action-grid.three-actions {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .soft-btn, .mini-btn {
       border-radius: 16px;
       background: rgba(255,255,255,.58);
@@ -996,6 +1013,24 @@
       color: #101625;
     }
 
+    @media (max-width: 380px) {
+      .auth-form .auth-actions,
+      .action-grid,
+      .action-grid.three-actions,
+      .two,
+      .three {
+        grid-template-columns: 1fr;
+      }
+
+      .password-row {
+        grid-template-columns: 1fr;
+      }
+
+      .password-row .soft-btn {
+        width: 100%;
+      }
+    }
+
     @media (min-width: 760px) {
       .shell {
         padding-top: 26px;
@@ -1033,9 +1068,12 @@
         <label>Email
           <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
         </label>
-        <label>密碼
-          <input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="至少 6 碼" />
-        </label>
+        <div class="password-row">
+          <label>密碼
+            <input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="至少 6 碼" />
+          </label>
+          <button id="passwordToggle" class="soft-btn" type="button" onclick="togglePasswordVisibility()">顯示</button>
+        </div>
         <p id="authStatus" class="mini-note">使用 Email 可啟用 Supabase 雲端同步。</p>
         <div class="auth-actions">
           <button class="primary" type="submit">Email 登入</button>
@@ -1309,10 +1347,13 @@
             <div class="preview-row"><span>本機資料</span><strong id="localDataSummary">-</strong></div>
             <div class="preview-row"><span>雲端備份</span><strong id="cloudBackupSummary">尚未檢查</strong></div>
           </div>
-          <div class="action-grid">
+          <div class="action-grid three-actions">
             <button id="syncCloudButton" class="soft-btn" type="button" onclick="syncCloudSnapshot()">同步到雲端</button>
             <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">從雲端還原</button>
             <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">檢查雲端</button>
+          </div>
+          <div class="action-grid">
+            <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">執行同步自檢</button>
           </div>
         </div>
         <div class="input-card">
@@ -1867,6 +1908,7 @@
       const syncButton = document.getElementById("syncCloudButton");
       const restoreButton = document.getElementById("restoreCloudButton");
       const checkButton = document.getElementById("checkCloudButton");
+      const selfTestButton = document.getElementById("selfTestButton");
       const localSummary = document.getElementById("localDataSummary");
       const backupSummary = document.getElementById("cloudBackupSummary");
       const authStatus = document.getElementById("authStatus");
@@ -1886,6 +1928,7 @@
         if (syncButton) syncButton.disabled = cloudSyncInProgress;
         if (restoreButton) restoreButton.disabled = cloudSyncInProgress;
         if (checkButton) checkButton.disabled = cloudSyncInProgress;
+        if (selfTestButton) selfTestButton.disabled = cloudSyncInProgress;
       } else if (cloudConfig.configured) {
         label.textContent = "Supabase 已設定 · 登入後可同步資料";
         pill.textContent = "可登入";
@@ -1894,6 +1937,7 @@
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
+        if (selfTestButton) selfTestButton.disabled = false;
       } else {
         label.textContent = "本機模式 · 尚未連接 Supabase";
         pill.textContent = "本機";
@@ -1902,6 +1946,7 @@
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
+        if (selfTestButton) selfTestButton.disabled = false;
       }
     }
 
@@ -1925,6 +1970,15 @@
       } catch {
         return "剛剛";
       }
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById("authPassword");
+      const button = document.getElementById("passwordToggle");
+      if (!input || !button) return;
+      const visible = input.type === "text";
+      input.type = visible ? "password" : "text";
+      button.textContent = visible ? "顯示" : "隱藏";
     }
 
     function refreshExpenseGroupOptions() {
@@ -2074,6 +2128,22 @@
       renderCloudStatus();
       if (!options.silent) showToast(payload ? "已檢查雲端備份" : "目前沒有雲端備份");
       return payload;
+    }
+
+    async function runSyncSelfTest() {
+      const results = [];
+      results.push(cloudConfig.configured ? "Supabase 設定正常" : "Supabase 尚未設定");
+      results.push(cloudUser ? "已登入雲端帳號" : "尚未登入雲端帳號");
+      results.push(`本機：${localDataSummary()}`);
+      if (cloudUser) {
+        const payload = await checkCloudSnapshot({ silent: true });
+        results.push(`雲端：${describeSnapshot(payload)}`);
+      } else {
+        results.push("雲端：登入後才能檢查");
+      }
+      const meta = document.getElementById("cloudSyncMeta");
+      if (meta) meta.textContent = results.join(" · ");
+      showToast("同步自檢完成");
     }
 
     async function restoreCloudSnapshot() {
