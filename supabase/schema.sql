@@ -166,6 +166,86 @@ alter table public.recurring_bills enable row level security;
 alter table public.notifications enable row level security;
 alter table public.user_snapshots enable row level security;
 
+create or replace function public.ensure_profile(
+  display_name_input text,
+  avatar_url_input text,
+  default_currency_input text default 'TWD'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  insert into public.profiles (id, display_name, avatar_url, default_currency, updated_at)
+  values (
+    auth.uid(),
+    coalesce(nullif(display_name_input, ''), 'Equo 使用者'),
+    avatar_url_input,
+    coalesce(nullif(default_currency_input, ''), 'TWD'),
+    now()
+  )
+  on conflict (id) do update set
+    display_name = excluded.display_name,
+    avatar_url = excluded.avatar_url,
+    default_currency = excluded.default_currency,
+    updated_at = now();
+
+  return auth.uid();
+end;
+$$;
+
+create or replace function public.upsert_owned_group(
+  app_group_id_input text,
+  name_input text,
+  subtitle_input text,
+  base_currency_input text,
+  budget_input numeric
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  group_uuid uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  insert into public.groups (app_group_id, name, subtitle, base_currency, budget, owner_id, updated_at)
+  values (
+    app_group_id_input,
+    coalesce(nullif(name_input, ''), '未命名群組'),
+    subtitle_input,
+    coalesce(nullif(base_currency_input, ''), 'TWD'),
+    coalesce(budget_input, 0),
+    auth.uid(),
+    now()
+  )
+  on conflict (owner_id, app_group_id) where app_group_id is not null do update set
+    name = excluded.name,
+    subtitle = excluded.subtitle,
+    base_currency = excluded.base_currency,
+    budget = excluded.budget,
+    updated_at = now()
+  returning id into group_uuid;
+
+  return group_uuid;
+end;
+$$;
+
+revoke all on function public.ensure_profile(text, text, text) from public;
+grant execute on function public.ensure_profile(text, text, text) to authenticated;
+
+revoke all on function public.upsert_owned_group(text, text, text, text, numeric) from public;
+grant execute on function public.upsert_owned_group(text, text, text, text, numeric) to authenticated;
+
 create unique index if not exists groups_owner_app_group_id_key
   on public.groups(owner_id, app_group_id)
   where app_group_id is not null;
