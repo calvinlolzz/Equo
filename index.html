@@ -2612,13 +2612,6 @@
       cloudSyncInProgress = true;
       renderCloudStatus();
       const ownedGroups = groups.filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id);
-      const { error: deleteError } = await supabaseClient.from("groups").delete().eq("owner_id", cloudUser.id);
-      if (deleteError) {
-        cloudSyncInProgress = false;
-        if (!options.silent) showToast("雲端同步失敗，請稍後再試");
-        renderCloudStatus();
-        return false;
-      }
       if (!ownedGroups.length) {
         cloudLastSyncedAt = new Date().toISOString();
         localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
@@ -2627,30 +2620,86 @@
         return true;
       }
 
-      const { data: insertedGroups, error: groupError } = await supabaseClient
-        .from("groups")
-        .insert(ownedGroups.map(cloudGroupPayload))
-        .select("id, app_group_id");
-      if (groupError) {
-        cloudSyncInProgress = false;
-        if (!options.silent) showToast("群組同步失敗");
-        renderCloudStatus();
-        return false;
+      const cloudIdByLocalId = {};
+      for (const group of ownedGroups) {
+        const payload = cloudGroupPayload(group);
+        const existing = group.cloudGroupId
+          ? { data: { id: group.cloudGroupId }, error: null }
+          : await supabaseClient
+            .from("groups")
+            .select("id")
+            .eq("owner_id", cloudUser.id)
+            .eq("app_group_id", group.id)
+            .maybeSingle();
+        if (existing.error) {
+          cloudSyncInProgress = false;
+          if (!options.silent) showToast("群組同步失敗");
+          renderCloudStatus();
+          return false;
+        }
+        if (existing.data?.id) {
+          const { error } = await supabaseClient.from("groups").update(payload).eq("id", existing.data.id);
+          if (error) {
+            cloudSyncInProgress = false;
+            if (!options.silent) showToast("群組同步失敗");
+            renderCloudStatus();
+            return false;
+          }
+          cloudIdByLocalId[group.id] = existing.data.id;
+          group.cloudGroupId = existing.data.id;
+          group.cloudOwnerId = cloudUser.id;
+        } else {
+          const { data, error } = await supabaseClient.from("groups").insert(payload).select("id").single();
+          if (error) {
+            cloudSyncInProgress = false;
+            if (!options.silent) showToast("群組同步失敗");
+            renderCloudStatus();
+            return false;
+          }
+          cloudIdByLocalId[group.id] = data.id;
+          group.cloudGroupId = data.id;
+          group.cloudOwnerId = cloudUser.id;
+        }
       }
-      const cloudIdByLocalId = Object.fromEntries(insertedGroups.map(row => [row.app_group_id, row.id]));
       const memberRows = ownedGroups.flatMap(group => group.members.map(memberId =>
         cloudMemberPayload(cloudIdByLocalId[group.id], memberId, group.roles?.[memberId] || (memberId === currentUserId ? "擁有者" : "成員"))
       ));
-      if (memberRows.length) {
-        const { error } = await supabaseClient.from("group_members").insert(memberRows);
-        if (error) showToast("成員同步失敗");
+      for (const member of memberRows) {
+        const { data: existing } = await supabaseClient
+          .from("group_members")
+          .select("id")
+          .eq("group_id", member.group_id)
+          .eq("app_member_id", member.app_member_id)
+          .maybeSingle();
+        const { error } = existing?.id
+          ? await supabaseClient.from("group_members").update(member).eq("id", existing.id)
+          : await supabaseClient.from("group_members").insert(member);
+        if (error) {
+          cloudSyncInProgress = false;
+          if (!options.silent) showToast("成員同步失敗");
+          renderCloudStatus();
+          return false;
+        }
       }
       const expenseRows = expenses
         .filter(expense => cloudIdByLocalId[expense.groupId])
         .map(expense => cloudExpensePayload(expense, cloudIdByLocalId[expense.groupId]));
-      if (expenseRows.length) {
-        const { error } = await supabaseClient.from("expenses").insert(expenseRows);
-        if (error) showToast("支出同步失敗");
+      for (const expense of expenseRows) {
+        const { data: existing } = await supabaseClient
+          .from("expenses")
+          .select("id")
+          .eq("group_id", expense.group_id)
+          .eq("app_expense_id", expense.app_expense_id)
+          .maybeSingle();
+        const { error } = existing?.id
+          ? await supabaseClient.from("expenses").update(expense).eq("id", existing.id)
+          : await supabaseClient.from("expenses").insert(expense);
+        if (error) {
+          cloudSyncInProgress = false;
+          if (!options.silent) showToast("支出同步失敗");
+          renderCloudStatus();
+          return false;
+        }
       }
       const statusRows = Object.entries(settlementStatus).map(([key, status]) => {
         const [groupId, fromId, toId, amount] = key.split(":");
@@ -2664,7 +2713,12 @@
           updated_by: cloudUser.id
         } : null;
       }).filter(Boolean);
-      if (statusRows.length) await supabaseClient.from("settlement_statuses").insert(statusRows);
+      if (statusRows.length) {
+        const { error } = await supabaseClient
+          .from("settlement_statuses")
+          .upsert(statusRows, { onConflict: "group_id,settlement_key" });
+        if (error && !options.silent) showToast("結算狀態同步失敗");
+      }
       cloudLastSyncedAt = new Date().toISOString();
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
       cloudBackupSummary = `${groups.length} 群組 · ${expenses.length} 支出`;
