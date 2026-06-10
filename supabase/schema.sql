@@ -11,7 +11,9 @@ create table if not exists public.profiles (
 
 create table if not exists public.groups (
   id uuid primary key default gen_random_uuid(),
+  app_group_id text,
   name text not null,
+  subtitle text,
   image_url text,
   base_currency text not null default 'TWD',
   budget numeric(12, 2) not null default 0,
@@ -24,7 +26,13 @@ create table if not exists public.groups (
 create table if not exists public.group_members (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
-  user_id uuid not null references public.profiles(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  app_member_id text,
+  display_name text,
+  initial text,
+  avatar text,
+  avatar_color text,
+  photo_url text,
   role text not null default 'member' check (role in ('admin', 'parent', 'child', 'member', 'guest')),
   joined_at timestamptz not null default now(),
   unique (group_id, user_id)
@@ -33,15 +41,19 @@ create table if not exists public.group_members (
 create table if not exists public.expenses (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
+  app_expense_id text,
   title text not null,
   amount numeric(12, 2) not null check (amount > 0),
   currency text not null default 'TWD',
   exchange_rate numeric(12, 6) not null default 1,
   payer_id uuid not null references public.profiles(id),
+  payer_member_id text,
+  participant_member_ids text[] not null default '{}',
   category text not null default 'other',
   note text,
   receipt_image_url text,
   expense_date date not null default current_date,
+  date_label text,
   created_by uuid not null references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -70,6 +82,19 @@ create table if not exists public.settlements (
   confirmed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.settlement_statuses (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  settlement_key text not null,
+  from_member_id text not null,
+  to_member_id text not null,
+  amount numeric(12, 2) not null default 0,
+  status text not null default 'paid' check (status in ('paid', 'confirmed', 'cancelled')),
+  updated_by uuid references public.profiles(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  unique (group_id, settlement_key)
 );
 
 create table if not exists public.payment_records (
@@ -122,10 +147,23 @@ alter table public.group_members enable row level security;
 alter table public.expenses enable row level security;
 alter table public.expense_splits enable row level security;
 alter table public.settlements enable row level security;
+alter table public.settlement_statuses enable row level security;
 alter table public.payment_records enable row level security;
 alter table public.recurring_bills enable row level security;
 alter table public.notifications enable row level security;
 alter table public.user_snapshots enable row level security;
+
+create unique index if not exists groups_owner_app_group_id_key
+  on public.groups(owner_id, app_group_id)
+  where app_group_id is not null;
+
+create unique index if not exists group_members_group_app_member_id_key
+  on public.group_members(group_id, app_member_id)
+  where app_member_id is not null;
+
+create unique index if not exists expenses_group_app_expense_id_key
+  on public.expenses(group_id, app_expense_id)
+  where app_expense_id is not null;
 
 create or replace function public.is_group_member(target_group_id uuid)
 returns boolean
@@ -164,6 +202,9 @@ create policy "groups_update_owner_or_admin" on public.groups
         and role in ('admin', 'parent')
     )
   );
+
+create policy "groups_delete_owner" on public.groups
+  for delete using (owner_id = auth.uid());
 
 create policy "members_select_group_member" on public.group_members
   for select using (public.is_group_member(group_id));
@@ -268,6 +309,15 @@ create policy "settlements_insert_group_member" on public.settlements
   for insert with check (public.is_group_member(group_id));
 
 create policy "settlements_update_group_member" on public.settlements
+  for update using (public.is_group_member(group_id));
+
+create policy "settlement_statuses_select_group_member" on public.settlement_statuses
+  for select using (public.is_group_member(group_id));
+
+create policy "settlement_statuses_insert_group_member" on public.settlement_statuses
+  for insert with check (public.is_group_member(group_id));
+
+create policy "settlement_statuses_update_group_member" on public.settlement_statuses
   for update using (public.is_group_member(group_id));
 
 create policy "payments_select_group_member" on public.payment_records

@@ -35,6 +35,7 @@ supabase/schema.sql
 - expenses
 - expense_splits
 - settlements
+- settlement_statuses
 - payment_records
 - recurring_bills
 - notifications
@@ -59,18 +60,29 @@ SUPABASE_ANON_KEY=你的 anon public key
 
 重新部署後，App 的「我的 > 雲端同步」會從「本機」變成「雲端」。
 
+## 目前資料流
+
+已登入雲端帳號後，App 會使用正式資料表保存資料：
+
+- `profiles`：使用者名稱、頭像與預設幣別。
+- `groups`：群組名稱、幣別、預算與 App 內群組 ID。
+- `group_members`：群組成員、角色、顯示名稱與頭像。成員可以先是未註冊的家人/朋友。
+- `expenses`：支出、付款人、參與分攤成員、分類、幣別與備註。
+- `settlement_statuses`：目前 App 內的付款/收款確認狀態。
+
+新登入帳號如果沒有雲端資料，會看到乾淨空狀態，不會自動載入展示資料。展示資料只保留在本機試用模式。
+
 ## 後續開發順序
 
 1. Auth：把原型登入替換成 Supabase Auth。
 2. Profiles：登入後建立/讀取 profiles。
-3. Groups：群組建立寫入 Supabase。
-4. Members：邀請成員與角色權限寫入 group_members。
-5. Expenses：支出與分攤寫入 expenses / expense_splits。
-6. Settlements：結算結果寫入 settlements。
+3. Groups：群組建立寫入 Supabase。已完成第一版。
+4. Members：成員與角色權限寫入 group_members。已完成第一版，正式邀請流程待補。
+5. Expenses：支出與分攤寫入 expenses。已完成第一版。
+6. Settlements：結算狀態寫入 settlement_statuses。已完成第一版。
 7. Payments：付款紀錄寫入 payment_records。
 8. Notifications：待辦提醒寫入 notifications。
 
 ## 注意
 
 anon key 可以放前端，但 service role key 絕對不能放前端或 GitHub。
-

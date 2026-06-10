@@ -1781,6 +1781,7 @@
     let cloudSyncTimer = null;
     let isApplyingCloudSnapshot = false;
     let cloudSyncInProgress = false;
+    let cloudTablesReady = false;
     let cloudLastSyncedAt = localStorage.getItem("floatpay-cloud-last-sync") || "";
     let cloudBackupCheckedAt = "";
     let cloudBackupSummary = "尚未檢查";
@@ -1955,7 +1956,7 @@
       localStorage.removeItem("floatpay-auth");
       syncCurrentUserFromCloud({ persist: true });
       await ensureCloudProfile();
-      await createInitialCloudSnapshot();
+      await loadCloudTables();
       applyAuthState();
       setAuthStatus("Email 登入成功，已啟用雲端同步。");
       showToast("Email 登入成功");
@@ -1990,7 +1991,7 @@
         localStorage.removeItem("floatpay-auth");
         syncCurrentUserFromCloud({ persist: true });
         await ensureCloudProfile();
-        await createInitialCloudSnapshot();
+        await loadCloudTables();
         applyAuthState();
         setAuthStatus("帳號已建立並登入，已啟用雲端同步。");
         showToast("帳號已建立並登入");
@@ -2055,8 +2056,7 @@
           localStorage.removeItem("floatpay-auth");
           syncCurrentUserFromCloud({ persist: true });
           await ensureCloudProfile();
-          await createInitialCloudSnapshot();
-          await checkCloudSnapshot({ silent: true });
+          await loadCloudTables();
         }
         applyAuthState();
       });
@@ -2064,7 +2064,7 @@
         localStorage.removeItem("floatpay-auth");
         syncCurrentUserFromCloud({ persist: true });
         await ensureCloudProfile();
-        await checkCloudSnapshot({ silent: true });
+        await loadCloudTables();
       }
       applyAuthState();
     }
@@ -2284,6 +2284,259 @@
       return true;
     }
 
+    function cloudBaseUser() {
+      const identity = cloudIdentity();
+      const fallback = defaultUsers[currentUserId];
+      return {
+        ...fallback,
+        ...(users[currentUserId] || {}),
+        name: identity?.displayName || users[currentUserId]?.name || "我",
+        email: identity?.email || users[currentUserId]?.email || "",
+        photoUrl: identity?.photoUrl || users[currentUserId]?.photoUrl || "",
+        avatarSource: identity?.photoUrl ? "account" : users[currentUserId]?.avatarSource || ""
+      };
+    }
+
+    function resetToEmptyCloudData() {
+      users = { [currentUserId]: cloudBaseUser() };
+      groups = [];
+      expenses = [];
+      settlementStatus = {};
+      reminderStatus = {};
+      recurringStatus = {};
+      paymentRecords = [];
+      activeGroupId = "";
+      cloudBackupSummary = "0 群組 · 0 支出 · 0 付款";
+      localStorage.setItem("floatpay-users", JSON.stringify(users));
+      localStorage.setItem("floatpay-groups", JSON.stringify(groups));
+      localStorage.setItem("floatpay-expenses", JSON.stringify(expenses));
+      localStorage.setItem("floatpay-settlements", JSON.stringify(settlementStatus));
+      localStorage.setItem("floatpay-reminders", JSON.stringify(reminderStatus));
+      localStorage.setItem("floatpay-recurring", JSON.stringify(recurringStatus));
+      localStorage.setItem("floatpay-payments", JSON.stringify(paymentRecords));
+    }
+
+    function roleToDb(role) {
+      const map = { "擁有者": "admin", "管理員": "admin", "家長": "parent", "子女": "child", "訪客": "guest", "成員": "member" };
+      return map[role] || "member";
+    }
+
+    function roleFromDb(role, isSelf = false) {
+      if (isSelf) return "擁有者";
+      const map = { admin: "管理員", parent: "家長", child: "子女", guest: "訪客", member: "成員" };
+      return map[role] || "成員";
+    }
+
+    function cloudGroupPayload(group) {
+      return {
+        app_group_id: group.id,
+        name: group.name,
+        subtitle: group.subtitle || `${group.members?.length || 0} 位成員`,
+        base_currency: group.currency || "TWD",
+        budget: Number(group.budget || 0),
+        owner_id: cloudUser.id
+      };
+    }
+
+    function cloudMemberPayload(groupId, memberId, role) {
+      const user = users[memberId] || {};
+      return {
+        group_id: groupId,
+        app_member_id: memberId,
+        user_id: memberId === currentUserId ? cloudUser.id : null,
+        role: roleToDb(role),
+        display_name: user.name || "未命名成員",
+        initial: user.initial || (user.name || "?").slice(0, 1),
+        avatar: user.avatar || "",
+        avatar_color: user.avatarColor || "blue",
+        photo_url: user.photoUrl || ""
+      };
+    }
+
+    function cloudExpensePayload(expense, cloudGroupId) {
+      return {
+        group_id: cloudGroupId,
+        app_expense_id: String(expense.id),
+        title: expense.title,
+        amount: Number(expense.amount || 0),
+        currency: expense.currency || "TWD",
+        exchange_rate: exchangeRates[expense.currency || "TWD"] || 1,
+        payer_id: cloudUser.id,
+        payer_member_id: expense.payerId || currentUserId,
+        participant_member_ids: expense.participants || [currentUserId],
+        category: expense.category || "其他",
+        note: expense.note || "",
+        date_label: expense.date || "今天",
+        created_by: cloudUser.id
+      };
+    }
+
+    async function loadCloudTables() {
+      if (!supabaseClient || !cloudUser) return false;
+      cloudTablesReady = false;
+      renderCloudStatus();
+      const { data: groupRows, error: groupError } = await supabaseClient
+        .from("groups")
+        .select("id, app_group_id, name, subtitle, base_currency, budget, created_at")
+        .order("created_at", { ascending: true });
+      if (groupError) {
+        showToast("雲端資料讀取失敗");
+        return false;
+      }
+      if (!groupRows?.length) {
+        resetToEmptyCloudData();
+        cloudTablesReady = true;
+        renderAll();
+        return true;
+      }
+
+      const cloudIds = groupRows.map(row => row.id);
+      const [{ data: memberRows }, { data: expenseRows }, { data: statusRows }] = await Promise.all([
+        supabaseClient.from("group_members").select("group_id, app_member_id, user_id, role, display_name, initial, avatar, avatar_color, photo_url").in("group_id", cloudIds),
+        supabaseClient.from("expenses").select("group_id, app_expense_id, title, amount, currency, payer_member_id, participant_member_ids, category, note, date_label, created_at").in("group_id", cloudIds).order("created_at", { ascending: true }),
+        supabaseClient.from("settlement_statuses").select("group_id, settlement_key, status").in("group_id", cloudIds)
+      ]);
+
+      const groupIdMap = Object.fromEntries(groupRows.map(row => [row.id, row.app_group_id || row.id]));
+      const nextUsers = { [currentUserId]: cloudBaseUser() };
+      (memberRows || []).forEach(row => {
+        const memberId = row.app_member_id || (row.user_id === cloudUser.id ? currentUserId : `u${row.id}`);
+        nextUsers[memberId] = {
+          name: row.user_id === cloudUser.id ? nextUsers[currentUserId].name : row.display_name || "未命名成員",
+          email: row.user_id === cloudUser.id ? nextUsers[currentUserId].email : "",
+          initial: row.initial || (row.display_name || "?").slice(0, 1),
+          avatar: row.avatar || "🙂",
+          avatarColor: row.avatar_color || "blue",
+          photoUrl: row.user_id === cloudUser.id ? nextUsers[currentUserId].photoUrl : row.photo_url || "",
+          avatarSource: row.user_id === cloudUser.id ? nextUsers[currentUserId].avatarSource : ""
+        };
+      });
+
+      const membersByGroup = {};
+      const rolesByGroup = {};
+      (memberRows || []).forEach(row => {
+        const localGroupId = groupIdMap[row.group_id];
+        const memberId = row.app_member_id || (row.user_id === cloudUser.id ? currentUserId : "");
+        if (!memberId) return;
+        membersByGroup[localGroupId] = [...(membersByGroup[localGroupId] || []), memberId];
+        rolesByGroup[localGroupId] = { ...(rolesByGroup[localGroupId] || {}), [memberId]: roleFromDb(row.role, memberId === currentUserId) };
+      });
+
+      users = normalizeUsers(nextUsers);
+      groups = groupRows.map(row => {
+        const id = row.app_group_id || row.id;
+        const members = membersByGroup[id]?.length ? membersByGroup[id] : [currentUserId];
+        return {
+          id,
+          name: row.name,
+          currency: row.base_currency || "TWD",
+          subtitle: row.subtitle || `${members.length} 位成員`,
+          budget: Number(row.budget || 0),
+          members,
+          roles: rolesByGroup[id] || { [currentUserId]: "擁有者" }
+        };
+      });
+      expenses = (expenseRows || []).map(row => ({
+        id: row.app_expense_id || row.id,
+        groupId: groupIdMap[row.group_id],
+        title: row.title,
+        amount: Number(row.amount || 0),
+        currency: row.currency || "TWD",
+        payerId: row.payer_member_id || currentUserId,
+        participants: row.participant_member_ids?.length ? row.participant_member_ids : [currentUserId],
+        category: row.category || "其他",
+        note: row.note || "",
+        date: row.date_label || "今天"
+      }));
+      settlementStatus = {};
+      (statusRows || []).forEach(row => {
+        settlementStatus[row.settlement_key] = row.status;
+      });
+      activeGroupId = groups[0]?.id || "";
+      cloudTablesReady = true;
+      saveData();
+      renderAll();
+      return true;
+    }
+
+    async function syncCloudTables(options = {}) {
+      if (!supabaseClient || !cloudUser || isApplyingCloudSnapshot) return false;
+      cloudSyncInProgress = true;
+      renderCloudStatus();
+      const { error: deleteError } = await supabaseClient.from("groups").delete().eq("owner_id", cloudUser.id);
+      if (deleteError) {
+        cloudSyncInProgress = false;
+        if (!options.silent) showToast("雲端同步失敗，請稍後再試");
+        renderCloudStatus();
+        return false;
+      }
+      if (!groups.length) {
+        cloudLastSyncedAt = new Date().toISOString();
+        localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
+        cloudSyncInProgress = false;
+        renderCloudStatus();
+        return true;
+      }
+
+      const { data: insertedGroups, error: groupError } = await supabaseClient
+        .from("groups")
+        .insert(groups.map(cloudGroupPayload))
+        .select("id, app_group_id");
+      if (groupError) {
+        cloudSyncInProgress = false;
+        if (!options.silent) showToast("群組同步失敗");
+        renderCloudStatus();
+        return false;
+      }
+      const cloudIdByLocalId = Object.fromEntries(insertedGroups.map(row => [row.app_group_id, row.id]));
+      const memberRows = groups.flatMap(group => group.members.map(memberId =>
+        cloudMemberPayload(cloudIdByLocalId[group.id], memberId, group.roles?.[memberId] || (memberId === currentUserId ? "擁有者" : "成員"))
+      ));
+      if (memberRows.length) {
+        const { error } = await supabaseClient.from("group_members").insert(memberRows);
+        if (error) showToast("成員同步失敗");
+      }
+      const expenseRows = expenses
+        .filter(expense => cloudIdByLocalId[expense.groupId])
+        .map(expense => cloudExpensePayload(expense, cloudIdByLocalId[expense.groupId]));
+      if (expenseRows.length) {
+        const { error } = await supabaseClient.from("expenses").insert(expenseRows);
+        if (error) showToast("支出同步失敗");
+      }
+      const statusRows = Object.entries(settlementStatus).map(([key, status]) => {
+        const [groupId, fromId, toId, amount] = key.split(":");
+        return cloudIdByLocalId[groupId] ? {
+          group_id: cloudIdByLocalId[groupId],
+          settlement_key: key,
+          from_member_id: fromId,
+          to_member_id: toId,
+          amount: Number(amount || 0),
+          status: status === "confirmed" ? "confirmed" : "paid",
+          updated_by: cloudUser.id
+        } : null;
+      }).filter(Boolean);
+      if (statusRows.length) await supabaseClient.from("settlement_statuses").insert(statusRows);
+      cloudLastSyncedAt = new Date().toISOString();
+      localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
+      cloudBackupSummary = `${groups.length} 群組 · ${expenses.length} 支出`;
+      cloudBackupCheckedAt = cloudLastSyncedAt;
+      cloudSyncInProgress = false;
+      if (!options.silent) showToast("資料已同步到雲端");
+      renderCloudStatus();
+      return true;
+    }
+
+    function renderAll() {
+      refreshExpenseGroupOptions();
+      renderAvatars();
+      renderHome();
+      renderGroup();
+      renderStats();
+      renderPayments();
+      syncPayerOptions();
+      updatePreview();
+    }
+
     async function ensureCloudProfile() {
       if (!supabaseClient || !cloudUser) return;
       const identity = cloudIdentity();
@@ -2297,17 +2550,24 @@
 
     async function createInitialCloudSnapshot() {
       if (!supabaseClient || !cloudUser) return;
-      const snapshot = await fetchCloudSnapshot();
-      if (!snapshot) await syncCloudSnapshot({ silent: true });
+      if (!cloudTablesReady) await loadCloudTables();
     }
 
     function scheduleCloudSync() {
       if (isApplyingCloudSnapshot || !supabaseClient || !cloudUser) return;
       clearTimeout(cloudSyncTimer);
-      cloudSyncTimer = setTimeout(() => syncCloudSnapshot({ silent: true }), 900);
+      cloudSyncTimer = setTimeout(() => syncCloudTables({ silent: true }), 900);
     }
 
     async function syncCloudSnapshot(options = {}) {
+      if (!supabaseClient || !cloudUser) {
+        if (!options.silent) showToast("請先用 Email 登入");
+        return false;
+      }
+      return syncCloudTables(options);
+    }
+
+    async function syncCloudSnapshotLegacy(options = {}) {
       if (!supabaseClient || !cloudUser) {
         if (!options.silent) showToast("請先用 Email 登入");
         return false;
@@ -2382,12 +2642,13 @@
       }
       cloudSyncInProgress = true;
       renderCloudStatus();
-      const payload = await fetchCloudSnapshot();
-      cloudBackupSummary = describeSnapshot(payload);
+      await loadCloudTables();
+      const payload = buildCloudSnapshot();
+      cloudBackupSummary = localDataSummary();
       cloudBackupCheckedAt = new Date().toISOString();
       cloudSyncInProgress = false;
       renderCloudStatus();
-      if (!options.silent) showToast(payload ? "已檢查雲端備份" : "目前沒有雲端備份");
+      if (!options.silent) showToast(groups.length ? "已檢查雲端資料" : "目前沒有雲端群組");
       return payload;
     }
 
@@ -2414,28 +2675,16 @@
       }
       cloudSyncInProgress = true;
       renderCloudStatus();
-      const payload = await fetchCloudSnapshot();
-      if (!payload) {
-        cloudSyncInProgress = false;
-        cloudBackupSummary = "沒有備份";
-        cloudBackupCheckedAt = new Date().toISOString();
-        renderCloudStatus();
-        showToast("目前沒有可還原的雲端資料");
-        return;
-      }
+      await loadCloudTables();
+      const payload = buildCloudSnapshot();
       cloudSyncInProgress = false;
-      cloudBackupSummary = describeSnapshot(payload);
+      cloudBackupSummary = localDataSummary();
       cloudBackupCheckedAt = new Date().toISOString();
       renderCloudStatus();
-      if (!confirm(`要用雲端備份覆蓋目前此裝置資料嗎？\n\n雲端：${cloudBackupSummary}\n此裝置：${localDataSummary()}`)) return;
-      cloudSyncInProgress = true;
-      renderCloudStatus();
-      applyCloudSnapshot(payload);
       cloudLastSyncedAt = new Date().toISOString();
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
-      cloudSyncInProgress = false;
       renderCloudStatus();
-      showToast("已從雲端還原資料");
+      showToast(groups.length ? "已從雲端載入資料" : "目前沒有雲端群組");
     }
 
     function backupData() {
@@ -2456,19 +2705,21 @@
     function resetLocalData() {
       if (!confirm("確定要重設此裝置資料嗎？這會清除群組、支出、付款狀態與提醒。")) return;
       ["floatpay-users", "floatpay-groups", "floatpay-expenses", "floatpay-settlements", "floatpay-reminders", "floatpay-recurring", "floatpay-payments"].forEach(key => localStorage.removeItem(key));
-      users = structuredClone(defaultUsers);
-      groups = structuredClone(defaultGroups);
-      expenses = structuredClone(defaultExpenses);
-      settlementStatus = {};
-      reminderStatus = {};
-      recurringStatus = {};
-      paymentRecords = [];
-      activeGroupId = "g1";
-      saveData();
-      renderHome();
-      renderGroup();
-      renderStats();
-      renderPayments();
+      if (cloudUser) {
+        resetToEmptyCloudData();
+        syncCloudTables({ silent: true });
+      } else {
+        users = structuredClone(defaultUsers);
+        groups = structuredClone(defaultGroups);
+        expenses = structuredClone(defaultExpenses);
+        settlementStatus = {};
+        reminderStatus = {};
+        recurringStatus = {};
+        paymentRecords = [];
+        activeGroupId = "g1";
+        saveData();
+      }
+      renderAll();
       showScreen("home");
       showToast("此裝置資料已重設");
     }
@@ -2503,6 +2754,7 @@
 
     function balances(groupId) {
       const group = getGroup(groupId);
+      if (!group) return {};
       const result = Object.fromEntries(group.members.map(id => [id, 0]));
       groupExpenses(groupId).forEach(expense => {
         const amount = baseAmount(expense);
@@ -2563,7 +2815,7 @@
       document.getElementById("payable").textContent = money(payable);
       document.getElementById("receivable").textContent = money(receivable);
 
-      document.getElementById("groups").innerHTML = groups.map((group, index) => {
+      document.getElementById("groups").innerHTML = groups.length ? groups.map((group, index) => {
         const mine = Math.round(balances(group.id)[currentUserId] || 0);
         const statusClass = mine >= 0 ? "positive" : "negative";
         const statusText = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
@@ -2575,10 +2827,12 @@
           </div>
           <div class="amount ${statusClass}">${statusText}</div>
         </button>`;
-      }).join("");
+      }).join("") : `<div class="empty">尚未建立群組。先新增一個分帳群組，就能開始記錄支出。</div>`;
 
       renderReminders();
-      document.getElementById("recentExpenses").innerHTML = expenses.slice().reverse().slice(0, 4).map(expenseRow).join("");
+      document.getElementById("recentExpenses").innerHTML = expenses.length
+        ? expenses.slice().reverse().slice(0, 4).map(expenseRow).join("")
+        : `<div class="empty">尚未有支出紀錄</div>`;
       renderStats();
     }
 
@@ -2592,7 +2846,7 @@
           action: row.from === currentUserId ? "前往付款" : "提醒對方",
           groupId: group.id
         })));
-      return [
+      const fixedReminders = groups.length ? [
         ...settlementItems,
         {
           id: "recurring:g3:this-month",
@@ -2608,7 +2862,8 @@
           action: "前往匯出",
           groupId: null
         }
-      ].filter(item => !reminderStatus[item.id]);
+      ] : [];
+      return fixedReminders.filter(item => !reminderStatus[item.id]);
     }
 
     function renderReminders() {
@@ -2661,6 +2916,7 @@
 
     function expenseRow(expense) {
       const group = getGroup(expense.groupId);
+      if (!group) return "";
       const converted = baseAmount(expense);
       const mine = expense.participants.includes(currentUserId)
         ? (expense.payerId === currentUserId ? converted - converted / expense.participants.length : -converted / expense.participants.length)
@@ -2668,7 +2924,7 @@
       const cls = mine >= 0 ? "positive" : "negative";
       const label = mine >= 0 ? "+" + money(mine) : "-" + money(Math.abs(mine));
       const currencyNote = (expense.currency || "TWD") === group.currency ? "" : ` · ${formatCurrency(expense.amount, expense.currency)} ≈ ${money(converted)}`;
-      return `<button class="expense-row" type="button" onclick="openExpenseSheet(${expense.id})">
+      return `<button class="expense-row" type="button" onclick="openExpenseSheet('${expense.id}')">
         <div class="category">${categoryIcon[expense.category] || categoryIcon["其他"]}</div>
         <div class="expense-main">
           <strong>${expense.title}</strong>
@@ -2680,6 +2936,22 @@
 
     function renderGroup() {
       const group = getGroup(activeGroupId);
+      if (!group) {
+        document.getElementById("groupTitle").textContent = "尚未建立群組";
+        document.getElementById("groupSubtitle").textContent = "建立第一個群組後，就能開始分帳。";
+        document.getElementById("groupCurrency").textContent = "TWD";
+        document.getElementById("groupSpent").textContent = money(0);
+        document.getElementById("groupMine").textContent = money(0);
+        document.getElementById("memberStack").innerHTML = avatarHtml(currentUserId);
+        document.getElementById("groupExpenses").innerHTML = `<div class="empty">目前沒有群組支出</div>`;
+        document.getElementById("settlements").innerHTML = `<div class="empty">目前不需要結算</div>`;
+        document.getElementById("members").innerHTML = `<div class="empty">新增群組後可加入成員</div>`;
+        document.getElementById("groupBudget").innerHTML = `<div class="empty">尚未有群組分析</div>`;
+        document.getElementById("groupCategoryStats").innerHTML = `<div class="empty">尚未有分類資料</div>`;
+        document.getElementById("groupMemberStats").innerHTML = `<div class="empty">尚未有成員資料</div>`;
+        updateFilterSummary(0, 0);
+        return;
+      }
       const b = balances(activeGroupId);
       const mine = Math.round(b[currentUserId] || 0);
       document.getElementById("groupTitle").textContent = group.name;
@@ -2900,6 +3172,11 @@
 
     function openAddSheet() {
       if (!requirePermission("edit")) return;
+      if (!groups.length) {
+        showToast("請先建立群組");
+        openGroupSheet();
+        return;
+      }
       document.getElementById("sheet").classList.add("open");
       document.getElementById("expenseGroup").value = activeGroupId;
       syncPayerOptions();
@@ -2931,9 +3208,10 @@
     }
 
     function openExpenseSheet(expenseId) {
-      const expense = expenses.find(item => item.id === expenseId);
+      const expense = expenses.find(item => String(item.id) === String(expenseId));
       if (!expense) return;
       const group = getGroup(expense.groupId);
+      if (!group) return;
       const converted = baseAmount(expense);
       const each = converted / expense.participants.length;
       document.getElementById("expenseDetailContent").innerHTML = `
@@ -2955,7 +3233,7 @@
           <h3>備註</h3>
           <p class="mini-note">${expense.note || "無備註"}</p>
         </div>
-        <button class="primary" type="button" style="background:linear-gradient(145deg,#ff453a,#ff9f0a)" onclick="deleteExpense(${expense.id})">刪除這筆支出</button>
+        <button class="primary" type="button" style="background:linear-gradient(145deg,#ff453a,#ff9f0a)" onclick="deleteExpense('${expense.id}')">刪除這筆支出</button>
       `;
       document.getElementById("expenseDetailSheet").classList.add("open");
     }
@@ -2967,8 +3245,8 @@
     function deleteExpense(expenseId) {
       if (!requirePermission("edit")) return;
       if (!confirm("確定要刪除這筆支出嗎？刪除後會重新計算結算。")) return;
-      const target = expenses.find(item => item.id === expenseId);
-      expenses = expenses.filter(item => item.id !== expenseId);
+      const target = expenses.find(item => String(item.id) === String(expenseId));
+      expenses = expenses.filter(item => String(item.id) !== String(expenseId));
       settlementStatus = {};
       saveData();
       closeExpenseSheet();
@@ -2981,6 +3259,7 @@
     function openGroupSettingsSheet() {
       if (!requirePermission("manage")) return;
       const group = getGroup(activeGroupId);
+      if (!group) return;
       document.getElementById("settingsGroupName").value = group.name;
       document.getElementById("settingsGroupCurrency").value = group.currency;
       document.getElementById("settingsGroupBudget").value = group.budget || (group.name.includes("旅遊") ? 15000 : group.name.includes("室友") ? 35000 : 8000);
@@ -2993,12 +3272,18 @@
 
     function syncPayerOptions() {
       const group = getGroup(document.getElementById("expenseGroup").value);
+      if (!group) {
+        document.getElementById("expensePayer").innerHTML = "";
+        document.getElementById("participantGrid").innerHTML = `<div class="empty">請先建立群組</div>`;
+        return;
+      }
       document.getElementById("expensePayer").innerHTML = group.members.map(id => `<option value="${id}">${users[id].name}</option>`).join("");
       document.getElementById("expensePayer").value = currentUserId;
       renderParticipantOptions(group);
     }
 
     function renderParticipantOptions(group) {
+      if (!group) return;
       document.getElementById("participantGrid").innerHTML = group.members.map(id => `
         <label class="participant-chip">
           <input type="checkbox" class="participant-input" value="${id}" checked onchange="updatePreview()" />
@@ -3015,6 +3300,11 @@
 
     function updatePreview() {
       const group = getGroup(document.getElementById("expenseGroup").value);
+      if (!group) {
+        document.getElementById("exchangeHint").textContent = "請先建立群組";
+        document.getElementById("splitPreview").innerHTML = "";
+        return;
+      }
       const amount = Number(document.getElementById("expenseAmount").value || 0);
       const currency = document.getElementById("expenseCurrency").value;
       const converted = amount * (exchangeRates[currency] || 1);
@@ -3260,13 +3550,15 @@
       const type = document.getElementById("groupType").value;
       const currency = document.getElementById("groupBaseCurrency").value;
       const id = `g${Date.now()}`;
+      const initialMembers = cloudUser ? [currentUserId] : ["u1", "u2", "u3"];
+      const initialRoles = cloudUser ? { [currentUserId]: "擁有者" } : { u1: "擁有者", u2: "成員", u3: "成員" };
       groups.push({
         id,
         name,
         currency,
-        subtitle: `3 位成員 · ${type}`,
-        members: ["u1", "u2", "u3"],
-        roles: { u1: "擁有者", u2: "成員", u3: "成員" }
+        subtitle: `${initialMembers.length} 位成員 · ${type}`,
+        members: initialMembers,
+        roles: initialRoles
       });
       document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${id}">${name}</option>`);
       activeGroupId = id;
