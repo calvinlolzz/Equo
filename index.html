@@ -258,6 +258,19 @@
       text-shadow: 0 1px 10px rgba(0,0,0,.18);
     }
 
+    .avatar.photo, .member-avatar.photo {
+      background: rgba(255,255,255,.7);
+      color: transparent;
+      text-shadow: none;
+    }
+
+    .avatar img, .member-avatar img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
     .profile-avatar-row {
       display: flex;
       align-items: center;
@@ -285,6 +298,19 @@
     .avatar-choice.active {
       outline: 3px solid rgba(10,132,255,.36);
       outline-offset: 2px;
+    }
+
+    .avatar-choice.photo-choice {
+      padding: 0;
+      overflow: hidden;
+      background: rgba(255,255,255,.7);
+    }
+
+    .avatar-choice.photo-choice img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
     }
 
     .glass {
@@ -1351,6 +1377,7 @@
           <div>
             <h3 id="profileName">Wukec</h3>
             <p id="profileSync" class="eyebrow" style="margin-top:6px">此裝置資料 · 試用帳號</p>
+            <p id="profileEmail" class="mini-note" style="margin-top:4px"></p>
           </div>
           <button class="small-action" type="button" onclick="logout()">登出</button>
         </div>
@@ -1790,10 +1817,19 @@
           ...user,
           initial: user.initial || fallback.initial || user.name?.slice(0, 1) || "?",
           avatar: user.avatar || fallback.avatar || choice.icon,
-          avatarColor: user.avatarColor || fallback.avatarColor || choice.color
+          avatarColor: user.avatarColor || fallback.avatarColor || choice.color,
+          photoUrl: user.photoUrl || ""
         };
       });
       return normalized;
+    }
+
+    function escapeAttr(value = "") {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
     }
 
     function saveData() {
@@ -1863,6 +1899,37 @@
       return provider;
     }
 
+    function cloudIdentity() {
+      if (!cloudUser) return null;
+      const metadata = cloudUser.user_metadata || {};
+      const email = cloudUser.email || metadata.email || "";
+      const displayName = metadata.full_name || metadata.name || metadata.user_name || email.split("@")[0] || "雲端使用者";
+      const photoUrl = metadata.avatar_url || metadata.picture || "";
+      return { displayName, email, photoUrl };
+    }
+
+    function syncCurrentUserFromCloud(options = {}) {
+      const identity = cloudIdentity();
+      if (!identity) return false;
+      const current = users[currentUserId] || defaultUsers.u1;
+      const next = {
+        ...current,
+        name: identity.displayName,
+        email: identity.email,
+        initial: identity.displayName.slice(0, 1).toUpperCase() || current.initial || "我"
+      };
+      if (identity.photoUrl && current.avatarSource !== "custom") {
+        next.photoUrl = identity.photoUrl;
+        next.avatarSource = "account";
+      }
+      const changed = JSON.stringify(current) !== JSON.stringify(next);
+      if (changed) {
+        users[currentUserId] = next;
+        if (options.persist) localStorage.setItem("floatpay-users", JSON.stringify(users));
+      }
+      return changed;
+    }
+
     async function signInWithEmail(event) {
       event.preventDefault();
       if (!supabaseClient) {
@@ -1886,6 +1953,7 @@
       }
       cloudUser = data.user;
       localStorage.removeItem("floatpay-auth");
+      syncCurrentUserFromCloud({ persist: true });
       await ensureCloudProfile();
       await createInitialCloudSnapshot();
       applyAuthState();
@@ -1920,6 +1988,7 @@
       if (data.user && data.session) {
         cloudUser = data.user;
         localStorage.removeItem("floatpay-auth");
+        syncCurrentUserFromCloud({ persist: true });
         await ensureCloudProfile();
         await createInitialCloudSnapshot();
         applyAuthState();
@@ -1940,8 +2009,11 @@
 
     function applyAuthState() {
       const localUser = loadSaved("floatpay-auth", null);
+      syncCurrentUserFromCloud({ persist: true });
+      const identity = cloudIdentity();
       const user = cloudUser ? {
-        name: cloudUser.email || "雲端使用者",
+        name: identity?.displayName || cloudUser.email || "雲端使用者",
+        email: identity?.email || "",
         provider: "雲端帳號",
         loggedInAt: cloudUser.last_sign_in_at
       } : localUser;
@@ -1953,6 +2025,7 @@
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
         document.getElementById("profileSync").textContent = cloudUser ? "雲端帳號 · 同步可用" : `${user.provider} · 此裝置資料`;
+        document.getElementById("profileEmail").textContent = user.email || "";
       }
       renderAvatars();
       renderCloudStatus();
@@ -1980,6 +2053,7 @@
         cloudUser = session?.user || null;
         if (cloudUser) {
           localStorage.removeItem("floatpay-auth");
+          syncCurrentUserFromCloud({ persist: true });
           await ensureCloudProfile();
           await createInitialCloudSnapshot();
           await checkCloudSnapshot({ silent: true });
@@ -1988,6 +2062,7 @@
       });
       if (cloudUser) {
         localStorage.removeItem("floatpay-auth");
+        syncCurrentUserFromCloud({ persist: true });
         await ensureCloudProfile();
         await checkCloudSnapshot({ silent: true });
       }
@@ -2083,19 +2158,26 @@
     }
 
     function avatarClass(user = users[currentUserId]) {
+      if (user?.photoUrl) return "photo";
       return user?.avatar ? "emoji" : "";
     }
 
     function renderAvatarElement(element, user = users[currentUserId]) {
       if (!element) return;
-      element.textContent = avatarContent(user);
+      element.innerHTML = user?.photoUrl
+        ? `<img alt="" src="${escapeAttr(user.photoUrl)}" referrerpolicy="no-referrer" />`
+        : avatarContent(user);
       element.style.background = avatarStyle(user);
-      element.classList.toggle("emoji", Boolean(user?.avatar));
+      element.classList.toggle("emoji", Boolean(user?.avatar && !user?.photoUrl));
+      element.classList.toggle("photo", Boolean(user?.photoUrl));
     }
 
     function avatarHtml(id, className = "member-avatar") {
       const user = users[id] || {};
-      return `<div class="${className} ${avatarClass(user)}" style="background:${avatarStyle(user)}">${avatarContent(user)}</div>`;
+      const content = user.photoUrl
+        ? `<img alt="" src="${escapeAttr(user.photoUrl)}" referrerpolicy="no-referrer" />`
+        : avatarContent(user);
+      return `<div class="${className} ${avatarClass(user)}" style="background:${avatarStyle(user)}">${content}</div>`;
     }
 
     function renderAvatars() {
@@ -2112,8 +2194,14 @@
       const picker = document.getElementById("avatarPicker");
       if (!picker) return;
       const current = users[currentUserId] || defaultUsers.u1;
-      picker.innerHTML = avatarChoices.map(choice => {
-        const active = current.avatar === choice.icon && current.avatarColor === choice.color ? "active" : "";
+      const identity = cloudIdentity();
+      const accountPhoto = identity?.photoUrl ? `
+        <button class="avatar-choice photo-choice ${current.photoUrl === identity.photoUrl ? "active" : ""}" type="button" onclick="selectAccountPhoto()" aria-label="使用帳號照片">
+          <img alt="" src="${escapeAttr(identity.photoUrl)}" referrerpolicy="no-referrer" />
+        </button>
+      ` : "";
+      picker.innerHTML = accountPhoto + avatarChoices.map(choice => {
+        const active = !current.photoUrl && current.avatar === choice.icon && current.avatarColor === choice.color ? "active" : "";
         return `<button class="avatar-choice ${active}" type="button" style="background:${avatarGradients[choice.color]}" onclick="selectAvatar('${choice.icon}', '${choice.color}')">${choice.icon}</button>`;
       }).join("");
     }
@@ -2122,13 +2210,33 @@
       users[currentUserId] = {
         ...(users[currentUserId] || defaultUsers.u1),
         avatar: icon,
-        avatarColor: color
+        avatarColor: color,
+        photoUrl: "",
+        avatarSource: "custom"
       };
       saveData();
       renderAvatars();
       renderHome();
       renderGroup();
       showToast("頭像已更新");
+    }
+
+    function selectAccountPhoto() {
+      const identity = cloudIdentity();
+      if (!identity?.photoUrl) {
+        showToast("目前帳號沒有照片");
+        return;
+      }
+      users[currentUserId] = {
+        ...(users[currentUserId] || defaultUsers.u1),
+        photoUrl: identity.photoUrl,
+        avatarSource: "account"
+      };
+      saveData();
+      renderAvatars();
+      renderHome();
+      renderGroup();
+      showToast("已改用帳號照片");
     }
 
     function refreshExpenseGroupOptions() {
@@ -2163,6 +2271,7 @@
       recurringStatus = payload.recurringStatus || {};
       paymentRecords = payload.paymentRecords || [];
       activeGroupId = groups[0]?.id || "g1";
+      syncCurrentUserFromCloud();
       saveData();
       isApplyingCloudSnapshot = false;
       refreshExpenseGroupOptions();
@@ -2177,9 +2286,11 @@
 
     async function ensureCloudProfile() {
       if (!supabaseClient || !cloudUser) return;
+      const identity = cloudIdentity();
       await supabaseClient.from("profiles").upsert({
         id: cloudUser.id,
-        display_name: cloudUser.email || "Equo 使用者",
+        display_name: identity?.displayName || cloudUser.email || "Equo 使用者",
+        avatar_url: identity?.photoUrl || null,
         default_currency: "TWD"
       });
     }
