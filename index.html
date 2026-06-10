@@ -1260,7 +1260,7 @@
           <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
         <div style="display:flex;gap:8px">
-          <button id="groupInviteButton" class="icon-btn" type="button" onclick="createGroupInvite()" aria-label="邀請">
+          <button id="groupInviteButton" class="icon-btn" type="button" onclick="openInviteSheet()" aria-label="邀請">
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
           </button>
           <button id="groupSettingsButton" class="icon-btn" type="button" onclick="openGroupSettingsSheet()" aria-label="群組設定">
@@ -1734,6 +1734,40 @@
     </div>
   </section>
 
+  <section id="inviteSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>邀請成員</h2>
+        <button class="icon-btn" type="button" onclick="closeInviteSheet()" aria-label="關閉邀請">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="form-grid">
+        <label>加入後角色
+          <select id="inviteRole">
+            <option value="member">成員</option>
+            <option value="admin">管理員</option>
+            <option value="parent">家長</option>
+            <option value="child">子女</option>
+            <option value="guest">訪客</option>
+          </select>
+        </label>
+        <div class="input-card">
+          <h3>邀請連結</h3>
+          <p class="mini-note">連結 14 天內有效。對方登入後會加入目前群組。</p>
+          <textarea id="inviteLinkOutput" readonly placeholder="產生後會顯示在這裡"></textarea>
+        </div>
+        <div class="action-grid">
+          <button class="primary" type="button" onclick="createGroupInvite()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            產生邀請連結
+          </button>
+          <button class="soft-btn" type="button" onclick="copyInviteLink()">複製連結</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="expenseDetailSheet" class="sheet" aria-modal="true">
     <div class="sheet-panel">
       <div class="sheet-head">
@@ -1889,6 +1923,7 @@
     let cloudLastSyncedAt = localStorage.getItem("floatpay-cloud-last-sync") || "";
     let cloudBackupCheckedAt = "";
     let cloudBackupSummary = "尚未檢查";
+    let latestInviteLink = "";
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -2812,6 +2847,28 @@
       return `${Date.now()}${Math.random().toString(16).slice(2)}`;
     }
 
+    function openInviteSheet() {
+      if (!requirePermission("manage")) return;
+      const output = document.getElementById("inviteLinkOutput");
+      if (output) output.value = latestInviteLink;
+      document.getElementById("inviteSheet").classList.add("open");
+    }
+
+    function closeInviteSheet() {
+      document.getElementById("inviteSheet").classList.remove("open");
+    }
+
+    async function copyInviteLink() {
+      const output = document.getElementById("inviteLinkOutput");
+      const url = output?.value || latestInviteLink;
+      if (!url) {
+        showToast("請先產生邀請連結");
+        return;
+      }
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url).catch(() => {});
+      showToast("邀請連結已複製");
+    }
+
     async function createGroupInvite(groupId = activeGroupId) {
       if (!supabaseClient || !cloudUser) {
         showToast("請先登入雲端帳號再邀請");
@@ -2833,10 +2890,11 @@
       }
       const token = makeInviteToken();
       const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+      const inviteRole = document.getElementById("inviteRole")?.value || "member";
       const { error } = await supabaseClient.rpc("create_group_invite", {
         group_id_input: cloudGroupId,
         token_input: token,
-        role_input: "member",
+        role_input: inviteRole,
         expires_at_input: expiresAt
       });
       if (error) {
@@ -2844,6 +2902,13 @@
         return;
       }
       const url = `${window.location.origin}${window.location.pathname}?invite=${token}`;
+      latestInviteLink = url;
+      const output = document.getElementById("inviteLinkOutput");
+      if (output) {
+        output.value = url;
+        output.focus();
+        output.select();
+      }
       if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url).catch(() => {});
       showToast("邀請連結已複製");
     }

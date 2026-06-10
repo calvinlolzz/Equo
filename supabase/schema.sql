@@ -677,7 +677,6 @@ begin
   select * into invite_row
   from public.group_invites
   where token = invite_token
-    and accepted_at is null
     and (expires_at is null or expires_at > now())
   limit 1;
 
@@ -708,6 +707,7 @@ begin
   )
   on conflict (group_id, user_id) do update set
     app_member_id = excluded.app_member_id,
+    role = excluded.role,
     display_name = excluded.display_name,
     initial = excluded.initial,
     avatar = excluded.avatar,
