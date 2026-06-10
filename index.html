@@ -871,6 +871,12 @@
       color: var(--blue);
     }
 
+    .danger-btn {
+      background: linear-gradient(145deg,#ff453a,#ff9f0a) !important;
+      color: white !important;
+      border-color: rgba(255,255,255,.48) !important;
+    }
+
     .recurring-dot {
       width: 10px;
       height: 10px;
@@ -1741,6 +1747,9 @@
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
           儲存設定
+        </button>
+        <button class="primary danger-btn" type="button" onclick="deleteCurrentGroup()">
+          刪除群組
         </button>
       </form>
     </div>
@@ -3426,12 +3435,18 @@
         const value = Math.round(b[id] || 0);
         const cls = value >= 0 ? "positive" : "negative";
         const role = group.roles?.[id] || (id === currentUserId && isGroupOwner(group) ? "擁有者" : "成員");
+        const canRemove = canManageGroup(group) && id !== currentUserId && group.members.length > 1;
         return `<div class="settlement-row">
           <div class="flow">
             ${avatarHtml(id)}
             <div><strong>${users[id].name}</strong><span>${role}${id === currentUserId ? " · 目前使用者" : ""}</span></div>
           </div>
-          <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
+          <div>
+            <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
+            <div class="mini-actions" ${canRemove ? "" : "hidden"}>
+              <button class="mini-btn danger-btn" type="button" onclick="deleteMember('${id}')">刪除</button>
+            </div>
+          </div>
         </div>`;
       }).join("");
       renderGroupAnalysis(group);
@@ -3671,7 +3686,7 @@
           <h3>備註</h3>
           <p class="mini-note">${expense.note || "無備註"}</p>
         </div>
-        <button class="primary" type="button" style="background:linear-gradient(145deg,#ff453a,#ff9f0a)" onclick="deleteExpense('${expense.id}')">刪除這筆支出</button>
+        <button class="primary danger-btn" type="button" onclick="deleteExpense('${expense.id}')">刪除這筆支出</button>
       `;
       document.getElementById("expenseDetailSheet").classList.add("open");
     }
@@ -3692,6 +3707,77 @@
       renderGroup();
       renderStats();
       showToast(`${target?.title || "支出"} 已刪除，結算已重算`);
+    }
+
+    function deleteMember(memberId) {
+      const group = getGroup(activeGroupId);
+      if (!group || !canManageGroup(group)) {
+        showToast("你目前的角色無法使用這個功能");
+        return;
+      }
+      if (memberId === currentUserId) {
+        showToast("不能刪除目前使用者");
+        return;
+      }
+      if (group.members.length <= 1) {
+        showToast("群組至少需要一位成員");
+        return;
+      }
+      const memberName = users[memberId]?.name || "這位成員";
+      const relatedExpenseCount = allGroupExpenses(group.id).filter(expense =>
+        expense.payerId === memberId || expense.participants.includes(memberId)
+      ).length;
+      const message = relatedExpenseCount
+        ? `確定要刪除 ${memberName} 嗎？與這位成員有關的 ${relatedExpenseCount} 筆支出也會一起移除。`
+        : `確定要刪除 ${memberName} 嗎？`;
+      if (!confirm(message)) return;
+      group.members = group.members.filter(id => id !== memberId);
+      if (group.roles) delete group.roles[memberId];
+      group.subtitle = subtitleWithMemberCount(group.subtitle, group.members.length);
+      expenses = expenses.filter(expense =>
+        expense.groupId !== group.id || (expense.payerId !== memberId && !expense.participants.includes(memberId))
+      );
+      paymentRecords = paymentRecords.filter(record =>
+        record.groupId !== group.id || (record.fromId !== memberId && record.toId !== memberId)
+      );
+      settlementStatus = {};
+      saveData();
+      refreshExpenseGroupOptions();
+      syncPayerOptions();
+      renderHome();
+      renderGroup();
+      renderStats();
+      renderPayments();
+      showToast(`${memberName} 已從群組移除`);
+    }
+
+    function deleteCurrentGroup() {
+      const group = getGroup(activeGroupId);
+      if (!group || !canManageGroup(group)) {
+        showToast("你目前的角色無法使用這個功能");
+        return;
+      }
+      const expenseCount = allGroupExpenses(group.id).length;
+      const message = expenseCount
+        ? `確定要刪除「${group.name}」嗎？群組內 ${expenseCount} 筆支出與結算紀錄也會一起刪除。`
+        : `確定要刪除「${group.name}」嗎？`;
+      if (!confirm(message)) return;
+      groups = groups.filter(item => item.id !== group.id);
+      expenses = expenses.filter(expense => expense.groupId !== group.id);
+      paymentRecords = paymentRecords.filter(record => record.groupId !== group.id);
+      Object.keys(settlementStatus).forEach(key => {
+        if (key.startsWith(`${group.id}:`)) delete settlementStatus[key];
+      });
+      if (activeGroupId === group.id) activeGroupId = groups[0]?.id || "";
+      saveData();
+      refreshExpenseGroupOptions();
+      closeGroupSettingsSheet();
+      renderHome();
+      renderGroup();
+      renderStats();
+      renderPayments();
+      showScreen("home");
+      showToast(`${group.name} 已刪除`);
     }
 
     function openGroupSettingsSheet() {
