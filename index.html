@@ -697,6 +697,14 @@
       padding: 20px 14px;
     }
 
+    .sheet.confirm-sheet {
+      inset: 0;
+      align-items: center;
+      background: rgba(12,16,28,.34);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
     .sheet.open { display: flex; }
 
     .sheet-panel {
@@ -872,9 +880,79 @@
     }
 
     .danger-btn {
-      background: linear-gradient(145deg,#ff453a,#ff9f0a) !important;
+      background: rgba(255,69,58,.12) !important;
+      color: #ff453a !important;
+      border-color: rgba(255,69,58,.18) !important;
+      box-shadow: 0 12px 26px rgba(255,69,58,.08) !important;
+    }
+
+    .trash-btn {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      min-height: 44px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      background: rgba(128,20,24,.72);
+      color: #ff453a;
+      border: 1px solid rgba(255,69,58,.2);
+      box-shadow: 0 14px 28px rgba(65,8,12,.18), inset 0 1px 0 rgba(255,255,255,.08);
+      cursor: pointer;
+    }
+
+    .trash-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke-width: 2.4;
+    }
+
+    .danger-zone {
+      display: flex;
+      justify-content: center;
+      padding-top: 4px;
+    }
+
+    .danger-confirm {
+      background: linear-gradient(145deg,#ff453a,#ff7a59) !important;
       color: white !important;
-      border-color: rgba(255,255,255,.48) !important;
+      border-color: rgba(255,255,255,.42) !important;
+      box-shadow: 0 16px 34px rgba(255,69,58,.22) !important;
+    }
+
+    .confirm-icon {
+      width: 58px;
+      height: 58px;
+      margin: 2px auto 12px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(128,20,24,.72);
+      color: #ff453a;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    .confirm-icon svg {
+      width: 26px;
+      height: 26px;
+      stroke-width: 2.4;
+    }
+
+    .confirm-copy {
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    .confirm-copy h3 {
+      margin-bottom: 7px;
+    }
+
+    .confirm-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 680;
+      line-height: 1.5;
     }
 
     .recurring-dot {
@@ -1056,6 +1134,18 @@
     body[data-theme="dark"] .toast {
       background: rgba(245,247,251,.88);
       color: #101625;
+    }
+
+    body[data-theme="dark"] .trash-btn,
+    body[data-theme="dark"] .confirm-icon {
+      background: rgba(120,22,28,.82);
+      border-color: rgba(255,105,97,.2);
+      color: #ff6961;
+      box-shadow: 0 14px 30px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    body[data-theme="dark"] .confirm-sheet {
+      background: rgba(2,4,10,.54);
     }
 
     @media (max-width: 380px) {
@@ -1748,10 +1838,28 @@
           <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
           儲存設定
         </button>
-        <button class="primary danger-btn" type="button" onclick="deleteCurrentGroup()">
-          刪除群組
-        </button>
+        <div class="danger-zone">
+          <button class="trash-btn" type="button" onclick="deleteCurrentGroup()" aria-label="刪除群組">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+          </button>
+        </div>
       </form>
+    </div>
+  </section>
+
+  <section id="confirmSheet" class="sheet confirm-sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="confirm-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+      </div>
+      <div class="confirm-copy">
+        <h3 id="confirmTitle">確認刪除</h3>
+        <p id="confirmMessage">刪除後無法復原。</p>
+      </div>
+      <div class="action-grid">
+        <button class="soft-btn" type="button" onclick="closeConfirmSheet(false)">取消</button>
+        <button id="confirmActionButton" class="primary danger-confirm" type="button" onclick="closeConfirmSheet(true)">刪除</button>
+      </div>
     </div>
   </section>
 
@@ -2322,7 +2430,14 @@
     }
 
     async function startFreshData() {
-      if (groups.length && !confirm("要清除目前畫面上的範例資料，改用乾淨資料開始嗎？")) return;
+      if (groups.length) {
+        const confirmed = await appConfirm({
+          title: "清除目前資料？",
+          message: "會清除目前畫面上的範例資料，改用乾淨資料開始。",
+          action: "清除"
+        });
+        if (!confirmed) return;
+      }
       if (cloudUser) {
         resetToEmptyCloudData();
         await syncCloudTables({ silent: true });
@@ -3121,8 +3236,13 @@
       showToast("此裝置資料備份已下載");
     }
 
-    function resetLocalData() {
-      if (!confirm("確定要重設此裝置資料嗎？這會清除群組、支出、付款狀態與提醒。")) return;
+    async function resetLocalData() {
+      const confirmed = await appConfirm({
+        title: "重設此裝置資料？",
+        message: "這會清除群組、支出、付款狀態與提醒。",
+        action: "重設"
+      });
+      if (!confirmed) return;
       localDataKeys.forEach(key => localStorage.removeItem(key));
       localStorage.setItem("floatpay-demo-cleared", "true");
       if (cloudUser) {
@@ -3444,7 +3564,9 @@
           <div>
             <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
             <div class="mini-actions" ${canRemove ? "" : "hidden"}>
-              <button class="mini-btn danger-btn" type="button" onclick="deleteMember('${id}')">刪除</button>
+              <button class="trash-btn" type="button" onclick="deleteMember('${id}')" aria-label="刪除成員">
+                <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+              </button>
             </div>
           </div>
         </div>`;
@@ -3686,7 +3808,9 @@
           <h3>備註</h3>
           <p class="mini-note">${expense.note || "無備註"}</p>
         </div>
-        <button class="primary danger-btn" type="button" onclick="deleteExpense('${expense.id}')">刪除這筆支出</button>
+        <button class="trash-btn" type="button" onclick="deleteExpense('${expense.id}')" aria-label="刪除支出">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+        </button>
       `;
       document.getElementById("expenseDetailSheet").classList.add("open");
     }
@@ -3695,10 +3819,15 @@
       document.getElementById("expenseDetailSheet").classList.remove("open");
     }
 
-    function deleteExpense(expenseId) {
+    async function deleteExpense(expenseId) {
       if (!requirePermission("edit")) return;
-      if (!confirm("確定要刪除這筆支出嗎？刪除後會重新計算結算。")) return;
       const target = expenses.find(item => String(item.id) === String(expenseId));
+      const confirmed = await appConfirm({
+        title: "刪除這筆支出？",
+        message: "刪除後會重新計算結算，且無法復原。",
+        action: "刪除支出"
+      });
+      if (!confirmed) return;
       expenses = expenses.filter(item => String(item.id) !== String(expenseId));
       settlementStatus = {};
       saveData();
@@ -3709,7 +3838,7 @@
       showToast(`${target?.title || "支出"} 已刪除，結算已重算`);
     }
 
-    function deleteMember(memberId) {
+    async function deleteMember(memberId) {
       const group = getGroup(activeGroupId);
       if (!group || !canManageGroup(group)) {
         showToast("你目前的角色無法使用這個功能");
@@ -3730,7 +3859,12 @@
       const message = relatedExpenseCount
         ? `確定要刪除 ${memberName} 嗎？與這位成員有關的 ${relatedExpenseCount} 筆支出也會一起移除。`
         : `確定要刪除 ${memberName} 嗎？`;
-      if (!confirm(message)) return;
+      const confirmed = await appConfirm({
+        title: `刪除 ${memberName}？`,
+        message,
+        action: "刪除成員"
+      });
+      if (!confirmed) return;
       group.members = group.members.filter(id => id !== memberId);
       if (group.roles) delete group.roles[memberId];
       group.subtitle = subtitleWithMemberCount(group.subtitle, group.members.length);
@@ -3751,7 +3885,7 @@
       showToast(`${memberName} 已從群組移除`);
     }
 
-    function deleteCurrentGroup() {
+    async function deleteCurrentGroup() {
       const group = getGroup(activeGroupId);
       if (!group || !canManageGroup(group)) {
         showToast("你目前的角色無法使用這個功能");
@@ -3761,7 +3895,12 @@
       const message = expenseCount
         ? `確定要刪除「${group.name}」嗎？群組內 ${expenseCount} 筆支出與結算紀錄也會一起刪除。`
         : `確定要刪除「${group.name}」嗎？`;
-      if (!confirm(message)) return;
+      const confirmed = await appConfirm({
+        title: `刪除「${group.name}」？`,
+        message,
+        action: "刪除群組"
+      });
+      if (!confirmed) return;
       groups = groups.filter(item => item.id !== group.id);
       expenses = expenses.filter(expense => expense.groupId !== group.id);
       paymentRecords = paymentRecords.filter(record => record.groupId !== group.id);
@@ -4017,6 +4156,27 @@
       const latest = document.getElementById("latestExport");
       if (latest) {
         latest.innerHTML = `最新匯出：<a href="${url}" download="${fileName}">${fileName}</a>`;
+      }
+    }
+
+    let pendingConfirmResolve = null;
+
+    function appConfirm({ title = "確認刪除", message = "刪除後無法復原。", action = "刪除" } = {}) {
+      const sheet = document.getElementById("confirmSheet");
+      document.getElementById("confirmTitle").textContent = title;
+      document.getElementById("confirmMessage").textContent = message;
+      document.getElementById("confirmActionButton").textContent = action;
+      sheet.classList.add("open");
+      return new Promise(resolve => {
+        pendingConfirmResolve = resolve;
+      });
+    }
+
+    function closeConfirmSheet(confirmed) {
+      document.getElementById("confirmSheet").classList.remove("open");
+      if (pendingConfirmResolve) {
+        pendingConfirmResolve(Boolean(confirmed));
+        pendingConfirmResolve = null;
       }
     }
 
