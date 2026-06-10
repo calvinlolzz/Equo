@@ -1087,7 +1087,7 @@
       <div class="auth-logo">E</div>
       <p class="eyebrow">歡迎使用</p>
       <h1>Equo 算好</h1>
-      <p class="mini-note">登入後可同步群組、付款狀態與固定帳單。也可以先用本機模式體驗。</p>
+      <p class="mini-note">登入後可在不同裝置同步群組、付款狀態與固定帳單。也可以先快速試用。</p>
       <form id="authForm" class="auth-form">
         <label>Email
           <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -1098,7 +1098,7 @@
           </label>
           <button id="passwordToggle" class="soft-btn" type="button" onclick="togglePasswordVisibility()">顯示</button>
         </div>
-        <p id="authStatus" class="mini-note">使用 Email 可啟用雲端同步。</p>
+        <p id="authStatus" class="mini-note">使用 Email 登入後可同步資料。</p>
         <div class="auth-actions">
           <button class="primary" type="submit">Email 登入</button>
           <button class="soft-btn" type="button" onclick="signUpWithEmail()">建立帳號</button>
@@ -1107,7 +1107,7 @@
       <div class="auth-actions">
         <button class="primary" type="button" onclick="loginWith('Apple')">使用 Apple 登入</button>
         <button class="soft-btn" type="button" onclick="loginWith('Google')">使用 Google 登入</button>
-        <button class="soft-btn" type="button" onclick="loginWith('Demo')">先用本機模式試用</button>
+        <button class="soft-btn" type="button" onclick="loginWith('Demo')">先快速試用</button>
       </div>
     </div>
   </section>
@@ -1365,7 +1365,7 @@
         <div class="input-card"><h3>預設幣別</h3><p class="eyebrow" style="margin-top:6px">TWD</p></div>
         <div class="input-card setting-row">
           <div>
-            <h3>雲端同步</h3>
+            <h3>資料同步</h3>
             <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">目前只保存在此裝置</p>
           </div>
           <span id="cloudSyncPill" class="pill">此裝置</span>
@@ -1383,7 +1383,7 @@
             <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">檢查雲端</button>
           </div>
           <div class="action-grid">
-            <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">檢查同步狀態</button>
+            <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">檢查資料狀態</button>
             <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
             <button class="soft-btn" type="button" onclick="startFreshData()">清除範例</button>
           </div>
@@ -1962,13 +1962,13 @@
       };
       localStorage.setItem("floatpay-auth", JSON.stringify(user));
       applyAuthState();
-      showToast("已進入本機試用模式");
+      showToast("已進入快速試用");
     }
 
     async function loginWithOAuth(provider) {
       if (!supabaseClient) {
-        setAuthStatus("雲端服務尚未完成設定，請先用本機模式試用。");
-        showToast("雲端服務尚未完成設定");
+        setAuthStatus("目前暫時無法登入，請先快速試用。");
+        showToast("目前暫時無法登入");
         return;
       }
       setAuthStatus(`${providerLabel(provider)} 登入即將開啟，若無法完成請先使用 Email。`);
@@ -2022,8 +2022,8 @@
     async function signInWithEmail(event) {
       event.preventDefault();
       if (!supabaseClient) {
-        setAuthStatus("雲端服務尚未完成設定，請先用本機模式試用。");
-        showToast("雲端服務尚未完成設定");
+        setAuthStatus("目前暫時無法登入，請先快速試用。");
+        showToast("目前暫時無法登入");
         return;
       }
       const email = document.getElementById("authEmail").value.trim();
@@ -2047,14 +2047,14 @@
       await loadCloudTables();
       await handleInviteFromUrl();
       applyAuthState();
-      setAuthStatus("Email 登入成功，已啟用雲端同步。");
+      setAuthStatus("Email 登入成功，資料同步已開啟。");
       showToast("Email 登入成功");
     }
 
     async function signUpWithEmail() {
       if (!supabaseClient) {
-        setAuthStatus("雲端服務尚未完成設定，請先用本機模式試用。");
-        showToast("雲端服務尚未完成設定");
+        setAuthStatus("目前暫時無法登入，請先快速試用。");
+        showToast("目前暫時無法登入");
         return;
       }
       const email = document.getElementById("authEmail").value.trim();
@@ -2083,7 +2083,7 @@
         await loadCloudTables();
         await handleInviteFromUrl();
         applyAuthState();
-        setAuthStatus("帳號已建立並登入，已啟用雲端同步。");
+      setAuthStatus("帳號已建立並登入，資料同步已開啟。");
         showToast("帳號已建立並登入");
       } else {
         setAuthStatus("帳號已建立，請到信箱完成確認後再登入。");
@@ -2105,7 +2105,7 @@
       const user = cloudUser ? {
         name: identity?.displayName || cloudUser.email || "雲端使用者",
         email: identity?.email || "",
-        provider: "雲端帳號",
+        provider: "帳號",
         loggedInAt: cloudUser.last_sign_in_at
       } : localUser;
       const loggedIn = Boolean(user);
@@ -2115,7 +2115,7 @@
       document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn);
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
-        document.getElementById("profileSync").textContent = cloudUser ? "雲端帳號 · 同步可用" : `${user.provider} · 此裝置資料`;
+        document.getElementById("profileSync").textContent = cloudUser ? "帳號同步可用" : `${user.provider} · 此裝置資料`;
         document.getElementById("profileEmail").textContent = user.email || "";
       }
       renderAvatars();
@@ -2178,7 +2178,7 @@
       if (localSummary) localSummary.textContent = localDataSummary();
       if (backupSummary) backupSummary.textContent = cloudBackupSummary;
       if (cloudUser) {
-        label.textContent = `已登入雲端 · ${cloudUser.email || "雲端帳號"}`;
+        label.textContent = `已登入 · ${cloudUser.email || "帳號"}`;
         pill.textContent = cloudSyncInProgress ? "同步中" : "已同步";
         if (meta) meta.textContent = cloudSyncInProgress
           ? "正在同步資料..."
@@ -2186,25 +2186,25 @@
               cloudLastSyncedAt ? `最後同步：${formatDateTime(cloudLastSyncedAt)}` : "尚未同步，新增或修改資料後會自動同步。",
               cloudBackupCheckedAt ? `雲端檢查：${formatDateTime(cloudBackupCheckedAt)}` : ""
             ].filter(Boolean).join(" · ");
-        if (authStatus) authStatus.textContent = "已登入雲端帳號，資料可同步。";
+        if (authStatus) authStatus.textContent = "已登入，資料可同步。";
         if (syncButton) syncButton.disabled = cloudSyncInProgress;
         if (restoreButton) restoreButton.disabled = cloudSyncInProgress;
         if (checkButton) checkButton.disabled = cloudSyncInProgress;
         if (selfTestButton) selfTestButton.disabled = cloudSyncInProgress;
       } else if (cloudConfig.configured) {
-        label.textContent = "雲端同步可用 · 登入後啟用";
+        label.textContent = "登入後可同步";
         pill.textContent = "可登入";
-        if (meta) meta.textContent = "請先用 Email 登入，才會啟用雲端同步與跨裝置還原。";
-        if (authStatus) authStatus.textContent = "使用 Email 登入後可啟用雲端同步。";
+        if (meta) meta.textContent = "登入後可在不同裝置同步與還原資料。";
+        if (authStatus) authStatus.textContent = "使用 Email 登入後可同步資料。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
         if (selfTestButton) selfTestButton.disabled = false;
       } else {
-        label.textContent = "目前只保存在此裝置";
+        label.textContent = "目前資料只在此裝置";
         pill.textContent = "此裝置";
         if (meta) meta.textContent = "目前資料只會保存在此裝置。";
-        if (authStatus) authStatus.textContent = "雲端服務尚未設定，請先使用本機模式。";
+        if (authStatus) authStatus.textContent = "目前暫時無法登入，請先快速試用。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
@@ -2231,7 +2231,7 @@
         return;
       }
       card.style.display = "";
-      const title = groups.length ? "準備用自己的資料測試" : "開始建立你的第一個分帳";
+      const title = groups.length ? "準備開始使用自己的資料" : "開始建立你的第一個分帳";
       const note = groups.length
         ? "目前畫面中有範例資料。清除後會進入乾淨狀態，再建立自己的群組。"
         : "目前還沒有群組。照著導覽建立群組、加入成員、記第一筆支出。";
@@ -2557,7 +2557,7 @@
       renderCloudStatus();
       const { data: cloudData, error: cloudDataError } = await supabaseClient.rpc("get_my_cloud_data");
       if (cloudDataError) {
-        showToast("雲端資料讀取失敗");
+        showToast("資料載入失敗，請稍後再試");
         return false;
       }
       const groupRows = cloudData?.groups || [];
@@ -2660,7 +2660,7 @@
           const { data: groupId, error } = await supabaseClient.rpc("upsert_owned_group", cloudGroupRpcPayload(group));
           if (error || !groupId) {
             cloudSyncInProgress = false;
-            if (!options.silent) showToast("群組同步失敗");
+            if (!options.silent) showToast("群組儲存失敗，請稍後再試");
             renderCloudStatus();
             return false;
           }
@@ -2687,7 +2687,7 @@
         });
         if (error) {
           cloudSyncInProgress = false;
-          if (!options.silent) showToast("成員同步失敗");
+          if (!options.silent) showToast("成員儲存失敗，請稍後再試");
           renderCloudStatus();
           return false;
         }
@@ -2711,7 +2711,7 @@
         });
         if (error) {
           cloudSyncInProgress = false;
-          if (!options.silent) showToast("支出同步失敗");
+          if (!options.silent) showToast("支出儲存失敗，請稍後再試");
           renderCloudStatus();
           return false;
         }
@@ -2728,7 +2728,7 @@
         });
         if (error) {
           cloudSyncInProgress = false;
-          if (!options.silent) showToast("支出刪除同步失敗");
+          if (!options.silent) showToast("支出刪除失敗，請稍後再試");
           renderCloudStatus();
           return false;
         }
@@ -2749,7 +2749,7 @@
         const { error } = await supabaseClient
           .from("settlement_statuses")
           .upsert(statusRows, { onConflict: "group_id,settlement_key" });
-        if (error && !options.silent) showToast("結算狀態同步失敗");
+        if (error && !options.silent) showToast("結算更新失敗，請稍後再試");
       }
       cloudLastSyncedAt = new Date().toISOString();
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
@@ -2815,7 +2815,7 @@
 
     async function createGroupInvite(groupId = activeGroupId) {
       if (!supabaseClient || !cloudUser) {
-        showToast("請先登入雲端帳號再邀請");
+        showToast("請先登入帳號再邀請");
         return;
       }
       const group = getGroup(groupId);
@@ -2842,7 +2842,7 @@
         expires_at_input: expiresAt
       });
       if (error) {
-        showToast("邀請連結建立失敗");
+        showToast("邀請連結產生失敗，請稍後再試");
         return;
       }
       const url = `${window.location.origin}${window.location.pathname}?invite=${token}`;
@@ -2938,7 +2938,7 @@
       });
       if (error && !(await syncCloudSnapshotToProfile(payload))) {
         cloudSyncInProgress = false;
-        if (!options.silent) showToast("雲端同步失敗，請稍後再試");
+        if (!options.silent) showToast("資料儲存失敗，請稍後再試");
         renderCloudStatus();
         return false;
       }
@@ -3004,14 +3004,14 @@
       cloudBackupCheckedAt = new Date().toISOString();
       cloudSyncInProgress = false;
       renderCloudStatus();
-      if (!options.silent) showToast(groups.length ? "已檢查雲端資料" : "目前沒有雲端群組");
+      if (!options.silent) showToast(groups.length ? "資料已檢查" : "目前沒有群組");
       return payload;
     }
 
     async function runSyncSelfTest() {
       const results = [];
-      results.push(cloudConfig.configured ? "雲端服務正常" : "雲端服務尚未設定");
-      results.push(cloudUser ? "已登入雲端帳號" : "尚未登入雲端帳號");
+      results.push(cloudConfig.configured ? "登入功能可用" : "目前暫時無法登入");
+      results.push(cloudUser ? "已登入帳號" : "尚未登入帳號");
       results.push(`此裝置：${localDataSummary()}`);
       if (cloudUser) {
         const payload = await checkCloudSnapshot({ silent: true });
@@ -3021,7 +3021,7 @@
       }
       const meta = document.getElementById("cloudSyncMeta");
       if (meta) meta.textContent = results.join(" · ");
-      showToast("同步狀態檢查完成");
+      showToast("資料狀態檢查完成");
     }
 
     async function restoreCloudSnapshot() {
