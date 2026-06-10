@@ -67,6 +67,7 @@ SUPABASE_ANON_KEY=你的 anon public key
 - `profiles`：使用者名稱、頭像與預設幣別。
 - `groups`：群組名稱、幣別、預算與 App 內群組 ID。
 - `group_members`：群組成員、角色、顯示名稱與頭像。成員可以先是未註冊的家人/朋友。
+- `group_invites`：群組邀請連結、預設角色、接受狀態與到期時間。
 - `expenses`：支出、付款人、參與分攤成員、分類、幣別與備註。
 - `settlement_statuses`：目前 App 內的付款/收款確認狀態。
 
@@ -77,11 +78,12 @@ SUPABASE_ANON_KEY=你的 anon public key
 1. Auth：把原型登入替換成 Supabase Auth。
 2. Profiles：登入後建立/讀取 profiles。
 3. Groups：群組建立寫入 Supabase。已完成第一版。
-4. Members：成員與角色權限寫入 group_members。已完成第一版，正式邀請流程待補。
-5. Expenses：支出與分攤寫入 expenses。已完成第一版。
-6. Settlements：結算狀態寫入 settlement_statuses。已完成第一版。
-7. Payments：付款紀錄寫入 payment_records。
-8. Notifications：待辦提醒寫入 notifications。
+4. Members：成員與角色權限寫入 group_members。已完成第一版。
+5. Invites：群組邀請連結與登入後加入流程。已完成第一版。
+6. Expenses：支出與分攤寫入 expenses。已完成第一版。
+7. Settlements：結算狀態寫入 settlement_statuses。已完成第一版。
+8. Payments：付款紀錄寫入 payment_records。
+9. Notifications：待辦提醒寫入 notifications。
 
 ## 注意
 

@@ -38,6 +38,18 @@ create table if not exists public.group_members (
   unique (group_id, user_id)
 );
 
+create table if not exists public.group_invites (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  token text not null unique,
+  role text not null default 'member' check (role in ('admin', 'parent', 'child', 'member', 'guest')),
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  accepted_by uuid references public.profiles(id) on delete set null,
+  accepted_at timestamptz,
+  expires_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.expenses (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
@@ -144,6 +156,7 @@ create table if not exists public.user_snapshots (
 alter table public.profiles enable row level security;
 alter table public.groups enable row level security;
 alter table public.group_members enable row level security;
+alter table public.group_invites enable row level security;
 alter table public.expenses enable row level security;
 alter table public.expense_splits enable row level security;
 alter table public.settlements enable row level security;
@@ -253,6 +266,105 @@ create policy "members_delete_owner_or_admin" on public.group_members
         and existing_member.role in ('admin', 'parent')
     )
   );
+
+create policy "group_invites_select_group_member_or_creator" on public.group_invites
+  for select using (
+    public.is_group_member(group_id)
+    or created_by = auth.uid()
+  );
+
+create policy "group_invites_insert_admin_or_parent" on public.group_invites
+  for insert with check (
+    created_by = auth.uid()
+    and exists (
+      select 1 from public.group_members
+      where group_id = group_invites.group_id
+        and user_id = auth.uid()
+        and role in ('admin', 'parent')
+    )
+  );
+
+create policy "group_invites_update_invitee_or_creator" on public.group_invites
+  for update using (
+    created_by = auth.uid()
+    or (
+      auth.uid() is not null
+      and accepted_at is null
+      and (expires_at is null or expires_at > now())
+    )
+  );
+
+create or replace function public.accept_group_invite(
+  invite_token text,
+  member_id text,
+  member_display_name text,
+  member_initial text,
+  member_avatar text,
+  member_avatar_color text,
+  member_photo_url text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invite_row public.group_invites%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  select * into invite_row
+  from public.group_invites
+  where token = invite_token
+    and accepted_at is null
+    and (expires_at is null or expires_at > now())
+  limit 1;
+
+  if invite_row.id is null then
+    raise exception 'invite_not_available';
+  end if;
+
+  insert into public.group_members (
+    group_id,
+    user_id,
+    app_member_id,
+    role,
+    display_name,
+    initial,
+    avatar,
+    avatar_color,
+    photo_url
+  ) values (
+    invite_row.group_id,
+    auth.uid(),
+    member_id,
+    invite_row.role,
+    member_display_name,
+    member_initial,
+    member_avatar,
+    member_avatar_color,
+    member_photo_url
+  )
+  on conflict (group_id, user_id) do update set
+    app_member_id = excluded.app_member_id,
+    display_name = excluded.display_name,
+    initial = excluded.initial,
+    avatar = excluded.avatar,
+    avatar_color = excluded.avatar_color,
+    photo_url = excluded.photo_url;
+
+  update public.group_invites
+  set accepted_by = auth.uid(), accepted_at = now()
+  where id = invite_row.id;
+
+  return invite_row.group_id;
+end;
+$$;
+
+revoke all on function public.accept_group_invite(text, text, text, text, text, text, text) from public;
+grant execute on function public.accept_group_invite(text, text, text, text, text, text, text) to authenticated;
 
 create policy "expenses_select_group_member" on public.expenses
   for select using (public.is_group_member(group_id));

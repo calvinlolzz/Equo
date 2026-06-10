@@ -1260,7 +1260,7 @@
           <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
         <div style="display:flex;gap:8px">
-          <button class="icon-btn" type="button" onclick="showToast('群組邀請連結已複製')" aria-label="邀請">
+          <button class="icon-btn" type="button" onclick="createGroupInvite()" aria-label="邀請">
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
           </button>
           <button class="icon-btn" type="button" onclick="openGroupSettingsSheet()" aria-label="群組設定">
@@ -1926,6 +1926,7 @@
     }
 
     function canManageGroup(group = getGroup(activeGroupId)) {
+      if (group?.cloudOwnerId && group.cloudOwnerId !== cloudUser?.id) return false;
       return ["擁有者", "管理員", "家長"].includes(currentUserRole(group));
     }
 
@@ -2034,6 +2035,7 @@
       syncCurrentUserFromCloud({ persist: true });
       await ensureCloudProfile();
       await loadCloudTables();
+      await handleInviteFromUrl();
       applyAuthState();
       setAuthStatus("Email 登入成功，已啟用雲端同步。");
       showToast("Email 登入成功");
@@ -2069,6 +2071,7 @@
         syncCurrentUserFromCloud({ persist: true });
         await ensureCloudProfile();
         await loadCloudTables();
+        await handleInviteFromUrl();
         applyAuthState();
         setAuthStatus("帳號已建立並登入，已啟用雲端同步。");
         showToast("帳號已建立並登入");
@@ -2134,6 +2137,7 @@
           syncCurrentUserFromCloud({ persist: true });
           await ensureCloudProfile();
           await loadCloudTables();
+          await handleInviteFromUrl();
         }
         applyAuthState();
       });
@@ -2142,6 +2146,7 @@
         syncCurrentUserFromCloud({ persist: true });
         await ensureCloudProfile();
         await loadCloudTables();
+        await handleInviteFromUrl();
       }
       applyAuthState();
     }
@@ -2518,7 +2523,7 @@
       renderCloudStatus();
       const { data: groupRows, error: groupError } = await supabaseClient
         .from("groups")
-        .select("id, app_group_id, name, subtitle, base_currency, budget, created_at")
+        .select("id, app_group_id, name, subtitle, base_currency, budget, owner_id, created_at")
         .order("created_at", { ascending: true });
       if (groupError) {
         showToast("雲端資料讀取失敗");
@@ -2541,7 +2546,7 @@
       const groupIdMap = Object.fromEntries(groupRows.map(row => [row.id, row.app_group_id || row.id]));
       const nextUsers = { [currentUserId]: cloudBaseUser() };
       (memberRows || []).forEach(row => {
-        const memberId = row.app_member_id || (row.user_id === cloudUser.id ? currentUserId : `u${row.id}`);
+        const memberId = row.user_id === cloudUser.id ? currentUserId : (row.app_member_id || `u${row.id}`);
         nextUsers[memberId] = {
           name: row.user_id === cloudUser.id ? nextUsers[currentUserId].name : row.display_name || "未命名成員",
           email: row.user_id === cloudUser.id ? nextUsers[currentUserId].email : "",
@@ -2557,7 +2562,7 @@
       const rolesByGroup = {};
       (memberRows || []).forEach(row => {
         const localGroupId = groupIdMap[row.group_id];
-        const memberId = row.app_member_id || (row.user_id === cloudUser.id ? currentUserId : "");
+        const memberId = row.user_id === cloudUser.id ? currentUserId : (row.app_member_id || "");
         if (!memberId) return;
         membersByGroup[localGroupId] = [...(membersByGroup[localGroupId] || []), memberId];
         rolesByGroup[localGroupId] = { ...(rolesByGroup[localGroupId] || {}), [memberId]: roleFromDb(row.role, memberId === currentUserId) };
@@ -2573,6 +2578,8 @@
           currency: row.base_currency || "TWD",
           subtitle: row.subtitle || `${members.length} 位成員`,
           budget: Number(row.budget || 0),
+          cloudGroupId: row.id,
+          cloudOwnerId: row.owner_id,
           members,
           roles: rolesByGroup[id] || { [currentUserId]: "擁有者" }
         };
@@ -2604,6 +2611,7 @@
       if (!supabaseClient || !cloudUser || isApplyingCloudSnapshot) return false;
       cloudSyncInProgress = true;
       renderCloudStatus();
+      const ownedGroups = groups.filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id);
       const { error: deleteError } = await supabaseClient.from("groups").delete().eq("owner_id", cloudUser.id);
       if (deleteError) {
         cloudSyncInProgress = false;
@@ -2611,7 +2619,7 @@
         renderCloudStatus();
         return false;
       }
-      if (!groups.length) {
+      if (!ownedGroups.length) {
         cloudLastSyncedAt = new Date().toISOString();
         localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
         cloudSyncInProgress = false;
@@ -2621,7 +2629,7 @@
 
       const { data: insertedGroups, error: groupError } = await supabaseClient
         .from("groups")
-        .insert(groups.map(cloudGroupPayload))
+        .insert(ownedGroups.map(cloudGroupPayload))
         .select("id, app_group_id");
       if (groupError) {
         cloudSyncInProgress = false;
@@ -2630,7 +2638,7 @@
         return false;
       }
       const cloudIdByLocalId = Object.fromEntries(insertedGroups.map(row => [row.app_group_id, row.id]));
-      const memberRows = groups.flatMap(group => group.members.map(memberId =>
+      const memberRows = ownedGroups.flatMap(group => group.members.map(memberId =>
         cloudMemberPayload(cloudIdByLocalId[group.id], memberId, group.roles?.[memberId] || (memberId === currentUserId ? "擁有者" : "成員"))
       ));
       if (memberRows.length) {
@@ -2676,6 +2684,90 @@
       renderPayments();
       syncPayerOptions();
       updatePreview();
+    }
+
+    function inviteTokenFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("invite") || "";
+    }
+
+    function clearInviteFromUrl() {
+      if (!inviteTokenFromUrl()) return;
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    }
+
+    function makeInviteToken() {
+      if (window.crypto?.getRandomValues) {
+        const bytes = new Uint8Array(16);
+        window.crypto.getRandomValues(bytes);
+        return [...bytes].map(value => value.toString(16).padStart(2, "0")).join("");
+      }
+      return `${Date.now()}${Math.random().toString(16).slice(2)}`;
+    }
+
+    async function createGroupInvite(groupId = activeGroupId) {
+      if (!supabaseClient || !cloudUser) {
+        showToast("請先登入雲端帳號再邀請");
+        return;
+      }
+      const group = getGroup(groupId);
+      if (!group) return;
+      if (group.cloudOwnerId && group.cloudOwnerId !== cloudUser.id) {
+        showToast("目前只有群組建立者可以邀請");
+        return;
+      }
+      await syncCloudTables({ silent: true });
+      await loadCloudTables();
+      const refreshedGroup = getGroup(groupId);
+      const cloudGroupId = refreshedGroup?.cloudGroupId;
+      if (!cloudGroupId) {
+        showToast("群組同步後才能產生邀請");
+        return;
+      }
+      const token = makeInviteToken();
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+      const { error } = await supabaseClient.from("group_invites").insert({
+        group_id: cloudGroupId,
+        token,
+        role: "member",
+        created_by: cloudUser.id,
+        expires_at: expiresAt
+      });
+      if (error) {
+        showToast("邀請連結建立失敗");
+        return;
+      }
+      const url = `${window.location.origin}${window.location.pathname}?invite=${token}`;
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url).catch(() => {});
+      showToast("邀請連結已複製");
+    }
+
+    async function handleInviteFromUrl() {
+      const token = inviteTokenFromUrl();
+      if (!token) return;
+      if (!cloudUser || !supabaseClient) {
+        setAuthStatus("請先登入，登入後會自動加入邀請群組。");
+        return;
+      }
+      const identity = cloudIdentity();
+      const memberId = `u${cloudUser.id.replace(/-/g, "").slice(0, 12)}`;
+      const { error } = await supabaseClient.rpc("accept_group_invite", {
+        invite_token: token,
+        member_id: memberId,
+        member_display_name: identity?.displayName || cloudUser.email || "新成員",
+        member_initial: (identity?.displayName || cloudUser.email || "?").slice(0, 1),
+        member_avatar: users[currentUserId]?.avatar || "🙂",
+        member_avatar_color: users[currentUserId]?.avatarColor || "blue",
+        member_photo_url: identity?.photoUrl || ""
+      });
+      if (error) {
+        showToast("邀請連結已失效");
+        clearInviteFromUrl();
+        return;
+      }
+      clearInviteFromUrl();
+      await loadCloudTables();
+      showToast("已加入邀請群組");
     }
 
     async function ensureCloudProfile() {
@@ -3097,7 +3189,9 @@
       const b = balances(activeGroupId);
       const mine = Math.round(b[currentUserId] || 0);
       document.getElementById("groupTitle").textContent = group.name;
-      document.getElementById("groupSubtitle").textContent = group.subtitle;
+      document.getElementById("groupSubtitle").textContent = group.cloudOwnerId && group.cloudOwnerId !== cloudUser?.id
+        ? `${group.subtitle} · 受邀群組`
+        : group.subtitle;
       document.getElementById("groupCurrency").textContent = group.currency;
       document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
       document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
