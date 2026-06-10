@@ -2560,27 +2560,21 @@
       if (!supabaseClient || !cloudUser) return false;
       cloudTablesReady = false;
       renderCloudStatus();
-      const { data: groupRows, error: groupError } = await supabaseClient
-        .from("groups")
-        .select("id, app_group_id, name, subtitle, base_currency, budget, owner_id, created_at")
-        .order("created_at", { ascending: true });
-      if (groupError) {
+      const { data: cloudData, error: cloudDataError } = await supabaseClient.rpc("get_my_cloud_data");
+      if (cloudDataError) {
         showToast("雲端資料讀取失敗");
         return false;
       }
+      const groupRows = cloudData?.groups || [];
+      const memberRows = cloudData?.members || [];
+      const expenseRows = cloudData?.expenses || [];
+      const statusRows = cloudData?.settlement_statuses || [];
       if (!groupRows?.length) {
         resetToEmptyCloudData();
         cloudTablesReady = true;
         renderAll();
         return true;
       }
-
-      const cloudIds = groupRows.map(row => row.id);
-      const [{ data: memberRows }, { data: expenseRows }, { data: statusRows }] = await Promise.all([
-        supabaseClient.from("group_members").select("group_id, app_member_id, user_id, role, display_name, initial, avatar, avatar_color, photo_url").in("group_id", cloudIds),
-        supabaseClient.from("expenses").select("group_id, app_expense_id, title, amount, currency, payer_member_id, participant_member_ids, category, note, date_label, created_at").in("group_id", cloudIds).order("created_at", { ascending: true }),
-        supabaseClient.from("settlement_statuses").select("group_id, settlement_key, status").in("group_id", cloudIds)
-      ]);
 
       const groupIdMap = Object.fromEntries(groupRows.map(row => [row.id, row.app_group_id || row.id]));
       const nextUsers = { [currentUserId]: cloudBaseUser() };

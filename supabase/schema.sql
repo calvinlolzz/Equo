@@ -390,6 +390,64 @@ begin
 end;
 $$;
 
+create or replace function public.get_my_cloud_data()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  payload jsonb;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  with visible_groups as (
+    select g.id
+    from public.groups g
+    where g.owner_id = auth.uid()
+      or exists (
+        select 1 from public.group_members gm
+        where gm.group_id = g.id
+          and gm.user_id = auth.uid()
+      )
+  ),
+  group_rows as (
+    select g.id, g.app_group_id, g.name, g.subtitle, g.base_currency, g.budget, g.owner_id, g.created_at
+    from public.groups g
+    join visible_groups vg on vg.id = g.id
+    order by g.created_at
+  ),
+  member_rows as (
+    select gm.group_id, gm.app_member_id, gm.user_id, gm.role, gm.display_name, gm.initial, gm.avatar, gm.avatar_color, gm.photo_url
+    from public.group_members gm
+    join visible_groups vg on vg.id = gm.group_id
+    order by gm.joined_at
+  ),
+  expense_rows as (
+    select e.group_id, e.app_expense_id, e.title, e.amount, e.currency, e.payer_member_id, e.participant_member_ids, e.category, e.note, e.date_label, e.created_at
+    from public.expenses e
+    join visible_groups vg on vg.id = e.group_id
+    order by e.created_at
+  ),
+  status_rows as (
+    select ss.group_id, ss.settlement_key, ss.status
+    from public.settlement_statuses ss
+    join visible_groups vg on vg.id = ss.group_id
+    order by ss.updated_at
+  )
+  select jsonb_build_object(
+    'groups', coalesce((select jsonb_agg(to_jsonb(group_rows)) from group_rows), '[]'::jsonb),
+    'members', coalesce((select jsonb_agg(to_jsonb(member_rows)) from member_rows), '[]'::jsonb),
+    'expenses', coalesce((select jsonb_agg(to_jsonb(expense_rows)) from expense_rows), '[]'::jsonb),
+    'settlement_statuses', coalesce((select jsonb_agg(to_jsonb(status_rows)) from status_rows), '[]'::jsonb)
+  ) into payload;
+
+  return payload;
+end;
+$$;
+
 revoke all on function public.ensure_profile(text, text, text) from public;
 grant execute on function public.ensure_profile(text, text, text) to authenticated;
 
@@ -401,6 +459,9 @@ grant execute on function public.upsert_group_member(uuid, text, uuid, text, tex
 
 revoke all on function public.upsert_group_expense(uuid, text, text, numeric, text, numeric, text, text[], text, text, text) from public;
 grant execute on function public.upsert_group_expense(uuid, text, text, numeric, text, numeric, text, text[], text, text, text) to authenticated;
+
+revoke all on function public.get_my_cloud_data() from public;
+grant execute on function public.get_my_cloud_data() to authenticated;
 
 create unique index if not exists groups_owner_app_group_id_key
   on public.groups(owner_id, app_group_id)
