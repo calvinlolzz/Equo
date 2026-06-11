@@ -949,7 +949,17 @@
     .remove-pill svg {
       width: 18px;
       height: 18px;
+      stroke: currentColor;
       stroke-width: 2.45;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .remove-pill svg path,
+    .confirm-icon svg path {
+      stroke: currentColor;
+      fill: none;
     }
 
     .remove-pill:hover {
@@ -1009,7 +1019,11 @@
     .confirm-icon svg {
       width: 26px;
       height: 26px;
+      stroke: currentColor;
       stroke-width: 2.4;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .confirm-copy {
