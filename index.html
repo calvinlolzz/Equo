@@ -1333,7 +1333,7 @@
       <div class="auth-logo">E</div>
       <p class="eyebrow">歡迎使用</p>
       <h1>Equo 算好</h1>
-      <p class="mini-note">登入後可在不同裝置同步群組、付款狀態與固定帳單。也可以先快速試用。</p>
+      <p class="mini-note">登入後可在不同裝置接續使用群組、付款狀態與固定帳單。也可以先快速試用。</p>
       <form id="authForm" class="auth-form">
         <label>Email
           <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -1344,7 +1344,7 @@
           </label>
           <button id="passwordToggle" class="soft-btn" type="button" onclick="togglePasswordVisibility()">顯示</button>
         </div>
-        <p id="authStatus" class="mini-note">使用 Email 登入後可同步資料。</p>
+        <p id="authStatus" class="mini-note">使用 Email 登入後可備份資料。</p>
         <div class="auth-actions">
           <button class="primary" type="submit">Email 登入</button>
           <button class="soft-btn" type="button" onclick="signUpWithEmail()">建立帳號</button>
@@ -1585,7 +1585,7 @@
         </div>
         <div class="input-card">
           <h3>頭像</h3>
-          <p class="eyebrow" style="margin-top:6px">選一個容易辨識的頭像，群組成員也會同步顯示。</p>
+          <p class="eyebrow" style="margin-top:6px">選一個容易辨識的頭像，群組成員也會看得到。</p>
           <div class="profile-avatar-row">
             <div id="profileAvatarPreview" class="avatar">W</div>
             <div>
@@ -1615,25 +1615,25 @@
         <div class="input-card"><h3>預設幣別</h3><p class="eyebrow" style="margin-top:6px">TWD</p></div>
         <div class="input-card setting-row">
           <div>
-            <h3>資料同步</h3>
+            <h3>備份與同步</h3>
             <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">目前只保存在此裝置</p>
           </div>
           <span id="cloudSyncPill" class="pill">此裝置</span>
         </div>
         <div class="input-card">
-          <h3>資料同步</h3>
-          <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可把目前群組、支出與付款狀態同步到雲端。</p>
+          <h3>備份與同步</h3>
+          <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可在不同裝置接續使用。</p>
           <div class="preview" style="margin-bottom:0">
             <div class="preview-row"><span>此裝置資料</span><strong id="localDataSummary">-</strong></div>
-            <div class="preview-row"><span>雲端備份</span><strong id="cloudBackupSummary">尚未檢查</strong></div>
+            <div class="preview-row"><span>線上備份</span><strong id="cloudBackupSummary">尚未檢查</strong></div>
           </div>
           <div class="action-grid three-actions">
-            <button id="syncCloudButton" class="soft-btn" type="button" onclick="syncCloudSnapshot()">同步到雲端</button>
-            <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">從雲端還原</button>
-            <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">檢查雲端</button>
+            <button id="syncCloudButton" class="soft-btn" type="button" onclick="syncCloudSnapshot()">立即備份</button>
+            <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">載入備份</button>
+            <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">查看備份</button>
           </div>
           <div class="action-grid">
-            <button id="selfTestButton" class="soft-btn" type="button" onclick="runSyncSelfTest()">檢查資料狀態</button>
+            <button id="selfTestButton" class="soft-btn feature-paused" type="button" onclick="runSyncSelfTest()">檢查資料狀態</button>
             <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
             <button class="soft-btn" type="button" onclick="startFreshData()">清除範例</button>
           </div>
@@ -2305,7 +2305,7 @@
       if (!cloudUser) return null;
       const metadata = cloudUser.user_metadata || {};
       const email = cloudUser.email || metadata.email || "";
-      const displayName = metadata.full_name || metadata.name || metadata.user_name || email.split("@")[0] || "雲端使用者";
+      const displayName = metadata.full_name || metadata.name || metadata.user_name || email.split("@")[0] || "Equo 使用者";
       const photoUrl = metadata.avatar_url || metadata.picture || "";
       return { displayName, email, photoUrl };
     }
@@ -2360,7 +2360,7 @@
       await loadCloudTables();
       await handleInviteFromUrl();
       applyAuthState();
-      setAuthStatus("Email 登入成功，資料同步已開啟。");
+      setAuthStatus("Email 登入成功，備份已開啟。");
       showToast("Email 登入成功");
     }
 
@@ -2396,7 +2396,7 @@
         await loadCloudTables();
         await handleInviteFromUrl();
         applyAuthState();
-      setAuthStatus("帳號已建立並登入，資料同步已開啟。");
+      setAuthStatus("帳號已建立並登入，備份已開啟。");
         showToast("帳號已建立並登入");
       } else {
         setAuthStatus("帳號已建立，請到信箱完成確認後再登入。");
@@ -2416,7 +2416,7 @@
       syncCurrentUserFromCloud({ persist: true });
       const identity = cloudIdentity();
       const user = cloudUser ? {
-        name: identity?.displayName || cloudUser.email || "雲端使用者",
+        name: identity?.displayName || cloudUser.email || "Equo 使用者",
         email: identity?.email || "",
         provider: "帳號",
         loggedInAt: cloudUser.last_sign_in_at
@@ -2428,7 +2428,7 @@
       document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn || document.querySelector(".floating-add").classList.contains("feature-paused"));
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
-        document.getElementById("profileSync").textContent = cloudUser ? "帳號同步可用" : `${user.provider} · 此裝置資料`;
+        document.getElementById("profileSync").textContent = cloudUser ? "已開啟備份" : `${user.provider} · 此裝置資料`;
         document.getElementById("profileEmail").textContent = user.email || "";
       }
       renderAvatars();
@@ -2492,23 +2492,23 @@
       if (backupSummary) backupSummary.textContent = cloudBackupSummary;
       if (cloudUser) {
         label.textContent = `已登入 · ${cloudUser.email || "帳號"}`;
-        pill.textContent = cloudSyncInProgress ? "同步中" : "已同步";
+        pill.textContent = cloudSyncInProgress ? "備份中" : "已備份";
         if (meta) meta.textContent = cloudSyncInProgress
-          ? "正在同步資料..."
+          ? "正在備份資料..."
           : [
-              cloudLastSyncedAt ? `最後同步：${formatDateTime(cloudLastSyncedAt)}` : "尚未同步，新增或修改資料後會自動同步。",
-              cloudBackupCheckedAt ? `雲端檢查：${formatDateTime(cloudBackupCheckedAt)}` : ""
+              cloudLastSyncedAt ? `上次備份：${formatDateTime(cloudLastSyncedAt)}` : "新增或修改後會自動備份。",
+              cloudBackupCheckedAt ? `上次查看：${formatDateTime(cloudBackupCheckedAt)}` : ""
             ].filter(Boolean).join(" · ");
-        if (authStatus) authStatus.textContent = "已登入，資料可同步。";
+        if (authStatus) authStatus.textContent = "已登入，可在不同裝置接續使用。";
         if (syncButton) syncButton.disabled = cloudSyncInProgress;
         if (restoreButton) restoreButton.disabled = cloudSyncInProgress;
         if (checkButton) checkButton.disabled = cloudSyncInProgress;
         if (selfTestButton) selfTestButton.disabled = cloudSyncInProgress;
       } else if (cloudConfig.configured) {
-        label.textContent = "登入後可同步";
+        label.textContent = "登入後可備份";
         pill.textContent = "可登入";
-        if (meta) meta.textContent = "登入後可在不同裝置同步與還原資料。";
-        if (authStatus) authStatus.textContent = "使用 Email 登入後可同步資料。";
+        if (meta) meta.textContent = "登入後可在不同裝置接續使用，也能載入線上備份。";
+        if (authStatus) authStatus.textContent = "登入後可備份與接續使用。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
@@ -3117,7 +3117,7 @@
       cloudBackupSummary = `${groups.length} 群組 · ${expenses.length} 支出`;
       cloudBackupCheckedAt = cloudLastSyncedAt;
       cloudSyncInProgress = false;
-      if (!options.silent) showToast("資料已同步到雲端");
+      if (!options.silent) showToast("資料已完成備份");
       renderCloudStatus();
       return true;
     }
@@ -3190,7 +3190,7 @@
       const refreshedGroup = getGroup(groupId);
       const cloudGroupId = refreshedGroup?.cloudGroupId;
       if (!cloudGroupId) {
-        showToast("群組同步後才能產生邀請");
+        showToast("請先備份群組，再產生邀請");
         return;
       }
       const token = makeInviteToken();
@@ -3308,7 +3308,7 @@
       cloudBackupSummary = `${groups.length} 群組 · ${expenses.length} 支出`;
       cloudBackupCheckedAt = cloudLastSyncedAt;
       cloudSyncInProgress = false;
-      if (!options.silent) showToast("資料已同步到雲端");
+      if (!options.silent) showToast("資料已完成備份");
       renderCloudStatus();
       return true;
     }
@@ -3376,9 +3376,9 @@
       results.push(`此裝置：${localDataSummary()}`);
       if (cloudUser) {
         const payload = await checkCloudSnapshot({ silent: true });
-        results.push(`雲端：${describeSnapshot(payload)}`);
+        results.push(`線上備份：${describeSnapshot(payload)}`);
       } else {
-        results.push("雲端：登入後才能檢查");
+        results.push("線上備份：登入後才能查看");
       }
       const meta = document.getElementById("cloudSyncMeta");
       if (meta) meta.textContent = results.join(" · ");
@@ -3401,7 +3401,7 @@
       cloudLastSyncedAt = new Date().toISOString();
       localStorage.setItem("floatpay-cloud-last-sync", cloudLastSyncedAt);
       renderCloudStatus();
-      showToast(groups.length ? "已從雲端載入資料" : "目前沒有雲端群組");
+      showToast(groups.length ? "已載入線上備份" : "目前沒有線上備份");
     }
 
     function backupData() {
