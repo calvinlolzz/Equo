@@ -44,6 +44,11 @@
       overflow-x: hidden;
     }
 
+    body.sheet-open {
+      overflow: hidden;
+      touch-action: none;
+    }
+
     body::before {
       content: "";
       position: fixed;
@@ -2558,12 +2563,26 @@
       `;
     }
 
+    function syncSheetLock() {
+      document.body.classList.toggle("sheet-open", Boolean(document.querySelector(".sheet.open")));
+    }
+
+    function openSheetById(id) {
+      document.getElementById(id)?.classList.add("open");
+      syncSheetLock();
+    }
+
+    function closeSheetById(id) {
+      document.getElementById(id)?.classList.remove("open");
+      syncSheetLock();
+    }
+
     function openGuide() {
-      document.getElementById("guideSheet").classList.add("open");
+      openSheetById("guideSheet");
     }
 
     function closeGuide() {
-      document.getElementById("guideSheet").classList.remove("open");
+      closeSheetById("guideSheet");
     }
 
     async function startFreshData() {
@@ -3137,11 +3156,11 @@
       if (!requirePermission("manage")) return;
       const output = document.getElementById("inviteLinkOutput");
       if (output) output.value = latestInviteLink;
-      document.getElementById("inviteSheet").classList.add("open");
+      openSheetById("inviteSheet");
     }
 
     function closeInviteSheet() {
-      document.getElementById("inviteSheet").classList.remove("open");
+      closeSheetById("inviteSheet");
     }
 
     async function copyInviteLink() {
@@ -3913,7 +3932,7 @@
         openGroupSheet();
         return;
       }
-      document.getElementById("sheet").classList.add("open");
+      openSheetById("sheet");
       document.getElementById("expenseGroup").value = activeGroupId;
       syncPayerOptions();
       updatePreview();
@@ -3921,7 +3940,7 @@
     }
 
     function closeAddSheet() {
-      document.getElementById("sheet").classList.remove("open");
+      closeSheetById("sheet");
     }
 
     function openGroupSheet() {
@@ -3929,22 +3948,22 @@
       if (hint) hint.textContent = cloudUser
         ? "會先加入你自己，建立後可再新增成員。"
         : "本機試用會先加入你、阿華、小美，方便快速體驗。";
-      document.getElementById("groupSheet").classList.add("open");
+      openSheetById("groupSheet");
       showToast("新增群組已開啟");
     }
 
     function closeGroupSheet() {
-      document.getElementById("groupSheet").classList.remove("open");
+      closeSheetById("groupSheet");
     }
 
     function openMemberSheet() {
       if (!requirePermission("manage")) return;
-      document.getElementById("memberSheet").classList.add("open");
+      openSheetById("memberSheet");
       showToast("新增成員已開啟");
     }
 
     function closeMemberSheet() {
-      document.getElementById("memberSheet").classList.remove("open");
+      closeSheetById("memberSheet");
     }
 
     function openExpenseSheet(expenseId) {
@@ -3984,11 +4003,11 @@
           </button>
         </div>
       `;
-      document.getElementById("expenseDetailSheet").classList.add("open");
+      openSheetById("expenseDetailSheet");
     }
 
     function closeExpenseSheet() {
-      document.getElementById("expenseDetailSheet").classList.remove("open");
+      closeSheetById("expenseDetailSheet");
     }
 
     async function deleteExpense(expenseId) {
@@ -4098,11 +4117,11 @@
       document.getElementById("settingsGroupName").value = group.name;
       document.getElementById("settingsGroupCurrency").value = group.currency;
       document.getElementById("settingsGroupBudget").value = group.budget || (group.name.includes("旅遊") ? 15000 : group.name.includes("室友") ? 35000 : 8000);
-      document.getElementById("groupSettingsSheet").classList.add("open");
+      openSheetById("groupSettingsSheet");
     }
 
     function closeGroupSettingsSheet() {
-      document.getElementById("groupSettingsSheet").classList.remove("open");
+      closeSheetById("groupSettingsSheet");
     }
 
     function syncPayerOptions() {
@@ -4338,14 +4357,14 @@
       document.getElementById("confirmTitle").textContent = title;
       document.getElementById("confirmMessage").textContent = message;
       document.getElementById("confirmActionButton").textContent = action;
-      sheet.classList.add("open");
+      openSheetById("confirmSheet");
       return new Promise(resolve => {
         pendingConfirmResolve = resolve;
       });
     }
 
     function closeConfirmSheet(confirmed) {
-      document.getElementById("confirmSheet").classList.remove("open");
+      closeSheetById("confirmSheet");
       if (pendingConfirmResolve) {
         pendingConfirmResolve(Boolean(confirmed));
         pendingConfirmResolve = null;
