@@ -30,6 +30,10 @@
       display: none !important;
     }
 
+    .feature-paused {
+      display: none !important;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -1673,7 +1677,7 @@
     </section>
   </main>
 
-  <button class="floating-add" type="button" onclick="openAddSheet()" aria-label="新增支出">
+  <button class="floating-add feature-paused" type="button" onclick="openAddSheet()" aria-label="新增支出" hidden>
     <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
   </button>
 
@@ -1694,7 +1698,7 @@
         </button>
       </div>
       <form id="expenseForm" class="form-grid">
-        <div class="ai-card">
+        <div class="ai-card feature-paused" hidden>
           <h3>AI 記帳助手</h3>
           <p class="mini-note">輸入一句話或模擬掃描發票，系統會先填入表單，再讓你確認。</p>
           <textarea id="aiPrompt">今天聚餐 4200 元，阿華付款，4 人平均分攤</textarea>
@@ -2402,7 +2406,7 @@
       document.getElementById("authScreen").classList.toggle("hidden", loggedIn);
       document.querySelector(".shell").classList.toggle("hidden", !loggedIn);
       document.querySelector(".nav").classList.toggle("hidden", !loggedIn);
-      document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn);
+      document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn || document.querySelector(".floating-add").classList.contains("feature-paused"));
       if (loggedIn) {
         document.getElementById("profileName").textContent = user.name;
         document.getElementById("profileSync").textContent = cloudUser ? "帳號同步可用" : `${user.provider} · 此裝置資料`;
