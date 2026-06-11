@@ -206,6 +206,43 @@
       text-shadow: 0 1px 10px rgba(0,0,0,.18);
     }
 
+    .avatar.person, .member-avatar.person,
+    .avatar-choice.person {
+      color: rgba(255,255,255,.95);
+      text-shadow: none;
+    }
+
+    .person-mark {
+      position: relative;
+      width: 58%;
+      height: 64%;
+      display: block;
+    }
+
+    .person-mark::before,
+    .person-mark::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      background: currentColor;
+      box-shadow: inset 0 -8px 14px rgba(255,255,255,.18);
+    }
+
+    .person-mark::before {
+      top: 0;
+      width: 42%;
+      aspect-ratio: 1;
+      border-radius: 999px;
+    }
+
+    .person-mark::after {
+      bottom: 0;
+      width: 78%;
+      height: 48%;
+      border-radius: 999px 999px 34% 34%;
+    }
+
     .avatar.photo, .member-avatar.photo {
       background: rgba(255,255,255,.7);
       color: transparent;
@@ -2022,20 +2059,20 @@
     ];
 
     const defaultUsers = {
-      u1: { name: "我", initial: "W", avatar: "🙂", avatarColor: "blue" },
-      u2: { name: "阿華", initial: "華", avatar: "🍵", avatarColor: "green" },
-      u3: { name: "小美", initial: "美", avatar: "🌸", avatarColor: "pink" },
-      u4: { name: "小明", initial: "明", avatar: "⚡", avatarColor: "amber" },
-      u5: { name: "阿強", initial: "強", avatar: "🧢", avatarColor: "purple" }
+      u1: { name: "我", initial: "W", avatar: "person", avatarColor: "blue" },
+      u2: { name: "阿華", initial: "華", avatar: "person", avatarColor: "green" },
+      u3: { name: "小美", initial: "美", avatar: "person", avatarColor: "pink" },
+      u4: { name: "小明", initial: "明", avatar: "person", avatarColor: "amber" },
+      u5: { name: "阿強", initial: "強", avatar: "person", avatarColor: "purple" }
     };
 
     const avatarChoices = [
-      { icon: "🙂", color: "blue" },
-      { icon: "🌸", color: "pink" },
-      { icon: "🍵", color: "green" },
-      { icon: "⚡", color: "amber" },
-      { icon: "🧢", color: "purple" },
-      { icon: "🌙", color: "indigo" }
+      { icon: "person", color: "blue", label: "藍色人形" },
+      { icon: "person", color: "pink", label: "粉色人形" },
+      { icon: "person", color: "green", label: "綠色人形" },
+      { icon: "person", color: "amber", label: "黃色人形" },
+      { icon: "person", color: "purple", label: "紫色人形" },
+      { icon: "person", color: "indigo", label: "靛色人形" }
     ];
 
     const avatarGradients = {
@@ -2140,6 +2177,11 @@
       }
     }
 
+    function normalizeAvatarValue(avatar) {
+      if (!avatar || avatar === "person") return "person";
+      return avatar.length <= 4 ? "person" : avatar;
+    }
+
     function normalizeUsers(source) {
       const normalized = { ...structuredClone(defaultUsers), ...(source || {}) };
       Object.entries(normalized).forEach(([id, user], index) => {
@@ -2149,7 +2191,7 @@
           ...fallback,
           ...user,
           initial: user.initial || fallback.initial || user.name?.slice(0, 1) || "?",
-          avatar: user.avatar || fallback.avatar || choice.icon,
+          avatar: normalizeAvatarValue(user.avatar || fallback.avatar || choice.icon),
           avatarColor: user.avatarColor || fallback.avatarColor || choice.color,
           photoUrl: user.photoUrl || ""
         };
@@ -2651,12 +2693,18 @@
       return avatarGradients[user?.avatarColor] || avatarGradients.blue;
     }
 
+    function isPersonAvatar(user = users[currentUserId]) {
+      return user?.avatar === "person";
+    }
+
     function avatarContent(user = users[currentUserId]) {
+      if (isPersonAvatar(user)) return `<span class="person-mark" aria-hidden="true"></span>`;
       return user?.avatar || user?.initial || "?";
     }
 
     function avatarClass(user = users[currentUserId]) {
       if (user?.photoUrl) return "photo";
+      if (isPersonAvatar(user)) return "person";
       return user?.avatar ? "emoji" : "";
     }
 
@@ -2666,7 +2714,8 @@
         ? `<img alt="" src="${escapeAttr(user.photoUrl)}" referrerpolicy="no-referrer" />`
         : avatarContent(user);
       element.style.background = avatarStyle(user);
-      element.classList.toggle("emoji", Boolean(user?.avatar && !user?.photoUrl));
+      element.classList.toggle("emoji", Boolean(user?.avatar && !isPersonAvatar(user) && !user?.photoUrl));
+      element.classList.toggle("person", isPersonAvatar(user) && !user?.photoUrl);
       element.classList.toggle("photo", Boolean(user?.photoUrl));
     }
 
@@ -2700,7 +2749,7 @@
       ` : "";
       picker.innerHTML = accountPhoto + avatarChoices.map(choice => {
         const active = !current.photoUrl && current.avatar === choice.icon && current.avatarColor === choice.color ? "active" : "";
-        return `<button class="avatar-choice ${active}" type="button" style="background:${avatarGradients[choice.color]}" onclick="selectAvatar('${choice.icon}', '${choice.color}')">${choice.icon}</button>`;
+        return `<button class="avatar-choice person ${active}" type="button" style="background:${avatarGradients[choice.color]}" onclick="selectAvatar('${choice.icon}', '${choice.color}')" aria-label="${choice.label}"><span class="person-mark" aria-hidden="true"></span></button>`;
       }).join("");
     }
 
@@ -2913,7 +2962,7 @@
           name: row.user_id === cloudUser.id ? nextUsers[currentUserId].name : row.display_name || "未命名成員",
           email: row.user_id === cloudUser.id ? nextUsers[currentUserId].email : "",
           initial: row.initial || (row.display_name || "?").slice(0, 1),
-          avatar: row.avatar || "🙂",
+          avatar: row.avatar || "person",
           avatarColor: row.avatar_color || "blue",
           photoUrl: row.user_id === cloudUser.id ? nextUsers[currentUserId].photoUrl : row.photo_url || "",
           avatarSource: row.user_id === cloudUser.id ? nextUsers[currentUserId].avatarSource : ""
@@ -3232,7 +3281,7 @@
         member_id: memberId,
         member_display_name: identity?.displayName || cloudUser.email || "新成員",
         member_initial: (identity?.displayName || cloudUser.email || "?").slice(0, 1),
-        member_avatar: users[currentUserId]?.avatar || "🙂",
+        member_avatar: users[currentUserId]?.avatar || "person",
         member_avatar_color: users[currentUserId]?.avatarColor || "blue",
         member_photo_url: identity?.photoUrl || ""
       });
