@@ -886,105 +886,93 @@
       box-shadow: 0 12px 26px rgba(255,69,58,.08) !important;
     }
 
-    .destructive-row,
-    .destructive-mini {
-      border: 1px solid rgba(255,255,255,.7);
+    .destructive-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      min-height: 78px;
+      border-radius: 28px;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,.52);
       background:
-        linear-gradient(135deg, rgba(255,255,255,.74), rgba(255,255,255,.3)),
-        linear-gradient(135deg, rgba(255,59,48,.12), rgba(255,149,128,.06));
-      color: #ff3b30;
+        linear-gradient(135deg, rgba(255,255,255,.5), rgba(255,255,255,.18)),
+        rgba(30,37,64,.16);
       box-shadow:
-        0 16px 38px rgba(46,24,34,.08),
-        inset 0 1px 0 rgba(255,255,255,.86);
+        0 18px 46px rgba(28,35,70,.12),
+        inset 0 1px 0 rgba(255,255,255,.62);
       backdrop-filter: blur(22px) saturate(1.35);
       -webkit-backdrop-filter: blur(22px) saturate(1.35);
-      cursor: pointer;
-      transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
     }
 
-    .destructive-row {
-      width: 100%;
-      min-height: 64px;
-      border-radius: 20px;
-      padding: 10px 12px;
-      display: grid;
-      grid-template-columns: 38px 1fr 22px;
-      gap: 11px;
-      align-items: center;
-      text-align: left;
-    }
-
-    .destructive-mini {
-      min-height: 34px;
-      border-radius: 14px;
-      padding: 5px 9px 5px 7px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      font-weight: 820;
-    }
-
-    .destructive-icon {
-      width: 38px;
-      height: 38px;
-      border-radius: 14px;
-      display: grid;
-      place-items: center;
-      background: rgba(255,59,48,.12);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.62);
-    }
-
-    .destructive-mini .destructive-icon {
-      width: 23px;
-      height: 23px;
-      border-radius: 9px;
-    }
-
-    .destructive-icon svg,
-    .destructive-arrow svg {
-      width: 17px;
-      height: 17px;
-      stroke-width: 2.35;
-    }
-
-    .destructive-text {
-      display: grid;
-      gap: 2px;
-      min-width: 0;
-    }
-
-    .destructive-text strong {
+    .destructive-card-title {
+      display: block;
+      color: var(--text);
       font-size: 15px;
       font-weight: 840;
-      color: #ff3b30;
-      letter-spacing: 0;
+      margin-bottom: 3px;
     }
 
-    .destructive-text span {
-      color: rgba(95,49,55,.68);
+    .destructive-card-note {
+      display: block;
+      color: var(--muted);
       font-size: 12px;
       font-weight: 680;
       line-height: 1.35;
     }
 
-    .destructive-arrow {
-      display: grid;
-      place-items: center;
-      color: rgba(255,59,48,.72);
-    }
-
-    .destructive-row:hover,
-    .destructive-mini:hover {
-      border-color: rgba(255,255,255,.84);
+    .remove-pill {
+      min-height: 42px;
+      border-radius: 18px;
+      padding: 0 15px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: #ff3b30;
       box-shadow:
-        0 20px 44px rgba(255,59,48,.12),
-        inset 0 1px 0 rgba(255,255,255,.9);
+        0 12px 28px rgba(18,22,42,.12),
+        inset 0 1px 0 rgba(255,255,255,.44);
+      border: 1px solid rgba(255,255,255,.32);
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.24), rgba(255,255,255,.1)),
+        rgba(72,76,104,.42);
+      backdrop-filter: blur(22px) saturate(1.35);
+      -webkit-backdrop-filter: blur(22px) saturate(1.35);
+      cursor: pointer;
+      font-weight: 820;
+      font-size: 14px;
+      transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
     }
 
-    .destructive-row:active,
-    .destructive-mini:active {
-      transform: scale(.985);
+    .remove-pill svg {
+      width: 18px;
+      height: 18px;
+      stroke-width: 2.45;
+    }
+
+    .remove-pill:hover {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.32), rgba(255,255,255,.13)),
+        rgba(84,88,118,.48);
+      box-shadow:
+        0 16px 34px rgba(18,22,42,.16),
+        inset 0 1px 0 rgba(255,255,255,.52);
+    }
+
+    .remove-pill:active {
+      transform: scale(.97);
+    }
+
+    .member-remove-panel {
+      display: grid;
+      justify-items: end;
+      gap: 7px;
+    }
+
+    .member-remove-panel .amount {
+      font-size: 18px;
     }
 
     .danger-zone {
@@ -1222,8 +1210,8 @@
       color: #101625;
     }
 
-    body[data-theme="dark"] .destructive-row,
-    body[data-theme="dark"] .destructive-mini,
+    body[data-theme="dark"] .destructive-card,
+    body[data-theme="dark"] .remove-pill,
     body[data-theme="dark"] .confirm-icon {
       background:
         linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.04)),
@@ -1236,16 +1224,17 @@
         inset 0 -10px 22px rgba(255,105,97,.08);
     }
 
-    body[data-theme="dark"] .destructive-icon {
-      background: rgba(255,105,97,.12);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    body[data-theme="dark"] .remove-pill {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.13), rgba(255,255,255,.05)),
+        rgba(90,94,128,.38);
     }
 
-    body[data-theme="dark"] .destructive-text strong {
-      color: #ff6961;
+    body[data-theme="dark"] .destructive-card-title {
+      color: var(--text);
     }
 
-    body[data-theme="dark"] .destructive-text span {
+    body[data-theme="dark"] .destructive-card-note {
       color: rgba(245,247,251,.58);
     }
 
@@ -1944,11 +1933,16 @@
           儲存設定
         </button>
         <div class="danger-zone">
-          <button class="destructive-row" type="button" onclick="deleteCurrentGroup()">
-            <span class="destructive-icon"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg></span>
-            <span class="destructive-text"><strong>刪除群組</strong><span>移除群組、支出與結算紀錄</span></span>
-            <span class="destructive-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
-          </button>
+          <div class="destructive-card">
+            <div>
+              <span class="destructive-card-title">群組資料</span>
+              <span class="destructive-card-note">移除群組、支出與結算紀錄</span>
+            </div>
+            <button class="remove-pill" type="button" onclick="deleteCurrentGroup()">
+              <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+              移除
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -3668,11 +3662,11 @@
             ${avatarHtml(id)}
             <div><strong>${users[id].name}</strong><span>${role}${id === currentUserId ? " · 目前使用者" : ""}</span></div>
           </div>
-          <div>
+          <div class="member-remove-panel">
             <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
             <div class="mini-actions" ${canRemove ? "" : "hidden"}>
-              <button class="destructive-mini" type="button" onclick="deleteMember('${id}')">
-                <span class="destructive-icon"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg></span>
+              <button class="remove-pill" type="button" onclick="deleteMember('${id}')">
+                <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
                 移除
               </button>
             </div>
@@ -3916,11 +3910,16 @@
           <h3>備註</h3>
           <p class="mini-note">${expense.note || "無備註"}</p>
         </div>
-        <button class="destructive-row" type="button" onclick="deleteExpense('${expense.id}')">
-          <span class="destructive-icon"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg></span>
-          <span class="destructive-text"><strong>刪除這筆支出</strong><span>重新計算這個群組的結算</span></span>
-          <span class="destructive-arrow"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>
-        </button>
+        <div class="destructive-card">
+          <div>
+            <span class="destructive-card-title">這筆支出</span>
+            <span class="destructive-card-note">重新計算這個群組的結算</span>
+          </div>
+          <button class="remove-pill" type="button" onclick="deleteExpense('${expense.id}')">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+            移除
+          </button>
+        </div>
       `;
       document.getElementById("expenseDetailSheet").classList.add("open");
     }
