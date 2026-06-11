@@ -2936,6 +2936,18 @@
       if (!supabaseClient || !cloudUser || isApplyingCloudSnapshot) return false;
       cloudSyncInProgress = true;
       renderCloudStatus();
+      const keepOwnedGroupIds = groups
+        .filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id)
+        .map(group => String(group.id));
+      const { error: groupDeletionError } = await supabaseClient.rpc("sync_owned_group_deletions", {
+        keep_app_group_ids: keepOwnedGroupIds
+      });
+      if (groupDeletionError) {
+        cloudSyncInProgress = false;
+        if (!options.silent) showToast("群組刪除失敗，請稍後再試");
+        renderCloudStatus();
+        return false;
+      }
       const writableGroups = groups.filter(group => !group.cloudOwnerId || group.cloudOwnerId === cloudUser.id || canEditExpense(group));
       if (!writableGroups.length) {
         cloudLastSyncedAt = new Date().toISOString();
@@ -2981,6 +2993,21 @@
         if (error) {
           cloudSyncInProgress = false;
           if (!options.silent) showToast("成員儲存失敗，請稍後再試");
+          renderCloudStatus();
+          return false;
+        }
+      }
+      for (const group of manageableGroups) {
+        const cloudGroupId = cloudIdByLocalId[group.id];
+        if (!cloudGroupId) continue;
+        const keepMemberIds = group.members.map(memberId => String(memberId));
+        const { error } = await supabaseClient.rpc("sync_group_member_deletions", {
+          group_id_input: cloudGroupId,
+          keep_app_member_ids: keepMemberIds
+        });
+        if (error) {
+          cloudSyncInProgress = false;
+          if (!options.silent) showToast("成員移除失敗，請稍後再試");
           renderCloudStatus();
           return false;
         }

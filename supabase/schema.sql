@@ -438,6 +438,85 @@ begin
 end;
 $$;
 
+create or replace function public.sync_group_member_deletions(
+  group_id_input uuid,
+  keep_app_member_ids text[]
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  deleted_count integer;
+  removed_member_ids text[];
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  if not exists (
+    select 1 from public.groups
+    where id = group_id_input
+      and owner_id = auth.uid()
+  ) and not exists (
+    select 1 from public.group_members
+    where group_id = group_id_input
+      and user_id = auth.uid()
+      and role in ('admin', 'parent')
+  ) then
+    raise exception 'permission_denied';
+  end if;
+
+  select coalesce(array_agg(app_member_id), array[]::text[])
+  into removed_member_ids
+  from public.group_members
+  where group_id = group_id_input
+    and app_member_id is not null
+    and not (app_member_id = any(coalesce(keep_app_member_ids, array[]::text[])));
+
+  delete from public.group_members
+  where group_id = group_id_input
+    and app_member_id is not null
+    and not (app_member_id = any(coalesce(keep_app_member_ids, array[]::text[])));
+
+  get diagnostics deleted_count = row_count;
+
+  if array_length(removed_member_ids, 1) is not null then
+    delete from public.settlement_statuses
+    where group_id = group_id_input
+      and (from_member_id = any(removed_member_ids) or to_member_id = any(removed_member_ids));
+  end if;
+
+  return deleted_count;
+end;
+$$;
+
+create or replace function public.sync_owned_group_deletions(
+  keep_app_group_ids text[]
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  deleted_count integer;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  delete from public.groups
+  where owner_id = auth.uid()
+    and app_group_id is not null
+    and not (app_group_id = any(coalesce(keep_app_group_ids, array[]::text[])));
+
+  get diagnostics deleted_count = row_count;
+  return deleted_count;
+end;
+$$;
+
 create or replace function public.get_my_cloud_data()
 returns jsonb
 language plpgsql
@@ -510,6 +589,12 @@ grant execute on function public.upsert_group_expense(uuid, text, text, numeric,
 
 revoke all on function public.sync_group_expense_deletions(uuid, text[]) from public;
 grant execute on function public.sync_group_expense_deletions(uuid, text[]) to authenticated;
+
+revoke all on function public.sync_group_member_deletions(uuid, text[]) from public;
+grant execute on function public.sync_group_member_deletions(uuid, text[]) to authenticated;
+
+revoke all on function public.sync_owned_group_deletions(text[]) from public;
+grant execute on function public.sync_owned_group_deletions(text[]) to authenticated;
 
 revoke all on function public.get_my_cloud_data() from public;
 grant execute on function public.get_my_cloud_data() to authenticated;
