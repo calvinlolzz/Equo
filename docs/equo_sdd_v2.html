@@ -1,0 +1,891 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary)}
+.sdd{max-width:680px;padding:2rem 0}
+.doc-header{border-bottom:0.5px solid var(--color-border-tertiary);padding-bottom:1.5rem;margin-bottom:2rem}
+.doc-title{font-size:22px;font-weight:500;margin-bottom:6px}
+.doc-meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}
+.meta-item{font-size:12px;color:var(--color-text-secondary)}
+.meta-item span{color:var(--color-text-primary);font-weight:500}
+.toc{background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:2rem}
+.toc-title{font-size:13px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.toc-list{list-style:none;display:flex;flex-direction:column;gap:4px}
+.toc-list li a{font-size:14px;color:var(--color-text-info);text-decoration:none}
+.toc-list li a:hover{text-decoration:underline}
+.toc-list li{display:flex;align-items:center;gap:8px}
+.toc-num{font-size:12px;color:var(--color-text-tertiary);min-width:18px}
+section{margin-bottom:2.5rem}
+.section-header{display:flex;align-items:baseline;gap:10px;margin-bottom:1rem;padding-bottom:8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.section-num{font-size:12px;color:var(--color-text-tertiary);font-weight:500}
+.section-title{font-size:18px;font-weight:500}
+.subsection{margin-bottom:1.5rem}
+.subsection-title{font-size:15px;font-weight:500;margin-bottom:8px;color:var(--color-text-primary)}
+p{font-size:14px;line-height:1.7;color:var(--color-text-secondary);margin-bottom:8px}
+.principle-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:10px;margin:12px 0}
+.principle-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 14px}
+.principle-label{font-size:11px;font-weight:500;letter-spacing:.05em;color:var(--color-text-tertiary);margin-bottom:4px}
+.principle-text{font-size:13px;color:var(--color-text-primary);line-height:1.5}
+.flow-compare{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.flow-col{background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:1rem}
+.flow-col-title{font-size:12px;font-weight:500;color:var(--color-text-tertiary);letter-spacing:.05em;margin-bottom:10px}
+.flow-step{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
+.step-num{font-size:11px;font-weight:500;min-width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.step-num.old{background:#F7C1C1;color:#791F1F}
+.step-num.new{background:#9FE1CB;color:#085041}
+.step-num.merged{background:#FAC775;color:#633806}
+.step-text{font-size:13px;line-height:1.5;color:var(--color-text-primary)}
+.step-badge{font-size:10px;font-weight:500;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle}
+.badge-merge{background:#FAEEDA;color:#633806}
+.badge-auto{background:#E1F5EE;color:#085041}
+.badge-move{background:#FCEBEB;color:#791F1F}
+.badge-simplify{background:#EAF3DE;color:#27500A}
+.badge-placeholder{background:#EEEDFE;color:#3C3489}
+.arrow-down{text-align:center;font-size:11px;color:var(--color-text-tertiary);line-height:1.2;margin:2px 0 2px 26px}
+.step-count{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)}
+.count-old{font-size:20px;font-weight:500;color:#E24B4A}
+.count-arrow{font-size:16px;color:var(--color-text-tertiary)}
+.count-new{font-size:20px;font-weight:500;color:#1D9E75}
+.count-pct{font-size:12px;color:var(--color-text-tertiary)}
+.screen-spec{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);margin-bottom:12px;overflow:hidden}
+.screen-header{background:var(--color-background-secondary);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--color-border-tertiary)}
+.screen-name{font-size:13px;font-weight:500}
+.screen-route{font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.screen-body{padding:12px 14px}
+.field-row{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.field-row:last-child{border-bottom:none}
+.field-name{font-size:12px;font-weight:500;min-width:120px;color:var(--color-text-primary)}
+.field-type{font-size:11px;color:var(--color-text-info);font-family:var(--font-mono);min-width:70px}
+.field-rule{font-size:12px;color:var(--color-text-secondary);flex:1;line-height:1.4}
+.field-req{font-size:10px;font-weight:500;padding:1px 5px;border-radius:3px}
+.req-y{background:#E1F5EE;color:#085041}
+.req-n{background:#F1EFE8;color:#5F5E5A}
+.api-block{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 14px;margin:8px 0;font-family:var(--font-mono);font-size:12px;line-height:1.6;color:var(--color-text-secondary)}
+.api-method{color:#1D9E75;font-weight:500}
+.api-path{color:var(--color-text-primary)}
+.api-comment{color:var(--color-text-tertiary)}
+.schema-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.schema-table th{text-align:left;font-weight:500;font-size:11px;color:var(--color-text-tertiary);letter-spacing:.04em;padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.schema-table td{padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:top;line-height:1.4}
+.schema-table tr:last-child td{border-bottom:none}
+.td-field{font-family:var(--font-mono);color:var(--color-text-info)}
+.td-type{font-family:var(--font-mono);color:var(--color-text-tertiary)}
+.td-note{color:var(--color-text-secondary)}
+.error-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.error-table th{text-align:left;font-weight:500;font-size:11px;color:var(--color-text-tertiary);letter-spacing:.04em;padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.error-table td{padding:5px 8px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:top;line-height:1.4;color:var(--color-text-secondary)}
+.error-table tr:last-child td{border-bottom:none}
+.error-code{font-family:var(--font-mono);color:#E24B4A}
+.backlog-item{display:flex;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.backlog-item:last-child{border-bottom:none}
+.backlog-tag{font-size:10px;font-weight:500;padding:2px 7px;border-radius:4px;white-space:nowrap;height:fit-content;margin-top:2px}
+.tag-v2{background:#EEEDFE;color:#3C3489}
+.tag-v3{background:#E6F1FB;color:#0C447C}
+.backlog-content .bl-title{font-size:13px;font-weight:500;margin-bottom:2px}
+.backlog-content .bl-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.notice{display:flex;gap:8px;background:var(--color-background-warning);border:0.5px solid var(--color-border-warning);border-radius:var(--border-radius-md);padding:10px 14px;margin:8px 0}
+.notice i{font-size:16px;color:var(--color-text-warning);flex-shrink:0;margin-top:1px}
+.notice p{font-size:13px;color:var(--color-text-warning);margin:0}
+</style>
+
+<div class="sdd">
+
+<div class="doc-header">
+  <div class="doc-title">Equo — Software Design Document</div>
+  <p style="font-size:14px;color:var(--color-text-secondary);margin-top:4px">分帳 App 核心流程改版 v2.0 — 第一性原理延伸</p>
+  <div class="doc-meta">
+    <div class="meta-item">版本 <span>2.0</span></div>
+    <div class="meta-item">狀態 <span>Draft</span></div>
+    <div class="meta-item">日期 <span>2026-06-11</span></div>
+    <div class="meta-item">受眾 <span>Engineering · Design · PM</span></div>
+  </div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">目錄</div>
+  <ul class="toc-list">
+    <li><span class="toc-num">1</span><a href="#s1">問題定義 &amp; 設計原則</a></li>
+    <li><span class="toc-num">2</span><a href="#s2">流程圖 — 改版前後對照</a></li>
+    <li><span class="toc-num">3</span><a href="#s3">各步驟 UI 規格</a></li>
+    <li><span class="toc-num">4</span><a href="#s4">API / 資料結構</a></li>
+    <li><span class="toc-num">5</span><a href="#s5">邊界條件 &amp; 錯誤處理</a></li>
+    <li><span class="toc-num">6</span><a href="#s6">未來迭代 Backlog</a></li>
+    <li><span class="toc-num">7</span><a href="#s7">為什麼這樣還不夠 — 挑戰清單</a></li>
+    <li><span class="toc-num">8</span><a href="#s8">效能基準 &amp; SLA</a></li>
+    <li><span class="toc-num">9</span><a href="#s9">AI-First 路線圖</a></li>
+    <li><span class="toc-num">10</span><a href="#s10">基礎設施韌性</a></li>
+    <li><span class="toc-num">11</span><a href="#s11">刪除清單 — 不應該存在的東西</a></li>
+  </ul>
+</div>
+
+<section id="s1">
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <span class="section-title">問題定義 &amp; 設計原則</span>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">問題陳述</div>
+    <p>現有流程要求使用者在建立一個可用的分帳群組之前，依序完成 9 個步驟。其中幣別設定、角色選擇為強制中間步驟，發票辨識為獨立節點，結算依賴手動觸發。這導致：新用戶首次完成設定的轉換率偏低；任何中途放棄的使用者都必須重頭開始；非 Premium 使用者感知到流程因 paywall 而截斷。</p>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">設計目標</div>
+    <div class="principle-grid">
+      <div class="principle-card">
+        <div class="principle-label">核心指標</div>
+        <div class="principle-text">首次設定完成率 +20%（基準待定義）</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">步驟壓縮</div>
+        <div class="principle-text">主流程從 9 步壓縮至 5 步，減少 44%</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">感知負擔</div>
+        <div class="principle-text">每個步驟只問使用者一件事</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">零手動計算</div>
+        <div class="principle-text">結算在每次新增支出後自動更新</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">設計原則（第一性原理）</div>
+    <div class="principle-grid">
+      <div class="principle-card">
+        <div class="principle-label">合併，不是刪除</div>
+        <div class="principle-text">幣別選擇是必要資訊，但不需要獨立頁面。合入「建立群組」表單底部。</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">後置選配</div>
+        <div class="principle-text">角色權限預設為「成員可記帳」。需要限制時，由管理員進群組設定修改。</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">狀態，不是動作</div>
+        <div class="principle-text">結算是一種即時狀態，不是使用者觸發的動作。移除手動更新按鈕。</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">位置決定感知</div>
+        <div class="principle-text">發票辨識不是獨立步驟，是「新增支出」的輸入方式之一。非 Premium 看到入口，點擊才顯示 paywall。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <span class="section-title">流程圖 — 改版前後對照</span>
+  </div>
+
+  <div class="flow-compare">
+    <div class="flow-col">
+      <div class="flow-col-title">現況 — 9 步</div>
+      <div class="flow-step"><span class="step-num old">1</span><span class="step-text">登入 / 快速試用</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">2</span><span class="step-text">建立群組</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">3</span><span class="step-text">設定主幣別 <span class="step-badge badge-merge">獨立頁</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">4</span><span class="step-text">新增成員</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">5</span><span class="step-text">設定角色權限 <span class="step-badge badge-merge">強制</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">6</span><span class="step-text">新增支出</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">7</span><span class="step-text">發票辨識 <span class="step-badge badge-move">獨立節點</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">8</span><span class="step-text">手動更新結算 <span class="step-badge badge-move">按鈕</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num old">9</span><span class="step-text">一鍵分享</span></div>
+      <div class="step-count"><span class="count-old">9</span></div>
+    </div>
+
+    <div class="flow-col">
+      <div class="flow-col-title">目標 — 5 步</div>
+      <div class="flow-step"><span class="step-num new">1</span><span class="step-text">登入 / 快速試用</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num merged">2</span><span class="step-text">建立群組 <span class="step-badge badge-merge">含幣別</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num merged">3</span><span class="step-text">新增成員 <span class="step-badge badge-simplify">角色後置</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num merged">4</span><span class="step-text">新增支出 <span class="step-badge badge-move">含發票入口</span></span></div>
+      <div class="arrow-down">↓</div>
+      <div class="flow-step"><span class="step-num new">5</span><span class="step-text">結算 + 分享 <span class="step-badge badge-auto">自動更新</span></span></div>
+      <div class="step-count">
+        <span class="count-new">5</span>
+        <span class="count-arrow">←</span>
+        <span class="count-old">9</span>
+        <span class="count-pct">−44%</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s3">
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <span class="section-title">各步驟 UI 規格</span>
+  </div>
+
+  <div class="screen-spec">
+    <div class="screen-header">
+      <span class="screen-name">Step 2 — 建立群組</span>
+      <span class="screen-route">/group/new</span>
+    </div>
+    <div class="screen-body">
+      <div class="field-row">
+        <span class="field-name">群組名稱</span>
+        <span class="field-type">string</span>
+        <span class="field-rule">1–40 字元，不可空白。placeholder：「日本旅遊 2026」</span>
+        <span class="field-req req-y">必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">主幣別</span>
+        <span class="field-type">enum</span>
+        <span class="field-rule">Dropdown，預設 TWD，選項按常用排序（TWD / JPY / USD / EUR…）。選擇後顯示貨幣符號預覽。</span>
+        <span class="field-req req-y">必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">群組圖示</span>
+        <span class="field-type">emoji</span>
+        <span class="field-rule">Emoji picker，預設隨機。可跳過。</span>
+        <span class="field-req req-n">選填</span>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:var(--color-text-tertiary)">按鈕：「建立」（primary）。建立成功後自動跳轉 /group/:id/members</p>
+    </div>
+  </div>
+
+  <div class="screen-spec">
+    <div class="screen-header">
+      <span class="screen-name">Step 3 — 新增成員</span>
+      <span class="screen-route">/group/:id/members</span>
+    </div>
+    <div class="screen-body">
+      <div class="field-row">
+        <span class="field-name">邀請方式</span>
+        <span class="field-type">enum</span>
+        <span class="field-rule">邀請連結 / 掃 QR Code / 手動輸入名稱（離線成員）</span>
+        <span class="field-req req-y">擇一</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">顯示名稱</span>
+        <span class="field-type">string</span>
+        <span class="field-rule">離線成員用。1–20 字元。</span>
+        <span class="field-req req-n">條件必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">角色</span>
+        <span class="field-type">enum</span>
+        <span class="field-rule">新增時不顯示。預設 member（可記帳、可查看）。管理員從群組設定修改。</span>
+        <span class="field-req req-n">後置</span>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:var(--color-text-tertiary)">最少 1 位成員才能繼續。群組建立者自動加入並設為 admin。</p>
+    </div>
+  </div>
+
+  <div class="screen-spec">
+    <div class="screen-header">
+      <span class="screen-name">Step 4 — 新增支出</span>
+      <span class="screen-route">/group/:id/expense/new</span>
+    </div>
+    <div class="screen-body">
+      <div class="field-row">
+        <span class="field-name">輸入方式</span>
+        <span class="field-type">tab</span>
+        <span class="field-rule">「手填」（預設）/ 「拍照」（Premium）。非 Premium 點拍照 → paywall sheet，主流程不截斷。</span>
+        <span class="field-req req-y">必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">金額</span>
+        <span class="field-type">decimal</span>
+        <span class="field-rule">正數，最多小數點後 2 位。幣別繼承群組主幣別，可手動覆蓋（支援多幣）。</span>
+        <span class="field-req req-y">必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">付款人</span>
+        <span class="field-type">member_id</span>
+        <span class="field-rule">Dropdown，列出群組成員。預設當前使用者。</span>
+        <span class="field-req req-y">必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">分攤對象</span>
+        <span class="field-type">member_id[]</span>
+        <span class="field-rule">預設全選。可取消勾選。支援自訂金額 / 比例（v2）。</span>
+        <span class="field-req req-y">必填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">描述</span>
+        <span class="field-type">string</span>
+        <span class="field-rule">0–100 字元。</span>
+        <span class="field-req req-n">選填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">日期</span>
+        <span class="field-type">date</span>
+        <span class="field-rule">預設今日。可往前選。</span>
+        <span class="field-req req-n">選填</span>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:var(--color-text-tertiary)">儲存後：呼叫結算引擎（非同步）→ 更新結算狀態。畫面跳回支出列表，顯示新增支出 toast。</p>
+    </div>
+  </div>
+
+  <div class="screen-spec">
+    <div class="screen-header">
+      <span class="screen-name">Step 5 — 結算 + 分享</span>
+      <span class="screen-route">/group/:id/settlement</span>
+    </div>
+    <div class="screen-body">
+      <div class="field-row">
+        <span class="field-name">結算狀態</span>
+        <span class="field-type">computed</span>
+        <span class="field-rule">自動計算，每次 expense CRUD 後觸發。顯示「A 付給 B $XXX」列表（最少轉帳算法）。無手動更新按鈕。</span>
+        <span class="field-req req-y">自動</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">分享方式</span>
+        <span class="field-type">enum</span>
+        <span class="field-rule">複製連結 / LINE / 其他（native share sheet）</span>
+        <span class="field-req req-n">選填</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">標記已付款</span>
+        <span class="field-type">boolean</span>
+        <span class="field-rule">每筆轉帳可個別標記。標記後從待付清單移除，記錄保留。</span>
+        <span class="field-req req-n">選填</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="notice">
+    <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+    <p>發票辨識（Premium）— 規格 placeholder。位置：Step 4「輸入方式」tab 中的「拍照」選項。觸發 OCR → 自動填入金額 + 日期。完整規格待 Premium 功能 Sprint 補入。</p>
+  </div>
+</section>
+
+<section id="s4">
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <span class="section-title">API / 資料結構</span>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">核心 API 端點</div>
+    <div class="api-block">
+      <div><span class="api-method">POST</span>   <span class="api-path">/api/v1/groups</span>              <span class="api-comment">— 建立群組（含幣別）</span></div>
+      <div><span class="api-method">POST</span>   <span class="api-path">/api/v1/groups/:id/members</span>   <span class="api-comment">— 新增成員</span></div>
+      <div><span class="api-method">PUT</span>    <span class="api-path">/api/v1/groups/:id/members/:uid</span> <span class="api-comment">— 更新角色（後置）</span></div>
+      <div><span class="api-method">POST</span>   <span class="api-path">/api/v1/groups/:id/expenses</span>  <span class="api-comment">— 新增支出 → 觸發結算</span></div>
+      <div><span class="api-method">GET</span>    <span class="api-path">/api/v1/groups/:id/settlement</span> <span class="api-comment">— 取得最新結算</span></div>
+      <div><span class="api-method">PATCH</span>  <span class="api-path">/api/v1/groups/:id/settlement/:sid</span> <span class="api-comment">— 標記已付款</span></div>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Group 資料結構</div>
+    <table class="schema-table">
+      <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr><td class="td-field">id</td><td class="td-type">uuid</td><td class="td-note">主鍵</td></tr>
+        <tr><td class="td-field">name</td><td class="td-type">string</td><td class="td-note">群組名稱，1–40 字元</td></tr>
+        <tr><td class="td-field">base_currency</td><td class="td-type">string</td><td class="td-note">ISO 4217，e.g. "TWD"</td></tr>
+        <tr><td class="td-field">icon</td><td class="td-type">string?</td><td class="td-note">Emoji，nullable</td></tr>
+        <tr><td class="td-field">created_by</td><td class="td-type">user_id</td><td class="td-note">建立者自動為 admin</td></tr>
+        <tr><td class="td-field">created_at</td><td class="td-type">timestamp</td><td class="td-note">ISO 8601</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Expense 資料結構</div>
+    <table class="schema-table">
+      <thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr><td class="td-field">id</td><td class="td-type">uuid</td><td class="td-note">主鍵</td></tr>
+        <tr><td class="td-field">group_id</td><td class="td-type">uuid</td><td class="td-note">FK → groups</td></tr>
+        <tr><td class="td-field">amount</td><td class="td-type">decimal(12,2)</td><td class="td-note">正數</td></tr>
+        <tr><td class="td-field">currency</td><td class="td-type">string</td><td class="td-note">ISO 4217，預設 base_currency</td></tr>
+        <tr><td class="td-field">paid_by</td><td class="td-type">member_id</td><td class="td-note">FK → group_members</td></tr>
+        <tr><td class="td-field">split_with</td><td class="td-type">member_id[]</td><td class="td-note">分攤對象，至少 1 人</td></tr>
+        <tr><td class="td-field">description</td><td class="td-type">string?</td><td class="td-note">0–100 字元</td></tr>
+        <tr><td class="td-field">expense_date</td><td class="td-type">date</td><td class="td-note">預設今日</td></tr>
+        <tr><td class="td-field">receipt_url</td><td class="td-type">string?</td><td class="td-note">Premium — placeholder</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Settlement 計算邏輯</div>
+    <p>每次 expense CRUD（新增 / 編輯 / 刪除）後，後端非同步執行最少轉帳演算法（Minimum Cash Flow）。計算結果寫入 <code style="font-family:var(--font-mono);font-size:12px;background:var(--color-background-secondary);padding:1px 5px;border-radius:3px">settlement_snapshots</code>，前端訂閱 WebSocket 事件 <code style="font-family:var(--font-mono);font-size:12px;background:var(--color-background-secondary);padding:1px 5px;border-radius:3px">group.settlement.updated</code> 即時更新。多幣別支出以結算當下匯率換算至 base_currency（匯率來源 TBD）。</p>
+  </div>
+</section>
+
+<section id="s5">
+  <div class="section-header">
+    <span class="section-num">05</span>
+    <span class="section-title">邊界條件 &amp; 錯誤處理</span>
+  </div>
+
+  <table class="error-table">
+    <thead><tr><th>情境</th><th>錯誤碼</th><th>前端行為</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>群組名稱空白或超過 40 字元</td>
+        <td class="error-code">GROUP_NAME_INVALID</td>
+        <td>inline 欄位錯誤，按鈕 disabled</td>
+      </tr>
+      <tr>
+        <td>幣別未選擇即送出</td>
+        <td class="error-code">CURRENCY_REQUIRED</td>
+        <td>highlight dropdown，toast 提示</td>
+      </tr>
+      <tr>
+        <td>新增成員 0 人即繼續</td>
+        <td class="error-code">MEMBER_MINIMUM</td>
+        <td>「繼續」按鈕 disabled，提示至少 1 人</td>
+      </tr>
+      <tr>
+        <td>支出金額 ≤ 0</td>
+        <td class="error-code">AMOUNT_INVALID</td>
+        <td>inline 欄位錯誤</td>
+      </tr>
+      <tr>
+        <td>分攤對象全部取消勾選</td>
+        <td class="error-code">SPLIT_EMPTY</td>
+        <td>toast「至少選一位分攤對象」，儲存 disabled</td>
+      </tr>
+      <tr>
+        <td>付款人不在分攤對象中</td>
+        <td class="error-code">—</td>
+        <td>允許（付款人替他人代墊的場景合法）</td>
+      </tr>
+      <tr>
+        <td>結算計算逾時（&gt;5s）</td>
+        <td class="error-code">SETTLEMENT_TIMEOUT</td>
+        <td>顯示 loading skeleton，背景 retry × 3，失敗顯示 banner 提示稍後重新整理</td>
+      </tr>
+      <tr>
+        <td>邀請連結已過期（24h）</td>
+        <td class="error-code">INVITE_EXPIRED</td>
+        <td>獨立錯誤頁，提供「請群組管理員重新產生連結」說明</td>
+      </tr>
+      <tr>
+        <td>非 Premium 點擊拍照發票</td>
+        <td class="error-code">—</td>
+        <td>Bottom sheet paywall，主流程不中斷，可手填繼續</td>
+      </tr>
+      <tr>
+        <td>離線狀態新增支出</td>
+        <td class="error-code">NETWORK_ERROR</td>
+        <td>本機暫存，連線恢復後自動同步（v2 再實作，此版顯示 toast）</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="s6">
+  <div class="section-header">
+    <span class="section-num">06</span>
+    <span class="section-title">未來迭代 Backlog</span>
+  </div>
+
+  <div class="backlog-item">
+    <span class="backlog-tag tag-v2">v2</span>
+    <div class="backlog-content">
+      <div class="bl-title">發票辨識完整規格</div>
+      <div class="bl-desc">OCR 流程、欄位對應、多張發票合併、錯誤辨識人工修正 UI。目前為 placeholder，等 Premium Sprint 補入。</div>
+    </div>
+  </div>
+  <div class="backlog-item">
+    <span class="backlog-tag tag-v2">v2</span>
+    <div class="backlog-content">
+      <div class="bl-title">自訂分攤比例 / 金額</div>
+      <div class="bl-desc">Step 4 支出新增支援「自訂」模式：可輸入每人金額或百分比。驗證總和等於支出總額。</div>
+    </div>
+  </div>
+  <div class="backlog-item">
+    <span class="backlog-tag tag-v2">v2</span>
+    <div class="backlog-content">
+      <div class="bl-title">離線支援 / 本機暫存</div>
+      <div class="bl-desc">新增支出離線時寫入 IndexedDB，連線後自動 sync。需處理 conflict resolution（同時間多人編輯）。</div>
+    </div>
+  </div>
+  <div class="backlog-item">
+    <span class="backlog-tag tag-v2">v2</span>
+    <div class="backlog-content">
+      <div class="bl-title">多幣別匯率來源確認</div>
+      <div class="bl-desc">結算換算需接入匯率 API（Open Exchange Rates 或類似）。需決定快取策略（每日更新 vs 即時）。</div>
+    </div>
+  </div>
+  <div class="backlog-item">
+    <span class="backlog-tag tag-v3">v3</span>
+    <div class="backlog-content">
+      <div class="bl-title">週期性支出</div>
+      <div class="bl-desc">房租、訂閱類固定費用，設定後每月自動新增一筆支出並觸發結算更新。</div>
+    </div>
+  </div>
+  <div class="backlog-item">
+    <span class="backlog-tag tag-v3">v3</span>
+    <div class="backlog-content">
+      <div class="bl-title">群組範本</div>
+      <div class="bl-desc">常見場景預設（旅遊、合租、聚餐），自動帶入建議幣別與常用分類標籤。</div>
+    </div>
+  </div>
+</section>
+
+<style>
+.challenge-item{display:flex;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.challenge-item:last-child{border-bottom:none}
+.challenge-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.challenge-body .ch-q{font-size:13px;font-weight:500;margin-bottom:3px}
+.challenge-body .ch-a{font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.sla-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.sla-table th{text-align:left;font-weight:500;font-size:11px;color:var(--color-text-tertiary);letter-spacing:.04em;padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.sla-table td{padding:6px 8px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:top;line-height:1.5;color:var(--color-text-secondary)}
+.sla-table tr:last-child td{border-bottom:none}
+.sla-metric{font-family:var(--font-mono);color:var(--color-text-info)}
+.sla-target{font-weight:500;color:var(--color-text-primary)}
+.sla-warn{color:#E24B4A;font-weight:500}
+.ai-roadmap{display:flex;flex-direction:column;gap:0}
+.ai-phase{display:flex;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--color-border-tertiary)}
+.ai-phase:last-child{border-bottom:none}
+.ai-badge{font-size:10px;font-weight:500;padding:2px 8px;border-radius:4px;white-space:nowrap;height:fit-content;margin-top:2px;min-width:48px;text-align:center}
+.ai-now{background:#E1F5EE;color:#085041}
+.ai-next{background:#EEEDFE;color:#3C3489}
+.ai-future{background:#FCF0DC;color:#633806}
+.ai-body .ai-title{font-size:13px;font-weight:500;margin-bottom:3px}
+.ai-body .ai-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.infra-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.infra-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 14px}
+.infra-label{font-size:11px;font-weight:500;letter-spacing:.05em;color:var(--color-text-tertiary);margin-bottom:6px}
+.infra-title{font-size:13px;font-weight:500;margin-bottom:4px}
+.infra-text{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.delete-item{display:flex;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--color-border-tertiary);align-items:flex-start}
+.delete-item:last-child{border-bottom:none}
+.delete-x{font-size:14px;font-weight:700;color:#E24B4A;flex-shrink:0;margin-top:1px;min-width:18px}
+.delete-body .del-title{font-size:13px;font-weight:500;margin-bottom:2px}
+.delete-body .del-reason{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.musk-callout{border-left:3px solid #E24B4A;padding:10px 14px;margin:12px 0;background:var(--color-background-secondary);border-radius:0 var(--border-radius-md) var(--border-radius-md) 0}
+.musk-callout p{font-size:13px;line-height:1.6;color:var(--color-text-secondary);margin:0;font-style:italic}
+.musk-callout .musk-attr{font-size:11px;color:var(--color-text-tertiary);margin-top:6px;font-style:normal}
+</style>
+
+<section id="s7">
+  <div class="section-header">
+    <span class="section-num">07</span>
+    <span class="section-title">為什麼這樣還不夠 — 挑戰清單</span>
+  </div>
+
+  <div class="musk-callout">
+    <p>「每個需求都應該被質疑。如果你沒辦法刪掉至少 10% 的需求，代表你想得不夠用力。」</p>
+    <div class="musk-attr">— 第一性原理審查框架</div>
+  </div>
+
+  <div class="challenge-item">
+    <div class="challenge-icon">⚡</div>
+    <div class="challenge-body">
+      <div class="ch-q">Step 1「登入 / 快速試用」還需要嗎？</div>
+      <div class="ch-a">為什麼使用者在看到任何價值之前就要登入？競爭對手 Splitwise 讓人先建群組再問帳號。「快速試用」應是預設路徑，登入應在使用者自願儲存資料時才觸發（Progressive Authentication）。目前 SDD 未定義這個分岔。</div>
+    </div>
+  </div>
+
+  <div class="challenge-item">
+    <div class="challenge-icon">🔢</div>
+    <div class="challenge-body">
+      <div class="ch-q">「首次設定完成率 +20%」是從哪個基準來的？</div>
+      <div class="ch-a">基準數字標示「待定義」。沒有基準就沒有成功條件。設計文件必須在 Sprint 開始前確認當前的 conversion funnel 數據：各步驟的 drop-off rate、平均完成時間、最常放棄的頁面。否則這個目標無法驗收。</div>
+    </div>
+  </div>
+
+  <div class="challenge-item">
+    <div class="challenge-icon">🧮</div>
+    <div class="challenge-body">
+      <div class="ch-q">最少轉帳演算法（Minimum Cash Flow）的時間複雜度上限是多少？</div>
+      <div class="ch-a">MCF 是 NP-hard 問題的近似解。群組 100 人、1000 筆支出時的計算時間是否能保持在 SLA 內？文件目前只說「非同步執行 + WebSocket 推送」，但沒有定義最大成員數、最大支出筆數、以及降級策略（超過閾值時切換近似演算法）。</div>
+    </div>
+  </div>
+
+  <div class="challenge-item">
+    <div class="challenge-icon">💱</div>
+    <div class="challenge-body">
+      <div class="ch-q">多幣別匯率「來源 TBD」是重大風險。</div>
+      <div class="ch-a">匯率 API 是金融數據，有法律風險（不同地區的金融資訊揭露規範）、有延遲問題（即時 vs 每日快取影響使用者體驗與帳務準確性）、有費用問題（Open Exchange Rates 商業方案費用不低）。這個 TBD 必須在 v1 發布前解決，不是 v2。</div>
+    </div>
+  </div>
+
+  <div class="challenge-item">
+    <div class="challenge-icon">🔒</div>
+    <div class="challenge-body">
+      <div class="ch-q">邀請連結 24 小時過期 — 這個數字從何而來？</div>
+      <div class="ch-a">旅遊場景中，群組可能在旅行前一週就建立好。24 小時的邀請有效期會逼迫管理員重新產生連結，增加摩擦。建議改為 7 天，或由管理員自設。安全性考量應明確記錄在文件中，而非用隱性假設決定 magic number。</div>
+    </div>
+  </div>
+
+  <div class="challenge-item">
+    <div class="challenge-icon">📊</div>
+    <div class="challenge-body">
+      <div class="ch-q">沒有定義任何 Analytics / Telemetry 規格。</div>
+      <div class="ch-a">如何知道 v1 是否成功？需要定義關鍵事件追蹤：group_created、member_added、expense_added、settlement_viewed、share_tapped、paywall_triggered。每個事件的屬性（group_size、member_count、amount、currency、is_premium）都要在 SDD 中規格化，而非留給 Engineering 自行決定。</div>
+    </div>
+  </div>
+</section>
+
+<section id="s8">
+  <div class="section-header">
+    <span class="section-num">08</span>
+    <span class="section-title">效能基準 &amp; SLA</span>
+  </div>
+
+  <p>所有指標必須在 staging 環境通過壓測後才能進入 production。以下為 v1 的最低可接受標準（MAR）。</p>
+
+  <table class="sla-table">
+    <thead><tr><th>操作</th><th>指標</th><th>目標</th><th>降級行為</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>建立群組（POST /groups）</td>
+        <td class="sla-metric">p95 latency</td>
+        <td class="sla-target">&lt; 300ms</td>
+        <td>Optimistic UI — 先顯示成功，背景同步</td>
+      </tr>
+      <tr>
+        <td>新增支出（POST /expenses）</td>
+        <td class="sla-metric">p95 latency</td>
+        <td class="sla-target">&lt; 500ms</td>
+        <td>Optimistic UI + 本機暫存（v1 需實作）</td>
+      </tr>
+      <tr>
+        <td>結算計算推送（WebSocket）</td>
+        <td class="sla-metric">端到端延遲</td>
+        <td class="sla-target">&lt; 2s</td>
+        <td>Loading skeleton，5s 後 toast 提醒</td>
+      </tr>
+      <tr>
+        <td>結算計算（後端）</td>
+        <td class="sla-metric">p99 執行時間</td>
+        <td class="sla-target">&lt; 1s（≤20 人群組）</td>
+        <td class="sla-warn">&gt;20 人：切換近似演算法，需補充規格</td>
+      </tr>
+      <tr>
+        <td>首頁載入（群組列表）</td>
+        <td class="sla-metric">LCP</td>
+        <td class="sla-target">&lt; 1.5s（4G）</td>
+        <td>Skeleton screen，分頁加載</td>
+      </tr>
+      <tr>
+        <td>API 可用性</td>
+        <td class="sla-metric">Uptime</td>
+        <td class="sla-target">99.9% / 月</td>
+        <td>離線 banner，本機操作暫存</td>
+      </tr>
+      <tr>
+        <td>WebSocket 連線</td>
+        <td class="sla-metric">重連策略</td>
+        <td class="sla-target">指數退避，最大 30s</td>
+        <td>斷線時顯示「結算可能不是最新」badge</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="subsection" style="margin-top:1.5rem">
+    <div class="subsection-title">壓測情境</div>
+    <div class="principle-grid">
+      <div class="principle-card">
+        <div class="principle-label">Baseline</div>
+        <div class="principle-text">100 concurrent users，每群組 5 人，50 筆支出</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">Peak</div>
+        <div class="principle-text">1,000 concurrent users，群組尺寸混合（2–30 人）</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">Stress</div>
+        <div class="principle-text">單一群組 50 人，500 筆支出，同時觸發結算</div>
+      </div>
+      <div class="principle-card">
+        <div class="principle-label">Soak</div>
+        <div class="principle-text">Baseline 負載持續 24 小時，檢查記憶體洩漏</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s9">
+  <div class="section-header">
+    <span class="section-num">09</span>
+    <span class="section-title">AI-First 路線圖</span>
+  </div>
+
+  <p>分帳是一個資料密集、決策重複性高的問題域，是 AI 介入的理想場景。以下路線圖從最小 AI 足跡（OCR）出發，逐步演進至主動智能代理。</p>
+
+  <div class="ai-roadmap">
+    <div class="ai-phase">
+      <span class="ai-badge ai-now">NOW</span>
+      <div class="ai-body">
+        <div class="ai-title">發票 OCR（Premium v2）</div>
+        <div class="ai-desc">拍照 → 自動辨識金額、日期、商店名稱。技術選型：Google Cloud Vision API 或 AWS Textract（需於 Premium Sprint 前完成 PoC 與費用評估）。準確率目標：金額欄位 &gt;95%，日期欄位 &gt;90%。辨識結果可人工修正，修正資料不回傳訓練（隱私）。</div>
+      </div>
+    </div>
+
+    <div class="ai-phase">
+      <span class="ai-badge ai-next">NEXT</span>
+      <div class="ai-body">
+        <div class="ai-title">智能分類建議</div>
+        <div class="ai-desc">根據支出描述（「炸雞排」→ 餐飲、「計程車」→ 交通）自動標籤分類。模型：本地 on-device 小模型（&lt;5MB）或後端 embedding 查找，不需要 LLM。用途：月報表、支出分析儀表板（v3 功能前置資料基礎）。</div>
+      </div>
+    </div>
+
+    <div class="ai-phase">
+      <span class="ai-badge ai-next">NEXT</span>
+      <div class="ai-body">
+        <div class="ai-title">結算建議訊息自動生成</div>
+        <div class="ai-desc">將結算清單（「A 付 B $350」）轉換成自然語言訊息草稿：「嘿，這次日本行算清楚了！Amos 要付 $350 給 Jill，記得在這週內完成 ✌️」。一鍵複製分享，降低通知摩擦。技術：rule-based template + 可選 LLM 潤稿。</div>
+      </div>
+    </div>
+
+    <div class="ai-phase">
+      <span class="ai-badge ai-future">FUTURE</span>
+      <div class="ai-body">
+        <div class="ai-title">主動異常偵測</div>
+        <div class="ai-desc">偵測異常支出（金額遠超群組歷史均值、同一天重複新增相似金額）並主動提示使用者確認。預防誤操作造成的帳務糾紛。需要足夠的歷史數據才能啟動（新群組不適用）。</div>
+      </div>
+    </div>
+
+    <div class="ai-phase">
+      <span class="ai-badge ai-future">FUTURE</span>
+      <div class="ai-body">
+        <div class="ai-title">自然語言記帳</div>
+        <div class="ai-desc">「我剛付了 1200 塊的火鍋，四個人平分」→ 自動解析金額、付款人（當前使用者）、分攤方式，生成支出草稿供確認。技術：小型指令微調模型或 function calling。隱私模式：全部在本地處理（需評估設備端模型可行性）。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s10">
+  <div class="section-header">
+    <span class="section-num">10</span>
+    <span class="section-title">基礎設施韌性</span>
+  </div>
+
+  <p>系統在失敗時的行為比在成功時的行為更能定義使用者對產品的印象。以下為 v1 必須實作的韌性機制。</p>
+
+  <div class="infra-grid">
+    <div class="infra-card">
+      <div class="infra-label">資料一致性</div>
+      <div class="infra-title">冪等 API 設計</div>
+      <div class="infra-text">所有 POST 端點必須接受 client_request_id（UUID），後端去重複。防止網路重試造成重複支出。前端所有 mutation 必須帶此欄位。</div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-label">即時通訊</div>
+      <div class="infra-title">WebSocket 降級策略</div>
+      <div class="infra-text">WebSocket 不可用時，降級為 30 秒輪詢（polling）。前端顯示「即時更新已暫停」badge。不影響新增支出等核心操作。</div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-label">結算引擎</div>
+      <div class="infra-title">計算任務隊列</div>
+      <div class="infra-text">結算計算透過消息隊列（Redis Queue 或類似）非同步處理。高峰時排隊，不阻塞 expense 寫入。隊列積壓監控告警閾值：&gt;50 任務。</div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-label">匯率服務</div>
+      <div class="infra-title">本地快取 + 熔斷</div>
+      <div class="infra-text">匯率每小時從外部 API 更新，寫入本地快取。外部 API 不可用時，使用最後一次成功的匯率（最多 24 小時），前端顯示匯率取得時間戳。</div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-label">邀請系統</div>
+      <div class="infra-title">連結有效期重設計</div>
+      <div class="infra-text">預設有效期改為 7 天（原 24h 不合旅遊場景）。新增「永久連結」選項（管理員可開啟，風險自負）。過期提示直接在錯誤頁提供重新產生入口。</div>
+    </div>
+    <div class="infra-card">
+      <div class="infra-label">資料備份</div>
+      <div class="infra-title">群組資料匯出</div>
+      <div class="infra-text">使用者有權匯出群組所有支出記錄（CSV / JSON）。這不是 v1 功能，但資料結構必須從 v1 開始設計為可匯出（避免之後重構）。GDPR 合規準備。</div>
+    </div>
+  </div>
+
+  <div class="subsection" style="margin-top:1.5rem">
+    <div class="subsection-title">災難復原目標（DRO）</div>
+    <table class="sla-table">
+      <thead><tr><th>指標</th><th>目標</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>RTO（恢復時間目標）</td>
+          <td class="sla-target">&lt; 1 小時</td>
+          <td>從服務中斷到完全恢復的最長可接受時間</td>
+        </tr>
+        <tr>
+          <td>RPO（恢復點目標）</td>
+          <td class="sla-target">&lt; 5 分鐘</td>
+          <td>最多可接受遺失的資料量（以時間計）</td>
+        </tr>
+        <tr>
+          <td>資料庫備份頻率</td>
+          <td class="sla-target">每 5 分鐘增量 + 每日全備</td>
+          <td>符合上述 RPO 要求</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="s11">
+  <div class="section-header">
+    <span class="section-num">11</span>
+    <span class="section-title">刪除清單 — 不應該存在的東西</span>
+  </div>
+
+  <div class="musk-callout">
+    <p>「最好的零件是沒有零件。最好的程式是沒有程式。最好的流程是沒有流程。你能刪掉的每一個步驟，都是一個不會出錯的地方。」</p>
+    <div class="musk-attr">— 第一性原理工程哲學</div>
+  </div>
+
+  <div class="delete-item">
+    <div class="delete-x">✕</div>
+    <div class="delete-body">
+      <div class="del-title">「手動更新結算」按鈕（已刪）</div>
+      <div class="del-reason">v1 已正確移除。但需確認後端是否殘留對應 API endpoint — 如果有，也應同步廢棄，防止前端未來不小心重新引用。</div>
+    </div>
+  </div>
+
+  <div class="delete-item">
+    <div class="delete-x">✕</div>
+    <div class="delete-body">
+      <div class="del-title">強制角色設定步驟（已刪）</div>
+      <div class="del-reason">已正確後置。需確認預設值（member 可記帳）是否符合 95% 以上的使用場景。若未來數據顯示大多數管理員會立即修改預設值，則需重新評估後置的代價。</div>
+    </div>
+  </div>
+
+  <div class="delete-item">
+    <div class="delete-x">✕</div>
+    <div class="delete-body">
+      <div class="del-title">Email 驗證信（建議刪除或後置）</div>
+      <div class="del-reason">SDD 未提及，但典型 App 會有。如果存在，應移至第一次使用後 24 小時才觸發（Jobs-to-be-done 完成後再驗證）。在使用者完成第一筆支出之前發送驗證信是流失使用者的最快方法之一。</div>
+    </div>
+  </div>
+
+  <div class="delete-item">
+    <div class="delete-x">✕</div>
+    <div class="delete-body">
+      <div class="del-title">Onboarding 教學 Tooltip（建議不做）</div>
+      <div class="del-reason">如果流程需要 tooltip 才能理解，問題在流程本身，而非使用者不會用。v1 的目標是把流程設計到不需要任何說明文字。所有 tooltip 都是流程設計失敗的補丁。</div>
+    </div>
+  </div>
+
+  <div class="delete-item">
+    <div class="delete-x">✕</div>
+    <div class="delete-body">
+      <div class="del-title">「分享」和「結算」分成兩個獨立按鈕</div>
+      <div class="del-reason">目前 Step 5 規格裡，結算狀態、分享方式、標記已付款是三個分開的互動。使用者最常見的動作是「看完結算 → 分享給群組」，這兩個動作應合為一個主要 CTA，次要動作才是「標記已付款」。</div>
+    </div>
+  </div>
+
+  <div class="delete-item">
+    <div class="delete-x">✕</div>
+    <div class="delete-body">
+      <div class="del-title">Emoji picker 在建立群組時（建議移除）</div>
+      <div class="del-reason">群組圖示是裝飾性欄位，在首次設定流程中出現會分散注意力。應移至群組建立完成後，在群組設定頁才提供。每個首次流程的頁面只應該有一件事。</div>
+    </div>
+  </div>
+</section>
+
+</div>
