@@ -422,6 +422,39 @@
       border-radius: 28px;
     }
 
+    .start-progress {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .start-chip {
+      min-height: 36px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      padding: 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+      text-align: center;
+      background: rgba(255,255,255,.42);
+      border: 1px solid rgba(255,255,255,.56);
+    }
+
+    .start-chip.done {
+      color: #1d8d46;
+      background: rgba(48,209,88,.16);
+      border-color: rgba(48,209,88,.2);
+    }
+
+    .start-chip.current {
+      color: var(--blue);
+      background: rgba(10,132,255,.12);
+      border-color: rgba(10,132,255,.18);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.28);
+    }
+
     .start-steps {
       display: grid;
       gap: 8px;
@@ -1340,6 +1373,7 @@
     body[data-theme="dark"] .expense-row,
     body[data-theme="dark"] .settlement-row,
     body[data-theme="dark"] .input-card,
+    body[data-theme="dark"] .start-chip,
     body[data-theme="dark"] .ai-card,
     body[data-theme="dark"] .soft-btn,
     body[data-theme="dark"] .mini-btn,
@@ -1355,6 +1389,18 @@
       border-color: rgba(255,255,255,.14);
       color: var(--text);
       box-shadow: 0 12px 34px rgba(0,0,0,.18);
+    }
+
+    body[data-theme="dark"] .start-chip.done {
+      color: #7ee08c;
+      background: rgba(48,209,88,.13);
+      border-color: rgba(48,209,88,.18);
+    }
+
+    body[data-theme="dark"] .start-chip.current {
+      color: #64d2ff;
+      background: rgba(100,210,255,.12);
+      border-color: rgba(100,210,255,.2);
     }
 
     body[data-theme="dark"] input,
@@ -2753,27 +2799,64 @@
     function renderOnboardingCard() {
       const card = document.getElementById("onboardingCard");
       if (!card) return;
-      const shouldShow = cloudUser ? (!groups.length || hasDemoData()) : hasDemoData();
+      const hasGroups = groups.length > 0;
+      const hasExpenses = visibleExpenses().length > 0;
+      const demoVisible = hasDemoData();
+      const shouldShow = demoVisible || !hasGroups || !hasExpenses;
       if (!shouldShow) {
         card.innerHTML = "";
         card.style.display = "none";
         return;
       }
       card.style.display = "";
-      const title = groups.length ? "準備開始使用自己的資料" : "開始建立你的第一個分帳";
-      const note = groups.length
-        ? "目前畫面中有範例資料。清除後會進入乾淨狀態，再建立自己的群組。"
-        : "目前還沒有群組。照著導覽建立群組、加入成員、記第一筆支出。";
+      const step = demoVisible ? "clean" : (!hasGroups ? "group" : "expense");
+      const content = {
+        clean: {
+          eyebrow: "開始使用",
+          title: "先換成自己的資料",
+          note: "目前畫面中有範例資料。清除後會進入乾淨狀態，接著建立你的第一個群組。",
+          primary: "清除範例並開始",
+          action: "startFreshData()",
+          secondary: "查看導覽",
+          secondaryAction: "openGuide()",
+          chips: ["current", "", ""]
+        },
+        group: {
+          eyebrow: "下一步",
+          title: "建立你的第一個群組",
+          note: "輸入群組名稱與主幣別即可開始，不需要先登入或設定角色。",
+          primary: "新增群組",
+          action: "openGroupSheet()",
+          secondary: "查看導覽",
+          secondaryAction: "openGuide()",
+          chips: ["current", "", ""]
+        },
+        expense: {
+          eyebrow: "下一步",
+          title: "新增第一筆支出",
+          note: "群組已準備好。記一筆支出後，首頁和群組頁會立刻顯示結算結果。",
+          primary: "新增支出",
+          action: "openAddSheet()",
+          secondary: "查看群組",
+          secondaryAction: "openGroup(activeGroupId)",
+          chips: ["done", "current", ""]
+        }
+      }[step];
       card.innerHTML = `
         <div class="start-card glass">
           <div>
-            <p class="eyebrow">開始使用</p>
-            <h2>${title}</h2>
-            <p class="mini-note" style="margin-top:6px">${note}</p>
+            <p class="eyebrow">${content.eyebrow}</p>
+            <h2>${content.title}</h2>
+            <p class="mini-note" style="margin-top:6px">${content.note}</p>
+          </div>
+          <div class="start-progress" aria-label="開始流程">
+            <span class="start-chip ${content.chips[0]}">群組</span>
+            <span class="start-chip ${content.chips[1]}">支出</span>
+            <span class="start-chip ${content.chips[2]}">結算</span>
           </div>
           <div class="action-grid">
-            <button class="primary" type="button" onclick="startFreshData()">清除範例並開始</button>
-            <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
+            <button class="primary" type="button" onclick="${content.action}">${content.primary}</button>
+            <button class="soft-btn" type="button" onclick="${content.secondaryAction}">${content.secondary}</button>
           </div>
         </div>
       `;
@@ -2827,7 +2910,7 @@
       renderAll();
       showScreen("home");
       showToast("已清除範例資料");
-      openGuide();
+      openGroupSheet();
     }
 
     function setAuthStatus(message) {
