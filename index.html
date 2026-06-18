@@ -737,6 +737,28 @@
       width: 100%;
     }
 
+    .primary:disabled {
+      cursor: not-allowed;
+      opacity: .58;
+      filter: saturate(.72);
+      box-shadow: none;
+    }
+
+    .sheet-actionbar {
+      position: sticky;
+      bottom: -18px;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: .72fr 1fr;
+      gap: 10px;
+      margin: 10px -18px -18px;
+      padding: 14px 18px max(18px, env(safe-area-inset-bottom));
+      background: linear-gradient(to top, rgba(255,255,255,.92), rgba(255,255,255,.74) 74%, transparent);
+      border-top: 1px solid rgba(255,255,255,.58);
+      backdrop-filter: blur(22px) saturate(1.35);
+      -webkit-backdrop-filter: blur(22px) saturate(1.35);
+    }
+
     .sheet {
       position: fixed;
       inset: auto 0 0;
@@ -1403,6 +1425,11 @@
         inset 0 1px 0 rgba(255,255,255,.24);
     }
 
+    body[data-theme="dark"] .sheet-actionbar {
+      background: linear-gradient(to top, rgba(22,26,38,.94), rgba(22,26,38,.72) 74%, transparent);
+      border-top-color: rgba(255,255,255,.12);
+    }
+
     @media (max-width: 380px) {
       .auth-form .auth-actions,
       .action-grid,
@@ -1513,7 +1540,7 @@
       <section class="section">
         <div class="section-head">
           <h2>群組</h2>
-          <button class="small-action" type="button" onclick="openGroupSheet()">新增群組</button>
+          <button class="small-action" type="button" onclick="openGroup(activeGroupId)">查看</button>
         </div>
         <div id="groups" class="card-list"></div>
       </section>
@@ -1541,6 +1568,9 @@
           <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
         <div style="display:flex;gap:8px">
+          <button id="groupCreateButton" class="icon-btn" type="button" onclick="openGroupSheet()" aria-label="新增群組">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          </button>
           <button id="groupInviteButton" class="icon-btn" type="button" onclick="openInviteSheet()" aria-label="邀請">
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
           </button>
@@ -1733,6 +1763,18 @@
           </div>
         </div>
         <div class="input-card"><h3>預設幣別</h3><p class="eyebrow" style="margin-top:6px">TWD</p></div>
+        <div class="input-card">
+          <h3>日程表自動建群組</h3>
+          <p class="eyebrow" style="margin-top:6px">連接 Google 日程後，可依聚餐、旅遊或固定帳單自動建立分帳群組。</p>
+          <div class="preview" style="margin-bottom:0">
+            <div class="preview-row"><span>目前建議</span><strong id="scheduleGroupSummary">今晚聚餐 · 公司聚餐</strong></div>
+            <div class="preview-row"><span>新增支出</span><strong>會自動帶入符合行程的群組</strong></div>
+          </div>
+          <div class="action-grid">
+            <button class="soft-btn" type="button" onclick="connectGoogleCalendar()">連接 Google</button>
+            <button class="soft-btn" type="button" onclick="createScheduleGroup()">依日程建立群組</button>
+          </div>
+        </div>
         <div class="input-card setting-row">
           <div>
             <h3>備份與同步</h3>
@@ -1849,6 +1891,7 @@
         <label>群組
           <select id="expenseGroup"></select>
         </label>
+        <p id="expenseGroupHint" class="mini-note">會自動帶入最符合目前情境的群組。</p>
         <label>項目名稱
           <input id="expenseTitle" required value="晚餐" />
         </label>
@@ -1900,10 +1943,13 @@
           <p id="exchangeHint" class="mini-note"></p>
           <div id="splitPreview" class="preview"></div>
         </div>
-        <button class="primary" type="submit">
-          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-          建立支出
-        </button>
+        <div class="sheet-actionbar">
+          <button class="soft-btn" type="button" onclick="closeAddSheet()">取消</button>
+          <button id="expenseSubmitButton" class="primary" type="submit">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+            確認建立
+          </button>
+        </div>
       </form>
     </div>
   </section>
@@ -2129,11 +2175,20 @@
     let activePanel = "activity";
     let expenseFilters = { query: "", category: "all" };
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
+    let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
+    let expenseSubmitTimer = null;
 
     const defaultGroups = [
       { id: "g1", name: "日本旅遊", currency: "TWD", subtitle: "5 位成員 · 旅遊", members: ["u1", "u2", "u3", "u4", "u5"] },
       { id: "g2", name: "公司聚餐", currency: "TWD", subtitle: "4 位成員 · 聚餐", members: ["u1", "u2", "u3", "u4"] },
       { id: "g3", name: "室友生活費", currency: "TWD", subtitle: "3 位成員 · 固定帳單", members: ["u1", "u3", "u5"] }
+    ];
+
+    const scheduleSuggestions = [
+      { title: "今晚聚餐", keyword: "聚餐", groupHint: "公司聚餐", category: "餐飲", timeLabel: "今天晚上" },
+      { title: "週末露營", keyword: "露營", groupHint: "週末露營", category: "其他", timeLabel: "週末" },
+      { title: "室友帳單日", keyword: "帳單", groupHint: "室友生活費", category: "其他", timeLabel: "本月" },
+      { title: "旅遊行程", keyword: "旅遊", groupHint: "日本旅遊", category: "交通", timeLabel: "近期" }
     ];
 
     const defaultUsers = {
@@ -3289,6 +3344,7 @@
       renderGroup();
       renderStats();
       renderPayments();
+      renderScheduleSummary();
       syncPayerOptions();
       updatePreview();
     }
@@ -4026,13 +4082,28 @@
       }).join("") || `<p class="mini-note">目前沒有付款紀錄</p>`;
     }
 
+    function renderScheduleSummary() {
+      const target = document.getElementById("scheduleGroupSummary");
+      if (!target) return;
+      const match = scheduleMatchedGroup();
+      if (match?.group) {
+        target.textContent = `${match.schedule.title} · ${match.group.name}`;
+        return;
+      }
+      const next = scheduleSuggestions[0];
+      target.textContent = `${next.title} · 可建立 ${next.groupHint}`;
+    }
+
     function showScreen(id) {
       document.querySelectorAll(".screen").forEach(screen => screen.classList.toggle("active", screen.id === id));
       document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.screen === id));
       if (id === "group") renderGroup();
       if (id === "home") renderHome();
       if (id === "stats") renderStats();
-      if (id === "me") renderPayments();
+      if (id === "me") {
+        renderPayments();
+        renderScheduleSummary();
+      }
     }
 
     function openGroup(id) {
@@ -4087,17 +4158,80 @@
       }
     }
 
+    function scheduleMatchedGroup() {
+      return scheduleSuggestions
+        .map(schedule => ({
+          schedule,
+          group: groups.find(group => group.name.includes(schedule.groupHint) || group.name.includes(schedule.keyword))
+        }))
+        .find(item => item.group) || null;
+    }
+
+    function suggestedExpenseGroup() {
+      const scheduleMatch = scheduleMatchedGroup();
+      if (scheduleMatch?.group) {
+        return {
+          group: scheduleMatch.group,
+          reason: `已根據「${scheduleMatch.schedule.title}」帶入 ${scheduleMatch.group.name}`
+        };
+      }
+      const lastCreated = getGroup(lastCreatedGroupId);
+      if (lastCreated) {
+        return {
+          group: lastCreated,
+          reason: `已帶入最後建立的群組：${lastCreated.name}`
+        };
+      }
+      const active = getGroup(activeGroupId);
+      if (active) {
+        return {
+          group: active,
+          reason: `已帶入目前群組：${active.name}`
+        };
+      }
+      return {
+        group: groups[0],
+        reason: groups[0] ? `已帶入 ${groups[0].name}` : "請先建立群組"
+      };
+    }
+
+    function setExpenseSubmitGuard() {
+      const button = document.getElementById("expenseSubmitButton");
+      if (!button) return;
+      clearTimeout(expenseSubmitTimer);
+      button.disabled = true;
+      button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>確認內容中`;
+      expenseSubmitTimer = setTimeout(() => {
+        button.disabled = false;
+        button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>確認建立`;
+      }, 900);
+    }
+
+    function updateExpenseGroupHint(reason = "") {
+      const hint = document.getElementById("expenseGroupHint");
+      if (!hint) return;
+      const group = getGroup(document.getElementById("expenseGroup")?.value);
+      hint.textContent = reason || (group ? `目前會記到 ${group.name}` : "請先選擇群組");
+    }
+
     function openAddSheet() {
-      if (!requirePermission("edit")) return;
       if (!groups.length) {
         showToast("請先建立群組");
         openGroupSheet();
         return;
       }
+      const suggestion = suggestedExpenseGroup();
+      if (!canEditExpense(suggestion.group)) {
+        showToast("你目前的角色無法使用這個功能");
+        return;
+      }
+      if (suggestion.group) activeGroupId = suggestion.group.id;
       openSheetById("sheet");
-      document.getElementById("expenseGroup").value = activeGroupId;
+      document.getElementById("expenseGroup").value = suggestion.group?.id || activeGroupId;
+      updateExpenseGroupHint(suggestion.reason);
       syncPayerOptions();
       updatePreview();
+      setExpenseSubmitGuard();
       showToast("新增支出已開啟");
     }
 
@@ -4112,6 +4246,44 @@
         : "本機試用會先加入你、阿華、小美，方便快速體驗。";
       openSheetById("groupSheet");
       showToast("新增群組已開啟");
+    }
+
+    function connectGoogleCalendar() {
+      openAuthScreen("日程表串接需要 Google 授權。登入後可在下一階段接上 Google Calendar。");
+      showToast("Google 日程串接入口已準備");
+    }
+
+    function createScheduleGroup() {
+      const schedule = scheduleSuggestions.find(item =>
+        !groups.some(group => group.name.includes(item.groupHint) || group.name.includes(item.keyword))
+      ) || scheduleSuggestions[0];
+      const existing = groups.find(group => group.name.includes(schedule.groupHint) || group.name.includes(schedule.keyword));
+      if (existing) {
+        activeGroupId = existing.id;
+        showScreen("group");
+        showToast(`已找到 ${existing.name}`);
+        return;
+      }
+      const id = `g${Date.now()}`;
+      const initialMembers = [currentUserId];
+      const groupName = schedule.groupHint;
+      groups.push({
+        id,
+        name: groupName,
+        currency: "TWD",
+        subtitle: `${initialMembers.length} 位成員 · 日程建立`,
+        members: initialMembers,
+        roles: { [currentUserId]: "擁有者" },
+        scheduleSource: schedule.title
+      });
+      lastCreatedGroupId = id;
+      localStorage.setItem("floatpay-last-created-group", id);
+      activeGroupId = id;
+      refreshExpenseGroupOptions();
+      saveData();
+      renderAll();
+      showScreen("group");
+      showToast(`已依「${schedule.title}」建立 ${groupName}`);
     }
 
     function closeGroupSheet() {
@@ -4557,8 +4729,10 @@
     }
 
     document.getElementById("expenseGroup").addEventListener("change", () => {
+      activeGroupId = document.getElementById("expenseGroup").value;
       syncPayerOptions();
       updatePreview();
+      updateExpenseGroupHint();
     });
     document.getElementById("expenseAmount").addEventListener("input", updatePreview);
     document.getElementById("expenseCurrency").addEventListener("change", updatePreview);
@@ -4566,6 +4740,11 @@
 
     document.getElementById("expenseForm").addEventListener("submit", event => {
       event.preventDefault();
+      const submitButton = document.getElementById("expenseSubmitButton");
+      if (submitButton?.disabled) {
+        showToast("請先確認內容，再建立支出");
+        return;
+      }
       const group = getGroup(document.getElementById("expenseGroup").value);
       if (!canEditExpense(group)) {
         showToast("你目前的角色無法使用這個功能");
@@ -4594,6 +4773,7 @@
         date: "剛剛"
       });
       activeGroupId = group.id;
+      localStorage.setItem("floatpay-last-expense-group", group.id);
       saveData();
       closeAddSheet();
       renderHome();
@@ -4620,6 +4800,8 @@
       });
       document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${id}">${name}</option>`);
       activeGroupId = id;
+      lastCreatedGroupId = id;
+      localStorage.setItem("floatpay-last-created-group", id);
       saveData();
       closeGroupSheet();
       renderHome();
