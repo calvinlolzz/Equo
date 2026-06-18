@@ -3,6 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7fbff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Equo 算好" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="description" content="Equo 算好是一個手機優先的分帳 App，可建立群組、記錄支出、查看結算並分享結果。" />
+  <link rel="manifest" href="./site.webmanifest" />
+  <link rel="icon" href="./assets/icons/equo-icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./assets/icons/equo-icon-512.png" />
   <title>Equo 算好 分帳 App 原型</title>
   <style>
     :root {
@@ -4727,6 +4736,13 @@
       showToast(themeMode === "dark" ? "夜間模式已開啟" : "已切換回日間模式");
     }
 
+    function registerServiceWorker() {
+      if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+
     document.getElementById("expenseGroup").addEventListener("change", () => {
       activeGroupId = document.getElementById("expenseGroup").value;
       syncPayerOptions();
@@ -4855,6 +4871,7 @@
     renderPayments();
     syncPayerOptions();
     updatePreview();
+    registerServiceWorker();
   </script>
 </body>
 </html>
