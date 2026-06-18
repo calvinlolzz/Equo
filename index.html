@@ -54,13 +54,7 @@
     }
 
     body.sheet-open {
-      position: fixed;
-      top: calc(var(--sheet-scroll-y, 0px) * -1);
-      left: 0;
-      right: 0;
-      width: 100%;
-      overflow: hidden;
-      touch-action: none;
+      overscroll-behavior: none;
     }
 
     body::before {
@@ -817,6 +811,7 @@
       background: linear-gradient(to top, rgba(20,26,40,.28), transparent);
       padding: 72px 14px max(20px, env(safe-area-inset-bottom));
       pointer-events: none;
+      contain: layout paint;
     }
 
     .sheet.confirm-sheet {
@@ -827,7 +822,10 @@
       -webkit-backdrop-filter: blur(18px);
     }
 
-    .sheet.open { display: flex; }
+    .sheet.open {
+      display: flex;
+      pointer-events: auto;
+    }
 
     .sheet-panel {
       width: min(430px, 100%);
@@ -844,6 +842,7 @@
       -webkit-backdrop-filter: blur(32px) saturate(1.45);
       animation: rise .22s ease both;
       pointer-events: auto;
+      touch-action: pan-y;
       overscroll-behavior: contain;
     }
 
@@ -2238,7 +2237,6 @@
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
     let expenseSubmitTimer = null;
-    let sheetLockScrollY = 0;
     const screenScrollPositions = {};
 
     const defaultGroups = [
@@ -2872,19 +2870,7 @@
     }
 
     function syncSheetLock() {
-      const shouldLock = Boolean(document.querySelector(".sheet.open"));
-      const isLocked = document.body.classList.contains("sheet-open");
-      if (shouldLock && !isLocked) {
-        sheetLockScrollY = window.scrollY || 0;
-        document.body.style.setProperty("--sheet-scroll-y", `${sheetLockScrollY}px`);
-        document.body.classList.add("sheet-open");
-        return;
-      }
-      if (!shouldLock && isLocked) {
-        document.body.classList.remove("sheet-open");
-        document.body.style.removeProperty("--sheet-scroll-y");
-        window.scrollTo({ top: sheetLockScrollY, left: 0, behavior: "auto" });
-      }
+      document.body.classList.toggle("sheet-open", Boolean(document.querySelector(".sheet.open")));
     }
 
     function openSheetById(id) {
