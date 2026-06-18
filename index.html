@@ -54,6 +54,11 @@
     }
 
     body.sheet-open {
+      position: fixed;
+      top: calc(var(--sheet-scroll-y, 0px) * -1);
+      left: 0;
+      right: 0;
+      width: 100%;
       overflow: hidden;
       touch-action: none;
     }
@@ -804,9 +809,10 @@
 
     .sheet {
       position: fixed;
-      inset: auto 0 0;
+      inset: 0;
       z-index: 30;
       display: none;
+      align-items: flex-end;
       justify-content: center;
       background: linear-gradient(to top, rgba(20,26,40,.28), transparent);
       padding: 72px 14px max(20px, env(safe-area-inset-bottom));
@@ -2232,6 +2238,7 @@
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
     let expenseSubmitTimer = null;
+    let sheetLockScrollY = 0;
     const screenScrollPositions = {};
 
     const defaultGroups = [
@@ -2865,7 +2872,19 @@
     }
 
     function syncSheetLock() {
-      document.body.classList.toggle("sheet-open", Boolean(document.querySelector(".sheet.open")));
+      const shouldLock = Boolean(document.querySelector(".sheet.open"));
+      const isLocked = document.body.classList.contains("sheet-open");
+      if (shouldLock && !isLocked) {
+        sheetLockScrollY = window.scrollY || 0;
+        document.body.style.setProperty("--sheet-scroll-y", `${sheetLockScrollY}px`);
+        document.body.classList.add("sheet-open");
+        return;
+      }
+      if (!shouldLock && isLocked) {
+        document.body.classList.remove("sheet-open");
+        document.body.style.removeProperty("--sheet-scroll-y");
+        window.scrollTo({ top: sheetLockScrollY, left: 0, behavior: "auto" });
+      }
     }
 
     function openSheetById(id) {
