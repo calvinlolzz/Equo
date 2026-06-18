@@ -4967,7 +4967,8 @@
       renderHome();
       renderGroup();
       showScreen("group");
-      showToast("支出已建立，結算已更新");
+      switchPanel("settle");
+      showToast("支出已建立，可分享結算");
     });
 
     document.getElementById("groupForm").addEventListener("submit", event => {
