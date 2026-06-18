@@ -1365,12 +1365,12 @@
   </style>
 </head>
 <body>
-  <section id="authScreen" class="auth-screen">
+  <section id="authScreen" class="auth-screen hidden">
     <div class="auth-panel">
       <div class="auth-logo">E</div>
       <p class="eyebrow">歡迎使用</p>
       <h1>Equo 算好</h1>
-      <p class="mini-note">登入後可在不同裝置接續使用群組、付款狀態與固定帳單。也可以先快速試用。</p>
+      <p class="mini-note">先開始分帳，需要備份、邀請或跨裝置使用時再登入。</p>
       <form id="authForm" class="auth-form">
         <label>Email
           <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
@@ -1390,7 +1390,7 @@
       <div class="auth-actions">
         <button class="primary" type="button" onclick="loginWith('Apple')">使用 Apple 登入</button>
         <button class="soft-btn" type="button" onclick="loginWith('Google')">使用 Google 登入</button>
-        <button class="soft-btn" type="button" onclick="loginWith('Demo')">先快速試用</button>
+        <button class="soft-btn" type="button" onclick="closeAuthScreen()">稍後再說</button>
       </div>
     </div>
   </section>
@@ -1618,7 +1618,7 @@
             <p id="profileSync" class="eyebrow" style="margin-top:6px">此裝置資料 · 試用帳號</p>
             <p id="profileEmail" class="mini-note" style="margin-top:4px"></p>
           </div>
-          <button class="small-action" type="button" onclick="logout()">登出</button>
+          <button id="authActionButton" class="small-action" type="button" onclick="handleAuthAction()">登入備份</button>
         </div>
         <div class="input-card">
           <h3>頭像</h3>
@@ -1919,15 +1919,10 @@
         <label>成員名稱
           <input id="memberName" required value="新朋友" />
         </label>
-        <label>角色
-          <select id="memberRole">
-            <option value="成員">成員</option>
-            <option value="管理員">管理員</option>
-            <option value="家長">家長</option>
-            <option value="子女">子女</option>
-            <option value="訪客">訪客</option>
-          </select>
-        </label>
+        <div class="input-card">
+          <h3>加入後權限</h3>
+          <p class="mini-note">會先以成員加入，可記帳也可查看群組帳務。需要限制時，可之後到群組設定調整。</p>
+        </div>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
           加入群組
@@ -1956,7 +1951,7 @@
         </label>
         <div class="input-card">
           <h3>邀請連結</h3>
-          <p class="mini-note">連結 14 天內有效。對方登入後會加入目前群組。</p>
+          <p class="mini-note">連結 7 天內有效。對方登入後會加入目前群組。</p>
           <textarea id="inviteLinkOutput" readonly placeholder="產生後會顯示在這裡"></textarea>
         </div>
         <div class="action-grid">
@@ -2317,12 +2312,13 @@
       };
       localStorage.setItem("floatpay-auth", JSON.stringify(user));
       applyAuthState();
-      showToast("已進入快速試用");
+      closeAuthScreen();
+      showToast("已回到此裝置模式");
     }
 
     async function loginWithOAuth(provider) {
       if (!supabaseClient) {
-        setAuthStatus("目前暫時無法登入，請先快速試用。");
+        setAuthStatus("目前暫時無法登入，你仍可先在此裝置使用。");
         showToast("目前暫時無法登入");
         return;
       }
@@ -2377,7 +2373,7 @@
     async function signInWithEmail(event) {
       event.preventDefault();
       if (!supabaseClient) {
-        setAuthStatus("目前暫時無法登入，請先快速試用。");
+        setAuthStatus("目前暫時無法登入，你仍可先在此裝置使用。");
         showToast("目前暫時無法登入");
         return;
       }
@@ -2408,7 +2404,7 @@
 
     async function signUpWithEmail() {
       if (!supabaseClient) {
-        setAuthStatus("目前暫時無法登入，請先快速試用。");
+        setAuthStatus("目前暫時無法登入，你仍可先在此裝置使用。");
         showToast("目前暫時無法登入");
         return;
       }
@@ -2451,6 +2447,33 @@
       cloudUser = null;
       localStorage.removeItem("floatpay-auth");
       applyAuthState();
+      showToast("已回到此裝置模式");
+    }
+
+    function openAuthScreen(message = "登入後可備份與接續使用。") {
+      const screen = document.getElementById("authScreen");
+      if (!screen) return;
+      setAuthStatus(message);
+      screen.classList.remove("hidden");
+    }
+
+    function closeAuthScreen() {
+      const screen = document.getElementById("authScreen");
+      if (!screen) return;
+      screen.classList.add("hidden");
+    }
+
+    function requestAuthForCloud(message = "登入後可備份與接續使用。") {
+      openAuthScreen(message);
+      showToast("請先登入以開啟備份");
+    }
+
+    function handleAuthAction() {
+      if (cloudUser) {
+        logout();
+        return;
+      }
+      openAuthScreen("登入後可備份資料、產生邀請連結，並在不同裝置接續使用。");
     }
 
     function applyAuthState() {
@@ -2462,17 +2485,22 @@
         email: identity?.email || "",
         provider: "帳號",
         loggedInAt: cloudUser.last_sign_in_at
-      } : localUser;
+      } : (localUser || {
+        name: users[currentUserId]?.name || "此裝置使用者",
+        email: "",
+        provider: "此裝置",
+        loggedInAt: ""
+      });
       const loggedIn = Boolean(user);
-      document.getElementById("authScreen").classList.toggle("hidden", loggedIn);
-      document.querySelector(".shell").classList.toggle("hidden", !loggedIn);
-      document.querySelector(".nav").classList.toggle("hidden", !loggedIn);
-      document.querySelector(".floating-add").classList.toggle("hidden", !loggedIn || document.querySelector(".floating-add").classList.contains("feature-paused"));
-      if (loggedIn) {
-        document.getElementById("profileName").textContent = user.name;
-        document.getElementById("profileSync").textContent = cloudUser ? "已開啟備份" : `${user.provider} · 此裝置資料`;
-        document.getElementById("profileEmail").textContent = user.email || "";
-      }
+      document.querySelector(".shell").classList.remove("hidden");
+      document.querySelector(".nav").classList.remove("hidden");
+      document.querySelector(".floating-add").classList.toggle("hidden", document.querySelector(".floating-add").classList.contains("feature-paused"));
+      document.getElementById("profileName").textContent = user.name;
+      document.getElementById("profileSync").textContent = cloudUser ? "已開啟備份" : "此裝置資料 · 尚未登入";
+      document.getElementById("profileEmail").textContent = user.email || (cloudUser ? "" : "登入後可備份與跨裝置使用");
+      const authButton = document.getElementById("authActionButton");
+      if (authButton) authButton.textContent = cloudUser ? "登出" : "登入備份";
+      if (cloudUser) closeAuthScreen();
       renderAvatars();
       renderCloudStatus();
     }
@@ -2559,7 +2587,7 @@
         label.textContent = "目前資料只在此裝置";
         pill.textContent = "此裝置";
         if (meta) meta.textContent = "目前資料只會保存在此裝置。";
-        if (authStatus) authStatus.textContent = "目前暫時無法登入，請先快速試用。";
+        if (authStatus) authStatus.textContent = "目前暫時無法登入，你仍可先在此裝置使用。";
         if (syncButton) syncButton.disabled = false;
         if (restoreButton) restoreButton.disabled = false;
         if (checkButton) checkButton.disabled = false;
@@ -3225,7 +3253,8 @@
 
     async function createGroupInvite(groupId = activeGroupId) {
       if (!supabaseClient || !cloudUser) {
-        showToast("請先登入帳號再邀請");
+        openAuthScreen("登入後才能產生正式邀請連結。");
+        showToast("請先登入以產生邀請連結");
         return;
       }
       const group = getGroup(groupId);
@@ -3243,7 +3272,7 @@
         return;
       }
       const token = makeInviteToken();
-      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
       const inviteRole = document.getElementById("inviteRole")?.value || "member";
       const { error } = await supabaseClient.rpc("create_group_invite", {
         group_id_input: cloudGroupId,
@@ -3272,6 +3301,7 @@
       if (!token) return;
       if (!cloudUser || !supabaseClient) {
         setAuthStatus("請先登入，登入後會自動加入邀請群組。");
+        openAuthScreen("請先登入，登入後會自動加入邀請群組。");
         return;
       }
       const identity = cloudIdentity();
@@ -3327,7 +3357,7 @@
 
     async function syncCloudSnapshot(options = {}) {
       if (!supabaseClient || !cloudUser) {
-        if (!options.silent) showToast("請先用 Email 登入");
+        if (!options.silent) requestAuthForCloud("登入後才能把此裝置資料備份到線上。");
         return false;
       }
       return syncCloudTables(options);
@@ -3335,7 +3365,7 @@
 
     async function syncCloudSnapshotLegacy(options = {}) {
       if (!supabaseClient || !cloudUser) {
-        if (!options.silent) showToast("請先用 Email 登入");
+        if (!options.silent) requestAuthForCloud("登入後才能把此裝置資料備份到線上。");
         return false;
       }
       const payload = buildCloudSnapshot();
@@ -3403,7 +3433,7 @@
 
     async function checkCloudSnapshot(options = {}) {
       if (!supabaseClient || !cloudUser) {
-        if (!options.silent) showToast("請先用 Email 登入");
+        if (!options.silent) requestAuthForCloud("登入後才能查看線上備份。");
         return null;
       }
       cloudSyncInProgress = true;
@@ -3436,7 +3466,7 @@
 
     async function restoreCloudSnapshot() {
       if (!supabaseClient || !cloudUser) {
-        showToast("請先用 Email 登入");
+        requestAuthForCloud("登入後才能載入線上備份。");
         return;
       }
       cloudSyncInProgress = true;
@@ -4520,7 +4550,7 @@
       if (!requirePermission("manage")) return;
       const group = getGroup(activeGroupId);
       const name = document.getElementById("memberName").value.trim() || "新成員";
-      const role = document.getElementById("memberRole").value;
+      const role = "成員";
       const id = `u${Date.now()}`;
       const choice = avatarChoices[group.members.length % avatarChoices.length];
       users[id] = { name, initial: name.trim().slice(0, 1).toUpperCase() || "新", avatar: choice.icon, avatarColor: choice.color };
