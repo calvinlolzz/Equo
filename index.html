@@ -1749,7 +1749,7 @@
       <section class="section group-panel" id="settlePanel" style="display:none">
         <div class="section-head">
           <h2>最少轉帳</h2>
-          <button id="shareSettlementButton" class="small-action" type="button" onclick="shareSettlement()">LINE 分享</button>
+          <button id="shareSettlementButton" class="small-action" type="button" onclick="shareSettlement()">分享結算</button>
         </div>
         <div id="settlements" class="card-list"></div>
       </section>
@@ -4661,15 +4661,26 @@
       `).join("");
     }
 
-    function shareSettlement() {
+    async function shareSettlement() {
       if (!requirePermission("edit")) return;
       const group = getGroup(activeGroupId);
-      const lines = settlements(activeGroupId).map(row => `${users[row.from].name} → ${users[row.to].name} ${money(row.amount)}`);
-      const text = `本次 ${group.name} 結算：${lines.join("，") || "目前不需轉帳"}。付款連結：https://floatpay.app/pay/${group.id}`;
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).catch(() => {});
+      const rows = settlements(activeGroupId);
+      const lines = rows.map(row => `${users[row.from].name} 轉給 ${users[row.to].name} ${money(row.amount)}`);
+      const title = `${group.name} 結算`;
+      const text = `Equo 算好｜${title}\n${lines.length ? lines.join("\n") : "目前不需要轉帳"}\n付款連結：https://floatpay.app/pay/${group.id}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text });
+          showToast("結算已開啟分享");
+          return;
+        } catch (error) {
+          if (error?.name === "AbortError") return;
+        }
       }
-      showToast("LINE 分享摘要已複製");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text).catch(() => {});
+      }
+      showToast("結算摘要已複製");
     }
 
     function parseAiPrompt() {
