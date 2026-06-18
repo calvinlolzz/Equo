@@ -647,14 +647,15 @@
 
     .screen {
       display: none;
-      animation: fade .22s ease both;
+      min-height: calc(100dvh - 122px);
+      animation: fade .18s ease both;
     }
 
     .screen.active { display: block; }
 
     @keyframes fade {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .backbar {
@@ -2231,6 +2232,7 @@
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
     let expenseSubmitTimer = null;
+    const screenScrollPositions = {};
 
     const defaultGroups = [
       { id: "g1", name: "日本旅遊", currency: "TWD", subtitle: "5 位成員 · 旅遊", members: ["u1", "u2", "u3", "u4", "u5"] },
@@ -4186,6 +4188,10 @@
     }
 
     function showScreen(id) {
+      const currentScreen = document.querySelector(".screen.active");
+      if (currentScreen?.id && currentScreen.id !== id) {
+        screenScrollPositions[currentScreen.id] = window.scrollY || 0;
+      }
       document.querySelectorAll(".screen").forEach(screen => screen.classList.toggle("active", screen.id === id));
       document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.screen === id));
       if (id === "group") renderGroup();
@@ -4195,6 +4201,9 @@
         renderPayments();
         renderScheduleSummary();
       }
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: screenScrollPositions[id] || 0, left: 0, behavior: "auto" });
+      });
     }
 
     function openGroup(id) {
