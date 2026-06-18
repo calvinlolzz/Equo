@@ -1646,13 +1646,12 @@
         margin-top: 24px;
       }
 
-      .section:has(#groups),
-      .section:has(#recentExpenses),
-      .section:has(#reminders) {
-        max-width: 760px;
+      #groups,
+      #recentExpenses,
+      #reminders {
+        width: 100%;
       }
 
-      .groups,
       #groups {
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       }
