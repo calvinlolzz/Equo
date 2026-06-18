@@ -1019,37 +1019,41 @@
       order: 0;
     }
 
-    #expenseForm .three {
+    #expenseForm .expense-focus-note {
       order: 1;
     }
 
-    #expenseForm .input-card:has(#participantGrid) {
+    #expenseForm .expense-primary-row {
       order: 2;
     }
 
-    #expenseForm label:has(#expenseTitle) {
+    #expenseForm .input-card:has(#participantGrid) {
       order: 3;
     }
 
-    #expenseForm label:has(#expenseGroup) {
+    #expenseForm label:has(#expenseTitle) {
       order: 4;
     }
 
-    #expenseGroupHint {
+    #expenseForm label:has(#expenseGroup) {
       order: 5;
+    }
+
+    #expenseGroupHint {
+      order: 6;
       margin: -2px 0 2px;
     }
 
     #expenseForm .two {
-      order: 6;
-    }
-
-    #expenseForm label:has(#expenseNote) {
       order: 7;
     }
 
-    #expenseForm .input-card:has(#splitPreview) {
+    #expenseForm label:has(#expenseNote) {
       order: 8;
+    }
+
+    #expenseForm .input-card:has(#splitPreview) {
+      order: 9;
     }
 
     #expenseForm .sheet-actionbar {
@@ -1101,6 +1105,14 @@
       gap: 10px;
     }
 
+    .expense-primary-row {
+      grid-template-columns: 1.1fr 1fr;
+    }
+
+    .expense-primary-row label:last-child {
+      grid-column: 1 / -1;
+    }
+
     .preview {
       display: grid;
       gap: 8px;
@@ -1121,6 +1133,18 @@
       color: var(--muted);
       font-size: 12px;
       font-weight: 650;
+      line-height: 1.35;
+    }
+
+    .expense-focus-note {
+      margin: 0;
+      border-radius: 16px;
+      padding: 10px 12px;
+      background: rgba(10,132,255,.08);
+      border: 1px solid rgba(10,132,255,.12);
+      color: rgba(28,28,30,.68);
+      font-size: 12px;
+      font-weight: 720;
       line-height: 1.35;
     }
 
@@ -1652,6 +1676,12 @@
 
     body[data-theme="dark"] .preview-row {
       color: rgba(245,247,251,.82);
+    }
+
+    body[data-theme="dark"] .expense-focus-note {
+      background: rgba(100,210,255,.09);
+      border-color: rgba(100,210,255,.16);
+      color: rgba(245,247,251,.68);
     }
 
     body[data-theme="dark"] .toast {
@@ -2469,6 +2499,7 @@
         </button>
       </div>
       <form id="expenseForm" class="form-grid">
+        <p class="expense-focus-note">先填金額、付款人與分攤成員；群組與其他設定已先幫你帶入。</p>
         <div class="ai-card feature-paused" hidden>
           <h3>AI 記帳助手</h3>
           <p class="mini-note">輸入一句話或模擬掃描發票，系統會先填入表單，再讓你確認。</p>
@@ -2478,16 +2509,12 @@
             <button class="soft-btn" type="button" onclick="scanReceipt()">掃描發票</button>
           </div>
         </div>
-        <label>群組
-          <select id="expenseGroup"></select>
-        </label>
-        <p id="expenseGroupHint" class="mini-note">會自動帶入最符合目前情境的群組。</p>
-        <label>項目名稱
-          <input id="expenseTitle" required value="晚餐" />
-        </label>
-        <div class="three">
+        <div class="three expense-primary-row">
           <label>金額
             <input id="expenseAmount" required type="number" min="1" value="1200" />
+          </label>
+          <label>付款人
+            <select id="expensePayer"></select>
           </label>
           <label>幣別
             <select id="expenseCurrency">
@@ -2498,10 +2525,19 @@
               <option value="EUR">EUR</option>
             </select>
           </label>
-          <label>付款人
-            <select id="expensePayer"></select>
-          </label>
         </div>
+        <div class="input-card">
+          <h3>參與分攤成員</h3>
+          <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。</p>
+          <div id="participantGrid" class="participant-grid"></div>
+        </div>
+        <label>項目名稱
+          <input id="expenseTitle" required value="晚餐" />
+        </label>
+        <label>群組
+          <select id="expenseGroup"></select>
+        </label>
+        <p id="expenseGroupHint" class="mini-note">會自動帶入最符合目前情境的群組。</p>
         <div class="two">
           <label>分類
             <select id="expenseCategory">
@@ -2519,11 +2555,6 @@
               <option value="selected">指定成員</option>
             </select>
           </label>
-        </div>
-        <div class="input-card">
-          <h3>參與分攤成員</h3>
-          <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。</p>
-          <div id="participantGrid" class="participant-grid"></div>
         </div>
         <label>備註
           <textarea id="expenseNote">含服務費</textarea>
