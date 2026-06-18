@@ -762,6 +762,8 @@
       width: min(430px, 100%);
       max-height: calc(100dvh - 92px);
       overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(88, 98, 118, .34) transparent;
       border-radius: 32px;
       padding: 18px;
       background: rgba(255,255,255,.76);
@@ -772,6 +774,33 @@
       animation: rise .22s ease both;
       pointer-events: auto;
       overscroll-behavior: contain;
+    }
+
+    .sheet-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sheet-panel::-webkit-scrollbar-track {
+      background: transparent;
+      margin: 26px 0;
+    }
+
+    .sheet-panel::-webkit-scrollbar-thumb {
+      min-height: 46px;
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.74), rgba(255,255,255,.24)),
+        rgba(84, 92, 112, .28);
+      border: 1px solid rgba(255,255,255,.42);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.5),
+        0 8px 18px rgba(40, 48, 68, .14);
+    }
+
+    .sheet-panel::-webkit-scrollbar-thumb:hover {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.32)),
+        rgba(65, 74, 96, .36);
     }
 
     @keyframes rise {
@@ -1221,6 +1250,26 @@
       background: rgba(22,26,38,.66);
       border-color: rgba(255,255,255,.16);
       box-shadow: 0 24px 74px rgba(0,0,0,.38);
+    }
+
+    body[data-theme="dark"] .sheet-panel {
+      scrollbar-color: rgba(228, 235, 248, .28) transparent;
+    }
+
+    body[data-theme="dark"] .sheet-panel::-webkit-scrollbar-thumb {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.24), rgba(255,255,255,.08)),
+        rgba(218, 226, 246, .2);
+      border-color: rgba(255,255,255,.18);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.16),
+        0 8px 18px rgba(0,0,0,.26);
+    }
+
+    body[data-theme="dark"] .sheet-panel::-webkit-scrollbar-thumb:hover {
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.3), rgba(255,255,255,.12)),
+        rgba(218, 226, 246, .28);
     }
 
     body[data-theme="dark"] .auth-screen {
