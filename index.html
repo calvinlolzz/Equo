@@ -919,6 +919,51 @@
       gap: 10px;
     }
 
+    #expenseForm > * {
+      order: 10;
+    }
+
+    #expenseForm .ai-card {
+      order: 0;
+    }
+
+    #expenseForm .three {
+      order: 1;
+    }
+
+    #expenseForm .input-card:has(#participantGrid) {
+      order: 2;
+    }
+
+    #expenseForm label:has(#expenseTitle) {
+      order: 3;
+    }
+
+    #expenseForm label:has(#expenseGroup) {
+      order: 4;
+    }
+
+    #expenseGroupHint {
+      order: 5;
+      margin: -2px 0 2px;
+    }
+
+    #expenseForm .two {
+      order: 6;
+    }
+
+    #expenseForm label:has(#expenseNote) {
+      order: 7;
+    }
+
+    #expenseForm .input-card:has(#splitPreview) {
+      order: 8;
+    }
+
+    #expenseForm .sheet-actionbar {
+      order: 20;
+    }
+
     label {
       display: grid;
       gap: 7px;
