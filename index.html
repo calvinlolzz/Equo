@@ -2235,6 +2235,7 @@
           <button id="shareSettlementButton" class="small-action" type="button" onclick="shareSettlement()">分享結算</button>
         </div>
         <div id="expenseSuccessCard" class="success-card"></div>
+        <div id="settlementSuccessCard" class="success-card"></div>
         <div id="settlements" class="card-list"></div>
       </section>
 
@@ -2770,6 +2771,7 @@
     let activeExpenseRequestId = "";
     let expenseSubmitInProgress = false;
     let latestCreatedExpenseId = "";
+    let latestSettlementAction = null;
     const screenScrollPositions = {};
 
     const defaultGroups = [
@@ -4541,6 +4543,30 @@
       `;
     }
 
+    function renderSettlementSuccessCard() {
+      const card = document.getElementById("settlementSuccessCard");
+      if (!card) return;
+      const action = latestSettlementAction;
+      if (!action || action.groupId !== activeGroupId) {
+        card.classList.remove("show");
+        card.innerHTML = "";
+        return;
+      }
+      const title = action.type === "confirmed" ? "收款已確認" : "付款已送出";
+      const note = `${users[action.fromId].name} 轉給 ${users[action.toId].name} ${money(action.amount)}`;
+      card.classList.add("show");
+      card.innerHTML = `
+        <div>
+          <strong>${title}</strong>
+          <p>${note} · ${action.status}</p>
+        </div>
+        <div class="mini-actions" style="justify-content:flex-start;margin-top:0">
+          <button class="mini-btn" type="button" onclick="renderPayments(); showScreen('me')">查看付款紀錄</button>
+          <button class="mini-btn" type="button" onclick="shareSettlement()">分享結算</button>
+        </div>
+      `;
+    }
+
     function renderGroup() {
       const group = getGroup(activeGroupId);
       if (!group) {
@@ -4555,6 +4581,7 @@
         document.getElementById("groupExpenses").innerHTML = `<div class="empty">目前沒有群組支出</div>`;
         document.getElementById("settlements").innerHTML = `<div class="empty">目前不需要結算</div>`;
         renderExpenseSuccessCard();
+        renderSettlementSuccessCard();
         document.getElementById("members").innerHTML = `<div class="empty">新增群組後可加入成員</div>`;
         document.getElementById("groupBudget").innerHTML = `<div class="empty">尚未有群組分析</div>`;
         document.getElementById("groupCategoryStats").innerHTML = `<div class="empty">尚未有分類資料</div>`;
@@ -4607,6 +4634,7 @@
           </div>
         </div>`).join("") || `<div class="empty">目前不需要結算</div>`;
       renderExpenseSuccessCard();
+      renderSettlementSuccessCard();
       const visibleMembers = currentUserRole(group) === "子女" ? [currentUserId] : group.members;
       document.getElementById("members").innerHTML = visibleMembers.map(id => {
         const value = Math.round(b[id] || 0);
@@ -5273,6 +5301,14 @@
           date: "剛剛"
         });
       }
+      latestSettlementAction = {
+        type: "paid",
+        groupId: activeGroupId,
+        fromId,
+        toId,
+        amount: Math.round(amount),
+        status: "等待對方確認"
+      };
       saveData();
       renderGroup();
       renderPayments();
@@ -5288,6 +5324,14 @@
       const key = `${activeGroupId}:${fromId}:${toId}:${Math.round(amount)}`;
       settlementStatus[key] = "confirmed";
       paymentRecords = paymentRecords.map(record => record.key === key ? { ...record, status: "已完成" } : record);
+      latestSettlementAction = {
+        type: "confirmed",
+        groupId: activeGroupId,
+        fromId,
+        toId,
+        amount: Math.round(amount),
+        status: "已完成"
+      };
       saveData();
       renderGroup();
       renderPayments();
