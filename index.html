@@ -78,6 +78,22 @@
       border: 0;
       cursor: pointer;
       color: inherit;
+      transition:
+        transform .16s ease,
+        background .16s ease,
+        border-color .16s ease,
+        color .16s ease,
+        box-shadow .16s ease,
+        filter .16s ease;
+    }
+
+    button:focus-visible,
+    [role="button"]:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid rgba(10,132,255,.34);
+      outline-offset: 3px;
     }
 
     .shell {
@@ -505,7 +521,6 @@
         inset 0 1px 0 rgba(255,255,255,.58),
         0 8px 18px rgba(35,45,75,.08);
       white-space: nowrap;
-      transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
     }
 
     .small-action:active {
@@ -525,6 +540,11 @@
       backdrop-filter: blur(22px) saturate(1.35);
       -webkit-backdrop-filter: blur(22px) saturate(1.35);
       box-shadow: 0 12px 34px rgba(35, 45, 75, .10);
+      transition:
+        transform .18s ease,
+        background .18s ease,
+        border-color .18s ease,
+        box-shadow .18s ease;
     }
 
     .group-card {
@@ -532,7 +552,6 @@
       grid-template-columns: 54px 1fr auto;
       align-items: center;
       gap: 12px;
-      transition: transform .18s ease, background .18s ease;
       width: 100%;
       text-align: left;
     }
@@ -1326,6 +1345,57 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    @media (hover: hover) and (pointer: fine) {
+      .primary:hover:not(:disabled) {
+        background: linear-gradient(145deg, #007aff, #32c7ff);
+        box-shadow: 0 18px 38px rgba(10,132,255,.32);
+        transform: translateY(-1px);
+        filter: saturate(1.08);
+      }
+
+      .soft-btn:hover:not(:disabled),
+      .mini-btn:hover:not(:disabled),
+      .icon-btn:hover:not(:disabled),
+      .small-action:hover:not(:disabled) {
+        color: var(--blue);
+        background:
+          linear-gradient(145deg, rgba(255,255,255,.82), rgba(255,255,255,.48)),
+          rgba(10,132,255,.12);
+        border-color: rgba(10,132,255,.22);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,.7),
+          0 12px 26px rgba(10,132,255,.14);
+        transform: translateY(-1px);
+      }
+
+      .tab:hover:not(.active) {
+        color: var(--blue);
+        background: rgba(255,255,255,.48);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.58), 0 8px 18px rgba(10,132,255,.10);
+      }
+
+      .tab:not([data-screen]):hover {
+        color: #fff;
+        filter: saturate(1.12) brightness(1.03);
+        box-shadow: 0 16px 32px rgba(95,140,255,.28);
+        transform: translateY(-1px);
+      }
+
+      .group-card:hover,
+      .expense-row:hover,
+      .settlement-row:hover {
+        background: rgba(255,255,255,.74);
+        border-color: rgba(255,255,255,.88);
+        box-shadow: 0 18px 42px rgba(35,45,75,.14);
+        transform: translateY(-1px);
+      }
+
+      .avatar-choice:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(35,45,75,.14);
+      }
+    }
+
     .setting-row {
       display: flex;
       align-items: center;
@@ -1571,6 +1641,36 @@
       border-top-color: rgba(255,255,255,.12);
     }
 
+    @media (hover: hover) and (pointer: fine) {
+      body[data-theme="dark"] .soft-btn:hover:not(:disabled),
+      body[data-theme="dark"] .mini-btn:hover:not(:disabled),
+      body[data-theme="dark"] .icon-btn:hover:not(:disabled),
+      body[data-theme="dark"] .small-action:hover:not(:disabled) {
+        color: #9fc4ff;
+        background:
+          linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.07)),
+          rgba(100,210,255,.10);
+        border-color: rgba(100,210,255,.24);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,.16),
+          0 14px 30px rgba(0,0,0,.24);
+      }
+
+      body[data-theme="dark"] .tab:hover:not(.active) {
+        color: #9fc4ff;
+        background: rgba(255,255,255,.10);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+      }
+
+      body[data-theme="dark"] .group-card:hover,
+      body[data-theme="dark"] .expense-row:hover,
+      body[data-theme="dark"] .settlement-row:hover {
+        background: rgba(255,255,255,.12);
+        border-color: rgba(100,210,255,.18);
+        box-shadow: 0 18px 42px rgba(0,0,0,.24);
+      }
+    }
+
     @media (max-width: 380px) {
       .auth-form .auth-actions,
       .action-grid,
@@ -1738,6 +1838,43 @@
         background: rgba(255,255,255,.08);
         border-color: rgba(255,255,255,.12);
         box-shadow: 0 10px 24px rgba(0,0,0,.12);
+      }
+
+      .small-action:hover:not(:disabled),
+      .soft-btn:hover:not(:disabled),
+      .mini-btn:hover:not(:disabled),
+      .icon-btn:hover:not(:disabled) {
+        color: #9fc4ff;
+        background:
+          linear-gradient(145deg, rgba(255,255,255,.15), rgba(255,255,255,.07)),
+          rgba(100,210,255,.10);
+        border-color: rgba(100,210,255,.24);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,.16),
+          0 14px 30px rgba(0,0,0,.22);
+        transform: translateY(-1px);
+      }
+
+      .tab:hover:not(.active) {
+        color: #9fc4ff;
+        background: rgba(255,255,255,.10);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+      }
+
+      .tab:not([data-screen]):hover {
+        color: #fff;
+        filter: saturate(1.12) brightness(1.04);
+        box-shadow: 0 16px 32px rgba(95,140,255,.28);
+        transform: translateY(-1px);
+      }
+
+      .group-card:hover,
+      .expense-row:hover,
+      .settlement-row:hover {
+        background: rgba(255,255,255,.12);
+        border-color: rgba(100,210,255,.18);
+        box-shadow: 0 18px 42px rgba(0,0,0,.24);
+        transform: translateY(-1px);
       }
 
       .screen {
