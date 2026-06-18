@@ -1684,6 +1684,58 @@
       .screen {
         min-height: calc(100dvh - 90px);
       }
+
+      #home.screen.active {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, .78fr);
+        grid-template-areas:
+          "topbar topbar"
+          "summary summary"
+          "onboarding onboarding"
+          "groups reminders"
+          "recent reminders";
+        gap: 24px;
+        align-items: start;
+      }
+
+      #home .topbar,
+      #home .summary,
+      #home #onboardingCard {
+        grid-column: 1 / -1;
+      }
+
+      #home .topbar { grid-area: topbar; }
+      #home .summary { grid-area: summary; }
+      #home #onboardingCard { grid-area: onboarding; }
+
+      #home .section:has(#groups),
+      #home .section:has(#recentExpenses) {
+        grid-column: 1;
+      }
+
+      #home .section:has(#groups) {
+        grid-area: groups;
+      }
+
+      #home .section:has(#recentExpenses) {
+        grid-area: recent;
+      }
+
+      #home .section:has(#reminders) {
+        grid-area: reminders;
+        grid-column: 2;
+      }
+
+      #home .section:has(#groups),
+      #home .section:has(#reminders),
+      #home .section:has(#recentExpenses) {
+        margin-top: 0;
+      }
+
+      #reminders .settlement-row,
+      #recentExpenses .expense-row {
+        min-height: 76px;
+      }
     }
   </style>
 </head>
