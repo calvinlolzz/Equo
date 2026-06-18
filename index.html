@@ -1028,6 +1028,14 @@
       order: 20;
     }
 
+    .submit-status {
+      order: 19;
+      margin: 0;
+      min-height: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
     label {
       display: grid;
       gap: 7px;
@@ -2495,6 +2503,7 @@
           <p id="exchangeHint" class="mini-note"></p>
           <div id="splitPreview" class="preview"></div>
         </div>
+        <p id="expenseSubmitStatus" class="mini-note submit-status">確認內容後即可建立。</p>
         <div class="sheet-actionbar">
           <button class="soft-btn" type="button" onclick="closeAddSheet()">取消</button>
           <button id="expenseSubmitButton" class="primary" type="submit">
@@ -4797,13 +4806,43 @@
     function setExpenseSubmitGuard() {
       const button = document.getElementById("expenseSubmitButton");
       if (!button) return;
+      const status = document.getElementById("expenseSubmitStatus");
       clearTimeout(expenseSubmitTimer);
       button.disabled = true;
       button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>確認內容中`;
+      if (status) status.textContent = "正在確認分攤內容...";
       expenseSubmitTimer = setTimeout(() => {
-        button.disabled = false;
-        button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>確認建立`;
-      }, 900);
+        updateExpenseReadyState();
+      }, 450);
+    }
+
+    function updateExpenseReadyState() {
+      const button = document.getElementById("expenseSubmitButton");
+      const status = document.getElementById("expenseSubmitStatus");
+      if (!button) return;
+      const group = getGroup(document.getElementById("expenseGroup")?.value);
+      const amount = Number(document.getElementById("expenseAmount")?.value || 0);
+      const participants = selectedParticipants();
+      let message = "確認內容後即可建立。";
+      let ready = true;
+
+      if (!group) {
+        ready = false;
+        message = "請先選擇群組。";
+      } else if (!canEditExpense(group)) {
+        ready = false;
+        message = "你目前的角色無法新增支出。";
+      } else if (!amount || amount <= 0) {
+        ready = false;
+        message = "請輸入大於 0 的金額。";
+      } else if (!participants.length) {
+        ready = false;
+        message = "至少需要一位分攤成員。";
+      }
+
+      button.disabled = !ready;
+      button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>${ready ? "確認建立" : "尚未完成"}`;
+      if (status) status.textContent = message;
     }
 
     function updateExpenseGroupHint(reason = "") {
@@ -5095,6 +5134,7 @@
       if (!group) {
         document.getElementById("exchangeHint").textContent = "請先建立群組";
         document.getElementById("splitPreview").innerHTML = "";
+        updateExpenseReadyState();
         return;
       }
       const amount = Number(document.getElementById("expenseAmount").value || 0);
@@ -5108,6 +5148,7 @@
       document.getElementById("splitPreview").innerHTML = participants.map(id => `
         <div class="preview-row"><span>${users[id].name}</span><strong>${money(each)}</strong></div>
       `).join("");
+      updateExpenseReadyState();
     }
 
     async function shareSettlement() {
