@@ -1656,6 +1656,12 @@
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       }
 
+      #group .backbar,
+      #group .group-hero,
+      #group .group-panel {
+        max-width: 860px;
+      }
+
       .summary,
       .group-hero,
       .group-card,
@@ -1735,35 +1741,6 @@
       #reminders .settlement-row,
       #recentExpenses .expense-row {
         min-height: 76px;
-      }
-
-      #group.screen.active {
-        display: grid;
-        grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
-        grid-template-areas:
-          "backbar backbar"
-          "hero hero"
-          "activity settle"
-          "activity analysis"
-          "members analysis";
-        gap: 24px;
-        align-items: start;
-      }
-
-      #group .backbar { grid-area: backbar; }
-      #group .group-hero { grid-area: hero; }
-      #activityPanel { grid-area: activity; }
-      #settlePanel { grid-area: settle; }
-      #analysisPanel { grid-area: analysis; }
-      #membersPanel { grid-area: members; }
-
-      #group .group-panel {
-        display: block !important;
-        margin-top: 0;
-      }
-
-      #group .segmented {
-        display: none;
       }
 
       #groupExpenses,
@@ -4471,17 +4448,9 @@
       showScreen("home");
     }
 
-    function isDesktopLayout() {
-      return window.matchMedia("(min-width: 760px)").matches;
-    }
-
     function switchPanel(panel) {
       activePanel = panel;
       document.querySelectorAll(".segment").forEach(segment => segment.classList.toggle("active", segment.dataset.panel === panel));
-      if (isDesktopLayout()) {
-        document.querySelectorAll(".group-panel").forEach(panelEl => panelEl.style.display = "");
-        return;
-      }
       document.getElementById("activityPanel").style.display = panel === "activity" ? "" : "none";
       document.getElementById("settlePanel").style.display = panel === "settle" ? "" : "none";
       document.getElementById("analysisPanel").style.display = panel === "analysis" ? "" : "none";
