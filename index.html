@@ -2282,6 +2282,8 @@
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
     let expenseSubmitTimer = null;
+    let activeExpenseRequestId = "";
+    let expenseSubmitInProgress = false;
     const screenScrollPositions = {};
 
     const defaultGroups = [
@@ -4376,6 +4378,8 @@
         return;
       }
       if (suggestion.group) activeGroupId = suggestion.group.id;
+      activeExpenseRequestId = makeInviteToken();
+      expenseSubmitInProgress = false;
       openSheetById("sheet");
       document.getElementById("expenseGroup").value = suggestion.group?.id || activeGroupId;
       updateExpenseGroupHint(suggestion.reason);
@@ -4386,6 +4390,7 @@
     }
 
     function closeAddSheet() {
+      expenseSubmitInProgress = false;
       closeSheetById("sheet");
     }
 
@@ -4898,6 +4903,10 @@
     document.getElementById("expenseForm").addEventListener("submit", event => {
       event.preventDefault();
       const submitButton = document.getElementById("expenseSubmitButton");
+      if (expenseSubmitInProgress) {
+        showToast("這筆支出正在建立中");
+        return;
+      }
       if (submitButton?.disabled) {
         showToast("請先確認內容，再建立支出");
         return;
@@ -4917,8 +4926,19 @@
         showToast("至少需要一位分攤成員");
         return;
       }
+      const clientRequestId = activeExpenseRequestId || makeInviteToken();
+      if (expenses.some(expense => expense.clientRequestId === clientRequestId)) {
+        showToast("這筆支出已建立");
+        return;
+      }
+      expenseSubmitInProgress = true;
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>建立中`;
+      }
       expenses.push({
         id: Date.now(),
+        clientRequestId,
         groupId: group.id,
         title: document.getElementById("expenseTitle").value.trim() || "未命名支出",
         amount,
