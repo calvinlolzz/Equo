@@ -1583,7 +1583,7 @@
         transform: none;
         width: 240px;
         border-radius: 0;
-        padding: 78px 12px 24px;
+        padding: 92px 12px 24px;
         grid-template-columns: 1fr;
         grid-auto-rows: 52px;
         align-content: start;
@@ -1596,7 +1596,7 @@
       }
 
       .nav::before {
-        content: "Equo";
+        content: "Equo\A算好";
         position: absolute;
         top: 28px;
         left: 22px;
@@ -1604,6 +1604,8 @@
         font-size: 18px;
         font-weight: 850;
         letter-spacing: 0;
+        white-space: pre-line;
+        line-height: 1.18;
       }
 
       .tab {
@@ -1627,6 +1629,17 @@
       .tab:not([data-screen])::after { content: "新增支出"; }
       .tab[data-screen="stats"]::after { content: "統計"; }
       .tab[data-screen="me"]::after { content: "我的"; }
+
+      .tab::after {
+        content: attr(aria-label);
+      }
+
+      .tab:not([data-screen]) {
+        margin-top: 8px;
+        color: #fff;
+        background: linear-gradient(145deg, #4f7dff, #5f8cff);
+        box-shadow: 0 12px 24px rgba(95,140,255,.22);
+      }
 
       .tab.active {
         color: #7aa2ff;
@@ -2145,7 +2158,7 @@
   <nav class="nav glass" aria-label="主要導覽">
     <button class="tab active" type="button" data-screen="home" onclick="showScreen('home')" aria-label="首頁"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></button>
     <button class="tab" type="button" data-screen="group" onclick="openGroup(activeGroupId)" aria-label="群組"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
-    <button class="tab" type="button" onclick="openAddSheet()" aria-label="新增"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+    <button class="tab" type="button" onclick="openAddSheet()" aria-label="新增支出"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
     <button class="tab" type="button" data-screen="stats" onclick="showScreen('stats')" aria-label="統計"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M8 17V9"/><path d="M13 17V5"/><path d="M18 17v-6"/></svg></button>
     <button class="tab" type="button" data-screen="me" onclick="showScreen('me')" aria-label="我的"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
   </nav>
