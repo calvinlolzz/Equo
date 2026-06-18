@@ -51,3 +51,7 @@ http://127.0.0.1:4173/index.html
 ## 測試流程
 
 登入、同步、手機畫面與交付前檢查請看 [docs/TESTING.md](docs/TESTING.md)。
+
+## 系統設計
+
+完整 SDD 系統設計方案請看 [docs/SDD.md](docs/SDD.md)。此文件已區分手機版與網頁版，並以 90% 使用情境發生在手機上作為設計前提。
