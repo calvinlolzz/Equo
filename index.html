@@ -1279,7 +1279,7 @@
 
     .destructive-card {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr auto auto;
       align-items: center;
       gap: 14px;
       width: 100%;
@@ -1874,6 +1874,17 @@
 
       .password-row .soft-btn {
         width: 100%;
+      }
+
+      .destructive-card {
+        grid-template-columns: 1fr;
+        justify-items: stretch;
+      }
+
+      .destructive-card .mini-btn,
+      .destructive-card .remove-pill {
+        width: 100%;
+        justify-content: center;
       }
     }
 
@@ -2606,7 +2617,7 @@
   <section id="sheet" class="sheet" aria-modal="true">
     <div class="sheet-panel">
       <div class="sheet-head">
-        <h2>新增支出</h2>
+        <h2 id="expenseSheetTitle">新增支出</h2>
         <button class="icon-btn" type="button" onclick="closeAddSheet()" aria-label="關閉">
           <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
         </button>
@@ -2682,7 +2693,7 @@
           <button class="soft-btn" type="button" onclick="closeAddSheet()">取消</button>
           <button id="expenseSubmitButton" class="primary" type="submit">
             <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-            確認建立
+            <span id="expenseSubmitLabel">確認建立</span>
           </button>
         </div>
       </form>
@@ -2774,7 +2785,7 @@
   <section id="memberSheet" class="sheet" aria-modal="true">
     <div class="sheet-panel">
       <div class="sheet-head">
-        <h2>新增成員</h2>
+        <h2 id="memberSheetTitle">新增成員</h2>
         <button class="icon-btn" type="button" onclick="closeMemberSheet()" aria-label="關閉成員表單">
           <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
         </button>
@@ -2789,7 +2800,7 @@
         </div>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
-          加入群組
+          <span id="memberSubmitLabel">加入群組</span>
         </button>
       </form>
     </div>
@@ -3051,6 +3062,8 @@
     let cloudBackupSummary = "尚未檢查";
     let latestInviteLink = "";
     let latestFlowNotice = null;
+    let editingExpenseId = null;
+    let editingMemberId = null;
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -4954,11 +4967,14 @@
           </div>
           <div class="member-remove-panel">
             <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
-            <div class="mini-actions" ${canRemove ? "" : "hidden"}>
+            <div class="mini-actions" ${(canManageGroup(group) && id !== currentUserId) ? "" : "hidden"}>
+              <button class="mini-btn" type="button" onclick="openMemberSheet('${id}')">編輯</button>
+              <span ${canRemove ? "" : "hidden"}>
               <button class="remove-pill" type="button" onclick="deleteMember('${id}')">
                 <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
                 移除
               </button>
+              </span>
             </div>
           </div>
         </div>`;
@@ -5237,10 +5253,11 @@
       const button = document.getElementById("expenseSubmitButton");
       if (!button) return;
       const status = document.getElementById("expenseSubmitStatus");
+      const actionText = editingExpenseId ? "確認修改中" : "確認內容中";
       clearTimeout(expenseSubmitTimer);
       button.disabled = true;
-      button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>確認內容中`;
-      if (status) status.textContent = "正在確認分攤內容...";
+      button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span id="expenseSubmitLabel">${actionText}</span>`;
+      if (status) status.textContent = editingExpenseId ? "正在確認修改內容..." : "正在確認分攤內容...";
       expenseSubmitTimer = setTimeout(() => {
         updateExpenseReadyState();
       }, 450);
@@ -5270,8 +5287,9 @@
         message = "至少需要一位分攤成員。";
       }
 
+      const actionText = editingExpenseId ? "儲存變更" : "確認建立";
       button.disabled = !ready;
-      button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>${ready ? "確認建立" : "尚未完成"}`;
+      button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span id="expenseSubmitLabel">${ready ? actionText : "尚未完成"}</span>`;
       if (status) status.textContent = message;
     }
 
@@ -5288,6 +5306,8 @@
         openGroupSheet();
         return;
       }
+      editingExpenseId = null;
+      document.getElementById("expenseSheetTitle").textContent = "新增支出";
       const suggestion = suggestedExpenseGroup();
       if (!canEditExpense(suggestion.group)) {
         showToast("你目前的角色無法使用這個功能");
@@ -5309,6 +5329,7 @@
 
     function closeAddSheet() {
       expenseSubmitInProgress = false;
+      editingExpenseId = null;
       closeSheetById("sheet");
     }
 
@@ -5363,13 +5384,19 @@
       closeSheetById("groupSheet");
     }
 
-    function openMemberSheet() {
+    function openMemberSheet(memberId = "") {
       if (!requirePermission("manage")) return;
+      editingMemberId = memberId || null;
+      const member = editingMemberId ? users[editingMemberId] : null;
+      document.getElementById("memberSheetTitle").textContent = member ? "編輯成員" : "新增成員";
+      document.getElementById("memberSubmitLabel").textContent = member ? "儲存成員" : "加入群組";
+      document.getElementById("memberName").value = member?.name || "新朋友";
       openSheetById("memberSheet");
-      showToast("新增成員已開啟");
+      showToast(member ? "成員編輯已開啟" : "新增成員已開啟");
     }
 
     function closeMemberSheet() {
+      editingMemberId = null;
       closeSheetById("memberSheet");
     }
 
@@ -5402,8 +5429,9 @@
         <div class="destructive-card">
           <div>
             <span class="destructive-card-title">這筆支出</span>
-            <span class="destructive-card-note">重新計算這個群組的結算</span>
+            <span class="destructive-card-note">可修改內容或移除後重算結算</span>
           </div>
+          <button class="mini-btn" type="button" onclick="editExpense('${expense.id}')">編輯</button>
           <button class="remove-pill" type="button" onclick="deleteExpense('${expense.id}')">
             <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
             移除
@@ -5415,6 +5443,42 @@
 
     function closeExpenseSheet() {
       closeSheetById("expenseDetailSheet");
+    }
+
+    function editExpense(expenseId) {
+      const expense = expenses.find(item => String(item.id) === String(expenseId));
+      if (!expense) {
+        showToast("找不到這筆支出");
+        return;
+      }
+      const group = getGroup(expense.groupId);
+      if (!canEditExpense(group)) {
+        showToast("你在此群組沒有編輯支出的權限");
+        return;
+      }
+
+      editingExpenseId = String(expense.id);
+      expenseSubmitInProgress = false;
+      activeGroupId = group.id;
+      activeExpenseRequestId = expense.clientRequestId || makeInviteToken();
+      closeExpenseSheet();
+      openSheetById("sheet");
+
+      requestAnimationFrame(() => {
+        document.getElementById("expenseSheetTitle").textContent = "編輯支出";
+        document.getElementById("expenseGroup").value = group.id;
+        document.getElementById("expenseTitle").value = expense.title || "";
+        document.getElementById("expenseAmount").value = expense.amount || "";
+        document.getElementById("expenseCurrency").value = expense.currency || "TWD";
+        document.getElementById("expenseCategory").value = expense.category || document.getElementById("expenseCategory").value;
+        document.getElementById("expenseNote").value = expense.note || "";
+        document.getElementById("splitType").value = expense.participants.length === group.members.length ? "average" : "selected";
+        updateExpenseGroupHint("正在編輯這筆支出");
+        syncPayerOptions(expense.payerId, expense.participants);
+        updatePreview();
+        updateExpenseReadyState();
+      });
+      showToast("支出編輯已開啟");
     }
 
     async function deleteExpense(expenseId) {
@@ -5557,7 +5621,7 @@
       closeSheetById("groupSettingsSheet");
     }
 
-    function syncPayerOptions() {
+    function syncPayerOptions(payerId = currentUserId, selectedParticipantIds = null) {
       const group = getGroup(document.getElementById("expenseGroup").value);
       if (!group) {
         document.getElementById("expensePayer").innerHTML = "";
@@ -5565,15 +5629,16 @@
         return;
       }
       document.getElementById("expensePayer").innerHTML = group.members.map(id => `<option value="${id}">${users[id].name}</option>`).join("");
-      document.getElementById("expensePayer").value = currentUserId;
-      renderParticipantOptions(group);
+      document.getElementById("expensePayer").value = group.members.includes(payerId) ? payerId : currentUserId;
+      renderParticipantOptions(group, selectedParticipantIds);
     }
 
-    function renderParticipantOptions(group) {
+    function renderParticipantOptions(group, selectedParticipantIds = null) {
       if (!group) return;
+      const selected = selectedParticipantIds ? new Set(selectedParticipantIds) : null;
       document.getElementById("participantGrid").innerHTML = group.members.map(id => `
         <label class="participant-chip">
-          <input type="checkbox" class="participant-input" value="${id}" checked onchange="updatePreview()" />
+          <input type="checkbox" class="participant-input" value="${id}" ${selected && !selected.has(id) ? "" : "checked"} onchange="updatePreview()" />
           <span>${users[id].name}</span>
         </label>
       `).join("");
@@ -5948,6 +6013,55 @@
         showToast("至少需要一位分攤成員");
         return;
       }
+      const existingExpense = editingExpenseId
+        ? expenses.find(expense => String(expense.id) === String(editingExpenseId))
+        : null;
+      if (editingExpenseId && !existingExpense) {
+        showToast("找不到要編輯的支出");
+        return;
+      }
+      if (existingExpense) {
+        expenseSubmitInProgress = true;
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span id="expenseSubmitLabel">儲存中</span>`;
+        }
+        const previousTitle = existingExpense.title;
+        Object.assign(existingExpense, {
+          groupId: group.id,
+          title: document.getElementById("expenseTitle").value.trim() || "未命名支出",
+          amount,
+          currency: document.getElementById("expenseCurrency").value,
+          payerId: document.getElementById("expensePayer").value,
+          participants,
+          category: document.getElementById("expenseCategory").value,
+          note: document.getElementById("expenseNote").value
+        });
+        settlementStatus = {};
+        latestCreatedExpenseId = null;
+        latestSettlementAction = null;
+        latestFlowNotice = {
+          groupId: group.id,
+          eyebrow: "支出已更新",
+          title: `${existingExpense.title || previousTitle} 已更新`,
+          note: "結算已重新計算，可以查看最新結果。",
+          primary: "查看結算",
+          primaryAction: "switchPanel('settle')",
+          secondary: "查看支出",
+          secondaryAction: "switchPanel('activity')"
+        };
+        activeGroupId = group.id;
+        localStorage.setItem("floatpay-last-expense-group", group.id);
+        saveData();
+        closeAddSheet();
+        renderHome();
+        renderGroup();
+        renderStats();
+        showScreen("group");
+        switchPanel("settle");
+        showToast(`${existingExpense.title || previousTitle} 已更新`);
+        return;
+      }
       const clientRequestId = activeExpenseRequestId || makeInviteToken();
       if (expenses.some(expense => expense.clientRequestId === clientRequestId)) {
         showToast("這筆支出已建立");
@@ -5956,7 +6070,7 @@
       expenseSubmitInProgress = true;
       if (submitButton) {
         submitButton.disabled = true;
-        submitButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>建立中`;
+        submitButton.innerHTML = `<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span id="expenseSubmitLabel">建立中</span>`;
       }
       const newExpenseId = Date.now();
       expenses.push({
@@ -6022,6 +6136,22 @@
       const group = getGroup(activeGroupId);
       const name = document.getElementById("memberName").value.trim() || "新成員";
       const role = "成員";
+      if (editingMemberId) {
+        if (!group?.members.includes(editingMemberId) || !users[editingMemberId]) {
+          showToast("找不到要編輯的成員");
+          return;
+        }
+        const previousName = users[editingMemberId].name;
+        users[editingMemberId].name = name;
+        users[editingMemberId].initial = name.trim().slice(0, 1).toUpperCase() || users[editingMemberId].initial || "人";
+        saveData();
+        closeMemberSheet();
+        renderHome();
+        renderGroup();
+        renderStats();
+        showToast(`${previousName} 已更新為 ${name}`);
+        return;
+      }
       const id = `u${Date.now()}`;
       const choice = avatarChoices[group.members.length % avatarChoices.length];
       users[id] = { name, initial: name.trim().slice(0, 1).toUpperCase() || "新", avatar: choice.icon, avatarColor: choice.color };
