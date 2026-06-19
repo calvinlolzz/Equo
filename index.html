@@ -2009,15 +2009,18 @@
 
       #group .backbar,
       #group .group-hero,
+      #group #groupFlowNotice,
       #group #groupNextAction,
       #group .group-panel {
         max-width: 860px;
       }
 
+      #group #groupFlowNotice,
       #group #groupNextAction {
         margin-top: 18px;
       }
 
+      #group #groupFlowNotice .next-action-card,
       #group #groupNextAction .next-action-card {
         margin-top: 0;
         border-radius: 18px;
@@ -2029,6 +2032,7 @@
         box-shadow: 0 16px 38px rgba(0,0,0,.16);
       }
 
+      #group #groupFlowNotice .next-action-card .action-grid,
       #group #groupNextAction .next-action-card .action-grid {
         grid-template-columns: 1fr 1fr;
       }
@@ -2333,6 +2337,8 @@
           <button class="segment" type="button" data-panel="members" onclick="switchPanel('members')">成員</button>
         </div>
       </section>
+
+      <section id="groupFlowNotice" class="section"></section>
 
       <section id="groupNextAction" class="section"></section>
 
@@ -3044,6 +3050,7 @@
     let cloudBackupCheckedAt = "";
     let cloudBackupSummary = "尚未檢查";
     let latestInviteLink = "";
+    let latestFlowNotice = null;
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -4762,6 +4769,30 @@
       `;
     }
 
+    function renderGroupFlowNotice(group) {
+      const target = document.getElementById("groupFlowNotice");
+      if (!target) return;
+      if (!group || !latestFlowNotice || latestFlowNotice.groupId !== group.id) {
+        target.innerHTML = "";
+        target.style.display = "none";
+        return;
+      }
+      target.style.display = "";
+      target.innerHTML = `
+        <div class="next-action-card">
+          <div>
+            <p class="eyebrow">${latestFlowNotice.eyebrow || "已更新"}</p>
+            <h3>${latestFlowNotice.title}</h3>
+            <p class="mini-note" style="margin-top:6px">${latestFlowNotice.note}</p>
+          </div>
+          <div class="action-grid">
+            <button class="primary" type="button" onclick="${latestFlowNotice.primaryAction}">${latestFlowNotice.primary}</button>
+            <button class="soft-btn" type="button" onclick="${latestFlowNotice.secondaryAction}">${latestFlowNotice.secondary}</button>
+          </div>
+        </div>
+      `;
+    }
+
     function renderGroupNextAction(group) {
       const target = document.getElementById("groupNextAction");
       if (!target) return;
@@ -4811,6 +4842,7 @@
         });
         renderExpenseSuccessCard();
         renderSettlementSuccessCard();
+        renderGroupFlowNotice(null);
         renderGroupNextAction(null);
         document.getElementById("members").innerHTML = emptyAction({
           title: "還沒有成員",
@@ -4852,6 +4884,7 @@
       document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
       document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
       document.getElementById("memberStack").innerHTML = group.members.map(id => avatarHtml(id)).join("");
+      renderGroupFlowNotice(group);
       renderGroupNextAction(group);
       const visibleExpenses = filteredGroupExpenses(activeGroupId);
       const allGroupExpenseCount = groupExpenses(activeGroupId).length;
@@ -5152,8 +5185,12 @@
     function updateFilterSummary(visible, total) {
       const summary = document.getElementById("filterSummary");
       if (!summary) return;
-      if (!expenseFilters.query && expenseFilters.category === "all") {
+      if (!total) {
+        summary.textContent = "尚未有支出";
+      } else if (!expenseFilters.query && expenseFilters.category === "all") {
         summary.textContent = `顯示全部 ${total} 筆支出`;
+      } else if (!visible) {
+        summary.textContent = `沒有符合條件 · 共 ${total} 筆支出`;
       } else {
         summary.textContent = `顯示 ${visible} / ${total} 筆支出`;
       }
@@ -5393,6 +5430,19 @@
       settlementStatus = {};
       saveData();
       closeExpenseSheet();
+      const remainingCount = groupExpenses(target?.groupId || activeGroupId).length;
+      latestCreatedExpenseId = null;
+      latestSettlementAction = null;
+      latestFlowNotice = {
+        groupId: target?.groupId || activeGroupId,
+        eyebrow: "支出已刪除",
+        title: `${target?.title || "支出"} 已移除`,
+        note: remainingCount ? "結算已重新計算，可以查看最新誰該付給誰。" : "這個群組目前沒有支出，可以新增下一筆重新開始。",
+        primary: remainingCount ? "查看結算" : "新增支出",
+        primaryAction: remainingCount ? "switchPanel('settle')" : "openAddSheet()",
+        secondary: "查看支出",
+        secondaryAction: "switchPanel('activity')"
+      };
       renderHome();
       renderGroup();
       renderStats();
@@ -5439,6 +5489,18 @@
       saveData();
       refreshExpenseGroupOptions();
       syncPayerOptions();
+      latestCreatedExpenseId = null;
+      latestSettlementAction = null;
+      latestFlowNotice = {
+        groupId: group.id,
+        eyebrow: "成員已移除",
+        title: `${memberName} 已從群組移除`,
+        note: relatedExpenseCount ? `已一併移除 ${relatedExpenseCount} 筆相關支出，結算已重新計算。` : "群組成員已更新，可以繼續新增支出或邀請其他人。",
+        primary: "查看成員",
+        primaryAction: "switchPanel('members')",
+        secondary: "新增支出",
+        secondaryAction: "openAddSheet()"
+      };
       renderHome();
       renderGroup();
       renderStats();
@@ -5469,6 +5531,7 @@
         if (key.startsWith(`${group.id}:`)) delete settlementStatus[key];
       });
       if (activeGroupId === group.id) activeGroupId = groups[0]?.id || "";
+      if (latestFlowNotice?.groupId === group.id) latestFlowNotice = null;
       saveData();
       refreshExpenseGroupOptions();
       closeGroupSettingsSheet();
@@ -5910,6 +5973,7 @@
         date: "剛剛"
       });
       latestCreatedExpenseId = String(newExpenseId);
+      latestFlowNotice = null;
       activeGroupId = group.id;
       localStorage.setItem("floatpay-last-expense-group", group.id);
       saveData();
@@ -5940,6 +6004,7 @@
       document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${id}">${name}</option>`);
       activeGroupId = id;
       lastCreatedGroupId = id;
+      latestFlowNotice = null;
       localStorage.setItem("floatpay-last-created-group", id);
       saveData();
       closeGroupSheet();
