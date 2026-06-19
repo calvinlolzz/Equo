@@ -1983,8 +1983,28 @@
 
       #group .backbar,
       #group .group-hero,
+      #group #groupNextAction,
       #group .group-panel {
         max-width: 860px;
+      }
+
+      #group #groupNextAction {
+        margin-top: 18px;
+      }
+
+      #group #groupNextAction .next-action-card {
+        margin-top: 0;
+        border-radius: 18px;
+        padding: 16px 18px;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        align-items: center;
+        background: rgba(255,255,255,.07);
+        border-color: rgba(255,255,255,.1);
+        box-shadow: 0 16px 38px rgba(0,0,0,.16);
+      }
+
+      #group #groupNextAction .next-action-card .action-grid {
+        grid-template-columns: 1fr 1fr;
       }
 
       .summary,
