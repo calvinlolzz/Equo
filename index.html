@@ -564,7 +564,7 @@
       gap: 10px;
     }
 
-    .group-card, .expense-row, .settlement-row, .input-card {
+    .group-card, .expense-item, .settlement-row, .input-card {
       border-radius: 22px;
       padding: 13px;
       background: rgba(255,255,255,.62);
@@ -638,18 +638,27 @@
       grid-template-columns: 42px 1fr auto;
       align-items: center;
       gap: 11px;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
     }
 
     .expense-item {
       display: grid;
-      gap: 8px;
+      gap: 10px;
+      width: 100%;
+      padding: 14px;
+      border-radius: 26px;
     }
 
     .expense-item-actions {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      padding: 0 2px;
+      padding: 0 0 0 53px;
     }
 
     .expense-item-actions .mini-btn,
@@ -1564,7 +1573,7 @@
       }
 
       .group-card:hover,
-      .expense-row:hover,
+      .expense-item:hover,
       .settlement-row:hover {
         background: rgba(255,255,255,.74);
         border-color: rgba(255,255,255,.88);
@@ -1691,7 +1700,7 @@
 
     body[data-theme="dark"] .metric,
     body[data-theme="dark"] .group-card,
-    body[data-theme="dark"] .expense-row,
+    body[data-theme="dark"] .expense-item,
     body[data-theme="dark"] .settlement-row,
     body[data-theme="dark"] .input-card,
     body[data-theme="dark"] .start-chip,
@@ -1876,7 +1885,7 @@
       }
 
       body[data-theme="dark"] .group-card:hover,
-      body[data-theme="dark"] .expense-row:hover,
+      body[data-theme="dark"] .expense-item:hover,
       body[data-theme="dark"] .settlement-row:hover {
         background: rgba(255,255,255,.12);
         border-color: rgba(100,210,255,.18);
@@ -2136,7 +2145,7 @@
         }
 
         .group-card:hover,
-        .expense-row:hover,
+        .expense-item:hover,
         .settlement-row:hover {
           background: rgba(255,255,255,.12);
           border-color: rgba(100,210,255,.18);
