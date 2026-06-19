@@ -2361,22 +2361,21 @@
 
       <section id="onboardingCard" class="section"></section>
 
-      <section class="section">
+      <section id="homeReminderSection" class="section">
         <div class="section-head">
           <h2>待處理</h2>
-          <button class="small-action" type="button" onclick="markAllRemindersRead()">全部已讀</button>
         </div>
         <div id="reminders" class="card-list"></div>
       </section>
 
-      <section class="section">
+      <section id="homeGroupsSection" class="section">
         <div class="section-head">
           <h2>最近群組</h2>
         </div>
         <div id="groups" class="card-list"></div>
       </section>
 
-      <section class="section">
+      <section id="homeRecentSection" class="section">
         <div class="section-head">
           <h2>最近支出</h2>
         </div>
@@ -3037,6 +3036,7 @@
     let expenseFilters = { query: "", category: "all" };
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
+    let lastExpenseGroupId = localStorage.getItem("floatpay-last-expense-group") || "";
     let expenseSubmitTimer = null;
     let activeExpenseRequestId = "";
     let expenseSubmitInProgress = false;
@@ -4701,6 +4701,7 @@
       renderOnboardingCard();
 
       const recentGroups = groups.slice(0, 3);
+      document.getElementById("homeGroupsSection").style.display = groups.length ? "" : "none";
       document.getElementById("groups").innerHTML = recentGroups.length ? recentGroups.map((group, index) => {
         const mine = Math.round(balances(group.id)[currentUserId] || 0);
         const statusClass = mine >= 0 ? "positive" : "negative";
@@ -4722,8 +4723,10 @@
         secondaryAction: "openGuide()"
       });
 
-      renderReminders();
+      const reminderCount = renderReminders();
+      document.getElementById("homeReminderSection").style.display = reminderCount ? "" : "none";
       const recentVisibleExpenses = visibleExpenses();
+      document.getElementById("homeRecentSection").style.display = recentVisibleExpenses.length ? "" : "none";
       document.getElementById("recentExpenses").innerHTML = recentVisibleExpenses.length
         ? recentVisibleExpenses.slice().reverse().slice(0, 2).map(expense => expenseRow(expense, { showActions: false })).join("")
         : emptyAction({
@@ -4840,6 +4843,7 @@
         primary: groups.length ? "" : "新增群組",
         action: groups.length ? "" : "openGroupSheet()"
       });
+      return items.length;
     }
 
     function markReminderRead(id) {
@@ -5398,6 +5402,13 @@
         return {
           group: scheduleMatch.group,
           reason: `已根據「${scheduleMatch.schedule.title}」帶入 ${scheduleMatch.group.name}`
+        };
+      }
+      const lastExpenseGroup = getGroup(lastExpenseGroupId);
+      if (lastExpenseGroup) {
+        return {
+          group: lastExpenseGroup,
+          reason: `已帶入上次記帳的群組：${lastExpenseGroup.name}`
         };
       }
       const lastCreated = getGroup(lastCreatedGroupId);
@@ -6225,6 +6236,7 @@
           secondaryAction: "switchPanel('activity')"
         };
         activeGroupId = group.id;
+        lastExpenseGroupId = group.id;
         localStorage.setItem("floatpay-last-expense-group", group.id);
         saveData();
         closeAddSheet();
@@ -6263,6 +6275,7 @@
       latestCreatedExpenseId = String(newExpenseId);
       latestFlowNotice = null;
       activeGroupId = group.id;
+      lastExpenseGroupId = group.id;
       localStorage.setItem("floatpay-last-expense-group", group.id);
       saveData();
       closeAddSheet();
