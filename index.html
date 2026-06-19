@@ -1148,6 +1148,24 @@
       line-height: 1.35;
     }
 
+    .share-summary {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 4px;
+    }
+
+    #shareSettlementText {
+      min-height: 220px;
+      padding: 16px;
+      border-radius: 22px;
+      line-height: 1.55;
+      font-size: 15px;
+      font-weight: 720;
+      white-space: pre-wrap;
+      resize: none;
+      background: rgba(255,255,255,.7);
+    }
+
     .participant-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -1682,6 +1700,12 @@
       background: rgba(100,210,255,.09);
       border-color: rgba(100,210,255,.16);
       color: rgba(245,247,251,.68);
+    }
+
+    body[data-theme="dark"] #shareSettlementText {
+      background: rgba(10,13,22,.54);
+      color: rgba(245,247,251,.9);
+      border-color: rgba(255,255,255,.14);
     }
 
     body[data-theme="dark"] .toast {
@@ -2716,6 +2740,29 @@
     </div>
   </section>
 
+  <section id="shareSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>分享結算</h2>
+        <button class="icon-btn" type="button" onclick="closeShareSheet()" aria-label="關閉分享">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="share-summary">
+        <p id="shareSettlementTitle" class="eyebrow">結算訊息</p>
+        <textarea id="shareSettlementText" readonly></textarea>
+        <p class="mini-note">傳給群組後，大家照上面的金額轉帳即可。</p>
+      </div>
+      <div class="sheet-actionbar">
+        <button class="soft-btn" type="button" onclick="copySettlementMessage()">複製文字</button>
+        <button class="primary" type="button" onclick="sendSettlementMessage()">
+          <svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+          分享
+        </button>
+      </div>
+    </div>
+  </section>
+
   <section id="expenseDetailSheet" class="sheet" aria-modal="true">
     <div class="sheet-panel">
       <div class="sheet-head">
@@ -3006,6 +3053,10 @@
       return isExpenseEditorRole(currentUserRole(group));
     }
 
+    function canShareSettlement(group = getGroup(activeGroupId)) {
+      return !!group && (group.members.includes(currentUserId) || isGroupOwner(group));
+    }
+
     function canViewExpense(expense, group = getGroup(expense?.groupId)) {
       if (!expense || !group) return false;
       const role = currentUserRole(group);
@@ -3043,7 +3094,7 @@
         ["groupSettingsButton", canManage],
         ["addMemberButton", canManage],
         ["groupAddExpenseButton", canEdit],
-        ["shareSettlementButton", canEdit],
+        ["shareSettlementButton", !!group && canShareSettlement(group)],
         ["homeAddExpenseButton", groups.some(item => canEditExpense(item))]
       ];
       controls.forEach(([id, allowed]) => {
@@ -3060,7 +3111,7 @@
     }
 
     function requirePermission(type = "manage") {
-      const ok = type === "edit" ? canEditExpense() : canManageGroup();
+      const ok = type === "share" ? canShareSettlement() : type === "edit" ? canEditExpense() : canManageGroup();
       if (!ok) showToast("你目前的角色無法使用這個功能");
       return ok;
     }
@@ -5265,26 +5316,75 @@
       updateExpenseReadyState();
     }
 
-    async function shareSettlement() {
-      if (!requirePermission("edit")) return;
-      const group = getGroup(activeGroupId);
-      const rows = settlements(activeGroupId);
-      const lines = rows.map(row => `${users[row.from].name} 轉給 ${users[row.to].name} ${money(row.amount)}`);
+    function settlementShareDraft(groupId = activeGroupId) {
+      const group = getGroup(groupId);
+      if (!group) return { title: "結算", text: "目前沒有可分享的結算。" };
+      const rows = settlements(groupId);
+      const date = new Intl.DateTimeFormat("zh-TW", { month: "2-digit", day: "2-digit" }).format(new Date());
       const title = `${group.name} 結算`;
-      const text = `Equo 算好｜${title}\n${lines.length ? lines.join("\n") : "目前不需要轉帳"}\n付款連結：https://floatpay.app/pay/${group.id}`;
+      const lines = rows.map((row, index) => `${index + 1}. ${users[row.from]?.name || "成員"} 付給 ${users[row.to]?.name || "成員"} ${money(row.amount)}`);
+      const text = [
+        `Equo 算好｜${title}`,
+        `${date} 更新`,
+        "",
+        lines.length ? "需要轉帳：" : "目前大家已經算平。",
+        lines.length ? lines.join("\n") : "不需要再互相轉帳。",
+        "",
+        lines.length ? "轉帳完成後，回到群組標記付款即可。" : "有新支出時我再更新結算。"
+      ].join("\n");
+      return { title, text };
+    }
+
+    function shareSettlement() {
+      if (!requirePermission("share")) return;
+      const draft = settlementShareDraft(activeGroupId);
+      document.getElementById("shareSettlementTitle").textContent = draft.title;
+      document.getElementById("shareSettlementText").value = draft.text;
+      openSheetById("shareSheet");
+    }
+
+    function closeShareSheet() {
+      closeSheetById("shareSheet");
+    }
+
+    async function writeTextSafely(text, fallbackInput) {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {}
+      }
+      if (fallbackInput) {
+        fallbackInput.focus();
+        fallbackInput.select();
+        try {
+          return document.execCommand("copy");
+        } catch {}
+      }
+      return false;
+    }
+
+    async function copySettlementMessage() {
+      const input = document.getElementById("shareSettlementText");
+      const text = input?.value || settlementShareDraft(activeGroupId).text;
+      const copied = await writeTextSafely(text, input);
+      showToast(copied ? "結算訊息已複製" : "已選取文字，請長按複製");
+    }
+
+    async function sendSettlementMessage() {
+      const title = document.getElementById("shareSettlementTitle")?.textContent || `${getGroup(activeGroupId)?.name || "群組"} 結算`;
+      const text = document.getElementById("shareSettlementText")?.value || settlementShareDraft(activeGroupId).text;
       if (navigator.share) {
         try {
           await navigator.share({ title, text });
+          closeShareSheet();
           showToast("結算已開啟分享");
           return;
         } catch (error) {
           if (error?.name === "AbortError") return;
         }
       }
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text).catch(() => {});
-      }
-      showToast("結算摘要已複製");
+      await copySettlementMessage();
     }
 
     function parseAiPrompt() {
