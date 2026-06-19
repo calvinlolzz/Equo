@@ -2372,7 +2372,6 @@
       <section class="section">
         <div class="section-head">
           <h2>最近群組</h2>
-          <button class="small-action" type="button" onclick="openGroup(activeGroupId)">查看</button>
         </div>
         <div id="groups" class="card-list"></div>
       </section>
@@ -2380,7 +2379,6 @@
       <section class="section">
         <div class="section-head">
           <h2>最近支出</h2>
-          <button id="homeAddExpenseButton" class="small-action" type="button" onclick="openAddSheet()">新增</button>
         </div>
         <div id="recentExpenses" class="card-list"></div>
       </section>
@@ -2442,7 +2440,6 @@
       <section class="section group-panel" id="activityPanel">
         <div class="section-head">
           <h2>支出流水</h2>
-          <button id="groupAddExpenseButton" class="small-action" type="button" onclick="openAddSheet()">新增</button>
         </div>
         <div class="input-card" style="margin-bottom:10px">
           <div class="two">
@@ -3217,10 +3214,12 @@
         <div class="empty action-empty">
           <strong>${title}</strong>
           <p>${note}</p>
-          <div class="mini-actions">
-            ${primary ? `<button class="mini-btn" type="button" onclick="${action}">${primary}</button>` : ""}
-            ${secondary ? `<button class="mini-btn" type="button" onclick="${secondaryAction}">${secondary}</button>` : ""}
-          </div>
+          ${primary || secondary ? `
+            <div class="mini-actions">
+              ${primary ? `<button class="mini-btn" type="button" onclick="${action}">${primary}</button>` : ""}
+              ${secondary ? `<button class="mini-btn" type="button" onclick="${secondaryAction}">${secondary}</button>` : ""}
+            </div>
+          ` : ""}
         </div>
       `;
     }
@@ -3304,9 +3303,7 @@
         ["groupInviteButton", canManage],
         ["groupSettingsButton", canManage],
         ["addMemberButton", canManage],
-        ["groupAddExpenseButton", canEdit],
-        ["shareSettlementButton", !!group && canShareSettlement(group)],
-        ["homeAddExpenseButton", groups.some(item => canEditExpense(item))]
+        ["shareSettlementButton", !!group && canShareSettlement(group)]
       ];
       controls.forEach(([id, allowed]) => {
         const element = document.getElementById(id);
@@ -4728,12 +4725,12 @@
       renderReminders();
       const recentVisibleExpenses = visibleExpenses();
       document.getElementById("recentExpenses").innerHTML = recentVisibleExpenses.length
-        ? recentVisibleExpenses.slice().reverse().slice(0, 4).map(expenseRow).join("")
+        ? recentVisibleExpenses.slice().reverse().slice(0, 2).map(expense => expenseRow(expense, { showActions: false })).join("")
         : emptyAction({
           title: groups.length ? "還沒有支出" : "先建立群組",
           note: groups.length ? "新增第一筆支出後，這裡會顯示最近紀錄。" : "建立群組後就能開始記第一筆支出。",
-          primary: groups.length ? "新增支出" : "新增群組",
-          action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+          primary: groups.length ? "" : "新增群組",
+          action: groups.length ? "" : "openGroupSheet()"
       });
       renderStats();
     }
@@ -4743,6 +4740,7 @@
       if (!target) return;
       const hasGroups = groups.length > 0;
       const hasExpenses = visibleExpenses().length > 0;
+      target.style.display = "";
       let eyebrow = "下一步";
       let title = "建立第一個群組";
       let note = "先把聚餐、旅遊或室友帳務放進一個群組，之後就能直接記支出。";
@@ -4760,20 +4758,16 @@
           note = "先看結算，再決定要付款或分享狀態。";
           primary = "查看結算";
           action = "openGroup(activeGroupId); switchPanel('settle')";
-          secondary = "新增支出";
-          secondaryAction = "openAddSheet()";
         } else if (receivableCount) {
           eyebrow = "現在要做";
           title = "提醒對方付款";
           note = "可以直接分享結算，讓對方知道要付多少。";
           primary = "分享結算";
           action = "openGroup(activeGroupId); switchPanel('settle')";
-          secondary = "新增支出";
-          secondaryAction = "openAddSheet()";
         } else if (hasExpenses) {
-          eyebrow = "已結清";
-          title = "目前都算清";
-          note = "下一筆消費發生時，直接新增支出即可。";
+          target.innerHTML = "";
+          target.style.display = "none";
+          return;
         } else {
           eyebrow = "下一步";
           title = "新增第一筆支出";
@@ -4828,7 +4822,7 @@
     }
 
     function renderReminders() {
-      const items = currentReminders().slice(0, 4);
+      const items = currentReminders().slice(0, 2);
       document.getElementById("reminders").innerHTML = items.map(item => `
         <div class="settlement-row">
           <div>
@@ -4836,7 +4830,6 @@
             <span>${item.body}</span>
             <div class="mini-actions" style="justify-content:flex-start">
               <button class="mini-btn" type="button" onclick="handleReminderAction('${item.id}', '${item.groupId || ""}')">${item.action}</button>
-              <button class="mini-btn" type="button" onclick="markReminderRead('${item.id}')">已讀</button>
             </div>
           </div>
           <span class="pill">待辦</span>
@@ -4844,8 +4837,8 @@
       `).join("") || emptyAction({
         title: "目前沒有待辦",
         note: groups.length ? "有未付款、固定帳單或可匯出的報表時，會出現在這裡。" : "建立群組後，待付款與提醒會集中在這裡。",
-        primary: groups.length ? "新增支出" : "新增群組",
-        action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+        primary: groups.length ? "" : "新增群組",
+        action: groups.length ? "" : "openGroupSheet()"
       });
     }
 
@@ -4880,7 +4873,7 @@
       }
     }
 
-    function expenseRow(expense) {
+    function expenseRow(expense, options = {}) {
       const group = getGroup(expense.groupId);
       if (!group) return "";
       const converted = baseAmount(expense);
@@ -4890,7 +4883,7 @@
       const cls = mine >= 0 ? "positive" : "negative";
       const label = mine >= 0 ? "+" + money(mine) : "-" + money(Math.abs(mine));
       const currencyNote = (expense.currency || "TWD") === group.currency ? "" : ` · ${formatCurrency(expense.amount, expense.currency)} ≈ ${money(converted)}`;
-      const canEdit = canEditExpense(group);
+      const canEdit = options.showActions !== false && canEditExpense(group);
       const actions = canEdit ? `
         <div class="expense-item-actions">
           <button class="mini-btn" type="button" onclick="editExpense('${expense.id}')">編輯</button>
