@@ -435,6 +435,22 @@
       letter-spacing: 0;
     }
 
+    .home-action {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 26px;
+    }
+
+    .home-action h2 {
+      margin-top: 4px;
+    }
+
+    .home-action .primary {
+      width: 100%;
+    }
+
     .section {
       margin-top: 22px;
     }
@@ -2218,21 +2234,24 @@
         grid-template-areas:
           "topbar topbar"
           "summary summary"
+          "primary primary"
           "onboarding onboarding"
-          "groups reminders"
-          "recent reminders";
+          "reminders reminders"
+          "groups recent";
         gap: 24px;
         align-items: start;
       }
 
       #home .topbar,
       #home .summary,
+      #home #homePrimaryAction,
       #home #onboardingCard {
         grid-column: 1 / -1;
       }
 
       #home .topbar { grid-area: topbar; }
       #home .summary { grid-area: summary; }
+      #home #homePrimaryAction { grid-area: primary; }
       #home #onboardingCard { grid-area: onboarding; }
 
       #home .section:has(#groups),
@@ -2250,12 +2269,13 @@
 
       #home .section:has(#reminders) {
         grid-area: reminders;
-        grid-column: 2;
+        grid-column: 1 / -1;
       }
 
       #home .section:has(#groups),
       #home .section:has(#reminders),
-      #home .section:has(#recentExpenses) {
+      #home .section:has(#recentExpenses),
+      #home #homePrimaryAction {
         margin-top: 0;
       }
 
@@ -2319,8 +2339,9 @@
       <section class="summary glass">
         <div class="summary-row">
           <div>
-            <p class="total-label">目前淨額</p>
+            <p class="total-label">今日狀態</p>
             <p id="netTotal" class="total">$0</p>
+            <p id="homeStatusText" class="mini-note" style="margin-top:8px">目前都算清。</p>
           </div>
           <span id="netPill" class="pill"></span>
         </div>
@@ -2336,22 +2357,24 @@
         </div>
       </section>
 
+      <section id="homePrimaryAction" class="home-action glass"></section>
+
       <section id="onboardingCard" class="section"></section>
 
       <section class="section">
         <div class="section-head">
-          <h2>群組</h2>
-          <button class="small-action" type="button" onclick="openGroup(activeGroupId)">查看</button>
+          <h2>待處理</h2>
+          <button class="small-action" type="button" onclick="markAllRemindersRead()">全部已讀</button>
         </div>
-        <div id="groups" class="card-list"></div>
+        <div id="reminders" class="card-list"></div>
       </section>
 
       <section class="section">
         <div class="section-head">
-          <h2>待辦提醒</h2>
-          <button class="small-action" type="button" onclick="markAllRemindersRead()">全部已讀</button>
+          <h2>最近群組</h2>
+          <button class="small-action" type="button" onclick="openGroup(activeGroupId)">查看</button>
         </div>
-        <div id="reminders" class="card-list"></div>
+        <div id="groups" class="card-list"></div>
       </section>
 
       <section class="section">
@@ -3614,7 +3637,7 @@
       const hasGroups = groups.length > 0;
       const hasExpenses = visibleExpenses().length > 0;
       const demoVisible = hasDemoData();
-      const shouldShow = demoVisible || !hasGroups || !hasExpenses;
+      const shouldShow = !hasGroups;
       if (!shouldShow) {
         card.innerHTML = "";
         card.style.display = "none";
@@ -4663,13 +4686,25 @@
       const payable = allBalances.filter(v => v < 0).reduce((sum, v) => sum + Math.abs(v), 0);
       const receivable = allBalances.filter(v => v > 0).reduce((sum, v) => sum + v, 0);
       const net = receivable - payable;
+      const settlementRows = groups.flatMap(group => settlements(group.id)
+        .filter(row => row.from === currentUserId || row.to === currentUserId));
+      const payableCount = settlementRows.filter(row => row.from === currentUserId).length;
+      const receivableCount = settlementRows.filter(row => row.to === currentUserId).length;
       document.getElementById("netTotal").textContent = (net >= 0 ? "+" : "-") + money(Math.abs(net));
-      document.getElementById("netPill").textContent = net >= 0 ? "應收較多" : "應付較多";
+      const statusText = payableCount
+        ? `你有 ${payableCount} 筆待付款`
+        : receivableCount
+          ? `有 ${receivableCount} 人還沒付你`
+          : "目前都算清";
+      document.getElementById("homeStatusText").textContent = statusText;
+      document.getElementById("netPill").textContent = payableCount ? "待付款" : receivableCount ? "待收款" : "已結清";
       document.getElementById("payable").textContent = money(payable);
       document.getElementById("receivable").textContent = money(receivable);
+      renderHomePrimaryAction({ payableCount, receivableCount });
       renderOnboardingCard();
 
-      document.getElementById("groups").innerHTML = groups.length ? groups.map((group, index) => {
+      const recentGroups = groups.slice(0, 3);
+      document.getElementById("groups").innerHTML = recentGroups.length ? recentGroups.map((group, index) => {
         const mine = Math.round(balances(group.id)[currentUserId] || 0);
         const statusClass = mine >= 0 ? "positive" : "negative";
         const statusText = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
@@ -4699,8 +4734,66 @@
           note: groups.length ? "新增第一筆支出後，這裡會顯示最近紀錄。" : "建立群組後就能開始記第一筆支出。",
           primary: groups.length ? "新增支出" : "新增群組",
           action: groups.length ? "openAddSheet()" : "openGroupSheet()"
-        });
+      });
       renderStats();
+    }
+
+    function renderHomePrimaryAction({ payableCount = 0, receivableCount = 0 } = {}) {
+      const target = document.getElementById("homePrimaryAction");
+      if (!target) return;
+      const hasGroups = groups.length > 0;
+      const hasExpenses = visibleExpenses().length > 0;
+      let eyebrow = "下一步";
+      let title = "建立第一個群組";
+      let note = "先把聚餐、旅遊或室友帳務放進一個群組，之後就能直接記支出。";
+      let primary = "建立群組";
+      let action = "openGroupSheet()";
+      let secondary = "";
+      let secondaryAction = "";
+
+      if (hasGroups) {
+        primary = "新增支出";
+        action = "openAddSheet()";
+        if (payableCount) {
+          eyebrow = "現在要做";
+          title = "先處理付款";
+          note = "先看結算，再決定要付款或分享狀態。";
+          primary = "查看結算";
+          action = "openGroup(activeGroupId); switchPanel('settle')";
+          secondary = "新增支出";
+          secondaryAction = "openAddSheet()";
+        } else if (receivableCount) {
+          eyebrow = "現在要做";
+          title = "提醒對方付款";
+          note = "可以直接分享結算，讓對方知道要付多少。";
+          primary = "分享結算";
+          action = "openGroup(activeGroupId); switchPanel('settle')";
+          secondary = "新增支出";
+          secondaryAction = "openAddSheet()";
+        } else if (hasExpenses) {
+          eyebrow = "已結清";
+          title = "目前都算清";
+          note = "下一筆消費發生時，直接新增支出即可。";
+        } else {
+          eyebrow = "下一步";
+          title = "新增第一筆支出";
+          note = "輸入金額、付款人和分攤成員，結算會自動產生。";
+          secondary = "先加成員";
+          secondaryAction = "openMemberSheet()";
+        }
+      }
+
+      target.innerHTML = `
+        <div>
+          <p class="eyebrow">${eyebrow}</p>
+          <h2>${title}</h2>
+          <p class="mini-note" style="margin-top:6px">${note}</p>
+        </div>
+        <div class="action-grid">
+          <button class="primary" type="button" onclick="${action}">${primary}</button>
+          ${secondary ? `<button class="soft-btn" type="button" onclick="${secondaryAction}">${secondary}</button>` : ""}
+        </div>
+      `;
     }
 
     function currentReminders() {
