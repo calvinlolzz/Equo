@@ -863,7 +863,7 @@
     .segmented {
       margin-top: 14px;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 4px;
       padding: 5px;
       border-radius: 20px;
@@ -1117,15 +1117,15 @@
     }
 
     #expenseForm .expense-primary-row {
-      order: 2;
-    }
-
-    #expenseForm .input-card:has(#participantGrid) {
       order: 3;
     }
 
-    #expenseForm label:has(#expenseTitle) {
+    #expenseForm .input-card:has(#participantGrid) {
       order: 4;
+    }
+
+    #expenseForm label:has(#expenseTitle) {
+      order: 2;
     }
 
     #expenseForm label:has(#expenseGroup) {
@@ -2425,9 +2425,8 @@
           </div>
         </div>
         <div class="segmented">
-          <button class="segment active" type="button" data-panel="activity" onclick="switchPanel('activity')">動態</button>
-          <button class="segment" type="button" data-panel="settle" onclick="switchPanel('settle')">結算</button>
-          <button class="segment" type="button" data-panel="analysis" onclick="switchPanel('analysis')">分析</button>
+          <button class="segment active" type="button" data-panel="activity" onclick="switchPanel('activity')">支出</button>
+          <button class="segment" type="button" data-panel="settle" onclick="switchPanel('settle')">誰付誰</button>
           <button class="segment" type="button" data-panel="members" onclick="switchPanel('members')">成員</button>
         </div>
       </section>
@@ -2690,7 +2689,7 @@
 
   <nav class="nav glass" aria-label="主要導覽">
     <button class="tab active" type="button" data-screen="home" onclick="showScreen('home')" aria-label="首頁"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></button>
-    <button class="tab" type="button" data-screen="group" onclick="openGroup(activeGroupId)" aria-label="群組"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
+    <button class="tab" type="button" data-screen="group" onclick="openSmartGroup(activeGroupId)" aria-label="群組"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
     <button class="tab" type="button" onclick="openAddSheet()" aria-label="新增支出"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
     <button class="tab" type="button" data-screen="stats" onclick="showScreen('stats')" aria-label="統計"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M8 17V9"/><path d="M13 17V5"/><path d="M18 17v-6"/></svg></button>
     <button class="tab" type="button" data-screen="me" onclick="showScreen('me')" aria-label="我的"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
@@ -2705,7 +2704,7 @@
         </button>
       </div>
       <form id="expenseForm" class="form-grid">
-        <p class="expense-focus-note">先填金額、付款人與分攤成員；群組與其他設定已先幫你帶入。</p>
+        <p class="expense-focus-note">填項目、金額和付款人就能建立；其他設定已先幫你選好。</p>
         <div class="ai-card feature-paused" hidden>
           <h3>AI 記帳助手</h3>
           <p class="mini-note">輸入一句話或模擬掃描發票，系統會先填入表單，再讓你確認。</p>
@@ -4706,7 +4705,7 @@
         const mine = Math.round(balances(group.id)[currentUserId] || 0);
         const statusClass = mine >= 0 ? "positive" : "negative";
         const statusText = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
-        return `<button class="group-card" type="button" onclick="openGroup('${group.id}')">
+        return `<button class="group-card" type="button" onclick="openSmartGroup('${group.id}')">
           <div class="group-art">${index + 1}</div>
           <div class="group-meta">
             <strong>${group.name}</strong>
@@ -5342,11 +5341,27 @@
       switchPanel(activePanel);
     }
 
+    function openSmartGroup(id) {
+      activeGroupId = id;
+      expenseFilters = { query: "", category: "all" };
+      const search = document.getElementById("expenseSearch");
+      const category = document.getElementById("expenseFilterCategory");
+      if (search) search.value = "";
+      if (category) category.value = "all";
+      const group = getGroup(activeGroupId);
+      const needsSettlement = group && settlements(activeGroupId).some(row =>
+        row.from === currentUserId || row.to === currentUserId
+      );
+      showScreen("group");
+      switchPanel(needsSettlement ? "settle" : "activity");
+    }
+
     function goHome() {
       showScreen("home");
     }
 
     function switchPanel(panel) {
+      if (panel === "analysis") panel = "activity";
       activePanel = panel;
       document.querySelectorAll(".segment").forEach(segment => segment.classList.toggle("active", segment.dataset.panel === panel));
       document.getElementById("activityPanel").style.display = panel === "activity" ? "" : "none";
