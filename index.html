@@ -495,6 +495,29 @@
       border: 1px solid rgba(255,255,255,.58);
     }
 
+    .next-action-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 24px;
+      margin-top: 12px;
+      background:
+        linear-gradient(145deg, rgba(10,132,255,.12), rgba(48,209,88,.08)),
+        rgba(255,255,255,.54);
+      border: 1px solid rgba(255,255,255,.68);
+      box-shadow: 0 14px 32px rgba(35,45,75,.1);
+    }
+
+    .next-action-card h3 {
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 860;
+    }
+
+    .next-action-card .action-grid {
+      margin-top: 0;
+    }
+
     .step-dot {
       width: 34px;
       height: 34px;
@@ -1651,6 +1674,18 @@
       border-color: rgba(100,210,255,.2);
     }
 
+    body[data-theme="dark"] .next-action-card {
+      background:
+        linear-gradient(145deg, rgba(100,210,255,.09), rgba(50,215,75,.06)),
+        rgba(255,255,255,.07);
+      border-color: rgba(255,255,255,.13);
+      box-shadow: 0 14px 30px rgba(0,0,0,.2);
+    }
+
+    body[data-theme="dark"] .next-action-card h3 {
+      color: var(--text);
+    }
+
     body[data-theme="dark"] input,
     body[data-theme="dark"] select,
     body[data-theme="dark"] textarea {
@@ -2253,6 +2288,8 @@
         </div>
       </section>
 
+      <section id="groupNextAction" class="section"></section>
+
       <section class="section group-panel" id="activityPanel">
         <div class="section-head">
           <h2>支出流水</h2>
@@ -2613,21 +2650,21 @@
           <div class="step-dot">1</div>
           <div>
             <strong>建立群組</strong>
-            <p class="mini-note" style="margin-top:4px">先建立旅遊、聚餐、家庭或室友群組。</p>
+            <p class="mini-note" style="margin-top:4px">輸入名稱、類型與幣別即可開始。</p>
           </div>
         </div>
         <div class="start-step">
           <div class="step-dot">2</div>
           <div>
-            <strong>加入成員</strong>
-            <p class="mini-note" style="margin-top:4px">把會一起分攤的人加入群組，之後可再改角色。</p>
+            <strong>新增支出</strong>
+            <p class="mini-note" style="margin-top:4px">填金額、付款人和分攤成員。</p>
           </div>
         </div>
         <div class="start-step">
           <div class="step-dot">3</div>
           <div>
-            <strong>新增支出</strong>
-            <p class="mini-note" style="margin-top:4px">選付款人與分攤成員，系統會自動算出誰該付給誰。</p>
+            <strong>分享結算</strong>
+            <p class="mini-note" style="margin-top:4px">系統會自動算出誰該付給誰。</p>
           </div>
         </div>
       </div>
@@ -3436,19 +3473,19 @@
       const step = demoVisible ? "clean" : (!hasGroups ? "group" : "expense");
       const content = {
         clean: {
-          eyebrow: "開始使用",
-          title: "先換成自己的資料",
-          note: "目前畫面中有範例資料。清除後會進入乾淨狀態，接著建立你的第一個群組。",
-          primary: "清除範例並開始",
+          eyebrow: "快速開始",
+          title: "用自己的群組開始",
+          note: "先清掉展示資料，接著建立第一個群組。不需要登入，也不用先設定權限。",
+          primary: "開始建立群組",
           action: "startFreshData()",
           secondary: "查看導覽",
           secondaryAction: "openGuide()",
           chips: ["current", "", ""]
         },
         group: {
-          eyebrow: "下一步",
-          title: "建立你的第一個群組",
-          note: "輸入群組名稱與主幣別即可開始，不需要先登入或設定角色。",
+          eyebrow: "第一步",
+          title: "先建立一個群組",
+          note: "只要群組名稱、類型與幣別。成員、權限和備份都可以之後再處理。",
           primary: "新增群組",
           action: "openGroupSheet()",
           secondary: "查看導覽",
@@ -3458,7 +3495,7 @@
         expense: {
           eyebrow: "下一步",
           title: "新增第一筆支出",
-          note: "群組已準備好。記一筆支出後，首頁和群組頁會立刻顯示結算結果。",
+          note: "記一筆支出後，系統會立刻算出誰該付給誰。",
           primary: "新增支出",
           action: "openAddSheet()",
           secondary: "查看群組",
@@ -4649,6 +4686,30 @@
       `;
     }
 
+    function renderGroupNextAction(group) {
+      const target = document.getElementById("groupNextAction");
+      if (!target) return;
+      if (!group || groupExpenses(group.id).length || !canEditExpense(group)) {
+        target.innerHTML = "";
+        target.style.display = "none";
+        return;
+      }
+      target.style.display = "";
+      target.innerHTML = `
+        <div class="next-action-card">
+          <div>
+            <p class="eyebrow">下一步</p>
+            <h3>新增第一筆支出</h3>
+            <p class="mini-note" style="margin-top:6px">輸入金額、付款人和分攤成員，結算會自動產生。</p>
+          </div>
+          <div class="action-grid">
+            <button class="primary" type="button" onclick="openAddSheet()">新增支出</button>
+            <button class="soft-btn" type="button" onclick="openMemberSheet()">先加成員</button>
+          </div>
+        </div>
+      `;
+    }
+
     function renderGroup() {
       const group = getGroup(activeGroupId);
       if (!group) {
@@ -4664,6 +4725,7 @@
         document.getElementById("settlements").innerHTML = `<div class="empty">目前不需要結算</div>`;
         renderExpenseSuccessCard();
         renderSettlementSuccessCard();
+        renderGroupNextAction(null);
         document.getElementById("members").innerHTML = `<div class="empty">新增群組後可加入成員</div>`;
         document.getElementById("groupBudget").innerHTML = `<div class="empty">尚未有群組分析</div>`;
         document.getElementById("groupCategoryStats").innerHTML = `<div class="empty">尚未有分類資料</div>`;
@@ -4684,6 +4746,7 @@
       document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
       document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
       document.getElementById("memberStack").innerHTML = group.members.map(id => avatarHtml(id)).join("");
+      renderGroupNextAction(group);
       const visibleExpenses = filteredGroupExpenses(activeGroupId);
       document.getElementById("groupExpenses").innerHTML = visibleExpenses.slice().reverse().map(expenseRow).join("") || `<div class="empty">沒有符合條件的支出</div>`;
       updateFilterSummary(visibleExpenses.length, groupExpenses(activeGroupId).length);
@@ -5718,7 +5781,9 @@
       renderHome();
       renderGroup();
       showScreen("group");
-      showToast(`${name} 已建立`);
+      switchPanel("activity");
+      screenScrollPositions.group = 0;
+      showToast(`${name} 已建立，下一步新增支出`);
     });
 
     document.getElementById("memberForm").addEventListener("submit", event => {
