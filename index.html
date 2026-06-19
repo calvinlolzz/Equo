@@ -1129,24 +1129,59 @@
     }
 
     #expenseForm label:has(#expenseGroup) {
-      order: 5;
+      order: 1;
     }
 
     #expenseGroupHint {
-      order: 6;
       margin: -2px 0 2px;
     }
 
     #expenseForm .two {
-      order: 7;
+      order: 1;
     }
 
     #expenseForm label:has(#expenseNote) {
-      order: 8;
+      order: 1;
     }
 
     #expenseForm .input-card:has(#splitPreview) {
-      order: 9;
+      order: 1;
+    }
+
+    .expense-advanced-toggle {
+      order: 5;
+      width: 100%;
+      min-height: 46px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      color: var(--text);
+      background: rgba(255,255,255,.58);
+      border: 1px solid rgba(255,255,255,.68);
+      box-shadow: 0 8px 20px rgba(35,45,75,.08);
+      font-weight: 820;
+    }
+
+    .expense-advanced-toggle svg {
+      width: 18px;
+      height: 18px;
+      transition: transform .16s ease;
+    }
+
+    .expense-advanced-toggle[aria-expanded="true"] svg {
+      transform: rotate(180deg);
+    }
+
+    .expense-advanced {
+      order: 6;
+      display: grid;
+      gap: 10px;
+    }
+
+    .expense-advanced[hidden] {
+      display: none;
     }
 
     #expenseForm .sheet-actionbar {
@@ -2739,35 +2774,41 @@
         <label>項目名稱
           <input id="expenseTitle" required value="晚餐" />
         </label>
-        <label>群組
-          <select id="expenseGroup"></select>
-        </label>
-        <p id="expenseGroupHint" class="mini-note">會自動帶入最符合目前情境的群組。</p>
-        <div class="two">
-          <label>分類
-            <select id="expenseCategory">
-              <option>餐飲</option>
-              <option>住宿</option>
-              <option>交通</option>
-              <option>娛樂</option>
-              <option>購物</option>
-              <option>其他</option>
-            </select>
+        <button id="expenseAdvancedToggle" class="expense-advanced-toggle" type="button" aria-expanded="false" onclick="toggleExpenseAdvanced()">
+          <span>更多設定</span>
+          <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="expenseAdvanced" class="expense-advanced" hidden>
+          <label>群組
+            <select id="expenseGroup"></select>
           </label>
-          <label>分攤方式
-            <select id="splitType">
-              <option value="average">平均分攤</option>
-              <option value="selected">指定成員</option>
-            </select>
+          <p id="expenseGroupHint" class="mini-note">已幫你選好最合適的群組。</p>
+          <div class="two">
+            <label>分類
+              <select id="expenseCategory">
+                <option>餐飲</option>
+                <option>住宿</option>
+                <option>交通</option>
+                <option>娛樂</option>
+                <option>購物</option>
+                <option>其他</option>
+              </select>
+            </label>
+            <label>分攤方式
+              <select id="splitType">
+                <option value="average">平均分攤</option>
+                <option value="selected">指定成員</option>
+              </select>
+            </label>
+          </div>
+          <label>備註
+            <textarea id="expenseNote">含服務費</textarea>
           </label>
-        </div>
-        <label>備註
-          <textarea id="expenseNote">含服務費</textarea>
-        </label>
-        <div class="input-card">
-          <h3>預覽分攤</h3>
-          <p id="exchangeHint" class="mini-note"></p>
-          <div id="splitPreview" class="preview"></div>
+          <div class="input-card">
+            <h3>預覽分攤</h3>
+            <p id="exchangeHint" class="mini-note"></p>
+            <div id="splitPreview" class="preview"></div>
+          </div>
         </div>
         <p id="expenseSubmitStatus" class="mini-note submit-status">確認內容後即可建立。</p>
         <div class="sheet-actionbar">
@@ -5494,7 +5535,21 @@
       const hint = document.getElementById("expenseGroupHint");
       if (!hint) return;
       const group = getGroup(document.getElementById("expenseGroup")?.value);
-      hint.textContent = reason || (group ? `目前會記到 ${group.name}` : "請先選擇群組");
+      hint.textContent = reason || (group ? `已幫你選好 ${group.name}` : "請先選擇群組");
+    }
+
+    function setExpenseAdvanced(expanded = false) {
+      const panel = document.getElementById("expenseAdvanced");
+      const toggle = document.getElementById("expenseAdvancedToggle");
+      if (!panel || !toggle) return;
+      panel.hidden = !expanded;
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      toggle.querySelector("span").textContent = expanded ? "收起設定" : "更多設定";
+    }
+
+    function toggleExpenseAdvanced() {
+      const panel = document.getElementById("expenseAdvanced");
+      setExpenseAdvanced(panel?.hidden);
     }
 
     function openAddSheet() {
@@ -5513,6 +5568,7 @@
       if (suggestion.group) activeGroupId = suggestion.group.id;
       activeExpenseRequestId = makeInviteToken();
       expenseSubmitInProgress = false;
+      setExpenseAdvanced(false);
       openSheetById("sheet");
       requestAnimationFrame(() => {
         document.getElementById("expenseGroup").value = suggestion.group?.id || activeGroupId;
@@ -5527,6 +5583,7 @@
     function closeAddSheet() {
       expenseSubmitInProgress = false;
       editingExpenseId = null;
+      setExpenseAdvanced(false);
       closeSheetById("sheet");
     }
 
@@ -5662,6 +5719,7 @@
       activeGroupId = group.id;
       activeExpenseRequestId = expense.clientRequestId || makeInviteToken();
       closeExpenseSheet();
+      setExpenseAdvanced(true);
       openSheetById("sheet");
 
       requestAnimationFrame(() => {
@@ -5673,7 +5731,7 @@
         document.getElementById("expenseCategory").value = expense.category || document.getElementById("expenseCategory").value;
         document.getElementById("expenseNote").value = expense.note || "";
         document.getElementById("splitType").value = expense.participants.length === group.members.length ? "average" : "selected";
-        updateExpenseGroupHint("正在編輯這筆支出");
+        updateExpenseGroupHint("正在編輯完整內容");
         syncPayerOptions(expense.payerId, expense.participants);
         updatePreview();
         updateExpenseReadyState();
