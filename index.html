@@ -2794,9 +2794,18 @@
         <label>成員名稱
           <input id="memberName" required value="新朋友" />
         </label>
+        <label>角色權限
+          <select id="memberRole">
+            <option value="成員">成員</option>
+            <option value="管理員">管理員</option>
+            <option value="家長">家長</option>
+            <option value="子女">子女</option>
+            <option value="訪客">訪客</option>
+          </select>
+        </label>
         <div class="input-card">
-          <h3>加入後權限</h3>
-          <p class="mini-note">會先以成員加入，可記帳也可查看群組帳務。需要限制時，可之後到群組設定調整。</p>
+          <h3>角色說明</h3>
+          <p class="mini-note">管理員與家長可管理群組；成員可記帳；子女只看相關帳務；訪客僅能查看。</p>
         </div>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
@@ -5388,9 +5397,12 @@
       if (!requirePermission("manage")) return;
       editingMemberId = memberId || null;
       const member = editingMemberId ? users[editingMemberId] : null;
+      const group = getGroup(activeGroupId);
+      const memberRole = editingMemberId ? (group?.roles?.[editingMemberId] || "成員") : "成員";
       document.getElementById("memberSheetTitle").textContent = member ? "編輯成員" : "新增成員";
       document.getElementById("memberSubmitLabel").textContent = member ? "儲存成員" : "加入群組";
       document.getElementById("memberName").value = member?.name || "新朋友";
+      document.getElementById("memberRole").value = memberRole === "擁有者" ? "管理員" : memberRole;
       openSheetById("memberSheet");
       showToast(member ? "成員編輯已開啟" : "新增成員已開啟");
     }
@@ -6135,21 +6147,23 @@
       if (!requirePermission("manage")) return;
       const group = getGroup(activeGroupId);
       const name = document.getElementById("memberName").value.trim() || "新成員";
-      const role = "成員";
+      const role = document.getElementById("memberRole").value || "成員";
       if (editingMemberId) {
         if (!group?.members.includes(editingMemberId) || !users[editingMemberId]) {
           showToast("找不到要編輯的成員");
           return;
         }
         const previousName = users[editingMemberId].name;
+        const previousRole = group.roles?.[editingMemberId] || "成員";
         users[editingMemberId].name = name;
         users[editingMemberId].initial = name.trim().slice(0, 1).toUpperCase() || users[editingMemberId].initial || "人";
+        group.roles = { ...(group.roles || {}), [editingMemberId]: role };
         saveData();
         closeMemberSheet();
         renderHome();
         renderGroup();
         renderStats();
-        showToast(`${previousName} 已更新為 ${name}`);
+        showToast(previousRole === role ? `${previousName} 已更新為 ${name}` : `${name} 已改為${role}`);
         return;
       }
       const id = `u${Date.now()}`;
