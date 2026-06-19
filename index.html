@@ -1453,6 +1453,32 @@
       box-shadow: inset 0 1px 0 rgba(255,255,255,.34);
     }
 
+    .empty.action-empty {
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+      padding: 22px 16px;
+    }
+
+    .empty.action-empty strong {
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 840;
+    }
+
+    .empty.action-empty p {
+      margin: 0;
+      max-width: 380px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .empty.action-empty .mini-actions {
+      margin-top: 4px;
+      justify-content: center;
+    }
+
     .toast {
       position: fixed;
       left: 50%;
@@ -3071,6 +3097,19 @@
         .replace(/>/g, "&gt;");
     }
 
+    function emptyAction({ title, note, primary, action, secondary = "", secondaryAction = "" }) {
+      return `
+        <div class="empty action-empty">
+          <strong>${title}</strong>
+          <p>${note}</p>
+          <div class="mini-actions">
+            ${primary ? `<button class="mini-btn" type="button" onclick="${action}">${primary}</button>` : ""}
+            ${secondary ? `<button class="mini-btn" type="button" onclick="${secondaryAction}">${secondary}</button>` : ""}
+          </div>
+        </div>
+      `;
+    }
+
     function saveData() {
       localStorage.setItem("floatpay-users", JSON.stringify(users));
       localStorage.setItem("floatpay-groups", JSON.stringify(groups));
@@ -4550,13 +4589,25 @@
           </div>
           <div class="amount ${statusClass}">${statusText}</div>
         </button>`;
-      }).join("") : `<div class="empty">尚未建立群組。先新增一個分帳群組，就能開始記錄支出。</div>`;
+      }).join("") : emptyAction({
+        title: "還沒有群組",
+        note: "先建立聚餐、旅遊或室友群組，就能開始記支出。",
+        primary: "新增群組",
+        action: "openGroupSheet()",
+        secondary: "查看導覽",
+        secondaryAction: "openGuide()"
+      });
 
       renderReminders();
       const recentVisibleExpenses = visibleExpenses();
       document.getElementById("recentExpenses").innerHTML = recentVisibleExpenses.length
         ? recentVisibleExpenses.slice().reverse().slice(0, 4).map(expenseRow).join("")
-        : `<div class="empty">尚未有支出紀錄</div>`;
+        : emptyAction({
+          title: groups.length ? "還沒有支出" : "先建立群組",
+          note: groups.length ? "新增第一筆支出後，這裡會顯示最近紀錄。" : "建立群組後就能開始記第一筆支出。",
+          primary: groups.length ? "新增支出" : "新增群組",
+          action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+        });
       renderStats();
     }
 
@@ -4605,7 +4656,12 @@
           </div>
           <span class="pill">待辦</span>
         </div>
-      `).join("") || `<div class="empty">目前沒有待辦提醒</div>`;
+      `).join("") || emptyAction({
+        title: "目前沒有待辦",
+        note: groups.length ? "有未付款、固定帳單或可匯出的報表時，會出現在這裡。" : "建立群組後，待付款與提醒會集中在這裡。",
+        primary: groups.length ? "新增支出" : "新增群組",
+        action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+      });
     }
 
     function markReminderRead(id) {
@@ -4741,15 +4797,45 @@
         document.getElementById("groupSpent").textContent = money(0);
         document.getElementById("groupMine").textContent = money(0);
         document.getElementById("memberStack").innerHTML = avatarHtml(currentUserId);
-        document.getElementById("groupExpenses").innerHTML = `<div class="empty">目前沒有群組支出</div>`;
-        document.getElementById("settlements").innerHTML = `<div class="empty">目前不需要結算</div>`;
+        document.getElementById("groupExpenses").innerHTML = emptyAction({
+          title: "還沒有群組",
+          note: "先建立一個群組，再新增第一筆支出。",
+          primary: "新增群組",
+          action: "openGroupSheet()"
+        });
+        document.getElementById("settlements").innerHTML = emptyAction({
+          title: "還沒有結算",
+          note: "新增支出後，系統會自動算出誰該付給誰。",
+          primary: "新增群組",
+          action: "openGroupSheet()"
+        });
         renderExpenseSuccessCard();
         renderSettlementSuccessCard();
         renderGroupNextAction(null);
-        document.getElementById("members").innerHTML = `<div class="empty">新增群組後可加入成員</div>`;
-        document.getElementById("groupBudget").innerHTML = `<div class="empty">尚未有群組分析</div>`;
-        document.getElementById("groupCategoryStats").innerHTML = `<div class="empty">尚未有分類資料</div>`;
-        document.getElementById("groupMemberStats").innerHTML = `<div class="empty">尚未有成員資料</div>`;
+        document.getElementById("members").innerHTML = emptyAction({
+          title: "還沒有成員",
+          note: "建立群組後，可以把會一起分攤的人加進來。",
+          primary: "新增群組",
+          action: "openGroupSheet()"
+        });
+        document.getElementById("groupBudget").innerHTML = emptyAction({
+          title: "還沒有分析",
+          note: "新增支出後，這裡會整理花費狀態。",
+          primary: "新增群組",
+          action: "openGroupSheet()"
+        });
+        document.getElementById("groupCategoryStats").innerHTML = emptyAction({
+          title: "還沒有分類資料",
+          note: "有支出後，會自動整理各分類花費。",
+          primary: "新增群組",
+          action: "openGroupSheet()"
+        });
+        document.getElementById("groupMemberStats").innerHTML = emptyAction({
+          title: "還沒有成員資料",
+          note: "有支出後，會看到每位成員的墊付狀態。",
+          primary: "新增群組",
+          action: "openGroupSheet()"
+        });
         updateFilterSummary(0, 0);
         return;
       }
@@ -4768,8 +4854,25 @@
       document.getElementById("memberStack").innerHTML = group.members.map(id => avatarHtml(id)).join("");
       renderGroupNextAction(group);
       const visibleExpenses = filteredGroupExpenses(activeGroupId);
-      document.getElementById("groupExpenses").innerHTML = visibleExpenses.slice().reverse().map(expenseRow).join("") || `<div class="empty">沒有符合條件的支出</div>`;
-      updateFilterSummary(visibleExpenses.length, groupExpenses(activeGroupId).length);
+      const allGroupExpenseCount = groupExpenses(activeGroupId).length;
+      document.getElementById("groupExpenses").innerHTML = visibleExpenses.slice().reverse().map(expenseRow).join("") || (
+        allGroupExpenseCount
+          ? emptyAction({
+              title: "沒有符合條件的支出",
+              note: "清除篩選後可以看到全部支出。",
+              primary: "清除篩選",
+              action: "clearExpenseFilters()"
+            })
+          : emptyAction({
+              title: "還沒有支出",
+              note: "新增第一筆支出後，結算會自動產生。",
+              primary: "新增支出",
+              action: "openAddSheet()",
+              secondary: "先加成員",
+              secondaryAction: "openMemberSheet()"
+            })
+      );
+      updateFilterSummary(visibleExpenses.length, allGroupExpenseCount);
       const settlementRows = settlements(activeGroupId).filter(row =>
         currentUserRole(group) === "子女" ? row.from === currentUserId || row.to === currentUserId : true
       );
@@ -4797,7 +4900,12 @@
               <span>服務費 ${money(row.amount * 0.01)}</span>
             </div>
           </div>
-        </div>`).join("") || `<div class="empty">目前不需要結算</div>`;
+        </div>`).join("") || emptyAction({
+          title: groupExpenses(activeGroupId).length ? "目前已經算平" : "還沒有結算",
+          note: groupExpenses(activeGroupId).length ? "有新支出時，這裡會自動更新誰該付給誰。" : "新增支出後，系統會自動產生最少轉帳建議。",
+          primary: groupExpenses(activeGroupId).length ? "分享狀態" : "新增支出",
+          action: groupExpenses(activeGroupId).length ? "shareSettlement()" : "openAddSheet()"
+        });
       renderExpenseSuccessCard();
       renderSettlementSuccessCard();
       const visibleMembers = currentUserRole(group) === "子女" ? [currentUserId] : group.members;
@@ -4831,14 +4939,19 @@
       const budget = group.budget || (group.name.includes("旅遊") ? 15000 : group.name.includes("室友") ? 35000 : 8000);
       const percent = budget ? Math.min(100, Math.round(total / budget * 100)) : 0;
       const status = total > budget ? "已超出預算" : total > budget * 0.8 ? "接近預算" : "預算內";
-      document.getElementById("groupBudget").innerHTML = `
+      document.getElementById("groupBudget").innerHTML = rows.length ? `
         <div class="input-card">
           <h3>${status}</h3>
           <p class="mini-note">${group.name} 目前花費 ${money(total)} / 預算 ${money(budget)}</p>
           <div style="height:10px;border-radius:999px;background:rgba(255,255,255,.58);overflow:hidden;margin-top:12px">
             <div style="width:${percent}%;height:100%;border-radius:999px;background:linear-gradient(90deg,#30d158,#ffd60a,#ff453a)"></div>
           </div>
-        </div>`;
+        </div>` : emptyAction({
+          title: "還沒有花費分析",
+          note: "新增第一筆支出後，這裡會顯示預算使用狀態。",
+          primary: "新增支出",
+          action: "openAddSheet()"
+        });
 
       const categoryTotals = rows.reduce((map, expense) => {
         map[expense.category] = (map[expense.category] || 0) + baseAmount(expense);
@@ -4852,7 +4965,12 @@
             <div style="width:${pct}%;height:100%;border-radius:999px;background:linear-gradient(90deg,#0a84ff,#bf5af2)"></div>
           </div>
         </div>`;
-      }).join("") || `<div class="empty">目前沒有可分析的支出</div>`;
+      }).join("") || emptyAction({
+        title: "還沒有分類分析",
+        note: "新增支出後，會自動整理餐飲、交通、住宿等分類。",
+        primary: "新增支出",
+        action: "openAddSheet()"
+      });
 
       const payerTotals = {};
       rows.forEach(expense => {
@@ -4866,7 +4984,14 @@
           </div>
           <div class="amount neutral">${money(value)}</div>
         </div>
-      `).join("") || `<div class="empty">目前沒有成員墊付資料</div>`;
+      `).join("") || emptyAction({
+        title: "還沒有墊付資料",
+        note: "有成員付款後，這裡會顯示誰先幫大家墊了多少。",
+        primary: "新增支出",
+        action: "openAddSheet()",
+        secondary: "先加成員",
+        secondaryAction: "openMemberSheet()"
+      });
     }
 
     function renderStats() {
@@ -4885,7 +5010,12 @@
             <div style="width:${pct}%;height:100%;border-radius:999px;background:linear-gradient(90deg,#0a84ff,#30d158,#bf5af2)"></div>
           </div>
         </div>`;
-      }).join("");
+      }).join("") || emptyAction({
+        title: "還沒有統計資料",
+        note: "新增支出後，這裡會顯示本月分類花費。",
+        primary: groups.length ? "新增支出" : "新增群組",
+        action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+      });
 
       const memberTotals = {};
       scopedExpenses.forEach(expense => {
@@ -4900,7 +5030,12 @@
           </div>
           <div class="amount neutral">${money(value)}</div>
         </div>
-      `).join("");
+      `).join("") || emptyAction({
+        title: "還沒有成員排行",
+        note: "有人付款後，這裡會顯示本月墊付排行。",
+        primary: groups.length ? "新增支出" : "新增群組",
+        action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+      });
 
       const currencyTotals = scopedExpenses.reduce((map, expense) => {
         const currency = expense.currency || "TWD";
@@ -4916,7 +5051,12 @@
           </div>
           <div class="amount neutral">${formatCurrency(value, currency)} · ${money(converted)}</div>
         </div>`;
-      }).join("");
+      }).join("") || emptyAction({
+        title: "還沒有幣別資料",
+        note: "新增支出後，會自動整理各幣別金額。",
+        primary: groups.length ? "新增支出" : "新增群組",
+        action: groups.length ? "openAddSheet()" : "openGroupSheet()"
+      });
     }
 
     function renderPayments() {
@@ -4928,7 +5068,12 @@
           <span>${group?.name || "群組"} · ${users[record.fromId]?.name || "付款人"} → ${users[record.toId]?.name || "收款人"}</span>
           <strong>${money(record.amount)} · ${record.status}</strong>
         </div>`;
-      }).join("") || `<p class="mini-note">目前沒有付款紀錄</p>`;
+      }).join("") || emptyAction({
+        title: "還沒有付款紀錄",
+        note: "在結算頁標記付款或確認收款後，紀錄會出現在這裡。",
+        primary: "查看結算",
+        action: "showScreen('group'); switchPanel('settle')"
+      });
     }
 
     function renderScheduleSummary() {
