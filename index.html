@@ -1397,6 +1397,14 @@
       color: var(--blue);
     }
 
+    .mini-btn:disabled {
+      cursor: default;
+      color: var(--muted);
+      opacity: .78;
+      box-shadow: none;
+      transform: none;
+    }
+
     .danger-btn {
       background: rgba(255,69,58,.12) !important;
       color: #ff453a !important;
@@ -4752,8 +4760,36 @@
     function settlementLabel(groupId, row) {
       const status = settlementStatus[settlementKey(groupId, row)];
       if (status === "confirmed") return "已完成";
-      if (status === true || status === "paid") return "已付款待確認";
-      return "未付款";
+      if (status === true || status === "paid") return "等待確認";
+      return "待付款";
+    }
+
+    function settlementActionHtml(row, group) {
+      if (!canActOnSettlement(row, group)) return "";
+      const status = settlementStatus[settlementKey(activeGroupId, row)];
+      if (status === "confirmed") {
+        return `<div class="mini-actions"><button class="mini-btn" type="button" disabled>已完成</button></div>`;
+      }
+      if (row.from === currentUserId) {
+        return `<div class="mini-actions">
+          ${status === true || status === "paid"
+            ? `<button class="mini-btn" type="button" disabled>等待對方確認</button>`
+            : `<button class="mini-btn" type="button" onclick="paySettlement('${row.from}', '${row.to}', ${row.amount})">我已付款</button>`}
+        </div>`;
+      }
+      if (row.to === currentUserId) {
+        return `<div class="mini-actions">
+          ${status === true || status === "paid"
+            ? `<button class="mini-btn" type="button" onclick="confirmSettlement('${row.from}', '${row.to}', ${row.amount})">確認收款</button>`
+            : `<button class="mini-btn" type="button" onclick="remindSettlement('${row.from}')">提醒付款</button>`}
+        </div>`;
+      }
+      if (canManageGroup(group) && !(status === true || status === "paid")) {
+        return `<div class="mini-actions">
+          <button class="mini-btn" type="button" onclick="remindSettlement('${row.from}')">提醒付款</button>
+        </div>`;
+      }
+      return "";
     }
 
     function totalForGroup(groupId) {
@@ -5191,11 +5227,7 @@
                 <span>${settlementLabel(activeGroupId, row)} · 可用 LINE Pay / 街口 / Apple Pay</span>
               </div>
             </div>
-            <div class="mini-actions" ${canActOnSettlement(row, group) ? "" : "hidden"}>
-              <button class="mini-btn" type="button" onclick="paySettlement('${row.from}', '${row.to}', ${row.amount})">${settlementStatus[settlementKey(activeGroupId, row)] ? "已付款" : "一鍵付款"}</button>
-              <button class="mini-btn" type="button" onclick="confirmSettlement('${row.from}', '${row.to}', ${row.amount})">確認收款</button>
-              <button class="mini-btn" type="button" onclick="remindSettlement('${row.from}')">提醒</button>
-            </div>
+            ${settlementActionHtml(row, group)}
           </div>
           <div>
             <div class="amount neutral">${money(row.amount)}</div>
