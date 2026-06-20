@@ -1154,6 +1154,26 @@
       order: 1;
     }
 
+    #expenseForm .expense-smart-hint {
+      order: 2;
+    }
+
+    .expense-smart-hint {
+      justify-self: start;
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      max-width: 100%;
+      margin-top: -2px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      color: rgba(28,28,30,.72);
+      background: rgba(255,255,255,.58);
+      border: 1px solid rgba(255,255,255,.68);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.58);
+      white-space: normal;
+    }
+
     #expenseForm .expense-primary-row {
       order: 3;
     }
@@ -1167,6 +1187,10 @@
     }
 
     #expenseForm label:has(#expenseGroup) {
+      order: 1;
+    }
+
+    #expenseForm label:has(#expenseCurrency) {
       order: 1;
     }
 
@@ -1272,7 +1296,9 @@
     }
 
     .expense-primary-row {
-      grid-template-columns: 1.1fr 1fr;
+      display: grid;
+      grid-template-columns: minmax(112px, .9fr) minmax(0, 1.1fr);
+      gap: 10px;
     }
 
     .expense-primary-row label:last-child {
@@ -2000,6 +2026,13 @@
       border-color: rgba(255,255,255,.13);
     }
 
+    body[data-theme="dark"] .expense-smart-hint {
+      color: rgba(245,247,251,.74);
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.12);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.1);
+    }
+
     body[data-theme="dark"] .preview-row {
       color: rgba(245,247,251,.82);
     }
@@ -2132,7 +2165,8 @@
       .action-grid,
       .action-grid.three-actions,
       .two,
-      .three {
+      .three,
+      .expense-primary-row {
         grid-template-columns: 1fr;
       }
 
@@ -2925,6 +2959,7 @@
       </div>
       <form id="expenseForm" class="form-grid">
         <p class="expense-focus-note">填項目、金額和付款人就能建立；其他設定已先幫你選好。</p>
+        <p id="expenseSmartHint" class="expense-smart-hint mini-note">已幫你選好最合適的群組。</p>
         <div class="ai-card feature-paused" hidden>
           <h3>AI 記帳助手</h3>
           <p class="mini-note">輸入一句話或模擬掃描發票，系統會先填入表單，再讓你確認。</p>
@@ -2934,21 +2969,15 @@
             <button class="soft-btn" type="button" onclick="scanReceipt()">掃描發票</button>
           </div>
         </div>
-        <div class="three expense-primary-row">
+        <div class="expense-primary-row">
           <label>金額
             <input id="expenseAmount" required type="number" min="1" value="1200" />
           </label>
           <label>付款人
             <select id="expensePayer"></select>
           </label>
-          <label>幣別
-            <select id="expenseCurrency">
-              <option value="TWD">TWD</option>
-              <option value="JPY">JPY</option>
-              <option value="USD">USD</option>
-              <option value="KRW">KRW</option>
-              <option value="EUR">EUR</option>
-            </select>
+          <label>項目名稱
+            <input id="expenseTitle" required value="晚餐" />
           </label>
         </div>
         <div class="input-card">
@@ -2956,9 +2985,6 @@
           <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。</p>
           <div id="participantGrid" class="participant-grid"></div>
         </div>
-        <label>項目名稱
-          <input id="expenseTitle" required value="晚餐" />
-        </label>
         <button id="expenseAdvancedToggle" class="expense-advanced-toggle" type="button" aria-expanded="false" onclick="toggleExpenseAdvanced()">
           <span>更多設定</span>
           <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
@@ -2968,7 +2994,16 @@
             <select id="expenseGroup"></select>
           </label>
           <p id="expenseGroupHint" class="mini-note">已幫你選好最合適的群組。</p>
-          <div class="two">
+          <div class="three">
+            <label>幣別
+              <select id="expenseCurrency">
+                <option value="TWD">TWD</option>
+                <option value="JPY">JPY</option>
+                <option value="USD">USD</option>
+                <option value="KRW">KRW</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </label>
             <label>分類
               <select id="expenseCategory">
                 <option>餐飲</option>
@@ -5786,9 +5821,11 @@
 
     function updateExpenseGroupHint(reason = "") {
       const hint = document.getElementById("expenseGroupHint");
-      if (!hint) return;
       const group = getGroup(document.getElementById("expenseGroup")?.value);
-      hint.textContent = reason || (group ? `已幫你選好 ${group.name}` : "請先選擇群組");
+      const text = reason || (group ? `已幫你選好 ${group.name}` : "請先選擇群組");
+      if (hint) hint.textContent = text;
+      const smartHint = document.getElementById("expenseSmartHint");
+      if (smartHint) smartHint.textContent = group ? `記到「${group.name}」` : "請先建立或選擇群組";
     }
 
     function setExpenseAdvanced(expanded = false) {
@@ -5825,6 +5862,8 @@
       openSheetById("sheet");
       requestAnimationFrame(() => {
         document.getElementById("expenseGroup").value = suggestion.group?.id || activeGroupId;
+        const currency = document.getElementById("expenseCurrency");
+        if (currency && suggestion.group) currency.value = suggestion.group.currency || "TWD";
         updateExpenseGroupHint(suggestion.reason);
         syncPayerOptions();
         updatePreview();
@@ -6503,6 +6542,9 @@
 
     document.getElementById("expenseGroup").addEventListener("change", () => {
       activeGroupId = document.getElementById("expenseGroup").value;
+      const group = getGroup(activeGroupId);
+      const currency = document.getElementById("expenseCurrency");
+      if (group && currency && !editingExpenseId) currency.value = group.currency || "TWD";
       syncPayerOptions();
       updatePreview();
       updateExpenseGroupHint();
