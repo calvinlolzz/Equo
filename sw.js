@@ -1,4 +1,4 @@
-const CACHE_NAME = "equo-static-v44";
+const CACHE_NAME = "equo-static-v45";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
