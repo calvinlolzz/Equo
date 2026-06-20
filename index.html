@@ -435,6 +435,34 @@
       letter-spacing: 0;
     }
 
+    .today-focus {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 20px;
+      background:
+        linear-gradient(145deg, rgba(10,132,255,.12), rgba(48,209,88,.08)),
+        rgba(255,255,255,.44);
+      border: 1px solid rgba(255,255,255,.58);
+    }
+
+    .today-focus strong {
+      display: block;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 850;
+      margin-bottom: 3px;
+    }
+
+    .today-focus .mini-btn {
+      min-width: 92px;
+      min-height: 36px;
+      border-radius: 16px;
+    }
+
     .home-action {
       display: grid;
       grid-template-columns: 1fr;
@@ -1799,6 +1827,13 @@
       box-shadow: 0 24px 74px rgba(0,0,0,.38);
     }
 
+    body[data-theme="dark"] .today-focus {
+      background:
+        linear-gradient(145deg, rgba(100,210,255,.1), rgba(48,209,88,.06)),
+        rgba(255,255,255,.06);
+      border-color: rgba(255,255,255,.12);
+    }
+
     body[data-theme="dark"] .sheet-panel {
       background: rgba(22,26,38,.92);
       border-color: rgba(255,255,255,.18);
@@ -2501,6 +2536,7 @@
             <strong id="receivable">$0</strong>
           </div>
         </div>
+        <div id="todayFocus" class="today-focus"></div>
       </section>
 
       <section id="homePrimaryAction" class="home-action glass"></section>
@@ -2509,7 +2545,7 @@
 
       <section id="homeReminderSection" class="section">
         <div class="section-head">
-          <h2>待處理</h2>
+          <h2>其他待處理</h2>
         </div>
         <div id="reminders" class="card-list"></div>
       </section>
@@ -4918,6 +4954,7 @@
       document.getElementById("receivable").textContent = money(receivable);
       renderHomePrimaryAction({ payableCount, receivableCount });
       renderOnboardingCard();
+      renderTodayFocus();
 
       const recentGroups = groups.slice(0, 3);
       document.getElementById("homeGroupsSection").style.display = groups.length ? "" : "none";
@@ -4955,6 +4992,29 @@
           action: groups.length ? "" : "openGroupSheet()"
       });
       renderStats();
+    }
+
+    function renderTodayFocus() {
+      const target = document.getElementById("todayFocus");
+      if (!target) return;
+      const item = currentReminders()[0];
+      if (!item) {
+        target.innerHTML = `
+          <div>
+            <strong>今天沒有待處理款項</strong>
+            <p class="mini-note">有新支出或付款狀態時，會在這裡提醒你。</p>
+          </div>
+          <button class="mini-btn" type="button" onclick="openAddSheet()">記一筆</button>
+        `;
+        return;
+      }
+      target.innerHTML = `
+        <div>
+          <strong>${item.title}</strong>
+          <p class="mini-note">${item.body}</p>
+        </div>
+        <button class="mini-btn" type="button" onclick="handleReminderAction('${item.id}', '${item.groupId || ""}')">${item.action}</button>
+      `;
     }
 
     function renderHomePrimaryAction({ payableCount = 0, receivableCount = 0 } = {}) {
@@ -5044,7 +5104,7 @@
     }
 
     function renderReminders() {
-      const items = currentReminders().slice(0, 2);
+      const items = currentReminders().slice(1, 3);
       document.getElementById("reminders").innerHTML = items.map(item => `
         <div class="settlement-row">
           <div>
