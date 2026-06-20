@@ -2979,6 +2979,16 @@
           <h3>角色說明</h3>
           <p class="mini-note">管理員與家長可管理群組；成員可記帳；子女只看相關帳務；訪客僅能查看。</p>
         </div>
+        <div id="memberDeleteCard" class="destructive-card" hidden>
+          <div>
+            <span class="destructive-card-title">移除成員</span>
+            <span id="memberDeleteNote" class="destructive-card-note">移除後會重新計算相關結算</span>
+          </div>
+          <button class="remove-pill" type="button" onclick="deleteEditingMember()">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
+            移除
+          </button>
+        </div>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
           <span id="memberSubmitLabel">加入群組</span>
@@ -5248,7 +5258,6 @@
         const value = Math.round(b[id] || 0);
         const cls = value >= 0 ? "positive" : "negative";
         const role = group.roles?.[id] || (id === currentUserId && isGroupOwner(group) ? "擁有者" : "成員");
-        const canRemove = canManageGroup(group) && id !== currentUserId && group.members.length > 1;
         return `<div class="settlement-row">
           <div class="flow">
             ${avatarHtml(id)}
@@ -5257,13 +5266,7 @@
           <div class="member-remove-panel">
             <div class="amount ${cls}">${value >= 0 ? "+" : "-"}${money(Math.abs(value))}</div>
             <div class="mini-actions" ${(canManageGroup(group) && id !== currentUserId) ? "" : "hidden"}>
-              <button class="mini-btn" type="button" onclick="openMemberSheet('${id}')">編輯</button>
-              <span ${canRemove ? "" : "hidden"}>
-              <button class="remove-pill" type="button" onclick="deleteMember('${id}')">
-                <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
-                移除
-              </button>
-              </span>
+              <button class="mini-btn" type="button" onclick="openMemberSheet('${id}')">管理</button>
             </div>
           </div>
         </div>`;
@@ -5722,12 +5725,19 @@
       document.getElementById("memberSubmitLabel").textContent = member ? "儲存成員" : "加入群組";
       document.getElementById("memberName").value = member?.name || "新朋友";
       document.getElementById("memberRole").value = memberRole === "擁有者" ? "管理員" : memberRole;
+      const canRemoveMember = !!member && editingMemberId !== currentUserId && group?.members?.length > 1 && canManageGroup(group);
+      const deleteCard = document.getElementById("memberDeleteCard");
+      if (deleteCard) deleteCard.hidden = !canRemoveMember;
+      const deleteNote = document.getElementById("memberDeleteNote");
+      if (deleteNote && member) deleteNote.textContent = `移除 ${member.name} 後，相關支出與結算會重新計算。`;
       openSheetById("memberSheet");
       showToast(member ? "成員編輯已開啟" : "新增成員已開啟");
     }
 
     function closeMemberSheet() {
       editingMemberId = null;
+      const deleteCard = document.getElementById("memberDeleteCard");
+      if (deleteCard) deleteCard.hidden = true;
       closeSheetById("memberSheet");
     }
 
@@ -5897,11 +5907,17 @@
         secondary: "新增支出",
         secondaryAction: "openAddSheet()"
       };
+      closeMemberSheet();
       renderHome();
       renderGroup();
       renderStats();
       renderPayments();
       showToast(`${memberName} 已從群組移除`);
+    }
+
+    function deleteEditingMember() {
+      if (!editingMemberId) return;
+      deleteMember(editingMemberId);
     }
 
     async function deleteCurrentGroup() {
