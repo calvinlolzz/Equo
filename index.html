@@ -670,25 +670,6 @@
       border-radius: 26px;
     }
 
-    .expense-item-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 0 0 0 53px;
-    }
-
-    .expense-item-actions .mini-btn,
-    .expense-item-actions .remove-pill {
-      min-height: 34px;
-      border-radius: 15px;
-      font-size: 12px;
-    }
-
-    .expense-item-actions .remove-pill svg {
-      width: 16px;
-      height: 16px;
-    }
-
     #recentExpenses .expense-item {
       padding: 10px 12px;
       gap: 6px;
@@ -697,17 +678,6 @@
 
     #recentExpenses .expense-row {
       min-height: 48px;
-    }
-
-    #recentExpenses .expense-item-actions {
-      padding-left: 52px;
-    }
-
-    #recentExpenses .expense-item-actions .mini-btn,
-    #recentExpenses .expense-item-actions .remove-pill {
-      min-height: 30px;
-      padding: 0 10px;
-      border-radius: 14px;
     }
 
     .category {
@@ -2038,14 +2008,6 @@
         justify-content: center;
       }
 
-      .expense-item-actions {
-        justify-content: stretch;
-      }
-
-      .expense-item-actions .mini-btn,
-      .expense-item-actions .remove-pill {
-        flex: 1;
-      }
     }
 
     @media (min-width: 760px) {
@@ -5015,16 +4977,6 @@
       const cls = mine >= 0 ? "positive" : "negative";
       const label = mine >= 0 ? "+" + money(mine) : "-" + money(Math.abs(mine));
       const currencyNote = (expense.currency || "TWD") === group.currency ? "" : ` · ${formatCurrency(expense.amount, expense.currency)} ≈ ${money(converted)}`;
-      const canEdit = options.showActions !== false && canEditExpense(group);
-      const actions = canEdit ? `
-        <div class="expense-item-actions">
-          <button class="mini-btn" type="button" onclick="editExpense('${expense.id}')">編輯</button>
-          <button class="remove-pill" type="button" onclick="deleteExpense('${expense.id}')">
-            <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
-            移除
-          </button>
-        </div>
-      ` : "";
       return `<div class="expense-item">
         <button class="expense-row" type="button" onclick="openExpenseSheet('${expense.id}')">
           <div class="category">${categoryIcon[expense.category] || categoryIcon["其他"]}</div>
@@ -5034,7 +4986,6 @@
           </div>
           <div class="amount ${cls}">${label}</div>
         </button>
-        ${actions}
       </div>`;
     }
 
