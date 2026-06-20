@@ -603,6 +603,24 @@
       transform: scale(.97);
     }
 
+    .small-action.subtle-action {
+      color: rgba(28,28,30,.72);
+      background: rgba(255,255,255,.48);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.58);
+    }
+
+    .small-action.subtle-action.active {
+      color: #fff;
+      background: linear-gradient(145deg, #0a84ff, #64d2ff);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.38),
+        0 10px 22px rgba(10,132,255,.2);
+    }
+
+    .filter-card[hidden] {
+      display: none;
+    }
+
     .card-list {
       display: grid;
       gap: 10px;
@@ -1997,6 +2015,18 @@
         0 10px 24px rgba(0,0,0,.18);
     }
 
+    body[data-theme="dark"] .small-action.subtle-action {
+      color: rgba(245,247,251,.82);
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.12);
+    }
+
+    body[data-theme="dark"] .small-action.subtle-action.active {
+      color: #fff;
+      background: linear-gradient(145deg, #0a84ff, #64d2ff);
+      border-color: rgba(255,255,255,.18);
+    }
+
     body[data-theme="dark"] .empty {
       background: rgba(255,255,255,.06);
       border-color: rgba(255,255,255,.12);
@@ -2667,8 +2697,9 @@
       <section class="section group-panel" id="activityPanel">
         <div class="section-head">
           <h2>支出流水</h2>
+          <button id="expenseFilterToggle" class="small-action subtle-action" type="button" onclick="toggleExpenseFilterPanel()">搜尋</button>
         </div>
-        <div class="input-card" style="margin-bottom:10px">
+        <div id="expenseFilterCard" class="input-card filter-card" style="margin-bottom:10px" hidden>
           <div class="two">
             <label>搜尋
               <input id="expenseSearch" placeholder="項目、付款人、備註" oninput="updateExpenseFilters()" />
@@ -3323,6 +3354,7 @@
     let activeGroupId = "g1";
     let activePanel = "activity";
     let expenseFilters = { query: "", category: "all" };
+    let expenseFilterOpen = false;
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
     let lastExpenseGroupId = localStorage.getItem("floatpay-last-expense-group") || "";
@@ -5435,6 +5467,7 @@
             })
       );
       updateFilterSummary(visibleExpenses.length, allGroupExpenseCount);
+      syncExpenseFilterPanel();
       const settlementRows = settlements(activeGroupId).filter(row =>
         currentUserRole(group) === "子女" ? row.from === currentUserId || row.to === currentUserId : true
       );
@@ -5662,6 +5695,7 @@
     function openGroup(id) {
       activeGroupId = id;
       expenseFilters = { query: "", category: "all" };
+      expenseFilterOpen = false;
       const search = document.getElementById("expenseSearch");
       const category = document.getElementById("expenseFilterCategory");
       if (search) search.value = "";
@@ -5673,6 +5707,7 @@
     function openSmartGroup(id) {
       activeGroupId = id;
       expenseFilters = { query: "", category: "all" };
+      expenseFilterOpen = false;
       const search = document.getElementById("expenseSearch");
       const category = document.getElementById("expenseFilterCategory");
       if (search) search.value = "";
@@ -5704,17 +5739,40 @@
         query: document.getElementById("expenseSearch")?.value || "",
         category: document.getElementById("expenseFilterCategory")?.value || "all"
       };
+      if (hasActiveExpenseFilters()) expenseFilterOpen = true;
       renderGroup();
     }
 
     function clearExpenseFilters() {
       expenseFilters = { query: "", category: "all" };
+      expenseFilterOpen = false;
       const search = document.getElementById("expenseSearch");
       const category = document.getElementById("expenseFilterCategory");
       if (search) search.value = "";
       if (category) category.value = "all";
       renderGroup();
       showToast("篩選已清除");
+    }
+
+    function hasActiveExpenseFilters() {
+      return Boolean((expenseFilters.query || "").trim()) || expenseFilters.category !== "all";
+    }
+
+    function toggleExpenseFilterPanel() {
+      expenseFilterOpen = !expenseFilterOpen;
+      syncExpenseFilterPanel();
+    }
+
+    function syncExpenseFilterPanel() {
+      const card = document.getElementById("expenseFilterCard");
+      const toggle = document.getElementById("expenseFilterToggle");
+      if (!card || !toggle) return;
+      const active = hasActiveExpenseFilters();
+      const open = expenseFilterOpen || active;
+      card.hidden = !open;
+      toggle.textContent = open ? "收起" : "搜尋";
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.classList.toggle("active", active);
     }
 
     function updateFilterSummary(visible, total) {
