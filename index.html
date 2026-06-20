@@ -1485,6 +1485,49 @@
       padding-top: 8px;
     }
 
+    .settings-section {
+      display: grid;
+      gap: 12px;
+      padding: 15px;
+      border-radius: 28px;
+      border: 1px solid rgba(255,255,255,.5);
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.58), rgba(255,255,255,.24)),
+        rgba(255,255,255,.18);
+      box-shadow:
+        0 16px 42px rgba(28,35,70,.09),
+        inset 0 1px 0 rgba(255,255,255,.62);
+    }
+
+    .settings-section h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 860;
+      color: var(--text);
+    }
+
+    .settings-action-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 14px;
+      min-height: 76px;
+      padding: 14px;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,.5);
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.42), rgba(255,255,255,.18)),
+        rgba(0,122,255,.08);
+    }
+
+    .settings-action-card strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+      font-weight: 840;
+      color: var(--text);
+    }
+
     .danger-confirm {
       background: linear-gradient(145deg,#ff453a,#ff7a59) !important;
       color: white !important;
@@ -1872,6 +1915,23 @@
       background: rgba(255,255,255,.06);
       border-color: rgba(255,255,255,.12);
       box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    body[data-theme="dark"] .settings-section {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.04)),
+        rgba(14,18,29,.62);
+      border-color: rgba(255,255,255,.13);
+      box-shadow:
+        0 18px 44px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.1);
+    }
+
+    body[data-theme="dark"] .settings-action-card {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.04)),
+        rgba(100,210,255,.08);
+      border-color: rgba(255,255,255,.13);
     }
 
     body[data-theme="dark"] .preview-row {
@@ -3037,30 +3097,49 @@
         </button>
       </div>
       <form id="groupSettingsForm" class="form-grid">
-        <label>群組名稱
-          <input id="settingsGroupName" required />
-        </label>
-        <label>主幣別
-          <select id="settingsGroupCurrency">
-            <option value="TWD">TWD</option>
-            <option value="JPY">JPY</option>
-            <option value="USD">USD</option>
-            <option value="KRW">KRW</option>
-            <option value="EUR">EUR</option>
-          </select>
-        </label>
-        <label>群組預算
-          <input id="settingsGroupBudget" type="number" min="0" />
-        </label>
-        <button class="primary" type="submit">
-          <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-          儲存設定
-        </button>
+        <div class="settings-section">
+          <div>
+            <h3>基本資料</h3>
+            <p class="mini-note">調整名稱、幣別與預算，支出與結算會沿用新的設定。</p>
+          </div>
+          <label>群組名稱
+            <input id="settingsGroupName" required />
+          </label>
+          <label>主幣別
+            <select id="settingsGroupCurrency">
+              <option value="TWD">TWD</option>
+              <option value="JPY">JPY</option>
+              <option value="USD">USD</option>
+              <option value="KRW">KRW</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </label>
+          <label>群組預算
+            <input id="settingsGroupBudget" type="number" min="0" />
+          </label>
+          <button class="primary" type="submit">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+            儲存設定
+          </button>
+        </div>
+        <div class="settings-section">
+          <div>
+            <h3>成員邀請</h3>
+            <p class="mini-note">需要讓朋友加入時，從這裡產生邀請連結。</p>
+          </div>
+          <div class="settings-action-card">
+            <div>
+              <strong>邀請新成員</strong>
+              <p class="mini-note">可設定加入後的角色權限。</p>
+            </div>
+            <button class="mini-btn" type="button" onclick="openInviteFromSettings()">邀請</button>
+          </div>
+        </div>
         <div class="danger-zone">
           <div class="destructive-card">
             <div>
-              <span class="destructive-card-title">群組資料</span>
-              <span class="destructive-card-note">移除群組、支出與結算紀錄</span>
+              <span class="destructive-card-title">刪除群組</span>
+              <span class="destructive-card-note">會移除支出與結算紀錄，刪除前會再次確認。</span>
             </div>
             <button class="remove-pill" type="button" onclick="deleteCurrentGroup()">
               <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>
@@ -4362,6 +4441,11 @@
 
     function closeInviteSheet() {
       closeSheetById("inviteSheet");
+    }
+
+    function openInviteFromSettings() {
+      closeGroupSettingsSheet();
+      window.setTimeout(() => openInviteSheet(), 120);
     }
 
     async function copyInviteLink() {
