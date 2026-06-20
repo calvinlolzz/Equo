@@ -3120,6 +3120,7 @@
         </button>
       </div>
       <form id="groupForm" class="form-grid">
+        <p class="expense-focus-note">先建立一個群組，之後可再加成員、調整權限或設定預算。</p>
         <label>群組名稱
           <input id="groupName" required value="週末露營" />
         </label>
@@ -3143,13 +3144,10 @@
             </select>
           </label>
         </div>
-        <div class="input-card">
-          <h3>預設成員</h3>
-          <p id="groupMemberHint" class="mini-note">會先加入你自己，建立後可再新增成員。</p>
-        </div>
+        <p id="groupMemberHint" class="expense-smart-hint mini-note">會先加入你自己，建立後可再新增成員。</p>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          建立群組
+          建立並開始
         </button>
       </form>
     </div>
@@ -5357,7 +5355,7 @@
     function renderGroupNextAction(group) {
       const target = document.getElementById("groupNextAction");
       if (!target) return;
-      if (!group || groupExpenses(group.id).length || !canEditExpense(group)) {
+      if (!group || groupExpenses(group.id).length || !canEditExpense(group) || latestFlowNotice?.groupId === group.id) {
         target.innerHTML = "";
         target.style.display = "none";
         return;
@@ -6744,7 +6742,16 @@
       document.getElementById("expenseGroup").insertAdjacentHTML("beforeend", `<option value="${id}">${name}</option>`);
       activeGroupId = id;
       lastCreatedGroupId = id;
-      latestFlowNotice = null;
+      latestFlowNotice = {
+        groupId: id,
+        eyebrow: "群組已建立",
+        title: `${name} 可以開始分帳了`,
+        note: "先新增第一筆支出；成員和權限可以之後再補。",
+        primary: "新增支出",
+        primaryAction: "openAddSheet()",
+        secondary: "新增成員",
+        secondaryAction: "openMemberSheet()"
+      };
       localStorage.setItem("floatpay-last-created-group", id);
       saveData();
       closeGroupSheet();
