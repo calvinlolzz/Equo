@@ -55,3 +55,7 @@ http://127.0.0.1:4173/index.html
 ## 系統設計
 
 完整 SDD 系統設計方案請看 [docs/SDD.md](docs/SDD.md)。此文件以 `docs/equo_sdd_v2.html` 為主軸，聚焦 5 步核心流程、手機優先、登入後置、自動結算、資料結構、錯誤處理、SLA 與後續改良方向。
+
+## 技術棧與改良路線
+
+目前技術棧、短期 PWA 路線、Supabase/Vercel 分工與後續重構順序請看 [docs/TECH_STACK.md](docs/TECH_STACK.md)。

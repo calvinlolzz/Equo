@@ -356,6 +356,20 @@
 
     .summary > * { position: relative; z-index: 1; }
 
+    .summary.start-mode .total {
+      max-width: 10em;
+      font-size: 32px;
+      line-height: 1.08;
+    }
+
+    .summary.start-mode .metric-grid {
+      display: none;
+    }
+
+    .summary.start-mode .today-focus {
+      margin-top: 14px;
+    }
+
     .summary-row {
       display: flex;
       justify-content: space-between;
@@ -477,6 +491,10 @@
 
     .home-action .primary {
       width: 100%;
+    }
+
+    .home-action .action-grid {
+      grid-template-columns: 1fr 1fr;
     }
 
     .section {
@@ -1700,6 +1718,52 @@
       box-shadow: none;
     }
 
+    #me details.settings-section {
+      padding: 0;
+    }
+
+    .advanced-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 62px;
+      padding: 14px;
+      border-radius: 22px;
+      color: var(--text);
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.62), rgba(255,255,255,.34)),
+        rgba(255,255,255,.28);
+      border: 1px solid rgba(255,255,255,.58);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.56),
+        0 12px 26px rgba(35,45,75,.08);
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .advanced-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced-summary::after {
+      content: "展開";
+      flex: 0 0 auto;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 820;
+    }
+
+    details[open] > .advanced-summary::after {
+      content: "收合";
+    }
+
+    .advanced-content {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
     .settings-action-card {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -2170,6 +2234,16 @@
       background: transparent;
       border-color: transparent;
       box-shadow: none;
+    }
+
+    body[data-theme="dark"] .advanced-summary {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.04)),
+        rgba(14,18,29,.62);
+      border-color: rgba(255,255,255,.13);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.1),
+        0 12px 30px rgba(0,0,0,.2);
     }
 
     body[data-theme="dark"] .settings-action-card {
@@ -3009,11 +3083,14 @@
           </div>
         </div>
 
-        <div class="settings-section">
-          <div>
-            <h3>報表與付款</h3>
-            <p class="mini-note">匯出分帳報表、設定支付方式與查看付款紀錄。</p>
-          </div>
+        <details class="settings-section advanced-section">
+          <summary class="advanced-summary">
+            <span>
+              <strong>進階功能</strong>
+              <p class="mini-note" style="margin-top:4px">報表、付款方式與付款紀錄</p>
+            </span>
+          </summary>
+          <div class="advanced-content">
           <div class="input-card">
             <h3>匯出報表</h3>
             <p class="eyebrow" style="margin-top:6px">支出明細、成員排行、幣別換算與結算建議。</p>
@@ -3040,13 +3117,17 @@
             </div>
             <div id="paymentRecords" class="preview"></div>
           </div>
-        </div>
-
-        <div class="settings-section">
-          <div>
-            <h3>自動化</h3>
-            <p class="mini-note">減少重複建立群組、固定帳單與提醒的動作。</p>
           </div>
+        </details>
+
+        <details class="settings-section advanced-section">
+          <summary class="advanced-summary">
+            <span>
+              <strong>自動化與家庭</strong>
+              <p class="mini-note" style="margin-top:4px">日程建群組、固定帳單、家庭權限與通知</p>
+            </span>
+          </summary>
+          <div class="advanced-content">
           <div class="input-card">
             <h3>日程表自動建群組</h3>
             <p class="eyebrow" style="margin-top:6px">連接 Google 日程後，可依聚餐、旅遊或固定帳單自動建立分帳群組。</p>
@@ -3087,7 +3168,8 @@
             </div>
           </div>
           <div class="input-card"><h3>通知</h3><p class="eyebrow" style="margin-top:6px">付款提醒、收款提醒、固定帳單</p></div>
-        </div>
+          </div>
+        </details>
       </div>
     </section>
   </main>
@@ -5269,14 +5351,24 @@
         .filter(row => row.from === currentUserId || row.to === currentUserId));
       const payableCount = settlementRows.filter(row => row.from === currentUserId).length;
       const receivableCount = settlementRows.filter(row => row.to === currentUserId).length;
-      document.getElementById("netTotal").textContent = (net >= 0 ? "+" : "-") + money(Math.abs(net));
+      const hasGroups = groups.length > 0;
+      const hasExpenses = visibleExpenses().length > 0;
+      const summary = document.querySelector("#home .summary");
+      if (summary) summary.classList.toggle("start-mode", !hasGroups && !hasExpenses);
+      document.getElementById("netTotal").textContent = (!hasGroups && !hasExpenses)
+        ? "不用登入，先把錢算清楚"
+        : (net >= 0 ? "+" : "-") + money(Math.abs(net));
       const statusText = payableCount
         ? `你有 ${payableCount} 筆待付款`
         : receivableCount
           ? `有 ${receivableCount} 人還沒付你`
-          : "目前都算清";
+          : (!hasGroups && !hasExpenses)
+            ? "先建立群組，再新增第一筆支出。之後要備份或邀請朋友時再登入。"
+            : "目前都算清";
       document.getElementById("homeStatusText").textContent = statusText;
-      document.getElementById("netPill").textContent = payableCount ? "待付款" : receivableCount ? "待收款" : "已結清";
+      document.getElementById("netPill").textContent = (!hasGroups && !hasExpenses)
+        ? "快速開始"
+        : payableCount ? "待付款" : receivableCount ? "待收款" : "已結清";
       document.getElementById("payable").textContent = money(payable);
       document.getElementById("receivable").textContent = money(receivable);
       renderHomePrimaryAction({ payableCount, receivableCount });
@@ -5330,10 +5422,10 @@
       if (!item) {
         target.innerHTML = `
           <div>
-            <strong>今天沒有待處理款項</strong>
-            <p class="mini-note">有新支出或付款狀態時，會在這裡提醒你。</p>
+            <strong>${groups.length ? "今天沒有待處理款項" : "30 秒完成第一筆分帳"}</strong>
+            <p class="mini-note">${groups.length ? "有新支出或付款狀態時，會在這裡提醒你。" : "輸入金額、付款人、分攤成員，系統會自動算誰該付誰。"}</p>
           </div>
-          <button class="mini-btn" type="button" onclick="openAddSheet()">記一筆</button>
+          <button class="mini-btn" type="button" onclick="${groups.length ? "openAddSheet()" : "openGroupSheet()"}">${groups.length ? "記一筆" : "開始"}</button>
         `;
         return;
       }
@@ -5353,12 +5445,12 @@
       const hasExpenses = visibleExpenses().length > 0;
       target.style.display = "";
       let eyebrow = "下一步";
-      let title = "建立第一個群組";
-      let note = "先把聚餐、旅遊或室友帳務放進一個群組，之後就能直接記支出。";
+      let title = "今天要結哪一筆？";
+      let note = "先建立聚餐、旅遊或室友群組，再記第一筆支出。結算會自動產生，可以直接分享。";
       let primary = "建立群組";
       let action = "openGroupSheet()";
-      let secondary = "";
-      let secondaryAction = "";
+      let secondary = "查看導覽";
+      let secondaryAction = "openGuide()";
 
       if (hasGroups) {
         primary = "新增支出";
