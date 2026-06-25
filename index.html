@@ -3271,17 +3271,18 @@
           <label>金額
             <input id="expenseAmount" required type="number" min="1" value="1200" />
           </label>
-          <label>付款人
-            <select id="expensePayer"></select>
-          </label>
           <label>項目名稱
             <input id="expenseTitle" required value="晚餐" />
+          </label>
+          <label>付款人
+            <select id="expensePayer"></select>
           </label>
         </div>
         <div class="input-card">
           <h3>參與分攤成員</h3>
-          <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。</p>
+          <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。少人時可先新增成員。</p>
           <div id="participantGrid" class="participant-grid"></div>
+          <button class="small-action subtle-action" type="button" onclick="openMemberSheet()" style="margin-top:10px">新增成員</button>
         </div>
         <button id="expenseAdvancedToggle" class="expense-advanced-toggle" type="button" aria-expanded="false" onclick="toggleExpenseAdvanced()">
           <span>更多設定</span>
@@ -3510,8 +3511,9 @@
       </div>
       <form id="memberForm" class="form-grid">
         <label>成員名稱
-          <input id="memberName" required value="新朋友" />
+          <input id="memberName" required value="新朋友" placeholder="阿華、小美、James" />
         </label>
+        <p id="memberNameHint" class="expense-smart-hint mini-note">可用頓號、逗號或換行一次加入多人。</p>
         <label>角色權限
           <select id="memberRole">
             <option value="成員">成員</option>
@@ -6570,6 +6572,10 @@
       document.getElementById("memberSubmitLabel").textContent = member ? "儲存成員" : "加入群組";
       document.getElementById("memberName").value = member?.name || "新朋友";
       document.getElementById("memberRole").value = memberRole === "擁有者" ? "管理員" : memberRole;
+      const memberHint = document.getElementById("memberNameHint");
+      if (memberHint) memberHint.textContent = member
+        ? "修改這位成員的顯示名稱。"
+        : "可用頓號、逗號或換行一次加入多人。";
       const canRemoveMember = !!member && editingMemberId !== currentUserId && group?.members?.length > 1 && canManageGroup(group);
       const deleteCard = document.getElementById("memberDeleteCard");
       if (deleteCard) deleteCard.hidden = !canRemoveMember;
@@ -7346,7 +7352,16 @@
       event.preventDefault();
       if (!requirePermission("manage")) return;
       const group = getGroup(activeGroupId);
-      const name = document.getElementById("memberName").value.trim() || "新成員";
+      if (!group) {
+        showToast("請先建立群組");
+        return;
+      }
+      const rawName = document.getElementById("memberName").value.trim();
+      const names = rawName
+        .split(/[、，,\n]+/)
+        .map(name => name.trim())
+        .filter(Boolean);
+      const name = names[0] || "新成員";
       const role = document.getElementById("memberRole").value || "成員";
       if (editingMemberId) {
         if (!group?.members.includes(editingMemberId) || !users[editingMemberId]) {
@@ -7366,17 +7381,34 @@
         showToast(previousRole === role ? `${previousName} 已更新為 ${name}` : `${name} 已改為${role}`);
         return;
       }
-      const id = `u${Date.now()}`;
-      const choice = avatarChoices[group.members.length % avatarChoices.length];
-      users[id] = { name, initial: name.trim().slice(0, 1).toUpperCase() || "新", avatar: choice.icon, avatarColor: choice.color };
-      group.members.push(id);
-      group.roles = { ...(group.roles || {}), [id]: role };
+      const existingNames = new Set(group.members.map(id => users[id]?.name).filter(Boolean));
+      const uniqueNames = [...new Set(names.length ? names : [name])]
+        .filter(memberName => !existingNames.has(memberName));
+      if (!uniqueNames.length) {
+        showToast("這些成員已在群組內");
+        return;
+      }
+      uniqueNames.forEach((memberName, index) => {
+        const id = `u${Date.now()}${index}`;
+        const choice = avatarChoices[(group.members.length + index) % avatarChoices.length];
+        users[id] = {
+          name: memberName,
+          initial: memberName.trim().slice(0, 1).toUpperCase() || "新",
+          avatar: choice.icon,
+          avatarColor: choice.color
+        };
+        group.members.push(id);
+        group.roles = { ...(group.roles || {}), [id]: role };
+      });
       group.subtitle = `${group.members.length} 位成員 · ${group.subtitle.split("·").pop().trim()}`;
       saveData();
       closeMemberSheet();
       renderHome();
       renderGroup();
-      showToast(`${name} 已加入 ${group.name}`);
+      syncPayerOptions();
+      updatePreview();
+      updateExpenseReadyState();
+      showToast(uniqueNames.length === 1 ? `${uniqueNames[0]} 已加入 ${group.name}` : `已加入 ${uniqueNames.length} 位成員`);
     });
 
     document.getElementById("groupSettingsForm").addEventListener("submit", event => {
