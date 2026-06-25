@@ -1491,6 +1491,22 @@
       line-height: 1.35;
     }
 
+    .form-advanced {
+      display: grid;
+      gap: 10px;
+    }
+
+    .form-advanced .advanced-summary {
+      min-height: 48px;
+      padding: 12px 14px;
+      border-radius: 18px;
+    }
+
+    .form-advanced .advanced-content {
+      gap: 10px;
+      margin-top: 0;
+    }
+
     .share-summary {
       display: grid;
       gap: 10px;
@@ -3206,7 +3222,7 @@
   <nav class="nav glass" aria-label="主要導覽">
     <button class="tab active" type="button" data-screen="home" onclick="showScreen('home')" aria-label="首頁"><svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></button>
     <button class="tab" type="button" data-screen="group" onclick="openGroupPicker()" aria-label="群組"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
-    <button class="tab" type="button" onclick="openAddSheet()" aria-label="新增支出"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+    <button id="primaryCreateTab" class="tab" type="button" onclick="openPrimaryCreate()" aria-label="新增"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
     <button class="tab" type="button" data-screen="stats" onclick="showScreen('stats')" aria-label="統計"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M8 17V9"/><path d="M13 17V5"/><path d="M18 17v-6"/></svg></button>
     <button class="tab" type="button" data-screen="me" onclick="showScreen('me')" aria-label="我的"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
   </nav>
@@ -3415,31 +3431,41 @@
         </button>
       </div>
       <form id="groupForm" class="form-grid">
-        <p class="expense-focus-note">先建立一個群組，之後可再加成員、調整權限或設定預算。</p>
+        <p class="expense-focus-note">先取一個群組名稱，建立後會直接帶你記第一筆支出。</p>
         <label>群組名稱
           <input id="groupName" required value="週末露營" />
         </label>
-        <div class="two">
-          <label>群組類型
-            <select id="groupType">
-              <option>旅遊</option>
-              <option>聚餐</option>
-              <option>家庭</option>
-              <option>室友</option>
-              <option>公司</option>
-            </select>
-          </label>
-          <label>主幣別
-            <select id="groupBaseCurrency">
-              <option value="TWD">TWD</option>
-              <option value="JPY">JPY</option>
-              <option value="USD">USD</option>
-              <option value="KRW">KRW</option>
-              <option value="EUR">EUR</option>
-            </select>
-          </label>
-        </div>
-        <p id="groupMemberHint" class="expense-smart-hint mini-note">會先加入你自己，建立後可再新增成員。</p>
+        <details class="form-advanced advanced-section">
+          <summary class="advanced-summary">
+            <span>
+              <strong>更多設定</strong>
+              <p class="mini-note" style="margin-top:4px">類型與幣別可先用預設值。</p>
+            </span>
+          </summary>
+          <div class="advanced-content">
+            <div class="two">
+              <label>群組類型
+                <select id="groupType">
+                  <option>聚餐</option>
+                  <option>旅遊</option>
+                  <option>家庭</option>
+                  <option>室友</option>
+                  <option>公司</option>
+                </select>
+              </label>
+              <label>主幣別
+                <select id="groupBaseCurrency">
+                  <option value="TWD">TWD</option>
+                  <option value="JPY">JPY</option>
+                  <option value="USD">USD</option>
+                  <option value="KRW">KRW</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </details>
+        <p id="groupMemberHint" class="expense-smart-hint mini-note">會先加入你自己，其他成員可之後再加。</p>
         <button class="primary" type="submit">
           <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           建立並開始
@@ -5494,6 +5520,12 @@
       return groupExpenses(groupId).reduce((sum, expense) => sum + baseAmount(expense), 0);
     }
 
+    function updatePrimaryCreateTab() {
+      const tab = document.getElementById("primaryCreateTab");
+      if (!tab) return;
+      tab.setAttribute("aria-label", groups.length ? "新增支出" : "新增群組");
+    }
+
     function renderHome() {
       const allBalances = groups.map(group => balances(group.id)[currentUserId] || 0);
       const payable = allBalances.filter(v => v < 0).reduce((sum, v) => sum + Math.abs(v), 0);
@@ -5505,6 +5537,7 @@
       const receivableCount = settlementRows.filter(row => row.to === currentUserId).length;
       const hasGroups = groups.length > 0;
       const hasExpenses = visibleExpenses().length > 0;
+      updatePrimaryCreateTab();
       document.getElementById("home")?.classList.toggle("home-empty", !hasGroups && !hasExpenses);
       const summary = document.querySelector("#home .summary");
       if (summary) summary.classList.toggle("start-mode", !hasGroups && !hasExpenses);
@@ -6369,6 +6402,14 @@
       setExpenseAdvanced(panel?.hidden);
     }
 
+    function openPrimaryCreate() {
+      if (groups.length) {
+        openAddSheet();
+        return;
+      }
+      openGroupSheet();
+    }
+
     function openAddSheet() {
       if (!groups.length) {
         showToast("請先建立群組");
@@ -6409,9 +6450,9 @@
     function openGroupSheet() {
       closeGroupPicker();
       const hint = document.getElementById("groupMemberHint");
-      if (hint) hint.textContent = cloudUser
-        ? "會先加入你自己，建立後可再新增成員。"
-        : "本機試用會先加入你、阿華、小美，方便快速體驗。";
+      const advanced = document.querySelector("#groupForm .form-advanced");
+      if (advanced) advanced.removeAttribute("open");
+      if (hint) hint.textContent = "會先加入你自己，其他成員可之後再加。";
       openSheetById("groupSheet");
       showToast("新增群組已開啟");
     }
@@ -7205,8 +7246,8 @@
       const type = document.getElementById("groupType").value;
       const currency = document.getElementById("groupBaseCurrency").value;
       const id = `g${Date.now()}`;
-      const initialMembers = cloudUser ? [currentUserId] : ["u1", "u2", "u3"];
-      const initialRoles = cloudUser ? { [currentUserId]: "擁有者" } : { u1: "擁有者", u2: "成員", u3: "成員" };
+      const initialMembers = [currentUserId];
+      const initialRoles = { [currentUserId]: "擁有者" };
       groups.push({
         id,
         name,
@@ -7236,7 +7277,8 @@
       showScreen("group");
       switchPanel("activity");
       screenScrollPositions.group = 0;
-      showToast(`${name} 已建立，下一步新增支出`);
+      requestAnimationFrame(() => openAddSheet());
+      showToast(`${name} 已建立，現在記第一筆支出`);
     });
 
     document.getElementById("memberForm").addEventListener("submit", event => {
