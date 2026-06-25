@@ -1578,12 +1578,23 @@
 
     .ai-card {
       border-radius: 24px;
-      padding: 14px;
+      padding: 12px;
       background:
         linear-gradient(145deg, rgba(10,132,255,.16), rgba(191,90,242,.14)),
         rgba(255,255,255,.58);
       border: 1px solid rgba(255,255,255,.72);
       box-shadow: 0 14px 34px rgba(35,45,75,.12);
+    }
+
+    .ai-card h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 860;
+    }
+
+    .ai-card textarea {
+      min-height: 58px;
+      margin-top: 10px;
     }
 
     .action-grid {
@@ -3256,12 +3267,12 @@
         </button>
       </div>
       <form id="expenseForm" class="form-grid">
-        <p class="expense-focus-note">填項目、金額和付款人就能建立；其他設定已先幫你選好。</p>
+        <p class="expense-focus-note">用一句話快速填寫，或直接輸入金額、項目和付款人。</p>
         <p id="expenseSmartHint" class="expense-smart-hint mini-note">已幫你選好最合適的群組。</p>
-        <div class="ai-card feature-paused" hidden>
-          <h3>AI 記帳助手</h3>
-          <p class="mini-note">輸入一句話或模擬掃描發票，系統會先填入表單，再讓你確認。</p>
-          <textarea id="aiPrompt">今天聚餐 4200 元，阿華付款，4 人平均分攤</textarea>
+        <div class="ai-card">
+          <h3>AI 快速填寫</h3>
+          <p class="mini-note">例如：今天聚餐 4200 元，阿華付款，4 人平均分攤。</p>
+          <textarea id="aiPrompt" placeholder="輸入一句話，系統會先填好表單">今天聚餐 4200 元，阿華付款，4 人平均分攤</textarea>
           <div class="action-grid">
             <button class="soft-btn" type="button" onclick="parseAiPrompt()">解析文字</button>
             <button class="soft-btn" type="button" onclick="scanReceipt()">掃描發票</button>
@@ -3323,11 +3334,11 @@
           <label>備註
             <textarea id="expenseNote">含服務費</textarea>
           </label>
-          <div class="input-card">
-            <h3>預覽分攤</h3>
-            <p id="exchangeHint" class="mini-note"></p>
-            <div id="splitPreview" class="preview"></div>
-          </div>
+        </div>
+        <div class="input-card">
+          <h3>預覽分攤</h3>
+          <p id="exchangeHint" class="mini-note"></p>
+          <div id="splitPreview" class="preview"></div>
         </div>
         <p id="expenseSubmitStatus" class="mini-note submit-status">確認內容後即可建立。</p>
         <div class="sheet-actionbar">
@@ -5612,7 +5623,7 @@
         : receivableCount
           ? `有 ${receivableCount} 人還沒付你`
           : (!hasGroups && !hasExpenses)
-            ? "先建立群組，再新增第一筆支出。之後要備份或邀請朋友時再登入。"
+            ? "不用登入，先把錢算清楚。需要備份或邀請時再登入。"
             : "目前都算清";
       document.getElementById("homeStatusText").textContent = statusText;
       document.getElementById("netPill").textContent = (!hasGroups && !hasExpenses)
@@ -5695,11 +5706,11 @@
       target.style.display = "";
       let eyebrow = "下一步";
       let title = "今天要結哪一筆？";
-      let note = "先建立聚餐、旅遊或室友群組，再記第一筆支出。結算會自動產生，可以直接分享。";
-      let primary = "建立群組";
-      let action = "openGroupSheet()";
-      let secondary = "查看導覽";
-      let secondaryAction = "openGuide()";
+      let note = "不用登入，先把錢算清楚。需要備份、邀請朋友或跨裝置使用時，再登入也可以。";
+      let primary = "新增支出";
+      let action = "openPrimaryCreate()";
+      let secondary = "建立群組";
+      let secondaryAction = "openGroupSheet()";
 
       if (hasGroups) {
         primary = "新增支出";
@@ -6562,6 +6573,35 @@
       closeSheetById("groupSheet");
     }
 
+    function splitMemberNames(rawName) {
+      return (rawName || "")
+        .split(/[、，,\n]+/)
+        .map(name => name.trim())
+        .filter(Boolean);
+    }
+
+    function addMembersToGroup(group, memberNames, role = "成員") {
+      if (!group) return [];
+      const existingNames = new Set(group.members.map(id => users[id]?.name).filter(Boolean));
+      const uniqueNames = [...new Set(memberNames)].filter(name => name && !existingNames.has(name));
+      uniqueNames.forEach((memberName, index) => {
+        const id = `u${Date.now()}${index}${Math.floor(Math.random() * 1000)}`;
+        const choice = avatarChoices[(group.members.length + index) % avatarChoices.length];
+        users[id] = {
+          name: memberName,
+          initial: memberName.trim().slice(0, 1).toUpperCase() || "新",
+          avatar: choice.icon,
+          avatarColor: choice.color
+        };
+        group.members.push(id);
+        group.roles = { ...(group.roles || {}), [id]: role };
+      });
+      if (uniqueNames.length) {
+        group.subtitle = `${group.members.length} 位成員 · ${group.subtitle.split("·").pop().trim()}`;
+      }
+      return uniqueNames;
+    }
+
     function openMemberSheet(memberId = "") {
       if (!requirePermission("manage")) return;
       editingMemberId = memberId || null;
@@ -6944,18 +6984,51 @@
 
     function parseAiPrompt() {
       const text = document.getElementById("aiPrompt").value;
+      const group = getGroup(document.getElementById("expenseGroup").value || activeGroupId);
       const amountMatch = text.match(/(\d[\d,]*)\s*(元|塊|twd|TWD)?/);
-      const payer = Object.entries(users).find(([, user]) => text.includes(user.name) && user.name !== "我");
+      const payerName = text.match(/([^\s，,、。]+?)(付款|付錢|先付|請客|墊)/)?.[1] || "";
+      const peopleCount = Number(text.match(/(\d+)\s*(人|位)/)?.[1] || 0);
+      const mentionedNames = splitMemberNames(text.replace(/[。]/g, "，"))
+        .filter(name => name.length <= 8 && !/^\d/.test(name))
+        .filter(name => !["今天聚餐 4200 元", "平均分攤", "聚餐", "付款"].some(keyword => name.includes(keyword)));
       if (amountMatch) {
         document.getElementById("expenseAmount").value = amountMatch[1].replaceAll(",", "");
       }
-      document.getElementById("expenseTitle").value = text.includes("聚餐") ? "AI 聚餐記帳" : "AI 快速記帳";
-      document.getElementById("expenseCategory").value = text.includes("交通") ? "交通" : "餐飲";
+      if (group) {
+        const namesToAdd = [];
+        const groupMemberNames = new Set(group.members.map(id => users[id]?.name).filter(Boolean));
+        if (payerName && !groupMemberNames.has(payerName)) namesToAdd.push(payerName);
+        mentionedNames.forEach(name => {
+          if (name !== payerName && !groupMemberNames.has(name)) namesToAdd.push(name);
+        });
+        const targetCount = Math.max(peopleCount, group.members.length + namesToAdd.length);
+        while (group.members.length + namesToAdd.length < targetCount) {
+          namesToAdd.push(`朋友${group.members.length + namesToAdd.length + 1}`);
+        }
+        const addedNames = namesToAdd.length ? addMembersToGroup(group, namesToAdd) : [];
+        group.members.forEach(id => {
+          if (!users[id]) users[id] = { name: "成員", initial: "成", avatar: "person", avatarColor: "#64748B" };
+        });
+        if (addedNames.length) {
+          saveData();
+          renderHome();
+          renderGroup();
+        }
+        syncPayerOptions();
+      }
+      const payer = group
+        ? group.members.map(id => [id, users[id]]).find(([, user]) => user?.name === payerName)
+          || group.members.map(id => [id, users[id]]).find(([, user]) => user?.name && text.includes(user.name) && user.name !== "我")
+        : Object.entries(users).find(([, user]) => user.name === payerName)
+          || Object.entries(users).find(([, user]) => text.includes(user.name) && user.name !== "我");
+      document.getElementById("expenseTitle").value = text.includes("交通") ? "交通費" : text.includes("住宿") ? "住宿費" : text.includes("聚餐") ? "聚餐" : "快速記帳";
+      document.getElementById("expenseCategory").value = text.includes("交通") ? "交通" : text.includes("住宿") ? "住宿" : "餐飲";
       document.getElementById("expenseCurrency").value = "TWD";
       if (payer) document.getElementById("expensePayer").value = payer[0];
-      document.getElementById("expenseNote").value = "AI 已解析：金額、付款人、平均分攤";
+      document.getElementById("expenseNote").value = "已由一句話快速填寫，請確認後建立。";
       updatePreview();
-      showToast("AI 已填入表單，請確認後建立");
+      updateExpenseReadyState();
+      showToast("已填好表單，確認後即可建立");
     }
 
     function scanReceipt() {
@@ -7357,10 +7430,7 @@
         return;
       }
       const rawName = document.getElementById("memberName").value.trim();
-      const names = rawName
-        .split(/[、，,\n]+/)
-        .map(name => name.trim())
-        .filter(Boolean);
+      const names = splitMemberNames(rawName);
       const name = names[0] || "新成員";
       const role = document.getElementById("memberRole").value || "成員";
       if (editingMemberId) {
@@ -7381,26 +7451,11 @@
         showToast(previousRole === role ? `${previousName} 已更新為 ${name}` : `${name} 已改為${role}`);
         return;
       }
-      const existingNames = new Set(group.members.map(id => users[id]?.name).filter(Boolean));
-      const uniqueNames = [...new Set(names.length ? names : [name])]
-        .filter(memberName => !existingNames.has(memberName));
+      const uniqueNames = addMembersToGroup(group, names.length ? names : [name], role);
       if (!uniqueNames.length) {
         showToast("這些成員已在群組內");
         return;
       }
-      uniqueNames.forEach((memberName, index) => {
-        const id = `u${Date.now()}${index}`;
-        const choice = avatarChoices[(group.members.length + index) % avatarChoices.length];
-        users[id] = {
-          name: memberName,
-          initial: memberName.trim().slice(0, 1).toUpperCase() || "新",
-          avatar: choice.icon,
-          avatarColor: choice.color
-        };
-        group.members.push(id);
-        group.roles = { ...(group.roles || {}), [id]: role };
-      });
-      group.subtitle = `${group.members.length} 位成員 · ${group.subtitle.split("·").pop().trim()}`;
       saveData();
       closeMemberSheet();
       renderHome();
