@@ -497,6 +497,24 @@
       grid-template-columns: 1fr 1fr;
     }
 
+    #home.home-empty .summary,
+    #home.home-empty #onboardingCard {
+      display: none;
+    }
+
+    #home.home-empty #homePrimaryAction {
+      margin-top: 8px;
+      padding: 22px;
+      min-height: 240px;
+      align-content: center;
+    }
+
+    #home.home-empty #homePrimaryAction h2 {
+      font-size: 28px;
+      line-height: 1.12;
+      max-width: 10em;
+    }
+
     .section {
       margin-top: 22px;
     }
@@ -5487,6 +5505,7 @@
       const receivableCount = settlementRows.filter(row => row.to === currentUserId).length;
       const hasGroups = groups.length > 0;
       const hasExpenses = visibleExpenses().length > 0;
+      document.getElementById("home")?.classList.toggle("home-empty", !hasGroups && !hasExpenses);
       const summary = document.querySelector("#home .summary");
       if (summary) summary.classList.toggle("start-mode", !hasGroups && !hasExpenses);
       document.getElementById("netTotal").textContent = (!hasGroups && !hasExpenses)
