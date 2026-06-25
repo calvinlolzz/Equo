@@ -3687,9 +3687,14 @@
 
     clearLocalTestDataFromUrl();
 
+    const bootParams = new URLSearchParams(window.location.search);
+    const demoMode = bootParams.get("demo") === "1";
+    const hasSavedGroups = localStorage.getItem("floatpay-groups");
+    if (demoMode && !hasSavedGroups) localStorage.removeItem("floatpay-demo-cleared");
+    if (!demoMode && !hasSavedGroups) localStorage.setItem("floatpay-demo-cleared", "true");
     const demoDataCleared = localStorage.getItem("floatpay-demo-cleared") === "true";
-    let groups = loadSaved("floatpay-groups", demoDataCleared ? [] : defaultGroups);
-    let expenses = loadSaved("floatpay-expenses", demoDataCleared ? [] : defaultExpenses);
+    let groups = loadSaved("floatpay-groups", demoMode && !demoDataCleared ? defaultGroups : []);
+    let expenses = loadSaved("floatpay-expenses", demoMode && !demoDataCleared ? defaultExpenses : []);
     let settlementStatus = loadSaved("floatpay-settlements", {});
     let reminderStatus = loadSaved("floatpay-reminders", {});
     let recurringStatus = loadSaved("floatpay-recurring", {});
@@ -3709,6 +3714,7 @@
     let latestFlowNotice = null;
     let editingExpenseId = null;
     let editingMemberId = null;
+    let pendingErrorLogs = [];
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -4100,6 +4106,7 @@
     async function initSupabaseClient() {
       if (!cloudConfig.configured || !window.supabase?.createClient) return;
       supabaseClient = window.supabase.createClient(cloudConfig.url, cloudConfig.anonKey);
+      flushPendingErrorLogs();
       const { data } = await supabaseClient.auth.getSession();
       cloudUser = data.session?.user || null;
       supabaseClient.auth.onAuthStateChange(async (_event, session) => {
@@ -4122,6 +4129,35 @@
       }
       applyAuthState();
     }
+
+    function reportAppError(message, context = "app") {
+      const payload = {
+        source_input: "web",
+        message_input: String(message || "unknown_error").slice(0, 700),
+        context_input: String(context || "app").slice(0, 180),
+        page_input: `${location.pathname}${location.search}`.slice(0, 300)
+      };
+      if (!supabaseClient?.rpc) {
+        pendingErrorLogs = [...pendingErrorLogs.slice(-9), payload];
+        return;
+      }
+      supabaseClient.rpc("record_app_error", payload).catch(() => {});
+    }
+
+    function flushPendingErrorLogs() {
+      if (!supabaseClient?.rpc || !pendingErrorLogs.length) return;
+      const logs = pendingErrorLogs.splice(0, pendingErrorLogs.length);
+      logs.forEach(payload => supabaseClient.rpc("record_app_error", payload).catch(() => {}));
+    }
+
+    window.addEventListener("error", event => {
+      reportAppError(event.message || "window_error", "window.error");
+    });
+
+    window.addEventListener("unhandledrejection", event => {
+      const reason = event.reason?.message || event.reason || "unhandled_rejection";
+      reportAppError(reason, "unhandledrejection");
+    });
 
     function renderCloudStatus() {
       const label = document.getElementById("cloudSyncLabel");

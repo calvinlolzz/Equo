@@ -536,7 +536,7 @@
           <div class="metric"><span>API Config</span><strong id="metricApi">-</strong><small>Vercel 環境變數</small></div>
           <div class="metric"><span>Auth</span><strong id="metricAuth">-</strong><small>管理員登入</small></div>
           <div class="metric"><span>Database</span><strong id="metricDb">-</strong><small>RPC 讀取</small></div>
-          <div class="metric"><span>RLS</span><strong id="metricRls">ON</strong><small>資料表保護</small></div>
+          <div class="metric"><span>近 7 日錯誤</span><strong id="metricErrors">0</strong><small>前台與後台</small></div>
         </div>
         <div class="table-wrap">
           <table>
@@ -546,6 +546,16 @@
               <tr><td>Admin Role</td><td><span id="roleStatusBadge" class="badge warn">檢查中</span></td><td>app_admins 管理員名單</td></tr>
               <tr><td>Dashboard RPC</td><td><span id="rpcStatusBadge" class="badge warn">檢查中</span></td><td>get_admin_dashboard</td></tr>
             </tbody>
+          </table>
+        </div>
+        <div class="page-title" style="margin-top:24px">
+          <h1 style="font-size:22px">最近錯誤</h1>
+          <p>只保留必要訊息，用來判斷正式測試時哪個流程需要修正。</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>時間</th><th>來源</th><th>位置</th><th>訊息</th></tr></thead>
+            <tbody id="errorTableBody"></tbody>
           </table>
         </div>
       </section>
@@ -590,7 +600,8 @@
       users: [],
       groups: [],
       health: { supabase: "unknown", profiles: 0, snapshots: 0 },
-      audit_logs: []
+      audit_logs: [],
+      error_logs: []
     };
 
     function showAdminPage(id) {
@@ -649,10 +660,21 @@
         document.getElementById("metricApi").textContent = "OK";
         await restoreAdminSession();
       } catch (error) {
+        reportAdminError(error?.message || "config_error", "admin.config");
         setAuthMessage("無法讀取後台設定，請確認部署環境。");
         document.getElementById("adminLoginForm").style.display = "none";
         setBadge("authStatusBadge", "失敗", "off");
       }
+    }
+
+    function reportAdminError(message, context = "admin") {
+      if (!adminState.client?.rpc) return;
+      adminState.client.rpc("record_app_error", {
+        source_input: "admin",
+        message_input: String(message || "unknown_error").slice(0, 700),
+        context_input: String(context || "admin").slice(0, 180),
+        page_input: `${location.pathname}${location.search}`.slice(0, 300)
+      }).catch(() => {});
     }
 
     async function restoreAdminSession() {
@@ -676,6 +698,7 @@
       setAuthMessage("正在登入...");
       const { data, error } = await adminState.client.auth.signInWithPassword({ email, password });
       if (error) {
+        reportAdminError(error.message, "admin.sign_in");
         setAuthMessage("登入失敗，請確認 Email 或密碼。");
         return;
       }
@@ -691,6 +714,7 @@
         .maybeSingle();
 
       if (error || !data?.role) {
+        if (error) reportAdminError(error.message, "admin.role");
         setAuthMessage("此帳號尚未取得後台權限。");
         document.body.classList.remove("admin-ready");
         document.getElementById("metricAuth").textContent = "已登入";
@@ -711,6 +735,7 @@
     async function loadAdminDashboard() {
       const { data, error } = await adminState.client.rpc("get_admin_dashboard");
       if (error) {
+        reportAdminError(error.message, "admin.dashboard");
         adminState.dashboard = emptyDashboard;
         adminState.rpcReady = false;
         document.getElementById("metricDb").textContent = "失敗";
@@ -747,6 +772,7 @@
       document.getElementById("metricGroups").textContent = formatNumber(metrics.groups);
       document.getElementById("metricExpenses").textContent = formatNumber(metrics.expenses);
       document.getElementById("metricSettlements").textContent = formatNumber(metrics.settlement_statuses);
+      document.getElementById("metricErrors").textContent = formatNumber(metrics.errors_7d);
       document.getElementById("healthProfiles").textContent = formatNumber(dashboard.health?.profiles);
       document.getElementById("healthSnapshots").textContent = formatNumber(dashboard.health?.snapshots);
       setBadge("healthSupabase", dashboard.health?.supabase === "ok" ? "正常" : "未確認", dashboard.health?.supabase === "ok" ? "ok" : "warn");
@@ -785,6 +811,16 @@
           <td><span class="badge ok">完成</span></td>
         </tr>
       `).join("") : `<tr><td colspan="4" class="muted">尚無後台操作紀錄。</td></tr>`;
+
+      const errors = dashboard.error_logs || [];
+      document.getElementById("errorTableBody").innerHTML = errors.length ? errors.map(error => `
+        <tr>
+          <td>${formatDate(error.created_at)}</td>
+          <td>${escapeHtml(error.source || "-")}</td>
+          <td>${escapeHtml(error.context || "-")}</td>
+          <td>${escapeHtml(error.message || "-")}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="4" class="muted">目前沒有錯誤紀錄。</td></tr>`;
     }
 
     async function logoutAdmin() {
@@ -795,6 +831,15 @@
       document.body.classList.remove("admin-ready");
       setAuthMessage("已登出，請重新登入後台。");
     }
+
+    window.addEventListener("error", event => {
+      reportAdminError(event.message || "window_error", "window.error");
+    });
+
+    window.addEventListener("unhandledrejection", event => {
+      const reason = event.reason?.message || event.reason || "unhandled_rejection";
+      reportAdminError(reason, "unhandledrejection");
+    });
 
     initAdmin();
   </script>

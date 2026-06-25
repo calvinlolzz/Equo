@@ -980,8 +980,19 @@ create table if not exists public.admin_audit_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.app_error_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  source text not null default 'web' check (source in ('web', 'admin')),
+  message text not null,
+  context text,
+  page text,
+  created_at timestamptz not null default now()
+);
+
 alter table public.app_admins enable row level security;
 alter table public.admin_audit_logs enable row level security;
+alter table public.app_error_logs enable row level security;
 
 grant select on public.app_admins to authenticated;
 grant select on public.admin_audit_logs to authenticated;
@@ -1037,6 +1048,39 @@ begin
 end;
 $$;
 
+create or replace function public.record_app_error(
+  source_input text,
+  message_input text,
+  context_input text default null,
+  page_input text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  log_id uuid;
+begin
+  insert into public.app_error_logs (
+    user_id,
+    source,
+    message,
+    context,
+    page
+  ) values (
+    auth.uid(),
+    case when source_input in ('web', 'admin') then source_input else 'web' end,
+    left(coalesce(nullif(message_input, ''), 'unknown_error'), 700),
+    left(context_input, 180),
+    left(page_input, 300)
+  )
+  returning id into log_id;
+
+  return log_id;
+end;
+$$;
+
 create or replace function public.get_admin_dashboard()
 returns jsonb
 language plpgsql
@@ -1062,7 +1106,12 @@ begin
       'users', (select count(*) from public.profiles),
       'groups', (select count(*) from public.groups where archived_at is null),
       'expenses', (select count(*) from public.expenses),
-      'settlement_statuses', (select count(*) from public.settlement_statuses)
+      'settlement_statuses', (select count(*) from public.settlement_statuses),
+      'errors_7d', (
+        select count(*)
+        from public.app_error_logs
+        where created_at > now() - interval '7 days'
+      )
     ),
     'users', coalesce((
       select jsonb_agg(row_to_json(user_rows))
@@ -1126,6 +1175,15 @@ begin
         order by created_at desc
         limit 30
       ) audit_rows
+    ), '[]'::jsonb),
+    'error_logs', coalesce((
+      select jsonb_agg(row_to_json(error_rows))
+      from (
+        select source, message, context, page, created_at
+        from public.app_error_logs
+        order by created_at desc
+        limit 30
+      ) error_rows
     ), '[]'::jsonb)
   ) into result;
 
@@ -1135,6 +1193,9 @@ $$;
 
 revoke all on function public.record_admin_audit(text, jsonb) from public;
 grant execute on function public.record_admin_audit(text, jsonb) to authenticated;
+
+revoke all on function public.record_app_error(text, text, text, text) from public;
+grant execute on function public.record_app_error(text, text, text, text) to anon, authenticated;
 
 revoke all on function public.get_admin_dashboard() from public;
 grant execute on function public.get_admin_dashboard() to authenticated;

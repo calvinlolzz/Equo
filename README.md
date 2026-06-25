@@ -13,6 +13,7 @@ Equo 是一個分帳 App 正式站專案，前台提供手機優先的分帳體�
 - 付款紀錄、固定帳單與提醒
 - 後台管理入口 `/admin`
 - Supabase RLS 資料保護
+- 前台 / 後台錯誤紀錄
 
 ## 預覽
 
@@ -83,6 +84,7 @@ SUPABASE_ANON_KEY=你的 anon public key
 - 夜間模式與底部導覽可讀性
 - 後台 `/admin` 權限保護
 - 後台總覽資料是否來自 Supabase
+- 後台系統頁是否能看到最近錯誤紀錄
 
 詳細測試請看 [docs/TESTING.md](docs/TESTING.md)。
 
