@@ -1,71 +1,93 @@
-# Equo 算好 分帳 App 原型
+# Equo 算好
 
-Equo 算好是一個分帳 App 網頁原型，設計方向為 iOS 液態毛玻璃風格。現階段使用單一 `index.html` 實作，方便快速預覽、修改與部署成免費網頁版。
+Equo 是一個分帳 App 正式站專案，前台提供手機優先的分帳體驗，後台提供營運與資料檢查入口。專案目前以靜態前端、Vercel 部署與 Supabase 雲端資料庫為核心。
 
 ## 目前功能
 
-- Apple / Google / Email 登入入口原型
-- 群組建立、群組設定、成員與家庭權限
-- 新增支出、分帳成員選擇、多幣別換算
-- 結算建議、付款狀態、確認收款與提醒
-- 固定帳單、防重複產生、付款紀錄
-- 月報表、分類分析、成員排行
-- CSV / HTML 報表匯出與本機資料備份
-- 夜間模式與 iOS 風格底部導覽
-- Vercel 靜態部署設定
-- Supabase 資料庫結構草稿
+- Email 登入與雲端同步入口
+- 群組、成員、支出、分攤與結算
+- 邀請連結與成員角色
+- 手機版底部導覽與新增支出流程
+- 夜間模式與液態毛玻璃視覺
+- CSV / HTML 匯出
+- 付款紀錄、固定帳單與提醒
+- 後台管理入口 `/admin`
+- Supabase RLS 資料保護
 
-## 本機預覽
+## 預覽
+
+本機前台：
 
 ```bash
 python -m http.server 4173 --bind 127.0.0.1
 ```
 
-開啟：
-
 ```text
 http://127.0.0.1:4173/index.html
 ```
 
-後台原型：
+本機後台頁面：
 
 ```text
 http://127.0.0.1:4173/admin.html
 ```
 
-## 資料狀態
+正式站後台路徑：
 
-目前 App 先使用瀏覽器 `localStorage` 保存展示資料。這適合產品展示、流程測試與早期用戶訪談。
+```text
+/admin
+```
 
-若要讓真實用戶跨裝置同步資料，下一步會接 Supabase：
+## 技術棧
 
-- Supabase Auth：登入與使用者身分
-- PostgreSQL：群組、支出、分帳、付款紀錄
-- Row Level Security：不同群組與角色的資料權限
-- Storage：未來可放發票或收據圖片
+- Frontend：單檔 HTML / CSS / JavaScript
+- Hosting：Vercel
+- Auth：Supabase Auth
+- Database：Supabase PostgreSQL
+- Security：Row Level Security
+- PWA：Service Worker 與 manifest
+
+詳細內容請看 [docs/TECH_STACK.md](docs/TECH_STACK.md)。
+
+## Supabase
+
+正式資料表與後台管理員設定請看 [docs/SUPABASE.md](docs/SUPABASE.md)。
+
+必要環境變數：
+
+```text
+SUPABASE_URL=你的 Project URL
+SUPABASE_ANON_KEY=你的 anon public key
+```
+
+後台管理員需要先建立 Supabase Auth 帳號，再加入 `app_admins`。
 
 ## 部署
 
-目前選定路線：
+1. GitHub 儲存專案。
+2. Vercel 連接 GitHub repo。
+3. Vercel 設定 Supabase 環境變數。
+4. Supabase SQL Editor 執行 `supabase/schema.sql`。
+5. 將管理員帳號加入 `app_admins`。
 
-1. GitHub 保存原始碼
-2. Vercel 部署免費網頁版
-3. Supabase 作為多人測試資料庫
+部署說明請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
-詳細步驟請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)、[docs/SUPABASE.md](docs/SUPABASE.md) 與 [docs/OAUTH.md](docs/OAUTH.md)。
+## 測試
 
-## 測試流程
+測試重點：
 
-登入、同步、手機畫面與交付前檢查請看 [docs/TESTING.md](docs/TESTING.md)。
+- 前台登入、登出與資料同步
+- 建立群組、成員、支出與結算
+- 邀請連結加入群組
+- 手機版新增支出流程
+- 夜間模式與底部導覽可讀性
+- 後台 `/admin` 權限保護
+- 後台總覽資料是否來自 Supabase
 
-## 系統設計
+詳細測試請看 [docs/TESTING.md](docs/TESTING.md)。
 
-完整 SDD 系統設計方案請看 [docs/SDD.md](docs/SDD.md)。此文件以 `docs/equo_sdd_v2.html` 為主軸，聚焦 5 步核心流程、手機優先、登入後置、自動結算、資料結構、錯誤處理、SLA 與後續改良方向。
+## 產品文件
 
-## 技術棧與改良路線
-
-目前技術棧、短期 PWA 路線、Supabase/Vercel 分工與後續重構順序請看 [docs/TECH_STACK.md](docs/TECH_STACK.md)。
-
-## 後台管理
-
-第一版後台原型請看 [admin.html](admin.html)。目前使用靜態示範資料呈現管理台結構，後續會接 Supabase profiles、groups、expenses 與 settlement statuses。
+- [docs/SDD.md](docs/SDD.md)
+- [docs/equo_sdd_v2.html](docs/equo_sdd_v2.html)
+- [docs/Equo 算好設計優化建議書.md](docs/Equo%20算好設計優化建議書.md)

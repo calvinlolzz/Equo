@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Equo Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --bg: #070b1a;
@@ -21,9 +22,7 @@
       --shadow: 0 24px 60px rgba(0, 0, 0, .34);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -37,24 +36,100 @@
       letter-spacing: 0;
     }
 
-    button,
-    input,
-    select {
-      font: inherit;
+    button, input { font: inherit; }
+
+    .auth-screen {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    body.admin-ready .auth-screen { display: none; }
+
+    .auth-card {
+      width: min(440px, 100%);
+      padding: 28px;
+      border-radius: 24px;
+      background: rgba(12, 19, 38, .9);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .auth-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      font-weight: 900;
+      font-size: 22px;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(145deg, #6f7cff, #4fd1ff);
+      box-shadow: 0 12px 30px rgba(111, 124, 255, .28);
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .auth-card h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.15;
+    }
+
+    .auth-card p {
+      margin: 10px 0 20px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-weight: 650;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: var(--soft);
+      font-weight: 760;
+      font-size: 13px;
+    }
+
+    .field input,
+    .search {
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 12px;
+      color: var(--text);
+      background: rgba(8, 12, 27, .72);
+      border: 1px solid var(--line);
+      outline: none;
+    }
+
+    .field input:focus,
+    .search:focus {
+      border-color: rgba(79, 209, 255, .55);
+      box-shadow: 0 0 0 4px rgba(79, 209, 255, .08);
     }
 
     .admin-shell {
-      display: grid;
+      display: none;
       grid-template-columns: 244px minmax(0, 1fr);
       min-height: 100vh;
     }
+
+    body.admin-ready .admin-shell { display: grid; }
 
     .sidebar {
       position: sticky;
       top: 0;
       height: 100vh;
       padding: 18px 12px;
-      background: rgba(12, 19, 38, .88);
+      background: rgba(12, 19, 38, .9);
       border-right: 1px solid var(--line);
     }
 
@@ -66,16 +141,6 @@
       border-bottom: 1px solid var(--line);
       margin-bottom: 18px;
       font-weight: 850;
-    }
-
-    .brand-mark {
-      display: grid;
-      place-items: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 9px;
-      background: linear-gradient(145deg, #6f7cff, #4fd1ff);
-      box-shadow: 0 12px 30px rgba(111, 124, 255, .28);
     }
 
     .nav-group-title {
@@ -98,6 +163,7 @@
       background: transparent;
       text-align: left;
       cursor: pointer;
+      transition: background .12s ease, color .12s ease;
     }
 
     .nav-button svg {
@@ -116,34 +182,12 @@
       background: rgba(111, 124, 255, .22);
     }
 
-    .content {
-      padding: 34px 32px 42px;
-    }
-
-    .page {
-      display: none;
-      max-width: 1180px;
-    }
-
-    .page.active {
-      display: block;
-    }
-
-    .page-title {
-      margin-bottom: 26px;
-    }
-
-    .page-title h1 {
-      margin: 0;
-      font-size: 28px;
-      line-height: 1.15;
-    }
-
-    .page-title p {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-weight: 640;
-    }
+    .content { padding: 34px 32px 42px; }
+    .page { display: none; max-width: 1180px; }
+    .page.active { display: block; }
+    .page-title { margin-bottom: 24px; }
+    .page-title h1 { margin: 0; font-size: 28px; line-height: 1.15; }
+    .page-title p { margin: 8px 0 0; color: var(--muted); font-weight: 640; }
 
     .toolbar {
       display: flex;
@@ -153,76 +197,13 @@
       margin-bottom: 18px;
     }
 
-    .search {
-      min-width: 280px;
-      height: 40px;
-      padding: 0 14px;
-      border-radius: 10px;
-      color: var(--text);
-      background: rgba(8, 12, 27, .62);
-      border: 1px solid var(--line);
-      outline: none;
-    }
-
-    .search:focus {
-      border-color: rgba(79, 209, 255, .55);
-      box-shadow: 0 0 0 4px rgba(79, 209, 255, .08);
-    }
+    .search { min-width: 280px; }
 
     .card {
       border-radius: 13px;
-      background: rgba(12, 19, 38, .76);
+      background: rgba(12, 19, 38, .78);
       border: 1px solid var(--line);
       box-shadow: var(--shadow);
-    }
-
-    .status-panel {
-      padding: 18px;
-      margin-bottom: 24px;
-    }
-
-    .switch-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--line);
-      margin-bottom: 16px;
-    }
-
-    .switch-pill {
-      min-height: 34px;
-      padding: 8px 13px;
-      border-radius: 9px;
-      color: var(--green);
-      background: rgba(53, 223, 145, .12);
-      border: 1px solid rgba(53, 223, 145, .28);
-      font-weight: 840;
-    }
-
-    .limit-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 24px;
-      align-items: center;
-    }
-
-    .limit-field {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: var(--muted);
-      font-weight: 720;
-    }
-
-    .limit-value {
-      min-width: 132px;
-      padding: 9px 14px;
-      border-radius: 10px;
-      color: var(--text);
-      background: rgba(8, 12, 27, .7);
-      border: 1px solid var(--line);
-      text-align: center;
     }
 
     .metrics {
@@ -235,7 +216,7 @@
     .metric {
       padding: 16px;
       border-radius: 13px;
-      background: rgba(16, 26, 51, .72);
+      background: rgba(16, 26, 51, .74);
       border: 1px solid var(--line);
     }
 
@@ -260,27 +241,25 @@
       font-weight: 760;
     }
 
-    .filters {
+    .status-panel {
+      padding: 18px;
+      margin-bottom: 24px;
+    }
+
+    .switch-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 16px;
+      gap: 12px;
     }
 
-    .filter-chip {
-      min-height: 30px;
-      padding: 7px 13px;
-      border-radius: 999px;
-      color: var(--muted);
-      background: rgba(16, 26, 51, .64);
-      border: 1px solid var(--line);
-      cursor: pointer;
-    }
-
-    .filter-chip.active,
-    .filter-chip:hover {
-      color: #fff;
-      background: rgba(111, 124, 255, .9);
+    .switch-pill {
+      min-height: 34px;
+      padding: 8px 13px;
+      border-radius: 9px;
+      color: var(--green);
+      background: rgba(53, 223, 145, .12);
+      border: 1px solid rgba(53, 223, 145, .28);
+      font-weight: 840;
     }
 
     .table-wrap {
@@ -295,8 +274,7 @@
       border-collapse: collapse;
     }
 
-    th,
-    td {
+    th, td {
       padding: 13px 16px;
       border-bottom: 1px solid var(--line);
       text-align: left;
@@ -315,18 +293,9 @@
       font-size: 14px;
     }
 
-    tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .mono {
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-      color: #c7d6ff;
-    }
-
-    .muted {
-      color: var(--muted);
-    }
+    tr:last-child td { border-bottom: 0; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; color: #c7d6ff; }
+    .muted { color: var(--muted); }
 
     .badge {
       display: inline-flex;
@@ -338,20 +307,9 @@
       font-weight: 860;
     }
 
-    .badge.ok {
-      color: var(--green);
-      background: rgba(53, 223, 145, .12);
-    }
-
-    .badge.warn {
-      color: var(--amber);
-      background: rgba(247, 201, 72, .13);
-    }
-
-    .badge.off {
-      color: var(--red);
-      background: rgba(255, 102, 117, .13);
-    }
+    .badge.ok { color: var(--green); background: rgba(53, 223, 145, .12); }
+    .badge.warn { color: var(--amber); background: rgba(247, 201, 72, .13); }
+    .badge.off { color: var(--red); background: rgba(255, 102, 117, .13); }
 
     .grid-2 {
       display: grid;
@@ -359,20 +317,9 @@
       gap: 16px;
     }
 
-    .settings-card {
-      padding: 18px;
-    }
-
-    .settings-card h3 {
-      margin: 0 0 10px;
-      font-size: 17px;
-    }
-
-    .settings-card p {
-      margin: 0 0 16px;
-      color: var(--muted);
-      line-height: 1.55;
-    }
+    .settings-card { padding: 18px; }
+    .settings-card h3 { margin: 0 0 10px; font-size: 17px; }
+    .settings-card p { margin: 0 0 16px; color: var(--muted); line-height: 1.55; }
 
     .setting-line {
       display: flex;
@@ -385,70 +332,78 @@
       font-weight: 720;
     }
 
-    .primary {
-      min-height: 38px;
+    .primary,
+    .soft {
+      min-height: 40px;
       padding: 9px 14px;
-      border: 0;
       border-radius: 10px;
-      color: #fff;
-      background: linear-gradient(145deg, #6f7cff, #4fd1ff);
       font-weight: 860;
       cursor: pointer;
+      transition: background .12s ease, color .12s ease, filter .12s ease;
+    }
+
+    .primary {
+      border: 0;
+      color: #fff;
+      background: linear-gradient(145deg, #6f7cff, #4fd1ff);
     }
 
     .soft {
-      min-height: 38px;
-      padding: 9px 14px;
-      border-radius: 10px;
       color: var(--soft);
       background: rgba(16, 26, 51, .64);
       border: 1px solid var(--line);
-      font-weight: 820;
-      cursor: pointer;
     }
 
     .primary:hover,
-    .soft:hover {
-      transform: translateY(-1px);
-      filter: brightness(1.06);
+    .soft:hover { filter: brightness(1.07); }
+
+    .sidebar-footer {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 18px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .small-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
     }
 
     @media (max-width: 900px) {
-      .admin-shell {
-        grid-template-columns: 1fr;
-      }
-
-      .sidebar {
-        position: static;
-        height: auto;
-      }
-
-      .content {
-        padding: 24px 16px 32px;
-      }
-
-      .metrics,
-      .grid-2 {
-        grid-template-columns: 1fr;
-      }
-
-      .toolbar {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .search {
-        width: 100%;
-        min-width: 0;
-      }
-
-      .table-wrap {
-        overflow-x: auto;
-      }
+      .admin-shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .sidebar-footer { position: static; margin-top: 18px; }
+      .content { padding: 24px 16px 32px; }
+      .metrics, .grid-2 { grid-template-columns: 1fr; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .search { width: 100%; min-width: 0; }
+      .table-wrap { overflow-x: auto; }
     }
   </style>
 </head>
 <body>
+  <section id="adminAuth" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand"><div class="brand-mark">E</div><span>Equo Admin</span></div>
+      <h1>後台登入</h1>
+      <p id="adminAuthMessage">請使用已授權的管理員帳號登入。</p>
+      <form id="adminLoginForm">
+        <label class="field">Email
+          <input id="adminEmail" type="email" autocomplete="email" required />
+        </label>
+        <label class="field">密碼
+          <input id="adminPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary" type="submit" style="width:100%">登入後台</button>
+      </form>
+      <p class="small-note">後台只顯示正式雲端資料。若登入後仍無法進入，請先在 Supabase 將此帳號加入 app_admins。</p>
+    </div>
+  </section>
+
   <div class="admin-shell">
     <aside class="sidebar" aria-label="後台導覽">
       <div class="brand">
@@ -460,58 +415,61 @@
         <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4z"/><path d="M13 4h7v7h-7z"/><path d="M4 13h7v7H4z"/><path d="M13 13h7v7h-7z"/></svg>
         總覽
       </button>
-
-      <p class="nav-group-title">平台共用</p>
+      <p class="nav-group-title">平台</p>
       <button class="nav-button" type="button" data-page="users" onclick="showAdminPage('users')">
         <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
         使用者
       </button>
+      <button class="nav-button" type="button" data-page="groups" onclick="showAdminPage('groups')">
+        <svg viewBox="0 0 24 24"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/></svg>
+        群組
+      </button>
       <button class="nav-button" type="button" data-page="operations" onclick="showAdminPage('operations')">
         <svg viewBox="0 0 24 24"><path d="M13 2L3 14h8l-1 8 11-13h-8z"/></svg>
-        營運狀態
+        紀錄
       </button>
       <button class="nav-button" type="button" data-page="health" onclick="showAdminPage('health')">
         <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 8-6-16-3 8H2"/></svg>
-        維運監控
+        系統
       </button>
-
-      <p class="nav-group-title">站點</p>
-      <button class="nav-button" type="button" data-page="groups" onclick="showAdminPage('groups')">
-        <svg viewBox="0 0 24 24"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/></svg>
-        Equo 分帳
-      </button>
+      <p class="nav-group-title">設定</p>
       <button class="nav-button" type="button" data-page="settings" onclick="showAdminPage('settings')">
         <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04a1.8 1.8 0 0 0-1.98-.36"/></svg>
-        營運設定
+        站台設定
       </button>
+
+      <div class="sidebar-footer">
+        <p id="adminUserLabel" class="small-note">尚未讀取帳號</p>
+        <button class="soft" type="button" onclick="logoutAdmin()">登出</button>
+      </div>
     </aside>
 
     <main class="content">
       <section id="overview" class="page active">
         <div class="page-title">
           <h1>總覽</h1>
-          <p>Equo 分帳的使用狀態、資料品質與備份概況。</p>
+          <p>正式站資料狀態與核心使用量。<span id="adminSourcePill" class="badge warn">讀取中</span></p>
         </div>
         <div class="metrics">
-          <div class="metric"><span>使用者</span><strong>128</strong><small>本週 +14</small></div>
-          <div class="metric"><span>群組</span><strong>342</strong><small>活躍 76 組</small></div>
-          <div class="metric"><span>支出</span><strong>4,812</strong><small>今日 +39</small></div>
-          <div class="metric"><span>結算分享</span><strong>921</strong><small>複製率 68%</small></div>
+          <div class="metric"><span>使用者</span><strong id="metricUsers">0</strong><small>已建立個人資料</small></div>
+          <div class="metric"><span>群組</span><strong id="metricGroups">0</strong><small>尚未封存</small></div>
+          <div class="metric"><span>支出</span><strong id="metricExpenses">0</strong><small>雲端支出筆數</small></div>
+          <div class="metric"><span>結算狀態</span><strong id="metricSettlements">0</strong><small>付款追蹤筆數</small></div>
         </div>
         <div class="grid-2">
           <div class="card settings-card">
-            <h3>今日重點</h3>
-            <p>目前系統狀態正常，最近 24 小時沒有同步錯誤暴增。</p>
-            <div class="setting-line"><span>Supabase</span><span class="badge ok">正常</span></div>
-            <div class="setting-line"><span>Vercel 部署</span><span class="badge ok">正常</span></div>
-            <div class="setting-line"><span>PWA 快取</span><span class="badge warn">v53</span></div>
+            <h3>系統狀態</h3>
+            <p>正式站目前只顯示必要資訊，細節以使用者安全與資料穩定為主。</p>
+            <div class="setting-line"><span>Supabase</span><span id="healthSupabase" class="badge warn">檢查中</span></div>
+            <div class="setting-line"><span>Profiles</span><span id="healthProfiles">0</span></div>
+            <div class="setting-line"><span>Snapshots</span><span id="healthSnapshots">0</span></div>
           </div>
           <div class="card settings-card">
-            <h3>下一步建議</h3>
-            <p>先觀察核心流程，避免過早開放太多進階功能。</p>
-            <div class="setting-line"><span>主流程</span><span>建立群組 → 新增支出 → 分享</span></div>
-            <div class="setting-line"><span>後台資料</span><span>下一階段接 Supabase</span></div>
-            <div class="setting-line"><span>風險</span><span>需要管理員權限保護</span></div>
+            <h3>目前重點</h3>
+            <p>前台提供正式試用入口；後台保留營運、資料檢查與權限管理入口。</p>
+            <div class="setting-line"><span>前台</span><span class="badge ok">正式試用</span></div>
+            <div class="setting-line"><span>後台</span><span class="badge ok">管理員限定</span></div>
+            <div class="setting-line"><span>資料</span><span class="badge ok">Supabase</span></div>
           </div>
         </div>
       </section>
@@ -519,105 +477,74 @@
       <section id="users" class="page">
         <div class="page-title">
           <h1>使用者</h1>
-          <p>查看登入帳號、最後活動與備份狀態。</p>
+          <p>最近有資料更新的使用者與群組數。</p>
         </div>
         <div class="toolbar">
-          <input class="search" placeholder="搜尋 Email 或暱稱" />
-          <button class="primary" type="button">匯出使用者</button>
+          <input id="userSearch" class="search" placeholder="搜尋使用者名稱" oninput="renderAdminDashboard()" />
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>使用者</th><th>Email</th><th>群組</th><th>最後活動</th><th>狀態</th></tr></thead>
-            <tbody>
-              <tr><td>Calvin</td><td>calvin@example.com</td><td>12</td><td>2026/06/25 18:42</td><td><span class="badge ok">啟用</span></td></tr>
-              <tr><td>Polly Lin</td><td>polly@example.com</td><td>8</td><td>2026/06/25 16:10</td><td><span class="badge ok">啟用</span></td></tr>
-              <tr><td>Guest Demo</td><td class="muted">本機試用</td><td>3</td><td>2026/06/24 22:12</td><td><span class="badge warn">未登入</span></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="operations" class="page">
-        <div class="page-title">
-          <h1>營運狀態</h1>
-          <p>控制功能開關、每日限制與核心流程入口。</p>
-        </div>
-        <div class="card status-panel">
-          <div class="switch-row">
-            <span class="switch-pill">總開關 · 啟用中</span>
-            <span class="switch-pill">邀請連結 · 開</span>
-            <span class="switch-pill">Google 登入 · 開</span>
-            <span class="switch-pill">AI 記帳 · 暫停</span>
-            <span class="switch-pill">報表匯出 · 開</span>
-          </div>
-          <div class="limit-row">
-            <div class="limit-field">每日新增群組上限 <span class="limit-value">500</span></div>
-            <div class="limit-field">每日支出上限 <span class="limit-value">5000</span></div>
-            <div class="limit-field">每日分享上限 <span class="limit-value">2000</span></div>
-          </div>
-        </div>
-        <h2>操作紀錄</h2>
-        <div class="filters">
-          <button class="filter-chip active" type="button">全部</button>
-          <button class="filter-chip" type="button">登入</button>
-          <button class="filter-chip" type="button">群組</button>
-          <button class="filter-chip" type="button">支出</button>
-          <button class="filter-chip" type="button">備份</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>時間</th><th>來源</th><th>動作</th><th>結果</th><th>備註</th></tr></thead>
-            <tbody>
-              <tr><td>2026/06/25 19:12</td><td>Vercel</td><td class="mono">deploy.production</td><td><span class="badge ok">成功</span></td><td>main</td></tr>
-              <tr><td>2026/06/25 18:48</td><td>Supabase</td><td class="mono">backup.snapshot</td><td><span class="badge ok">成功</span></td><td>128 users</td></tr>
-              <tr><td>2026/06/25 18:20</td><td>App</td><td class="mono">group.invite</td><td><span class="badge ok">成功</span></td><td>週末露營</td></tr>
-              <tr><td>2026/06/25 17:55</td><td>App</td><td class="mono">expense.create</td><td><span class="badge ok">成功</span></td><td>TWD 1200</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="health" class="page">
-        <div class="page-title">
-          <h1>維運監控</h1>
-          <p>追蹤 API、資料庫、快取與同步狀態。</p>
-        </div>
-        <div class="metrics">
-          <div class="metric"><span>API 延遲</span><strong>84ms</strong><small>正常</small></div>
-          <div class="metric"><span>同步失敗率</span><strong>0.4%</strong><small>低於門檻</small></div>
-          <div class="metric"><span>RLS 錯誤</span><strong>0</strong><small>24 小時</small></div>
-          <div class="metric"><span>快取版本</span><strong>v53</strong><small>已發布</small></div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>項目</th><th>狀態</th><th>最後檢查</th><th>處理建議</th></tr></thead>
-            <tbody>
-              <tr><td>Supabase Auth</td><td><span class="badge ok">正常</span></td><td>1 分鐘前</td><td>無</td></tr>
-              <tr><td>PostgreSQL RLS</td><td><span class="badge ok">正常</span></td><td>3 分鐘前</td><td>無</td></tr>
-              <tr><td>Vercel API config</td><td><span class="badge ok">正常</span></td><td>5 分鐘前</td><td>無</td></tr>
-              <tr><td>PWA Cache</td><td><span class="badge warn">需觀察</span></td><td>12 分鐘前</td><td>確認舊版快取是否清除</td></tr>
-            </tbody>
+            <thead><tr><th>使用者</th><th>預設幣別</th><th>群組</th><th>建立時間</th><th>更新時間</th></tr></thead>
+            <tbody id="usersTableBody"></tbody>
           </table>
         </div>
       </section>
 
       <section id="groups" class="page">
         <div class="page-title">
-          <h1>Equo 分帳</h1>
-          <p>查看群組、支出、成員與資料品質。</p>
+          <h1>群組</h1>
+          <p>正式雲端群組、成員數與支出概況。</p>
         </div>
         <div class="toolbar">
-          <input class="search" placeholder="搜尋群組、成員或支出" />
-          <button class="soft" type="button">檢查異常資料</button>
+          <input id="groupSearch" class="search" placeholder="搜尋群組名稱" oninput="renderAdminDashboard()" />
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>群組</th><th>成員</th><th>支出</th><th>總額</th><th>狀態</th></tr></thead>
+            <thead><tr><th>群組</th><th>成員</th><th>支出</th><th>總金額</th><th>幣別</th><th>建立時間</th></tr></thead>
+            <tbody id="groupsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="operations" class="page">
+        <div class="page-title">
+          <h1>紀錄</h1>
+          <p>後台操作與重要系統紀錄。</p>
+        </div>
+        <div class="card status-panel">
+          <div class="switch-row">
+            <span class="switch-pill">Email 登入已啟用</span>
+            <span class="switch-pill">Google 登入可接續</span>
+            <span class="switch-pill">邀請連結已接雲端</span>
+            <span class="switch-pill">AI 助手先隱藏</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>時間</th><th>帳號</th><th>動作</th><th>結果</th></tr></thead>
+            <tbody id="auditTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="health" class="page">
+        <div class="page-title">
+          <h1>系統</h1>
+          <p>正式站必要服務狀態。</p>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span>API Config</span><strong id="metricApi">-</strong><small>Vercel 環境變數</small></div>
+          <div class="metric"><span>Auth</span><strong id="metricAuth">-</strong><small>管理員登入</small></div>
+          <div class="metric"><span>Database</span><strong id="metricDb">-</strong><small>RPC 讀取</small></div>
+          <div class="metric"><span>RLS</span><strong id="metricRls">ON</strong><small>資料表保護</small></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>項目</th><th>狀態</th><th>說明</th></tr></thead>
             <tbody>
-              <tr><td>日本旅遊</td><td>5</td><td>26</td><td>$84,300</td><td><span class="badge ok">正常</span></td></tr>
-              <tr><td>週末露營</td><td>4</td><td>8</td><td>$12,480</td><td><span class="badge ok">正常</span></td></tr>
-              <tr><td>室友水電</td><td>3</td><td>14</td><td>$31,120</td><td><span class="badge warn">待確認</span></td></tr>
-              <tr><td>公司聚餐</td><td>7</td><td>4</td><td>$9,600</td><td><span class="badge ok">正常</span></td></tr>
+              <tr><td>Supabase Auth</td><td><span id="authStatusBadge" class="badge warn">檢查中</span></td><td>登入與身份驗證</td></tr>
+              <tr><td>Admin Role</td><td><span id="roleStatusBadge" class="badge warn">檢查中</span></td><td>app_admins 管理員名單</td></tr>
+              <tr><td>Dashboard RPC</td><td><span id="rpcStatusBadge" class="badge warn">檢查中</span></td><td>get_admin_dashboard</td></tr>
             </tbody>
           </table>
         </div>
@@ -625,25 +552,23 @@
 
       <section id="settings" class="page">
         <div class="page-title">
-          <h1>營運設定</h1>
-          <p>控制公開功能、資料保留與用戶通知。</p>
+          <h1>站台設定</h1>
+          <p>正式版先保留必要開關，避免把內部技術細節放到前台。</p>
         </div>
         <div class="grid-2">
           <div class="card settings-card">
-            <h3>登入與邀請</h3>
-            <p>一般用戶不必先登入；只有備份、跨裝置與正式邀請才要求登入。</p>
-            <div class="setting-line"><span>Email 登入</span><span class="badge ok">開</span></div>
-            <div class="setting-line"><span>Google 登入</span><span class="badge ok">開</span></div>
-            <div class="setting-line"><span>Apple 登入</span><span class="badge warn">準備中</span></div>
-            <div class="setting-line"><span>邀請連結</span><span class="badge ok">開</span></div>
+            <h3>登入方式</h3>
+            <p>前台支援 Email，Google 與 Apple 可在 Supabase Auth Provider 完成後開啟。</p>
+            <div class="setting-line"><span>Email</span><span class="badge ok">可用</span></div>
+            <div class="setting-line"><span>Google</span><span class="badge warn">待設定</span></div>
+            <div class="setting-line"><span>Apple</span><span class="badge warn">待設定</span></div>
           </div>
           <div class="card settings-card">
-            <h3>進階功能</h3>
-            <p>優先保護核心流程，進階功能採用分階段開放。</p>
-            <div class="setting-line"><span>AI 記帳</span><span class="badge off">暫停</span></div>
-            <div class="setting-line"><span>發票掃描</span><span class="badge off">暫停</span></div>
-            <div class="setting-line"><span>匯出報表</span><span class="badge ok">開</span></div>
-            <div class="setting-line"><span>家庭模式</span><span class="badge warn">測試中</span></div>
+            <h3>產品功能</h3>
+            <p>前台以直覺流程為優先；後台逐步補上營運、客服與資料稽核。</p>
+            <div class="setting-line"><span>AI 助手</span><span class="badge off">先隱藏</span></div>
+            <div class="setting-line"><span>日程自動群組</span><span class="badge warn">規劃中</span></div>
+            <div class="setting-line"><span>正式網頁版</span><span class="badge ok">啟用</span></div>
           </div>
         </div>
       </section>
@@ -651,12 +576,227 @@
   </div>
 
   <script>
+    const adminState = {
+      client: null,
+      user: null,
+      role: null,
+      dashboard: null,
+      configReady: false,
+      rpcReady: false
+    };
+
+    const emptyDashboard = {
+      metrics: { users: 0, groups: 0, expenses: 0, settlement_statuses: 0 },
+      users: [],
+      groups: [],
+      health: { supabase: "unknown", profiles: 0, snapshots: 0 },
+      audit_logs: []
+    };
+
     function showAdminPage(id) {
       document.querySelectorAll(".page").forEach(page => page.classList.toggle("active", page.id === id));
       document.querySelectorAll(".nav-button").forEach(button => {
         button.classList.toggle("active", button.dataset.page === id);
       });
     }
+
+    function setAuthMessage(message) {
+      document.getElementById("adminAuthMessage").textContent = message;
+    }
+
+    function setBadge(id, text, mode = "ok") {
+      const badge = document.getElementById(id);
+      if (!badge) return;
+      badge.textContent = text;
+      badge.className = `badge ${mode}`;
+    }
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString("zh-TW");
+    }
+
+    function formatDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "-";
+      return date.toLocaleString("zh-TW", { hour12: false });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    async function initAdmin() {
+      document.getElementById("adminLoginForm").addEventListener("submit", signInAdmin);
+      try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        const config = response.ok ? await response.json() : null;
+        const supabaseConfig = config?.supabase;
+        if (!supabaseConfig?.configured || !supabaseConfig.url || !supabaseConfig.anonKey) {
+          setAuthMessage("後台尚未連線 Supabase，請先完成正式站環境變數。");
+          document.getElementById("adminLoginForm").style.display = "none";
+          setBadge("authStatusBadge", "未連線", "off");
+          return;
+        }
+        adminState.client = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
+        adminState.configReady = true;
+        document.getElementById("metricApi").textContent = "OK";
+        await restoreAdminSession();
+      } catch (error) {
+        setAuthMessage("無法讀取後台設定，請確認部署環境。");
+        document.getElementById("adminLoginForm").style.display = "none";
+        setBadge("authStatusBadge", "失敗", "off");
+      }
+    }
+
+    async function restoreAdminSession() {
+      const { data } = await adminState.client.auth.getSession();
+      const user = data?.session?.user;
+      if (!user) {
+        setAuthMessage("請使用已授權的管理員帳號登入。");
+        document.getElementById("metricAuth").textContent = "待登入";
+        setBadge("authStatusBadge", "待登入", "warn");
+        return;
+      }
+      adminState.user = user;
+      await verifyAdminRole();
+    }
+
+    async function signInAdmin(event) {
+      event.preventDefault();
+      if (!adminState.client) return;
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value;
+      setAuthMessage("正在登入...");
+      const { data, error } = await adminState.client.auth.signInWithPassword({ email, password });
+      if (error) {
+        setAuthMessage("登入失敗，請確認 Email 或密碼。");
+        return;
+      }
+      adminState.user = data.user;
+      await verifyAdminRole();
+    }
+
+    async function verifyAdminRole() {
+      const { data, error } = await adminState.client
+        .from("app_admins")
+        .select("role")
+        .eq("user_id", adminState.user.id)
+        .maybeSingle();
+
+      if (error || !data?.role) {
+        setAuthMessage("此帳號尚未取得後台權限。");
+        document.body.classList.remove("admin-ready");
+        document.getElementById("metricAuth").textContent = "已登入";
+        setBadge("authStatusBadge", "已登入", "ok");
+        setBadge("roleStatusBadge", "未授權", "off");
+        return;
+      }
+
+      adminState.role = data.role;
+      document.body.classList.add("admin-ready");
+      document.getElementById("adminUserLabel").textContent = `${adminState.user.email || "管理員"} · ${data.role}`;
+      document.getElementById("metricAuth").textContent = "OK";
+      setBadge("authStatusBadge", "正常", "ok");
+      setBadge("roleStatusBadge", data.role, "ok");
+      await loadAdminDashboard();
+    }
+
+    async function loadAdminDashboard() {
+      const { data, error } = await adminState.client.rpc("get_admin_dashboard");
+      if (error) {
+        adminState.dashboard = emptyDashboard;
+        adminState.rpcReady = false;
+        document.getElementById("metricDb").textContent = "失敗";
+        setBadge("rpcStatusBadge", "失敗", "off");
+        setBadge("adminSourcePill", "資料讀取失敗", "off");
+        renderAdminDashboard();
+        return;
+      }
+      adminState.dashboard = { ...emptyDashboard, ...data };
+      adminState.rpcReady = true;
+      document.getElementById("metricDb").textContent = "OK";
+      setBadge("rpcStatusBadge", "正常", "ok");
+      setBadge("adminSourcePill", "正式資料", "ok");
+      await recordAdminAudit("admin.dashboard.view");
+      renderAdminDashboard();
+    }
+
+    async function recordAdminAudit(action) {
+      if (!adminState.client || !adminState.role) return;
+      try {
+        await adminState.client.rpc("record_admin_audit", {
+          action_input: action,
+          metadata_input: { page: location.pathname }
+        });
+      } catch (_) {
+        // Audit failure should not block dashboard usage.
+      }
+    }
+
+    function renderAdminDashboard() {
+      const dashboard = adminState.dashboard || emptyDashboard;
+      const metrics = dashboard.metrics || emptyDashboard.metrics;
+      document.getElementById("metricUsers").textContent = formatNumber(metrics.users);
+      document.getElementById("metricGroups").textContent = formatNumber(metrics.groups);
+      document.getElementById("metricExpenses").textContent = formatNumber(metrics.expenses);
+      document.getElementById("metricSettlements").textContent = formatNumber(metrics.settlement_statuses);
+      document.getElementById("healthProfiles").textContent = formatNumber(dashboard.health?.profiles);
+      document.getElementById("healthSnapshots").textContent = formatNumber(dashboard.health?.snapshots);
+      setBadge("healthSupabase", dashboard.health?.supabase === "ok" ? "正常" : "未確認", dashboard.health?.supabase === "ok" ? "ok" : "warn");
+
+      const userKeyword = document.getElementById("userSearch")?.value.trim().toLowerCase() || "";
+      const users = (dashboard.users || []).filter(user => String(user.display_name || "").toLowerCase().includes(userKeyword));
+      document.getElementById("usersTableBody").innerHTML = users.length ? users.map(user => `
+        <tr>
+          <td>${escapeHtml(user.display_name || "未命名")}</td>
+          <td>${escapeHtml(user.default_currency || "TWD")}</td>
+          <td>${formatNumber(user.group_count)}</td>
+          <td>${formatDate(user.created_at)}</td>
+          <td>${formatDate(user.updated_at)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="5" class="muted">目前沒有可顯示的使用者資料。</td></tr>`;
+
+      const groupKeyword = document.getElementById("groupSearch")?.value.trim().toLowerCase() || "";
+      const groups = (dashboard.groups || []).filter(group => String(group.name || "").toLowerCase().includes(groupKeyword));
+      document.getElementById("groupsTableBody").innerHTML = groups.length ? groups.map(group => `
+        <tr>
+          <td>${escapeHtml(group.name || "未命名群組")}</td>
+          <td>${formatNumber(group.member_count)}</td>
+          <td>${formatNumber(group.expense_count)}</td>
+          <td>${formatNumber(group.total_amount)}</td>
+          <td>${escapeHtml(group.base_currency || "TWD")}</td>
+          <td>${formatDate(group.created_at)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="6" class="muted">目前沒有可顯示的群組資料。</td></tr>`;
+
+      const logs = dashboard.audit_logs || [];
+      document.getElementById("auditTableBody").innerHTML = logs.length ? logs.map(log => `
+        <tr>
+          <td>${formatDate(log.created_at)}</td>
+          <td>${escapeHtml(log.admin_email || "-")}</td>
+          <td class="mono">${escapeHtml(log.action || "-")}</td>
+          <td><span class="badge ok">完成</span></td>
+        </tr>
+      `).join("") : `<tr><td colspan="4" class="muted">尚無後台操作紀錄。</td></tr>`;
+    }
+
+    async function logoutAdmin() {
+      if (adminState.client) await adminState.client.auth.signOut();
+      adminState.user = null;
+      adminState.role = null;
+      adminState.dashboard = null;
+      document.body.classList.remove("admin-ready");
+      setAuthMessage("已登出，請重新登入後台。");
+    }
+
+    initAdmin();
   </script>
 </body>
 </html>

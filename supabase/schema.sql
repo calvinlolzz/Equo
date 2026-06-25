@@ -964,3 +964,177 @@ create policy "snapshots_insert_self" on public.user_snapshots
 
 create policy "snapshots_update_self" on public.user_snapshots
   for update using (user_id = auth.uid());
+
+create table if not exists public.app_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'admin' check (role in ('owner', 'admin', 'support')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.admin_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  admin_id uuid references auth.users(id) on delete set null,
+  admin_email text,
+  action text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table public.app_admins enable row level security;
+alter table public.admin_audit_logs enable row level security;
+
+grant select on public.app_admins to authenticated;
+grant select on public.admin_audit_logs to authenticated;
+
+create policy "app_admins_select_self" on public.app_admins
+  for select using (user_id = auth.uid());
+
+create policy "admin_logs_select_admins" on public.admin_audit_logs
+  for select using (
+    exists (
+      select 1 from public.app_admins
+      where app_admins.user_id = auth.uid()
+    )
+  );
+
+create or replace function public.record_admin_audit(
+  action_input text,
+  metadata_input jsonb default '{}'::jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  log_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  if not exists (
+    select 1 from public.app_admins
+    where user_id = auth.uid()
+  ) then
+    raise exception 'admin_required';
+  end if;
+
+  insert into public.admin_audit_logs (
+    admin_id,
+    admin_email,
+    action,
+    metadata
+  ) values (
+    auth.uid(),
+    auth.jwt() ->> 'email',
+    action_input,
+    coalesce(metadata_input, '{}'::jsonb)
+  )
+  returning id into log_id;
+
+  return log_id;
+end;
+$$;
+
+create or replace function public.get_admin_dashboard()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  if auth.uid() is null then
+    raise exception 'login_required';
+  end if;
+
+  if not exists (
+    select 1 from public.app_admins
+    where user_id = auth.uid()
+  ) then
+    raise exception 'admin_required';
+  end if;
+
+  select jsonb_build_object(
+    'metrics', jsonb_build_object(
+      'users', (select count(*) from public.profiles),
+      'groups', (select count(*) from public.groups where archived_at is null),
+      'expenses', (select count(*) from public.expenses),
+      'settlement_statuses', (select count(*) from public.settlement_statuses)
+    ),
+    'users', coalesce((
+      select jsonb_agg(row_to_json(user_rows))
+      from (
+        select
+          p.display_name,
+          p.default_currency,
+          p.created_at,
+          p.updated_at,
+          coalesce(group_counts.group_count, 0) as group_count
+        from public.profiles p
+        left join (
+          select owner_id, count(*) as group_count
+          from public.groups
+          where archived_at is null
+          group by owner_id
+        ) group_counts on group_counts.owner_id = p.id
+        order by p.updated_at desc nulls last, p.created_at desc
+        limit 50
+      ) user_rows
+    ), '[]'::jsonb),
+    'groups', coalesce((
+      select jsonb_agg(row_to_json(group_rows))
+      from (
+        select
+          g.name,
+          g.subtitle,
+          g.base_currency,
+          g.budget,
+          g.created_at,
+          g.updated_at,
+          coalesce(member_counts.member_count, 0) as member_count,
+          coalesce(expense_counts.expense_count, 0) as expense_count,
+          coalesce(expense_counts.total_amount, 0) as total_amount
+        from public.groups g
+        left join (
+          select group_id, count(*) as member_count
+          from public.group_members
+          group by group_id
+        ) member_counts on member_counts.group_id = g.id
+        left join (
+          select group_id, count(*) as expense_count, sum(amount) as total_amount
+          from public.expenses
+          group by group_id
+        ) expense_counts on expense_counts.group_id = g.id
+        where g.archived_at is null
+        order by g.updated_at desc nulls last, g.created_at desc
+        limit 50
+      ) group_rows
+    ), '[]'::jsonb),
+    'health', jsonb_build_object(
+      'supabase', 'ok',
+      'profiles', (select count(*) from public.profiles),
+      'snapshots', (select count(*) from public.user_snapshots)
+    ),
+    'audit_logs', coalesce((
+      select jsonb_agg(row_to_json(audit_rows))
+      from (
+        select admin_email, action, created_at
+        from public.admin_audit_logs
+        order by created_at desc
+        limit 30
+      ) audit_rows
+    ), '[]'::jsonb)
+  ) into result;
+
+  return result;
+end;
+$$;
+
+revoke all on function public.record_admin_audit(text, jsonb) from public;
+grant execute on function public.record_admin_audit(text, jsonb) to authenticated;
+
+revoke all on function public.get_admin_dashboard() from public;
+grant execute on function public.get_admin_dashboard() to authenticated;

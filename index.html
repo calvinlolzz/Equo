@@ -12,7 +12,7 @@
   <link rel="manifest" href="./site.webmanifest" />
   <link rel="icon" href="./assets/icons/equo-icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./assets/icons/equo-icon-512.png" />
-  <title>Equo 算好 分帳 App 原型</title>
+  <title>Equo 算好</title>
   <style>
     :root {
       --text: #1c1c1e;
@@ -3070,7 +3070,7 @@
             <div class="action-grid">
               <button id="selfTestButton" class="soft-btn feature-paused" type="button" onclick="runSyncSelfTest()">檢查資料狀態</button>
               <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
-              <button class="soft-btn" type="button" onclick="startFreshData()">清除範例</button>
+              <button class="soft-btn" type="button" onclick="startFreshData()">重新開始</button>
             </div>
           </div>
           <div class="input-card">
@@ -4344,9 +4344,9 @@
     async function startFreshData() {
       if (groups.length) {
         const confirmed = await appConfirm({
-          title: "清除目前資料？",
-          message: "會清除目前畫面上的範例資料，改用乾淨資料開始。",
-          action: "清除"
+          title: "重新開始？",
+          message: "會清除目前畫面上的資料，改用乾淨狀態開始。",
+          action: "重新開始"
         });
         if (!confirmed) return;
       }
@@ -4366,7 +4366,7 @@
       }
       renderAll();
       showScreen("home");
-      showToast("已清除範例資料");
+      showToast("已準備好重新開始");
       openGroupSheet();
     }
 

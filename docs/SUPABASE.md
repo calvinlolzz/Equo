@@ -1,55 +1,43 @@
-# Supabase 接入指南
+# Supabase 設定
 
-## 目標
+Equo 使用 Supabase 作為正式站的登入、多人同步與後台資料來源。前台只讀寫使用者自己可操作的群組資料；後台只允許 `app_admins` 名單內的帳號進入。
 
-目前 Equo 使用瀏覽器本機資料，適合展示原型。接上 Supabase 後，才能支援真實用戶測試：
+## 建立專案
 
-- 跨裝置登入
-- 多人群組同步
-- 真實邀請成員
-- 支出、結算、付款紀錄雲端保存
-- Row Level Security 權限控管
-
-## 建立 Supabase 專案
-
-1. 到 Supabase 建立新 project。
-2. Project name 建議：`equo`
-3. Region 選離主要用戶近的區域。
-4. Database password 請保存好，不要提交到 GitHub。
+1. 在 Supabase 建立 project，建議名稱使用 `equo`。
+2. Region 選擇主要用戶較近的區域。
+3. Database password 請保存於密碼管理工具，不要放入 GitHub。
 
 ## 建立資料表
 
 1. 進入 Supabase Dashboard。
-2. 打開 SQL Editor。
-3. 貼上並執行：
+2. 開啟 SQL Editor。
+3. 執行專案內的 SQL：
 
 ```text
 supabase/schema.sql
 ```
 
-此 schema 會建立：
+目前主要資料表：
 
-- profiles
-- groups
-- group_members
-- expenses
-- expense_splits
-- settlements
-- settlement_statuses
-- payment_records
-- recurring_bills
-- notifications
+- `profiles`
+- `groups`
+- `group_members`
+- `group_invites`
+- `expenses`
+- `expense_splits`
+- `settlements`
+- `settlement_statuses`
+- `payment_records`
+- `recurring_bills`
+- `notifications`
+- `user_snapshots`
+- `app_admins`
+- `admin_audit_logs`
 
-也會開啟 Row Level Security。
+所有正式資料表都需要 Row Level Security。
 
-## 取得前端設定
-
-到 Supabase Project Settings > API，取得：
-
-- Project URL
-- anon public key
-
-## 設定 Vercel 環境變數
+## Vercel 環境變數
 
 在 Vercel 專案設定中加入：
 
@@ -58,33 +46,54 @@ SUPABASE_URL=你的 Project URL
 SUPABASE_ANON_KEY=你的 anon public key
 ```
 
-重新部署後，App 的「我的 > 雲端同步」會從「本機」變成「雲端」。
+`SUPABASE_ANON_KEY` 可以放在前端使用，但 `service_role` key 不可以放入 GitHub 或前端程式。
 
-## 目前資料流
+## 後台管理員
 
-已登入雲端帳號後，App 會使用正式資料表保存資料：
+正式後台路徑：
 
-- `profiles`：使用者名稱、頭像與預設幣別。
-- `groups`：群組名稱、幣別、預算與 App 內群組 ID。
-- `group_members`：群組成員、角色、顯示名稱與頭像。成員可以先是未註冊的家人/朋友。
-- `group_invites`：群組邀請連結、預設角色、接受狀態與到期時間。
-- `expenses`：支出、付款人、參與分攤成員、分類、幣別與備註。
-- `settlement_statuses`：目前 App 內的付款/收款確認狀態。
+```text
+/admin
+```
 
-新登入帳號如果沒有雲端資料，會看到乾淨空狀態，不會自動載入展示資料。展示資料只保留在本機試用模式。
+後台登入前，先用前台或 Supabase Auth 建立一個帳號。接著在 Supabase SQL Editor 將該帳號加入 `app_admins`。
 
-## 後續開發順序
+```sql
+insert into public.app_admins (user_id, role)
+values ('你的 auth.users.id', 'owner')
+on conflict (user_id) do update set role = excluded.role;
+```
 
-1. Auth：把原型登入替換成 Supabase Auth。
-2. Profiles：登入後建立/讀取 profiles。
-3. Groups：群組建立寫入 Supabase。已完成第一版。
-4. Members：成員與角色權限寫入 group_members。已完成第一版。
-5. Invites：群組邀請連結與登入後加入流程。已完成第一版。
-6. Expenses：支出與分攤寫入 expenses。已完成第一版。
-7. Settlements：結算狀態寫入 settlement_statuses。已完成第一版。
-8. Payments：付款紀錄寫入 payment_records。
-9. Notifications：待辦提醒寫入 notifications。
+可用角色：
 
-## 注意
+- `owner`：產品擁有者。
+- `admin`：一般管理員。
+- `support`：客服與資料檢查。
 
-anon key 可以放前端，但 service role key 絕對不能放前端或 GitHub。
+目前後台會讀取：
+
+- 使用者數
+- 群組數
+- 支出數
+- 結算狀態數
+- 最近使用者
+- 最近群組
+- 後台操作紀錄
+
+## 正式站資料流程
+
+1. Auth：使用者登入 Supabase Auth。
+2. Profile：登入後建立或更新 `profiles`。
+3. Groups：群組資料同步到 `groups`。
+4. Members：成員與角色同步到 `group_members`。
+5. Invites：邀請連結寫入 `group_invites`。
+6. Expenses：支出寫入 `expenses` 與 `expense_splits`。
+7. Settlements：付款狀態寫入 `settlement_statuses` 與 `payment_records`。
+8. Admin：後台透過 `get_admin_dashboard()` 讀取總覽資料。
+
+## 注意事項
+
+- 後台不要使用 service role key。
+- 後台入口只依賴 Supabase Auth 與 `app_admins`。
+- 測試資料清除後，前台應從空資料開始，不再自動顯示展示資料。
+- 若 `/admin` 顯示尚未連線，請先確認 Vercel 環境變數是否已設定並重新部署。

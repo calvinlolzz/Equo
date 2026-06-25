@@ -5,6 +5,9 @@ module.exports = function handler(req, res) {
       configured: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY),
       url: process.env.SUPABASE_URL || "",
       anonKey: process.env.SUPABASE_ANON_KEY || ""
+    },
+    admin: {
+      enabled: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY)
     }
   });
 };
