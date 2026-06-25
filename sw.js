@@ -1,7 +1,8 @@
-const CACHE_NAME = "equo-static-v53";
+const CACHE_NAME = "equo-static-v54";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
+  "./admin.html",
   "./site.webmanifest",
   "./assets/icons/equo-icon-512.png",
   "./assets/icons/equo-icon.svg"

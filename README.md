@@ -27,6 +27,12 @@ python -m http.server 4173 --bind 127.0.0.1
 http://127.0.0.1:4173/index.html
 ```
 
+後台原型：
+
+```text
+http://127.0.0.1:4173/admin.html
+```
+
 ## 資料狀態
 
 目前 App 先使用瀏覽器 `localStorage` 保存展示資料。這適合產品展示、流程測試與早期用戶訪談。
@@ -59,3 +65,7 @@ http://127.0.0.1:4173/index.html
 ## 技術棧與改良路線
 
 目前技術棧、短期 PWA 路線、Supabase/Vercel 分工與後續重構順序請看 [docs/TECH_STACK.md](docs/TECH_STACK.md)。
+
+## 後台管理
+
+第一版後台原型請看 [admin.html](admin.html)。目前使用靜態示範資料呈現管理台結構，後續會接 Supabase profiles、groups、expenses 與 settlement statuses。

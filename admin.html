@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Equo Admin</title>
+  <style>
+    :root {
+      --bg: #070b1a;
+      --panel: #0c1326;
+      --panel-2: #101a33;
+      --line: rgba(150, 170, 210, .18);
+      --text: #eef4ff;
+      --muted: #8da0c4;
+      --soft: #b9c8e8;
+      --blue: #6f7cff;
+      --cyan: #4fd1ff;
+      --green: #35df91;
+      --amber: #f7c948;
+      --red: #ff6675;
+      --shadow: 0 24px 60px rgba(0, 0, 0, .34);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 80% 0%, rgba(79, 209, 255, .1), transparent 32%),
+        radial-gradient(circle at 18% 18%, rgba(111, 124, 255, .16), transparent 28%),
+        var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .admin-shell {
+      display: grid;
+      grid-template-columns: 244px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 18px 12px;
+      background: rgba(12, 19, 38, .88);
+      border-right: 1px solid var(--line);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 8px 18px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 18px;
+      font-weight: 850;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: linear-gradient(145deg, #6f7cff, #4fd1ff);
+      box-shadow: 0 12px 30px rgba(111, 124, 255, .28);
+    }
+
+    .nav-group-title {
+      margin: 22px 8px 8px;
+      color: #7487ad;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .nav-button {
+      width: 100%;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border: 0;
+      border-radius: 9px;
+      color: var(--muted);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .nav-button svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .nav-button:hover,
+    .nav-button.active {
+      color: #fff;
+      background: rgba(111, 124, 255, .22);
+    }
+
+    .content {
+      padding: 34px 32px 42px;
+    }
+
+    .page {
+      display: none;
+      max-width: 1180px;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .page-title {
+      margin-bottom: 26px;
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.15;
+    }
+
+    .page-title p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-weight: 640;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .search {
+      min-width: 280px;
+      height: 40px;
+      padding: 0 14px;
+      border-radius: 10px;
+      color: var(--text);
+      background: rgba(8, 12, 27, .62);
+      border: 1px solid var(--line);
+      outline: none;
+    }
+
+    .search:focus {
+      border-color: rgba(79, 209, 255, .55);
+      box-shadow: 0 0 0 4px rgba(79, 209, 255, .08);
+    }
+
+    .card {
+      border-radius: 13px;
+      background: rgba(12, 19, 38, .76);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .status-panel {
+      padding: 18px;
+      margin-bottom: 24px;
+    }
+
+    .switch-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 16px;
+    }
+
+    .switch-pill {
+      min-height: 34px;
+      padding: 8px 13px;
+      border-radius: 9px;
+      color: var(--green);
+      background: rgba(53, 223, 145, .12);
+      border: 1px solid rgba(53, 223, 145, .28);
+      font-weight: 840;
+    }
+
+    .limit-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .limit-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-weight: 720;
+    }
+
+    .limit-value {
+      min-width: 132px;
+      padding: 9px 14px;
+      border-radius: 10px;
+      color: var(--text);
+      background: rgba(8, 12, 27, .7);
+      border: 1px solid var(--line);
+      text-align: center;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .metric {
+      padding: 16px;
+      border-radius: 13px;
+      background: rgba(16, 26, 51, .72);
+      border: 1px solid var(--line);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 760;
+      margin-bottom: 8px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 27px;
+      line-height: 1;
+    }
+
+    .metric small {
+      display: block;
+      margin-top: 9px;
+      color: var(--green);
+      font-weight: 760;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .filter-chip {
+      min-height: 30px;
+      padding: 7px 13px;
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(16, 26, 51, .64);
+      border: 1px solid var(--line);
+      cursor: pointer;
+    }
+
+    .filter-chip.active,
+    .filter-chip:hover {
+      color: #fff;
+      background: rgba(111, 124, 255, .9);
+    }
+
+    .table-wrap {
+      overflow: hidden;
+      border-radius: 13px;
+      background: rgba(8, 12, 27, .42);
+      border: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: #9fb2d7;
+      background: rgba(16, 26, 51, .54);
+      font-size: 13px;
+      font-weight: 820;
+    }
+
+    td {
+      color: #cfe0ff;
+      font-size: 14px;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      color: #c7d6ff;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 860;
+    }
+
+    .badge.ok {
+      color: var(--green);
+      background: rgba(53, 223, 145, .12);
+    }
+
+    .badge.warn {
+      color: var(--amber);
+      background: rgba(247, 201, 72, .13);
+    }
+
+    .badge.off {
+      color: var(--red);
+      background: rgba(255, 102, 117, .13);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .settings-card {
+      padding: 18px;
+    }
+
+    .settings-card h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+
+    .settings-card p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .setting-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 44px;
+      border-top: 1px solid var(--line);
+      color: var(--soft);
+      font-weight: 720;
+    }
+
+    .primary {
+      min-height: 38px;
+      padding: 9px 14px;
+      border: 0;
+      border-radius: 10px;
+      color: #fff;
+      background: linear-gradient(145deg, #6f7cff, #4fd1ff);
+      font-weight: 860;
+      cursor: pointer;
+    }
+
+    .soft {
+      min-height: 38px;
+      padding: 9px 14px;
+      border-radius: 10px;
+      color: var(--soft);
+      background: rgba(16, 26, 51, .64);
+      border: 1px solid var(--line);
+      font-weight: 820;
+      cursor: pointer;
+    }
+
+    .primary:hover,
+    .soft:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.06);
+    }
+
+    @media (max-width: 900px) {
+      .admin-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+      }
+
+      .content {
+        padding: 24px 16px 32px;
+      }
+
+      .metrics,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .search {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="sidebar" aria-label="後台導覽">
+      <div class="brand">
+        <div class="brand-mark">E</div>
+        <span>Equo Admin</span>
+      </div>
+
+      <button class="nav-button active" type="button" data-page="overview" onclick="showAdminPage('overview')">
+        <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4z"/><path d="M13 4h7v7h-7z"/><path d="M4 13h7v7H4z"/><path d="M13 13h7v7h-7z"/></svg>
+        總覽
+      </button>
+
+      <p class="nav-group-title">平台共用</p>
+      <button class="nav-button" type="button" data-page="users" onclick="showAdminPage('users')">
+        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        使用者
+      </button>
+      <button class="nav-button" type="button" data-page="operations" onclick="showAdminPage('operations')">
+        <svg viewBox="0 0 24 24"><path d="M13 2L3 14h8l-1 8 11-13h-8z"/></svg>
+        營運狀態
+      </button>
+      <button class="nav-button" type="button" data-page="health" onclick="showAdminPage('health')">
+        <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 8-6-16-3 8H2"/></svg>
+        維運監控
+      </button>
+
+      <p class="nav-group-title">站點</p>
+      <button class="nav-button" type="button" data-page="groups" onclick="showAdminPage('groups')">
+        <svg viewBox="0 0 24 24"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/></svg>
+        Equo 分帳
+      </button>
+      <button class="nav-button" type="button" data-page="settings" onclick="showAdminPage('settings')">
+        <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04a1.8 1.8 0 0 0-1.98-.36"/></svg>
+        營運設定
+      </button>
+    </aside>
+
+    <main class="content">
+      <section id="overview" class="page active">
+        <div class="page-title">
+          <h1>總覽</h1>
+          <p>Equo 分帳的使用狀態、資料品質與備份概況。</p>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span>使用者</span><strong>128</strong><small>本週 +14</small></div>
+          <div class="metric"><span>群組</span><strong>342</strong><small>活躍 76 組</small></div>
+          <div class="metric"><span>支出</span><strong>4,812</strong><small>今日 +39</small></div>
+          <div class="metric"><span>結算分享</span><strong>921</strong><small>複製率 68%</small></div>
+        </div>
+        <div class="grid-2">
+          <div class="card settings-card">
+            <h3>今日重點</h3>
+            <p>目前系統狀態正常，最近 24 小時沒有同步錯誤暴增。</p>
+            <div class="setting-line"><span>Supabase</span><span class="badge ok">正常</span></div>
+            <div class="setting-line"><span>Vercel 部署</span><span class="badge ok">正常</span></div>
+            <div class="setting-line"><span>PWA 快取</span><span class="badge warn">v53</span></div>
+          </div>
+          <div class="card settings-card">
+            <h3>下一步建議</h3>
+            <p>先觀察核心流程，避免過早開放太多進階功能。</p>
+            <div class="setting-line"><span>主流程</span><span>建立群組 → 新增支出 → 分享</span></div>
+            <div class="setting-line"><span>後台資料</span><span>下一階段接 Supabase</span></div>
+            <div class="setting-line"><span>風險</span><span>需要管理員權限保護</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="users" class="page">
+        <div class="page-title">
+          <h1>使用者</h1>
+          <p>查看登入帳號、最後活動與備份狀態。</p>
+        </div>
+        <div class="toolbar">
+          <input class="search" placeholder="搜尋 Email 或暱稱" />
+          <button class="primary" type="button">匯出使用者</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>使用者</th><th>Email</th><th>群組</th><th>最後活動</th><th>狀態</th></tr></thead>
+            <tbody>
+              <tr><td>Calvin</td><td>calvin@example.com</td><td>12</td><td>2026/06/25 18:42</td><td><span class="badge ok">啟用</span></td></tr>
+              <tr><td>Polly Lin</td><td>polly@example.com</td><td>8</td><td>2026/06/25 16:10</td><td><span class="badge ok">啟用</span></td></tr>
+              <tr><td>Guest Demo</td><td class="muted">本機試用</td><td>3</td><td>2026/06/24 22:12</td><td><span class="badge warn">未登入</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="operations" class="page">
+        <div class="page-title">
+          <h1>營運狀態</h1>
+          <p>控制功能開關、每日限制與核心流程入口。</p>
+        </div>
+        <div class="card status-panel">
+          <div class="switch-row">
+            <span class="switch-pill">總開關 · 啟用中</span>
+            <span class="switch-pill">邀請連結 · 開</span>
+            <span class="switch-pill">Google 登入 · 開</span>
+            <span class="switch-pill">AI 記帳 · 暫停</span>
+            <span class="switch-pill">報表匯出 · 開</span>
+          </div>
+          <div class="limit-row">
+            <div class="limit-field">每日新增群組上限 <span class="limit-value">500</span></div>
+            <div class="limit-field">每日支出上限 <span class="limit-value">5000</span></div>
+            <div class="limit-field">每日分享上限 <span class="limit-value">2000</span></div>
+          </div>
+        </div>
+        <h2>操作紀錄</h2>
+        <div class="filters">
+          <button class="filter-chip active" type="button">全部</button>
+          <button class="filter-chip" type="button">登入</button>
+          <button class="filter-chip" type="button">群組</button>
+          <button class="filter-chip" type="button">支出</button>
+          <button class="filter-chip" type="button">備份</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>時間</th><th>來源</th><th>動作</th><th>結果</th><th>備註</th></tr></thead>
+            <tbody>
+              <tr><td>2026/06/25 19:12</td><td>Vercel</td><td class="mono">deploy.production</td><td><span class="badge ok">成功</span></td><td>main</td></tr>
+              <tr><td>2026/06/25 18:48</td><td>Supabase</td><td class="mono">backup.snapshot</td><td><span class="badge ok">成功</span></td><td>128 users</td></tr>
+              <tr><td>2026/06/25 18:20</td><td>App</td><td class="mono">group.invite</td><td><span class="badge ok">成功</span></td><td>週末露營</td></tr>
+              <tr><td>2026/06/25 17:55</td><td>App</td><td class="mono">expense.create</td><td><span class="badge ok">成功</span></td><td>TWD 1200</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="health" class="page">
+        <div class="page-title">
+          <h1>維運監控</h1>
+          <p>追蹤 API、資料庫、快取與同步狀態。</p>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span>API 延遲</span><strong>84ms</strong><small>正常</small></div>
+          <div class="metric"><span>同步失敗率</span><strong>0.4%</strong><small>低於門檻</small></div>
+          <div class="metric"><span>RLS 錯誤</span><strong>0</strong><small>24 小時</small></div>
+          <div class="metric"><span>快取版本</span><strong>v53</strong><small>已發布</small></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>項目</th><th>狀態</th><th>最後檢查</th><th>處理建議</th></tr></thead>
+            <tbody>
+              <tr><td>Supabase Auth</td><td><span class="badge ok">正常</span></td><td>1 分鐘前</td><td>無</td></tr>
+              <tr><td>PostgreSQL RLS</td><td><span class="badge ok">正常</span></td><td>3 分鐘前</td><td>無</td></tr>
+              <tr><td>Vercel API config</td><td><span class="badge ok">正常</span></td><td>5 分鐘前</td><td>無</td></tr>
+              <tr><td>PWA Cache</td><td><span class="badge warn">需觀察</span></td><td>12 分鐘前</td><td>確認舊版快取是否清除</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="groups" class="page">
+        <div class="page-title">
+          <h1>Equo 分帳</h1>
+          <p>查看群組、支出、成員與資料品質。</p>
+        </div>
+        <div class="toolbar">
+          <input class="search" placeholder="搜尋群組、成員或支出" />
+          <button class="soft" type="button">檢查異常資料</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>群組</th><th>成員</th><th>支出</th><th>總額</th><th>狀態</th></tr></thead>
+            <tbody>
+              <tr><td>日本旅遊</td><td>5</td><td>26</td><td>$84,300</td><td><span class="badge ok">正常</span></td></tr>
+              <tr><td>週末露營</td><td>4</td><td>8</td><td>$12,480</td><td><span class="badge ok">正常</span></td></tr>
+              <tr><td>室友水電</td><td>3</td><td>14</td><td>$31,120</td><td><span class="badge warn">待確認</span></td></tr>
+              <tr><td>公司聚餐</td><td>7</td><td>4</td><td>$9,600</td><td><span class="badge ok">正常</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="settings" class="page">
+        <div class="page-title">
+          <h1>營運設定</h1>
+          <p>控制公開功能、資料保留與用戶通知。</p>
+        </div>
+        <div class="grid-2">
+          <div class="card settings-card">
+            <h3>登入與邀請</h3>
+            <p>一般用戶不必先登入；只有備份、跨裝置與正式邀請才要求登入。</p>
+            <div class="setting-line"><span>Email 登入</span><span class="badge ok">開</span></div>
+            <div class="setting-line"><span>Google 登入</span><span class="badge ok">開</span></div>
+            <div class="setting-line"><span>Apple 登入</span><span class="badge warn">準備中</span></div>
+            <div class="setting-line"><span>邀請連結</span><span class="badge ok">開</span></div>
+          </div>
+          <div class="card settings-card">
+            <h3>進階功能</h3>
+            <p>優先保護核心流程，進階功能採用分階段開放。</p>
+            <div class="setting-line"><span>AI 記帳</span><span class="badge off">暫停</span></div>
+            <div class="setting-line"><span>發票掃描</span><span class="badge off">暫停</span></div>
+            <div class="setting-line"><span>匯出報表</span><span class="badge ok">開</span></div>
+            <div class="setting-line"><span>家庭模式</span><span class="badge warn">測試中</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    function showAdminPage(id) {
+      document.querySelectorAll(".page").forEach(page => page.classList.toggle("active", page.id === id));
+      document.querySelectorAll(".nav-button").forEach(button => {
+        button.classList.toggle("active", button.dataset.page === id);
+      });
+    }
+  </script>
+</body>
+</html>
