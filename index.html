@@ -3081,6 +3081,13 @@
               <button class="soft-btn" type="button" onclick="resetLocalData()">重設資料</button>
             </div>
           </div>
+          <div class="input-card setting-row">
+            <div>
+              <h3>回報問題</h3>
+              <p class="eyebrow" style="margin-top:6px">遇到卡住、算錯或不好用的地方，可以直接告訴我們。</p>
+            </div>
+            <button class="small-action" type="button" onclick="openFeedbackSheet()">回報</button>
+          </div>
         </div>
 
         <details class="settings-section advanced-section">
@@ -3314,6 +3321,42 @@
         <button class="primary" type="button" onclick="closeGuide(); openGroupSheet()">建立第一個群組</button>
         <button class="soft-btn" type="button" onclick="closeGuide()">稍後再看</button>
       </div>
+    </div>
+  </section>
+
+  <section id="feedbackSheet" class="sheet" aria-modal="true">
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <h2>回報問題</h2>
+        <button class="icon-btn" type="button" onclick="closeFeedbackSheet()" aria-label="關閉回報表單">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="feedbackForm" class="form-grid">
+        <p class="expense-focus-note">告訴我們你遇到的問題或想要的改善，會幫助正式版更穩定。</p>
+        <label>類型
+          <select id="feedbackType">
+            <option value="problem">遇到問題</option>
+            <option value="suggestion">功能建議</option>
+            <option value="confusing">看不懂或不好操作</option>
+            <option value="other">其他</option>
+          </select>
+        </label>
+        <label>內容
+          <textarea id="feedbackMessage" rows="5" required placeholder="例如：新增支出時不知道下一步要按哪裡"></textarea>
+        </label>
+        <label>聯絡方式（選填）
+          <input id="feedbackContact" placeholder="Email 或 LINE 暱稱" />
+        </label>
+        <p id="feedbackStatus" class="mini-note submit-status">送出後，我們會在後台看到這則回饋。</p>
+        <div class="sheet-actionbar">
+          <button class="soft-btn" type="button" onclick="closeFeedbackSheet()">取消</button>
+          <button id="feedbackSubmitButton" class="primary" type="submit">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+            送出回饋
+          </button>
+        </div>
+      </form>
     </div>
   </section>
 
@@ -3715,6 +3758,7 @@
     let editingExpenseId = null;
     let editingMemberId = null;
     let pendingErrorLogs = [];
+    let feedbackSubmitInProgress = false;
 
     const categoryIcon = {
       "餐飲": '<svg viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M10 3v7a4 4 0 0 1-8 0V3"/><path d="M17 3v18"/><path d="M17 3c3 2 4 5 4 8h-4"/></svg>',
@@ -4295,6 +4339,60 @@
     function closeSheetById(id) {
       document.getElementById(id)?.classList.remove("open");
       syncSheetLock();
+    }
+
+    function openFeedbackSheet() {
+      const status = document.getElementById("feedbackStatus");
+      if (status) status.textContent = "送出後，我們會在後台看到這則回饋。";
+      openSheetById("feedbackSheet");
+    }
+
+    function closeFeedbackSheet() {
+      feedbackSubmitInProgress = false;
+      const button = document.getElementById("feedbackSubmitButton");
+      if (button) button.disabled = false;
+      closeSheetById("feedbackSheet");
+    }
+
+    async function submitFeedback() {
+      if (feedbackSubmitInProgress) return;
+      const type = document.getElementById("feedbackType")?.value || "problem";
+      const message = document.getElementById("feedbackMessage")?.value.trim() || "";
+      const contact = document.getElementById("feedbackContact")?.value.trim() || "";
+      const status = document.getElementById("feedbackStatus");
+      const button = document.getElementById("feedbackSubmitButton");
+      if (message.length < 4) {
+        if (status) status.textContent = "請簡單描述你遇到的狀況。";
+        showToast("請先填寫回饋內容");
+        return;
+      }
+      if (!supabaseClient?.rpc) {
+        if (status) status.textContent = "目前無法送出，請稍後再試。";
+        showToast("目前無法送出回饋");
+        return;
+      }
+      feedbackSubmitInProgress = true;
+      if (button) button.disabled = true;
+      if (status) status.textContent = "正在送出...";
+      const { error } = await supabaseClient.rpc("record_user_feedback", {
+        type_input: type,
+        message_input: message,
+        contact_input: contact || cloudUser?.email || "",
+        page_input: `${location.pathname}${location.search}`.slice(0, 300)
+      });
+      feedbackSubmitInProgress = false;
+      if (button) button.disabled = false;
+      if (error) {
+        reportAppError(error.message, "feedback.submit");
+        if (status) status.textContent = "送出失敗，請稍後再試。";
+        showToast("回饋送出失敗");
+        return;
+      }
+      document.getElementById("feedbackMessage").value = "";
+      document.getElementById("feedbackContact").value = "";
+      if (status) status.textContent = "已收到，謝謝你的回饋。";
+      showToast("已收到你的回饋");
+      setTimeout(() => closeFeedbackSheet(), 420);
     }
 
     function openGuide() {
@@ -6963,6 +7061,10 @@
     document.getElementById("expenseAmount").addEventListener("input", updatePreview);
     document.getElementById("expenseCurrency").addEventListener("change", updatePreview);
     document.getElementById("authForm").addEventListener("submit", signInWithEmail);
+    document.getElementById("feedbackForm").addEventListener("submit", event => {
+      event.preventDefault();
+      submitFeedback();
+    });
 
     document.getElementById("expenseForm").addEventListener("submit", event => {
       event.preventDefault();

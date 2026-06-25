@@ -990,9 +990,21 @@ create table if not exists public.app_error_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.app_feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  type text not null default 'problem' check (type in ('problem', 'suggestion', 'confusing', 'other')),
+  message text not null,
+  contact text,
+  page text,
+  status text not null default 'new' check (status in ('new', 'reviewing', 'done')),
+  created_at timestamptz not null default now()
+);
+
 alter table public.app_admins enable row level security;
 alter table public.admin_audit_logs enable row level security;
 alter table public.app_error_logs enable row level security;
+alter table public.app_feedback enable row level security;
 
 grant select on public.app_admins to authenticated;
 grant select on public.admin_audit_logs to authenticated;
@@ -1081,6 +1093,43 @@ begin
 end;
 $$;
 
+create or replace function public.record_user_feedback(
+  type_input text,
+  message_input text,
+  contact_input text default null,
+  page_input text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  feedback_id uuid;
+begin
+  if length(trim(coalesce(message_input, ''))) < 4 then
+    raise exception 'feedback_message_required';
+  end if;
+
+  insert into public.app_feedback (
+    user_id,
+    type,
+    message,
+    contact,
+    page
+  ) values (
+    auth.uid(),
+    case when type_input in ('problem', 'suggestion', 'confusing', 'other') then type_input else 'problem' end,
+    left(trim(message_input), 1200),
+    left(nullif(trim(coalesce(contact_input, '')), ''), 180),
+    left(page_input, 300)
+  )
+  returning id into feedback_id;
+
+  return feedback_id;
+end;
+$$;
+
 create or replace function public.get_admin_dashboard()
 returns jsonb
 language plpgsql
@@ -1107,6 +1156,11 @@ begin
       'groups', (select count(*) from public.groups where archived_at is null),
       'expenses', (select count(*) from public.expenses),
       'settlement_statuses', (select count(*) from public.settlement_statuses),
+      'feedback_new', (
+        select count(*)
+        from public.app_feedback
+        where status = 'new'
+      ),
       'errors_7d', (
         select count(*)
         from public.app_error_logs
@@ -1184,6 +1238,15 @@ begin
         order by created_at desc
         limit 30
       ) error_rows
+    ), '[]'::jsonb),
+    'feedback', coalesce((
+      select jsonb_agg(row_to_json(feedback_rows))
+      from (
+        select type, message, contact, status, page, created_at
+        from public.app_feedback
+        order by created_at desc
+        limit 50
+      ) feedback_rows
     ), '[]'::jsonb)
   ) into result;
 
@@ -1196,6 +1259,9 @@ grant execute on function public.record_admin_audit(text, jsonb) to authenticate
 
 revoke all on function public.record_app_error(text, text, text, text) from public;
 grant execute on function public.record_app_error(text, text, text, text) to anon, authenticated;
+
+revoke all on function public.record_user_feedback(text, text, text, text) from public;
+grant execute on function public.record_user_feedback(text, text, text, text) to anon, authenticated;
 
 revoke all on function public.get_admin_dashboard() from public;
 grant execute on function public.get_admin_dashboard() to authenticated;

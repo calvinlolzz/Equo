@@ -35,6 +35,7 @@ supabase/schema.sql
 - `app_admins`
 - `admin_audit_logs`
 - `app_error_logs`
+- `app_feedback`
 
 所有正式資料表都需要 Row Level Security。
 
@@ -81,6 +82,7 @@ on conflict (user_id) do update set role = excluded.role;
 - 最近群組
 - 後台操作紀錄
 - 最近錯誤紀錄
+- 用戶回饋
 
 ## 正式站資料流程
 
@@ -93,6 +95,7 @@ on conflict (user_id) do update set role = excluded.role;
 7. Settlements：付款狀態寫入 `settlement_statuses` 與 `payment_records`。
 8. Admin：後台透過 `get_admin_dashboard()` 讀取總覽資料。
 9. Monitoring：前台與後台錯誤透過 `record_app_error()` 寫入 `app_error_logs`。
+10. Feedback：用戶回饋透過 `record_user_feedback()` 寫入 `app_feedback`。
 
 ## 注意事項
 

@@ -525,6 +525,16 @@
             <tbody id="auditTableBody"></tbody>
           </table>
         </div>
+        <div class="page-title" style="margin-top:24px">
+          <h1 style="font-size:22px">用戶回饋</h1>
+          <p>真實測試時，使用者送出的問題與建議會集中在這裡。</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>時間</th><th>類型</th><th>聯絡方式</th><th>內容</th></tr></thead>
+            <tbody id="feedbackTableBody"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="health" class="page">
@@ -601,7 +611,8 @@
       groups: [],
       health: { supabase: "unknown", profiles: 0, snapshots: 0 },
       audit_logs: [],
-      error_logs: []
+      error_logs: [],
+      feedback: []
     };
 
     function showAdminPage(id) {
@@ -811,6 +822,16 @@
           <td><span class="badge ok">完成</span></td>
         </tr>
       `).join("") : `<tr><td colspan="4" class="muted">尚無後台操作紀錄。</td></tr>`;
+
+      const feedback = dashboard.feedback || [];
+      document.getElementById("feedbackTableBody").innerHTML = feedback.length ? feedback.map(item => `
+        <tr>
+          <td>${formatDate(item.created_at)}</td>
+          <td>${escapeHtml(item.type || "-")}</td>
+          <td>${escapeHtml(item.contact || "-")}</td>
+          <td>${escapeHtml(item.message || "-")}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="4" class="muted">目前沒有用戶回饋。</td></tr>`;
 
       const errors = dashboard.error_logs || [];
       document.getElementById("errorTableBody").innerHTML = errors.length ? errors.map(error => `
