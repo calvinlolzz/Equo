@@ -693,6 +693,18 @@
       font-weight: 740;
     }
 
+    .group-picker-filters {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+
+    .group-picker-filters::-webkit-scrollbar {
+      display: none;
+    }
+
     .group-picker-search-row {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -736,8 +748,16 @@
       gap: 4px;
     }
 
+    .group-picker-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+
     .group-picker-main strong,
-    .group-picker-main span {
+    .group-picker-main span,
+    .group-picker-meta span {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -3416,6 +3436,12 @@
             <span id="groupPickerCount">0 個群組</span>
             <button class="small-action subtle-action" type="button" onclick="openGroupSheet()">新增群組</button>
           </div>
+          <div class="group-picker-filters" role="group" aria-label="群組篩選">
+            <button class="small-action subtle-action active" type="button" data-group-filter="all" onclick="setGroupPickerFilter('all')">全部</button>
+            <button class="small-action subtle-action" type="button" data-group-filter="settle" onclick="setGroupPickerFilter('settle')">待處理</button>
+            <button class="small-action subtle-action" type="button" data-group-filter="recent" onclick="setGroupPickerFilter('recent')">最近使用</button>
+            <button class="small-action subtle-action" type="button" data-group-filter="created" onclick="setGroupPickerFilter('created')">最近建立</button>
+          </div>
         </div>
         <div id="groupPickerList" class="group-picker-list"></div>
       </div>
@@ -3673,6 +3699,7 @@
     let activeGroupId = "g1";
     let activePanel = "activity";
     let expenseFilters = { query: "", category: "all" };
+    let groupPickerFilter = "all";
     let expenseFilterOpen = false;
     let themeMode = localStorage.getItem("floatpay-theme") || "light";
     let lastCreatedGroupId = localStorage.getItem("floatpay-last-created-group") || "";
@@ -4463,13 +4490,23 @@
       renderGroupPicker();
     }
 
+    function setGroupPickerFilter(filter) {
+      groupPickerFilter = filter || "all";
+      renderGroupPicker();
+    }
+
     function renderGroupPicker() {
       const target = document.getElementById("groupPickerList");
       if (!target) return;
       const query = (document.getElementById("groupPickerSearch")?.value || "").trim().toLowerCase();
+      document.querySelectorAll("[data-group-filter]").forEach(button => {
+        button.classList.toggle("active", button.dataset.groupFilter === groupPickerFilter);
+      });
       const rows = groups.filter(group => {
         const haystack = `${group.name} ${group.subtitle || ""} ${group.currency || ""}`.toLowerCase();
-        return !query || haystack.includes(query);
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesFilter = groupPickerMatchesFilter(group);
+        return matchesQuery && matchesFilter;
       }).sort((a, b) => {
         const score = groupPickerScore(b) - groupPickerScore(a);
         return score || String(a.name).localeCompare(String(b.name), "zh-Hant");
@@ -4477,14 +4514,20 @@
       const count = document.getElementById("groupPickerCount");
       if (count) count.textContent = query
         ? `符合 ${rows.length} 個 · 全部 ${groups.length} 個`
-        : `全部 ${groups.length} 個群組`;
+        : groupPickerFilter === "all"
+          ? `全部 ${groups.length} 個群組`
+          : `符合 ${rows.length} 個 · 全部 ${groups.length} 個`;
       target.innerHTML = rows.map((group, index) => {
         const mine = Math.round(balances(group.id)[currentUserId] || 0);
+        const total = totalForGroup(group.id);
+        const expenseCount = groupExpenses(group.id).length;
+        const settlementCount = settlements(group.id).filter(row => row.from === currentUserId || row.to === currentUserId).length;
         const statusClass = mine >= 0 ? "positive" : "negative";
         const statusText = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
         const active = group.id === activeGroupId ? " active" : "";
         const badges = [
           group.id === activeGroupId ? "目前群組" : "",
+          settlementCount ? `${settlementCount} 筆待處理` : "",
           group.id === lastExpenseGroupId ? "上次記帳" : "",
           group.id === lastCreatedGroupId ? "最近建立" : ""
         ].filter(Boolean);
@@ -4493,16 +4536,33 @@
           <div class="group-picker-main">
             <strong>${escapeAttr(group.name)}</strong>
             <span>${escapeAttr(group.subtitle || "群組")} · ${escapeAttr(group.currency || "TWD")}</span>
+            <span class="group-picker-meta">
+              <span>${expenseCount ? `${expenseCount} 筆支出` : "還沒有支出"}</span>
+              <span>${total ? `總花費 ${money(total)}` : "可以開始記帳"}</span>
+            </span>
             ${badges.length ? `<em class="group-picker-badge">${badges[0]}</em>` : ""}
           </div>
           <div class="amount ${statusClass}">${statusText}</div>
         </button>`;
       }).join("") || emptyAction({
         title: query ? "找不到群組" : "還沒有群組",
-        note: query ? "換個關鍵字，或建立新的群組。" : "建立第一個群組後，就能在這裡快速切換。",
+        note: query ? "換個關鍵字，或建立新的群組。" : "換個篩選，或建立新的群組。",
         primary: "新增群組",
         action: "openGroupSheet()"
       });
+    }
+
+    function groupPickerMatchesFilter(group) {
+      if (groupPickerFilter === "settle") {
+        return settlements(group.id).some(row => row.from === currentUserId || row.to === currentUserId);
+      }
+      if (groupPickerFilter === "recent") {
+        return group.id === activeGroupId || group.id === lastExpenseGroupId;
+      }
+      if (groupPickerFilter === "created") {
+        return group.id === lastCreatedGroupId;
+      }
+      return true;
     }
 
     function groupPickerScore(group) {
@@ -4510,6 +4570,7 @@
       if (group.id === activeGroupId) score += 30;
       if (group.id === lastExpenseGroupId) score += 20;
       if (group.id === lastCreatedGroupId) score += 10;
+      if (settlements(group.id).some(row => row.from === currentUserId || row.to === currentUserId)) score += 15;
       score += Math.min(9, expenses.filter(expense => expense.groupId === group.id).length);
       return score;
     }
