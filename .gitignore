@@ -13,4 +13,7 @@ node_modules/
 # Environment secrets
 .env
 .env.*
+.codex/
+.agents/
+
 
