@@ -273,7 +273,7 @@ Mobile Web / PWA / Desktop Web
 
 正式產品建議：
 
-- MVP 可以支援 Email magic link 或 Google 登入擇一。
+- MVP 只支援 Google 登入。
 - 備份概念在正式版應改成「雲端同步」或「帳號資料」，但文案仍要白話。
 - 不建議正式產品有 snapshot 匯入覆蓋模式作為主流程。
 - 匯出資料可作為資料權利功能，放在設定深層。
@@ -512,7 +512,6 @@ MVP 只解決一件事：
 #### 使用者
 
 - Google 登入。
-- Email magic link 登入。
 - 登出。
 - 基本個人資料。
 - 人形頭像或帳號照片。
@@ -598,6 +597,7 @@ MVP 只解決一件事：
 - 單筆支出多付款人。
 - App push notification。
 - Email 付款提醒。
+- Email magic link 登入。
 - 密碼登入、忘記密碼、密碼重設。
 
 備註：
@@ -623,7 +623,6 @@ MVP 只解決一件事：
 
 ```text
 GET    /api/v1/me
-POST   /api/v1/auth/magic-link
 POST   /api/v1/auth/logout
 POST   /api/v1/account/delete-request
 POST   /api/v1/account/delete-cancel
@@ -631,10 +630,9 @@ POST   /api/v1/account/delete-cancel
 
 登入規則：
 
-- MVP 支援 Google 登入與 Email magic link。
+- MVP 只支援 Google 登入。
+- MVP 不支援 Email magic link。
 - MVP 不支援密碼登入，避免處理密碼規則、忘記密碼與密碼外洩風險。
-- Magic link 有效期 10 分鐘。
-- 同一 email 重新寄送間隔至少 60 秒。
 - Access token 建議有效期 1 小時。
 - Refresh token 建議有效期 30 天。
 - MVP 不限制同時登入裝置數。
