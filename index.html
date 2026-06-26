@@ -3089,6 +3089,10 @@
       </header>
       <div class="card-list">
         <div class="settings-section">
+          <div>
+            <h3>帳號</h3>
+            <p class="mini-note">需要備份、邀請朋友或換裝置時再登入。</p>
+          </div>
           <div class="input-card setting-row">
             <div>
               <h3 id="profileName">Wukec</h3>
@@ -3113,7 +3117,7 @@
 
         <div class="settings-section">
           <div>
-            <h3>外觀與偏好</h3>
+            <h3>偏好設定</h3>
             <p class="mini-note">調整顯示方式與常用預設值。</p>
           </div>
           <div class="input-card setting-row">
@@ -3131,7 +3135,7 @@
         <div class="settings-section">
           <div class="setting-row">
             <div>
-              <h3>資料備份</h3>
+              <h3>資料管理</h3>
               <p id="cloudSyncLabel" class="eyebrow" style="margin-top:6px">目前只保存在此裝置</p>
             </div>
             <span id="cloudSyncPill" class="pill">此裝置</span>
@@ -3140,27 +3144,36 @@
             <p id="cloudSyncMeta" class="eyebrow" style="margin-top:6px">登入後可在不同裝置接續使用。</p>
             <div class="preview" style="margin-bottom:0">
               <div class="preview-row"><span>此裝置資料</span><strong id="localDataSummary">-</strong></div>
-              <div class="preview-row"><span>線上備份</span><strong id="cloudBackupSummary">尚未檢查</strong></div>
+              <div class="preview-row"><span>帳號資料</span><strong id="cloudBackupSummary">尚未查看</strong></div>
             </div>
-            <div class="action-grid three-actions">
-              <button id="syncCloudButton" class="soft-btn" type="button" onclick="syncCloudSnapshot()">立即備份</button>
-              <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">載入備份</button>
+            <div class="action-grid">
+              <button id="syncCloudButton" class="primary" type="button" onclick="syncCloudSnapshot()">備份到帳號</button>
               <button id="checkCloudButton" class="soft-btn" type="button" onclick="checkCloudSnapshot()">查看備份</button>
             </div>
-            <div class="action-grid">
-              <button id="selfTestButton" class="soft-btn feature-paused" type="button" onclick="runSyncSelfTest()">檢查資料狀態</button>
-              <button class="soft-btn" type="button" onclick="openGuide()">查看導覽</button>
-              <button class="soft-btn" type="button" onclick="startFreshData()">重新開始</button>
-            </div>
           </div>
-          <div class="input-card">
-            <h3>此裝置資料</h3>
-            <p class="eyebrow" style="margin-top:6px">需要搬移或重新開始時使用。</p>
-            <div class="action-grid">
-              <button class="soft-btn" type="button" onclick="backupData()">備份資料</button>
-              <button class="soft-btn" type="button" onclick="resetLocalData()">重設資料</button>
+          <details class="advanced-section form-advanced">
+            <summary class="advanced-summary">
+              <span>
+                <strong>更多資料操作</strong>
+                <p class="mini-note" style="margin-top:4px">載入備份、下載檔案或重新開始。</p>
+              </span>
+            </summary>
+            <div class="advanced-content">
+              <div class="input-card">
+                <h3>換裝置或重設</h3>
+                <p class="eyebrow" style="margin-top:6px">只有需要搬移資料或清空目前內容時才使用。</p>
+                <div class="action-grid">
+                  <button id="restoreCloudButton" class="soft-btn" type="button" onclick="restoreCloudSnapshot()">載入帳號資料</button>
+                  <button class="soft-btn" type="button" onclick="backupData()">下載備份檔</button>
+                </div>
+                <div class="action-grid">
+                  <button class="soft-btn" type="button" onclick="startFreshData()">重新開始</button>
+                  <button class="soft-btn" type="button" onclick="resetLocalData()">重設此裝置</button>
+                </div>
+                <button id="selfTestButton" class="soft-btn feature-paused" type="button" onclick="runSyncSelfTest()">檢查資料狀態</button>
+              </div>
             </div>
-          </div>
+          </details>
           <div class="input-card setting-row">
             <div>
               <h3>回報問題</h3>
@@ -3173,8 +3186,8 @@
         <details class="settings-section advanced-section">
           <summary class="advanced-summary">
             <span>
-              <strong>進階功能</strong>
-              <p class="mini-note" style="margin-top:4px">報表、付款方式與付款紀錄</p>
+              <strong>更多功能</strong>
+              <p class="mini-note" style="margin-top:4px">報表、付款、固定帳單與家庭功能，日常分帳可先不用設定。</p>
             </span>
           </summary>
           <div class="advanced-content">
@@ -3204,20 +3217,9 @@
             </div>
             <div id="paymentRecords" class="preview"></div>
           </div>
-          </div>
-        </details>
-
-        <details class="settings-section advanced-section">
-          <summary class="advanced-summary">
-            <span>
-              <strong>自動化與家庭</strong>
-              <p class="mini-note" style="margin-top:4px">日程建群組、固定帳單、家庭權限與通知</p>
-            </span>
-          </summary>
-          <div class="advanced-content">
           <div class="input-card">
             <h3>日程表自動建群組</h3>
-            <p class="eyebrow" style="margin-top:6px">連接 Google 日程後，可依聚餐、旅遊或固定帳單自動建立分帳群組。</p>
+            <p class="eyebrow" style="margin-top:6px">需要常常照行程分帳時再連接 Google 日程。</p>
             <div class="preview" style="margin-bottom:0">
               <div class="preview-row"><span>目前建議</span><strong id="scheduleGroupSummary">今晚聚餐 · 公司聚餐</strong></div>
               <div class="preview-row"><span>新增支出</span><strong>會自動帶入符合行程的群組</strong></div>
@@ -3231,7 +3233,7 @@
             <div class="setting-row">
               <div>
                 <h3>固定帳單</h3>
-                <p class="eyebrow" style="margin-top:6px">每月 5 日自動建立房租、水電與網路費</p>
+                <p class="eyebrow" style="margin-top:6px">室友或家庭固定分攤時再使用。</p>
               </div>
               <div class="recurring-dot"></div>
             </div>
@@ -3247,7 +3249,7 @@
           </div>
           <div class="input-card">
             <h3>家庭模式</h3>
-            <p class="eyebrow" style="margin-top:6px">支援擁有者、管理員、家長、子女、訪客權限</p>
+            <p class="eyebrow" style="margin-top:6px">需要限制成員能看或能改哪些內容時再設定。</p>
             <div class="preview" style="margin-bottom:0">
               <div class="preview-row"><span>管理員/家長</span><strong>可管理帳務</strong></div>
               <div class="preview-row"><span>子女</span><strong>僅看個人帳務</strong></div>
@@ -3851,7 +3853,7 @@
     let cloudTablesReady = false;
     let cloudLastSyncedAt = localStorage.getItem("floatpay-cloud-last-sync") || "";
     let cloudBackupCheckedAt = "";
-    let cloudBackupSummary = "尚未檢查";
+    let cloudBackupSummary = "尚未查看";
     let latestInviteLink = "";
     let latestFlowNotice = null;
     let editingExpenseId = null;
