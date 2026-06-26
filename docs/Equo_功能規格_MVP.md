@@ -472,6 +472,33 @@ MVP 不建議在新增時顯示太多權限設定。
 - 若使用者誤認領，MVP 不提供自助拆分，需由後台人工標記處理。
 - 「我參與的群組」以 users.id 查找已綁定的 group_members，不以 display_name 搜尋。
 
+### 6.8 所有權移轉與帳號刪除
+
+#### 群組所有權
+
+MVP 必須支援群組所有權移轉。
+
+規則：
+
+- 擁有者可以將群組所有權移轉給另一位 active 成員。
+- 群組必須永遠保留一位 active 擁有者。
+- 擁有者不能直接退出自己擁有的群組，必須先移轉所有權或封存群組。
+- 若擁有者帳號進入刪除流程，系統要求先移轉其擁有的群組。
+- 若帳號異常或客服介入，後台可執行所有權移轉，但必須留下 audit log。
+
+#### 帳號刪除
+
+MVP 可不在前台提供完整刪除帳號 UI，但後端與營運流程必須能處理。
+
+規則：
+
+- 使用者提出刪除帳號後，進入 30 天冷卻期。
+- 冷卻期內可取消刪除。
+- 冷卻期結束後，users 設定 `deleted_at`，個資欄位匿名化。
+- 已建立的支出、群組、結算紀錄不可直接刪除，避免破壞其他成員帳務。
+- 匿名化後顯示名稱改為「已離開的成員」。
+- 若該使用者仍是群組擁有者，必須先移轉所有權才能完成刪除。
+
 ## 7. MVP 版本
 
 ### 7.1 MVP 目標
@@ -591,6 +618,8 @@ MVP 只解決一件事：
 ```text
 GET    /api/v1/me
 POST   /api/v1/auth/logout
+POST   /api/v1/account/delete-request
+POST   /api/v1/account/delete-cancel
 ```
 
 ### 8.2 Groups
@@ -601,6 +630,7 @@ POST   /api/v1/groups
 GET    /api/v1/groups/:groupId
 PATCH  /api/v1/groups/:groupId
 POST   /api/v1/groups/:groupId/archive
+POST   /api/v1/groups/:groupId/transfer-owner
 ```
 
 列表規則：
@@ -628,11 +658,20 @@ GET    /api/v1/invites/:token
 POST   /api/v1/invites/:token/accept
 ```
 
+邀請規則：
+
+- MVP 預設邀請連結可多次使用，類似 LINE 群組邀請。
+- 預設有效期 7 天。
+- 預設 `max_uses` 為 30。
+- 每次成功接受邀請後 `use_count + 1`。
+- 超過有效期或使用次數後，前端顯示「邀請已失效，請請群組成員重新邀請」。
+
 ### 8.5 Expenses
 
 ```text
 GET    /api/v1/groups/:groupId/expenses?cursor=&limit=&from=&to=&category=&payer_member_id=
 POST   /api/v1/groups/:groupId/expenses
+POST   /api/v1/groups/:groupId/expenses/preview
 GET    /api/v1/groups/:groupId/expenses/:expenseId
 PATCH  /api/v1/groups/:groupId/expenses/:expenseId
 DELETE /api/v1/groups/:groupId/expenses/:expenseId
@@ -686,6 +725,9 @@ DELETE /api/v1/groups/:groupId/expenses/:expenseId
 - 同一使用者、同一群組、同一 `client_request_id` 只能建立一次。
 - 重複送出時，後端回傳第一次建立的支出結果，不新增第二筆。
 - 前端按下儲存後可先顯示同步中狀態，但最終資料以後端回傳為準。
+- `POST /expenses/preview` 不寫入資料庫，只呼叫後端同一套分攤計算邏輯回傳預覽。
+- `PATCH /expenses/:expenseId` 必須帶 `version`，版本不一致時回傳 409 Conflict。
+- 409 文案：「這筆支出剛被修改，請重新載入後再確認」。
 
 ### 8.6 Settlement
 
@@ -723,15 +765,33 @@ https://example.com/groups/xxx
 - 若 transfer 超過 5 筆，分享文字只顯示前 5 筆與「還有 N 筆請查看連結」。
 - 分享連結需有 OG title、description、image，方便 LINE 預覽。
 - 分享內容不可暴露未登入者不應看到的完整帳務明細；未授權使用者點入只看到加入或登入入口。
+- MVP 不提供公開完整帳務頁；未登入者只能看到群組名稱、結算摘要標題與登入/加入入口。
+- 已登入但非群組成員者，需先接受邀請或由成員加入後才能看明細。
 
-### 8.7 Feedback and Monitoring
+### 8.7 Sync
+
+MVP 不做真正即時多人同步。
+
+```text
+GET /api/v1/groups/:groupId/changes?since=
+```
+
+同步規則：
+
+- 群組頁每 30 秒 polling 一次。
+- 使用者回到前景時立即拉一次最新資料。
+- 使用者可手動重新整理。
+- 若偵測到遠端資料變更，顯示「有新的支出，已更新」。
+- WebSocket、SSE、Realtime 放在後續版本。
+
+### 8.8 Feedback and Monitoring
 
 ```text
 POST   /api/v1/feedback
 POST   /api/v1/client-errors
 ```
 
-### 8.8 Admin
+### 8.9 Admin
 
 ```text
 GET    /api/v1/admin/overview
@@ -749,6 +809,9 @@ GET    /api/v1/admin/errors
 - email
 - display_name
 - avatar_url
+- deleted_at
+- deletion_requested_at
+- last_active_at
 - created_at
 - updated_at
 
@@ -759,6 +822,8 @@ GET    /api/v1/admin/errors
 - base_currency
 - type
 - created_by
+- owner_member_id
+- max_members
 - archived_at
 - archived_by
 - created_at
@@ -773,6 +838,7 @@ GET    /api/v1/admin/errors
 - avatar_url
 - role
 - status
+- invited_by
 - joined_at
 - claimed_at
 - removed_at
@@ -785,6 +851,8 @@ GET    /api/v1/admin/errors
 - token_hash
 - role
 - created_by
+- max_uses
+- use_count
 - expires_at
 - accepted_by
 - accepted_at
@@ -805,9 +873,11 @@ GET    /api/v1/admin/errors
 - updated_by
 - client_request_id
 - sync_status
+- version
 - created_at
 - updated_at
 - deleted_at
+- delete_finalized_at
 
 ### 9.6 expense_splits
 
@@ -929,6 +999,52 @@ MVP 演算法：
 - MVP 不設定使用者群組數量上限；若未來加入免費方案限制，封存群組是否計入需另行定義。
 - 測試期垃圾群組可由後台標記，滿 30 天未更新且支出少於 2 筆時，進入管理員清理候選清單。
 
+### 10.5 支出分類、金額與日期
+
+#### 分類
+
+MVP 使用固定分類選單，不開放自由輸入。
+
+預設分類：
+
+- 餐飲
+- 交通
+- 住宿
+- 娛樂
+- 購物
+- 生活
+- 其他
+
+規則：
+
+- 資料庫儲存 category code，前端顯示繁體中文名稱。
+- 自訂分類放到後續版本。
+- 若舊資料沒有分類，預設為「其他」。
+
+#### 金額
+
+- MVP 只允許正數支出。
+- 最小金額為 1 TWD。
+- 最大金額為 1,000,000 TWD。
+- 不允許 0 元支出。
+- 不允許負數支出；退款或折讓放到後續版本。
+
+#### 日期與時區
+
+- `expense_date` 是使用者輸入的本地日期，使用 DATE 型別，不含時區。
+- `created_at`、`updated_at`、`paid_at`、`confirmed_at` 使用 UTC timestamp。
+- 列表按 `expense_date` 分組，顯示時不做時區換日。
+- 後端仍記錄 request timezone，方便排查跨時區問題。
+
+### 10.6 支出刪除與復原
+
+- 刪除支出採 soft delete，寫入 `deleted_at`。
+- 前端刪除後顯示 5 秒 Undo toast。
+- Undo 期間前端先標示已刪除，但後端仍可立即重算；若使用者復原，再次重算。
+- MVP 可接受刪除與復原各觸發一次重算，優先保持資料一致。
+- Soft delete 明細保留 180 天；之後可由後台任務清理或轉為摘要保留。
+- 已被清理的支出不可復原。
+
 ## 11. 權限規格 MVP
 
 ### 11.1 角色
@@ -992,6 +1108,50 @@ MVP 支援 PWA-lite，不承諾完整離線 App。
 - 恢復網路後，待同步支出逐筆送到後端 API，由後端判斷是否成功。
 - 若同步時發現群組已封存、成員已移除、權限不足，該筆轉為失敗並提示使用者。
 - iOS Safari PWA 不承諾 push notification、badge、背景同步。
+
+### 11.5 前端狀態、重試與無障礙
+
+#### Loading 與錯誤
+
+- 首次載入列表使用 skeleton，不使用全頁空白。
+- 局部操作使用按鈕 loading 狀態，不鎖死整個頁面。
+- API 超過 10 秒未回應視為逾時。
+- 逾時文案：「連線有點慢，請再試一次」。
+- 所有失敗狀態都需提供「重試」或「返回」。
+
+#### 重試策略
+
+- 寫入型 API 自動重試最多 3 次。
+- 重試間隔採 1 秒、2 秒、4 秒。
+- 3 次失敗後保留待同步狀態，讓使用者手動重試或刪除。
+- 待同步支出最多 20 筆或 24 小時，超過後提示使用者先處理。
+
+#### Accessibility
+
+- MVP 至少符合 WCAG AA 對比度。
+- 所有 icon-only button 必須有 `aria-label`。
+- 所有主要流程可用鍵盤操作。
+- 金額輸入框使用 `inputmode="decimal"`。
+- 表單錯誤需綁定到欄位，不只顯示 toast。
+- 動畫需尊重 `prefers-reduced-motion`。
+
+#### i18n 預留
+
+- MVP 只上繁體中文，但文字不可直接散落在元件中。
+- 前端文字使用 key-value 字串檔管理。
+- 日期、數字、貨幣格式使用 `Intl` API。
+- category、role、status 皆儲存 code，顯示文字由前端字串檔轉換。
+
+### 11.6 頭像規格
+
+MVP 不做自訂上傳頭像。
+
+規則：
+
+- Google 登入可帶入 Google 帳號照片。
+- Email 登入預設使用人形圖示或姓名首字。
+- 群組成員可顯示 avatar_url，但不可在 MVP 上傳圖片。
+- 自訂上傳、裁切、CDN 與檔案清理放到後續版本。
 
 ## 12. 版面設計版本建議
 
@@ -1201,6 +1361,48 @@ MVP 應追蹤：
 - 不追蹤完整帳務內容，避免把金額細節送進分析工具。
 - 可追蹤金額區間，例如 0-500、501-2000、2001-10000。
 - 每個事件需帶上 app_version、platform、viewport_type。
+
+### 13.6 合規、監控與備份
+
+#### 隱私權與服務條款
+
+正式對外測試前必須準備：
+
+- 隱私權政策。
+- 服務條款。
+- Cookie 或追蹤技術聲明。
+- 註冊或首次登入時的同意紀錄。
+- 刪除帳號或資料請求的客服處理流程。
+
+隱私權政策需說明：
+
+- 收集哪些資料。
+- 資料用途。
+- 資料保留期限。
+- 使用者如何請求刪除或匯出資料。
+- 第三方服務，例如 Vercel、Supabase、Google Login、分析工具。
+
+#### 監控與告警
+
+MVP 監控目標：
+
+- API P95 response time 小於 500ms。
+- 5xx 錯誤率超過 1% 時告警。
+- 登入失敗率異常升高時告警。
+- 支出建立失敗率超過 5% 時告警。
+- 資料庫連線數、儲存空間、備份狀態需可查看。
+- 使用 Uptime Robot 或同等工具做外部 uptime 監控。
+
+#### 備份與災難復原
+
+MVP 最低要求：
+
+- 資料庫每日自動備份。
+- 備份保留 30 天。
+- RPO 目標小於 24 小時。
+- RTO 目標小於 4 小時。
+- 每月至少做一次備份還原演練。
+- 跨區備份可放到付費版或用戶量增加後再導入。
 
 ## 14. 建議開發順序
 
