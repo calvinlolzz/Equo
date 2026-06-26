@@ -432,10 +432,19 @@ MVP 不建議在新增時顯示太多權限設定。
 
 正式流程：
 
-1. 使用者可先試用。
-2. 需要跨裝置或邀請時，提示登入。
-3. 登入後資料同步到帳號。
-4. 不應讓使用者理解資料表、snapshot 或技術細節。
+1. MVP 第一版建議先要求登入後使用，避免匿名資料合併造成開發與客服成本。
+2. 可提供「看範例」作為未登入體驗，但範例資料不可寫入正式資料庫。
+3. 需要建立群組、新增支出、接受邀請、跨裝置同步時，必須登入。
+4. 若後續要支援未登入試用，必須另設 anonymous_session 與資料歸戶流程。
+5. 不應讓使用者理解資料表、snapshot 或技術細節。
+
+匿名試用若放入後續版本，規則如下：
+
+- 未登入資料只存在瀏覽器本機暫存。
+- 使用者登入後，前端送出一次 migration request，由後端建立正式資料。
+- 後端必須回傳合併結果與衝突項目。
+- 未登入資料不可直接寫入正式群組資料表。
+- 邀請加入與分享結算不支援匿名資料。
 
 ## 7. MVP 版本
 
@@ -461,6 +470,9 @@ MVP 只解決一件事：
 - 群組列表。
 - 群組搜尋。
 - 封存群組。
+- 群組封存後預設不出現在首頁，但可從「封存群組」找回。
+- MVP 不做永久刪除給一般使用者，避免誤刪帳務。
+- 後台可標記測試期垃圾群組，後續由管理員批次清理。
 
 #### 成員
 
@@ -475,9 +487,13 @@ MVP 只解決一件事：
 - 編輯支出。
 - 刪除支出。
 - 平均分攤。
+- 排除特定成員不分攤。
+- 個別成員固定加減金額微調。
 - 選擇付款人。
 - 選擇參與分攤成員。
 - 支出列表。
+- 儲存後先顯示「已新增，同步中」，同步失敗再提示使用者重試。
+- 後端必須用 client_request_id 防止重複建立同一筆支出。
 
 #### 結算
 
@@ -486,6 +502,8 @@ MVP 只解決一件事：
 - 標記已付款。
 - 確認收款。
 - 分享結算文字。
+- 支出新增、編輯、刪除後，後端自動重新計算未確認的結算版本。
+- 已標記付款或已確認收款的紀錄不可被靜默覆蓋，必須保留歷史版本。
 
 #### 邀請
 
@@ -520,13 +538,21 @@ MVP 只解決一件事：
 - 客服工作台。
 - 管理員人工改資料。
 - 多幣別匯率自動更新。
+- 完整離線資料庫同步。
+- 匿名資料自動歸戶。
+
+備註：
+
+- MVP 可以做 PWA-lite：支援加到主畫面、快取靜態頁面、弱網提示。
+- MVP 不做完整離線共同編輯；離線期間最多允許前端暫存「待同步支出」，恢復網路後交由後端 API 寫入。
 
 ### 7.4 MVP 成功標準
 
 - 使用者能在 60 秒內完成第一筆分帳。
 - 新增支出成功率高於 95%。
-- 分享結算使用率高於 50%。
+- 完成分帳流程後，點擊分享按鈕比例高於 30%。
 - 支出建立後結算結果可被理解。
+- 不熟悉分帳 App 的新使用者，不看說明也能完成「建立群組 -> 新增支出 -> 分享結算」。
 - 手機版 375px 寬度無遮擋、無錯位。
 - 後端 API 不允許未授權讀寫群組資料。
 
@@ -578,6 +604,37 @@ PATCH  /api/v1/groups/:groupId/expenses/:expenseId
 DELETE /api/v1/groups/:groupId/expenses/:expenseId
 ```
 
+新增支出 request 必須包含：
+
+```json
+{
+  "client_request_id": "uuid-from-client",
+  "title": "晚餐",
+  "amount": 1200,
+  "currency": "TWD",
+  "payer_member_id": "member-id",
+  "participant_member_ids": ["member-id-1", "member-id-2"],
+  "adjustments": [
+    {
+      "member_id": "member-id-2",
+      "type": "fixed_delta",
+      "amount": -200,
+      "reason": "未喝酒"
+    }
+  ],
+  "category": "餐飲",
+  "note": "含服務費",
+  "expense_date": "2026-06-26"
+}
+```
+
+後端規則：
+
+- `client_request_id` 由前端產生 UUID。
+- 同一使用者、同一群組、同一 `client_request_id` 只能建立一次。
+- 重複送出時，後端回傳第一次建立的支出結果，不新增第二筆。
+- 前端按下儲存後可先顯示同步中狀態，但最終資料以後端回傳為準。
+
 ### 8.6 Settlement
 
 ```text
@@ -585,6 +642,27 @@ GET    /api/v1/groups/:groupId/settlement
 POST   /api/v1/groups/:groupId/settlement/recalculate
 PATCH  /api/v1/groups/:groupId/settlement/:transferId
 POST   /api/v1/groups/:groupId/settlement/share-draft
+```
+
+結算重算規則：
+
+- 新增支出、編輯支出、刪除支出、移出成員後，由後端自動重算。
+- `POST /settlement/recalculate` 只作為手動修復或管理操作，不是一般使用者主流程。
+- 重算必須建立新的 `calculated_version`。
+- 舊版本若已有已付款或已確認紀錄，不可刪除，必須標記為 superseded。
+- 前端顯示最新有效版本，並在必要時提示「結算已依最新支出更新」。
+
+分享文字範例：
+
+```text
+Equo 算好｜本次結帳明細
+
+需要付款：
+小明 -> 付 $500 給 小華
+小美 -> 付 $300 給 小華
+
+查看詳情：
+https://example.com/groups/xxx
 ```
 
 ### 8.7 Feedback and Monitoring
@@ -661,6 +739,7 @@ GET    /api/v1/admin/errors
 - expense_date
 - created_by
 - client_request_id
+- sync_status
 - created_at
 - updated_at
 - deleted_at
@@ -672,6 +751,8 @@ GET    /api/v1/admin/errors
 - member_id
 - amount
 - split_type
+- adjustment_amount
+- adjustment_reason
 
 ### 9.7 settlement_transfers
 
@@ -682,6 +763,8 @@ GET    /api/v1/admin/errors
 - amount
 - status
 - calculated_version
+- superseded_at
+- superseded_by_version
 - paid_at
 - confirmed_at
 - updated_at
@@ -710,15 +793,27 @@ GET    /api/v1/admin/errors
 
 ### 10.1 MVP 分攤方式
 
-MVP 只支援平均分攤。
+MVP 預設支援平均分攤，但必須保留兩個低成本彈性：
+
+- 排除特定成員：未勾選者不分攤該筆支出。
+- 固定金額微調：可對單一成員加上或減少固定金額，例如「未喝酒 -200」。
+
+MVP 不支援百分比分攤、份數分攤、多人代墊拆帳；這些放在後續版本。
 
 公式：
 
 ```text
-每人應付 = 支出金額 / 參與人數
+可分攤金額 = 支出金額 - 所有固定加減金額合計
+每人應付 = 可分攤金額 / 參與人數 + 該成員固定加減金額
 付款人餘額 = 已付款金額 - 自己應分攤金額
 其他參與者餘額 = -自己應分攤金額
 ```
+
+限制：
+
+- 固定微調後，任一成員應付金額不得小於 0。
+- 所有成員應付金額加總必須等於支出金額。
+- 若微調造成金額不合法，後端回傳 validation error，前端顯示白話提示。
 
 ### 10.2 四捨五入
 
@@ -728,7 +823,9 @@ MVP 只支援平均分攤。
 
 - 金額以整數最小幣別儲存，例如 TWD cents 或 TWD integer。
 - 顯示時再格式化。
-- 平均分攤有餘數時，餘數分配給付款人或依固定排序分配。
+- 平均分攤有餘數時，預設由付款人承擔或收取餘數。
+- 若付款人未列入參與分攤成員，餘數依 member id 固定排序分配給第一位參與者。
+- 使用者介面需顯示簡短說明：「零頭會自動補到付款人，確保總額正確」。
 - 結算計算必須可重現。
 
 ### 10.3 結算最小化
@@ -738,6 +835,14 @@ MVP 只支援平均分攤。
 - 負數：需要付款的人。
 - 正數：應收款的人。
 - 依金額互相抵銷，產生最少轉帳建議。
+
+重算版本規則：
+
+- 每次重算產生新的 `calculated_version`。
+- 最新版本狀態為 active。
+- 舊版本狀態改為 superseded，並記錄 `superseded_at`。
+- 已確認付款的 transfer 保留為歷史紀錄，不因新版本消失。
+- 若新版本與已確認付款互相衝突，前端需提示「此群組已有付款紀錄，請確認是否重新結算」。
 
 ## 11. 權限規格 MVP
 
@@ -841,6 +946,7 @@ MVP 只支援平均分攤。
 5. 修改一筆支出。
 6. 手機 375px 檢查。
 7. 夜間模式檢查。
+8. 不給任何說明，請第一次使用者完成一輪流程。
 
 評分項目：
 
@@ -850,6 +956,19 @@ MVP 只支援平均分攤。
 - 結算是否好理解。
 - 分享是否自然。
 - 是否看起來像正式產品。
+- 使用者是否能在不問人的情況下完成。
+
+### 12.6 MVP 建議採用方向
+
+MVP 建議採用「版本 A：Ledger Minimal」混合「版本 B：Social Split」。
+
+原則：
+
+- 主流程採 Ledger Minimal：低干擾、少按鈕、金額與下一步最清楚。
+- 結算頁採 Social Split：頭像、付款關係、分享文字更像社群訊息。
+- 首頁不追求功能完整展示，只回答「現在要記一筆，還是查看誰該付誰」。
+- 分享結果要適合貼到 LINE 群組，不需要使用者再手動整理文字。
+- 桌面版可更像工作台，手機版必須像真正 App，而不是縮小版網頁。
 
 ## 13. 需要補充的建議
 
@@ -893,6 +1012,27 @@ server/
 - validation 錯誤
 - idempotency key
 
+API Contract 最低要求：
+
+- 每個 endpoint 必須定義成功 response。
+- 每個 endpoint 必須定義 400、401、403、404、409、422、500 的錯誤格式。
+- 所有寫入型 endpoint 必須支援 `client_request_id` 或同等防重複機制。
+- 前端不得自行組 SQL、不得引用 Supabase client 直接讀寫資料表。
+- 前端只可透過 `api-client` 呼叫後端 API。
+- 後端回傳錯誤時，需同時提供 `code` 與可顯示給使用者的 `message`。
+
+標準錯誤格式：
+
+```json
+{
+  "error": {
+    "code": "EXPENSE_DUPLICATED_REQUEST",
+    "message": "這筆支出已經新增過了",
+    "request_id": "server-request-id"
+  }
+}
+```
+
 ### 13.3 建議補資料一致性策略
 
 尤其是：
@@ -902,6 +1042,8 @@ server/
 - 成員被移出後歷史支出歸屬。
 - 邀請連結過期。
 - 離線後重新連線。
+- 樂觀 UI 顯示同步中，但後端失敗。
+- 同一支出被重複送出。
 
 ### 13.4 建議補正式測試清單
 
@@ -923,11 +1065,21 @@ MVP 應追蹤：
 - expense_created
 - settlement_viewed
 - settlement_shared
+- expense_create_failed
+- settlement_share_failed
 - invite_created
 - invite_accepted
+- invite_expired
 - login_started
 - login_completed
 - error_seen
+
+事件追蹤要求：
+
+- 失敗事件必須帶上原因分類，例如 validation、permission、network、server。
+- 不追蹤完整帳務內容，避免把金額細節送進分析工具。
+- 可追蹤金額區間，例如 0-500、501-2000、2001-10000。
+- 每個事件需帶上 app_version、platform、viewport_type。
 
 ## 14. 建議開發順序
 
@@ -936,7 +1088,8 @@ MVP 應追蹤：
 - 確認 MVP 功能。
 - 確認後端 API contract。
 - 確認資料模型。
-- 確認第一版視覺方向。
+- 確認第一版視覺方向，但前端元件設計可和 API 開發並行。
+- 確認 PWA-lite 範圍：加到主畫面、靜態快取、弱網提示，不做完整離線共同編輯。
 
 ### Phase 2：正式技術架構
 
@@ -980,4 +1133,3 @@ MVP 應追蹤：
 4. MVP 先專注群組、成員、支出、結算、分享。
 5. AI、掃描、日程、固定帳單、家庭模式、客服工作台延後。
 6. 視覺還要再提供至少 3 個以上完整方向進行比較。
-
