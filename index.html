@@ -3014,18 +3014,31 @@
 
       <section class="section group-panel" id="analysisPanel" style="display:none">
         <div class="section-head">
-          <h2>群組分析</h2>
-          <button class="small-action" type="button" onclick="showToast('群組分析已更新')">更新</button>
+          <h2>群組概況</h2>
         </div>
         <div id="groupBudget" class="card-list" style="margin-bottom:10px"></div>
-        <div class="section-head">
-          <h2>類別花費</h2>
-        </div>
-        <div id="groupCategoryStats" class="card-list" style="margin-bottom:10px"></div>
-        <div class="section-head">
-          <h2>成員墊付</h2>
-        </div>
-        <div id="groupMemberStats" class="card-list"></div>
+        <details class="advanced-section form-advanced">
+          <summary class="advanced-summary">
+            <span>
+              <strong>更多分析</strong>
+              <p class="mini-note" style="margin-top:4px">類別花費與成員墊付，需要追帳時再看。</p>
+            </span>
+          </summary>
+          <div class="advanced-content">
+            <div>
+              <div class="section-head">
+                <h2>類別花費</h2>
+              </div>
+              <div id="groupCategoryStats" class="card-list" style="margin-bottom:10px"></div>
+            </div>
+            <div>
+              <div class="section-head">
+                <h2>成員墊付</h2>
+              </div>
+              <div id="groupMemberStats" class="card-list"></div>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section class="section group-panel" id="membersPanel" style="display:none">
@@ -3040,7 +3053,7 @@
     <section id="stats" class="screen">
       <header class="topbar">
         <div>
-          <p class="eyebrow">本月分析</p>
+          <p class="eyebrow">花費概況</p>
           <h1>統計</h1>
         </div>
       </header>
@@ -3049,34 +3062,42 @@
         <p id="monthSpent" class="total">$0</p>
         <div style="height:18px"></div>
         <div id="bars" class="card-list"></div>
-      </section>
-      <section class="section">
-        <div class="section-head">
-          <h2>成員排行</h2>
-          <button class="small-action" type="button" onclick="showToast('統計報表已同步')">同步</button>
+        <div class="action-grid">
+          <button class="primary" type="button" onclick="openPrimaryCreate()">新增支出</button>
+          <button class="soft-btn" type="button" onclick="showScreen('group'); switchPanel('settle')">查看結算</button>
         </div>
-        <div id="memberRank" class="card-list"></div>
       </section>
-      <section class="section">
-        <div class="section-head">
-          <h2>幣別分布</h2>
-        </div>
-        <div id="currencyMix" class="card-list"></div>
-      </section>
-      <section class="section">
-        <div class="section-head">
-          <h2>匯出報表</h2>
-        </div>
-        <div class="input-card">
-          <h3>本月分帳報表</h3>
-          <p class="eyebrow" style="margin-top:6px">包含支出明細、成員排行、幣別換算與結算建議</p>
-          <div class="action-grid">
-            <button class="soft-btn" type="button" onclick="exportReport('Excel')">Excel 匯出</button>
-            <button class="soft-btn" type="button" onclick="exportReport('PDF')">PDF 匯出</button>
+      <details class="section advanced-section">
+        <summary class="advanced-summary">
+          <span>
+            <strong>更多統計</strong>
+            <p class="mini-note" style="margin-top:4px">成員排行、幣別分布與報表匯出。</p>
+          </span>
+        </summary>
+        <div class="advanced-content">
+          <div>
+            <div class="section-head">
+              <h2>成員排行</h2>
+            </div>
+            <div id="memberRank" class="card-list"></div>
           </div>
-          <p id="latestExport" class="mini-note">尚未匯出報表</p>
+          <div>
+            <div class="section-head">
+              <h2>幣別分布</h2>
+            </div>
+            <div id="currencyMix" class="card-list"></div>
+          </div>
+          <div class="input-card">
+            <h3>匯出報表</h3>
+            <p class="eyebrow" style="margin-top:6px">需要留存明細或和家人、室友對帳時再匯出。</p>
+            <div class="action-grid">
+              <button class="soft-btn" type="button" onclick="exportReport('Excel')">Excel</button>
+              <button class="soft-btn" type="button" onclick="exportReport('PDF')">PDF</button>
+            </div>
+            <p id="latestExport" class="mini-note">尚未匯出報表</p>
+          </div>
         </div>
-      </section>
+      </details>
     </section>
 
     <section id="me" class="screen">
