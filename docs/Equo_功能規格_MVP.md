@@ -446,6 +446,32 @@ MVP 不建議在新增時顯示太多權限設定。
 - 未登入資料不可直接寫入正式群組資料表。
 - 邀請加入與分享結算不支援匿名資料。
 
+### 6.7 成員歸戶流程
+
+分帳 App 需要區分「使用者帳號」與「群組成員」：
+
+- 使用者帳號：代表一個登入者，例如 Email 或 Google 帳號。
+- 群組成員：代表群組內的一個分帳對象，例如「小明」。
+- 一個使用者帳號可以在不同群組有不同成員名稱。
+- 一個群組成員可以先不綁帳號，由建立者代為新增。
+
+正式流程：
+
+1. 建立群組時，群組擁有者可以先建立未綁帳號成員。
+2. 未綁帳號成員的 `user_id` 為 null，但仍可參與支出與結算。
+3. 使用者透過邀請連結加入時，後端判斷是否要建立新成員或認領既有成員。
+4. 若邀請連結指定 member_id，登入者可認領該成員。
+5. 若未指定 member_id，登入者加入時建立新的 group_member。
+6. 已有支出紀錄的成員被認領後，歷史支出仍保留在同一個 group_member，不重新建立。
+7. 認領後 `group_members.user_id` 寫入登入者 id，並記錄 claimed_at。
+
+限制：
+
+- 同一群組中，一個 user_id 只能綁定一個 active group_member。
+- 被移出的成員不能再被認領，除非擁有者重新邀請。
+- 若使用者誤認領，MVP 不提供自助拆分，需由後台人工標記處理。
+- 「我參與的群組」以 users.id 查找已綁定的 group_members，不以 display_name 搜尋。
+
 ## 7. MVP 版本
 
 ### 7.1 MVP 目標
@@ -570,12 +596,19 @@ POST   /api/v1/auth/logout
 ### 8.2 Groups
 
 ```text
-GET    /api/v1/groups
+GET    /api/v1/groups?cursor=&limit=&status=&q=
 POST   /api/v1/groups
 GET    /api/v1/groups/:groupId
 PATCH  /api/v1/groups/:groupId
 POST   /api/v1/groups/:groupId/archive
 ```
+
+列表規則：
+
+- `limit` 預設 20，最大 50。
+- `status` 可為 active、archived。
+- `q` 搜尋群組名稱。
+- 排序預設為 `updated_at desc`。
 
 ### 8.3 Members
 
@@ -584,6 +617,7 @@ GET    /api/v1/groups/:groupId/members
 POST   /api/v1/groups/:groupId/members
 PATCH  /api/v1/groups/:groupId/members/:memberId
 POST   /api/v1/groups/:groupId/members/:memberId/remove
+POST   /api/v1/groups/:groupId/members/:memberId/claim
 ```
 
 ### 8.4 Invites
@@ -597,11 +631,29 @@ POST   /api/v1/invites/:token/accept
 ### 8.5 Expenses
 
 ```text
-GET    /api/v1/groups/:groupId/expenses
+GET    /api/v1/groups/:groupId/expenses?cursor=&limit=&from=&to=&category=&payer_member_id=
 POST   /api/v1/groups/:groupId/expenses
 GET    /api/v1/groups/:groupId/expenses/:expenseId
 PATCH  /api/v1/groups/:groupId/expenses/:expenseId
 DELETE /api/v1/groups/:groupId/expenses/:expenseId
+```
+
+支出列表規則：
+
+- `limit` 預設 30，最大 100。
+- 排序預設為 `expense_date desc, created_at desc`。
+- 可依日期區間、分類、付款人篩選。
+- MVP response 可不回傳全量 `total_count`，避免昂貴查詢。
+- 若需要下一頁，response 回傳 `next_cursor`。
+
+標準列表 response：
+
+```json
+{
+  "items": [],
+  "next_cursor": "opaque-cursor-or-null",
+  "has_more": false
+}
 ```
 
 新增支出 request 必須包含：
@@ -665,6 +717,13 @@ Equo 算好｜本次結帳明細
 https://example.com/groups/xxx
 ```
 
+分享限制：
+
+- 預設分享文字建議控制在 200 字內，避免 LINE 預覽截斷。
+- 若 transfer 超過 5 筆，分享文字只顯示前 5 筆與「還有 N 筆請查看連結」。
+- 分享連結需有 OG title、description、image，方便 LINE 預覽。
+- 分享內容不可暴露未登入者不應看到的完整帳務明細；未授權使用者點入只看到加入或登入入口。
+
 ### 8.7 Feedback and Monitoring
 
 ```text
@@ -698,8 +757,10 @@ GET    /api/v1/admin/errors
 - id
 - name
 - base_currency
+- type
 - created_by
 - archived_at
+- archived_by
 - created_at
 - updated_at
 
@@ -713,6 +774,9 @@ GET    /api/v1/admin/errors
 - role
 - status
 - joined_at
+- claimed_at
+- removed_at
+- removed_by
 
 ### 9.4 group_invites
 
@@ -738,6 +802,7 @@ GET    /api/v1/admin/errors
 - note
 - expense_date
 - created_by
+- updated_by
 - client_request_id
 - sync_status
 - created_at
@@ -766,6 +831,7 @@ GET    /api/v1/admin/errors
 - superseded_at
 - superseded_by_version
 - paid_at
+- confirmed_by
 - confirmed_at
 - updated_at
 
@@ -836,6 +902,15 @@ MVP 不支援百分比分攤、份數分攤、多人代墊拆帳；這些放在�
 - 正數：應收款的人。
 - 依金額互相抵銷，產生最少轉帳建議。
 
+MVP 演算法：
+
+- 採用貪心法：最大債務人優先配最大債權人。
+- 每次配對產生一筆 transfer，直到所有餘額歸零。
+- 時間複雜度以 O(n log n) 為目標。
+- MVP 單一群組 active 成員上限為 30 人。
+- 30 人以上提示建立子群組或封存不活躍成員。
+- MVP 不追求數學上的全域最少筆數，優先確保結果穩定、可解釋、容易測試。
+
 重算版本規則：
 
 - 每次重算產生新的 `calculated_version`。
@@ -843,6 +918,16 @@ MVP 不支援百分比分攤、份數分攤、多人代墊拆帳；這些放在�
 - 舊版本狀態改為 superseded，並記錄 `superseded_at`。
 - 已確認付款的 transfer 保留為歷史紀錄，不因新版本消失。
 - 若新版本與已確認付款互相衝突，前端需提示「此群組已有付款紀錄，請確認是否重新結算」。
+- superseded 版本保留 180 天；超過後可由後台任務保留摘要並清理明細。
+
+### 10.4 群組封存與資料保留
+
+- 封存群組仍可查看歷史支出、成員與結算。
+- 封存群組不可新增支出、不可新增成員、不可產生新邀請。
+- 擁有者可以解除封存。
+- 封存群組仍計入使用者歷史資料，但不出現在首頁 active 列表。
+- MVP 不設定使用者群組數量上限；若未來加入免費方案限制，封存群組是否計入需另行定義。
+- 測試期垃圾群組可由後台標記，滿 30 天未更新且支出少於 2 筆時，進入管理員清理候選清單。
 
 ## 11. 權限規格 MVP
 
@@ -874,9 +959,45 @@ MVP 不支援百分比分攤、份數分攤、多人代墊拆帳；這些放在�
 
 所有權限必須在後端判斷。前端可以隱藏按鈕，但不可依賴前端隱藏作為安全機制。
 
+### 11.3 安全基線
+
+MVP 後端至少需要以下安全規則：
+
+- Rate limit：登入、邀請連結生成、新增支出、回饋表單都需要限制頻率。
+- Auth token：必須有明確有效期與刷新機制，過期後要求重新登入。
+- CORS：正式環境只允許正式前端網域，不允許任意 origin。
+- Input limit：群組名稱最多 40 字，成員名稱最多 24 字，支出標題最多 40 字，備註最多 300 字。
+- Amount limit：單筆支出需設定合理上限，MVP 可先限制 TWD 0 到 9,999,999。
+- Invite token：只儲存 hash，不儲存明文 token；預設 7 天過期。
+- Audit log：重要操作需記錄 actor、target、action、created_at。
+- Admin：後台必須與一般使用者權限分離，不可只靠前端入口隱藏。
+
+### 11.4 PWA 與弱網邊界
+
+MVP 支援 PWA-lite，不承諾完整離線 App。
+
+可支援：
+
+- 加到主畫面。
+- 快取靜態資源。
+- 網路不穩時顯示弱網提示。
+- 已載入群組可離線查看最近快取資料。
+- 離線新增支出可暫存為待同步項目。
+
+限制：
+
+- 待同步支出最多暫存 20 筆或 24 小時。
+- 離線時不可接受邀請、不可登入、不可建立新群組。
+- 離線時看到的結算結果需標示「可能不是最新」。
+- 恢復網路後，待同步支出逐筆送到後端 API，由後端判斷是否成功。
+- 若同步時發現群組已封存、成員已移除、權限不足，該筆轉為失敗並提示使用者。
+- iOS Safari PWA 不承諾 push notification、badge、背景同步。
+
 ## 12. 版面設計版本建議
 
 目前 demo 的三套風格仍只是 prototype。正式產品至少應再探索以下四種方向。
+
+備註：本章是設計方向摘要。規格凍結後，版本 C 與版本 D 應移到獨立設計提案文件，MVP 主規格只保留 A+B 混合方向。
 
 ### 12.1 版本 A：Ledger Minimal
 
@@ -1091,6 +1212,9 @@ MVP 應追蹤：
 - 確認第一版視覺方向，但前端元件設計可和 API 開發並行。
 - 確認 PWA-lite 範圍：加到主畫面、靜態快取、弱網提示，不做完整離線共同編輯。
 
+預估：3 到 5 個工作天。  
+人力假設：產品/設計 1 人，前端 1 人，後端 1 人。
+
 ### Phase 2：正式技術架構
 
 - 建立前端專案。
@@ -1098,6 +1222,9 @@ MVP 應追蹤：
 - 建立資料庫 migration。
 - 建立 Auth。
 - 移除前端直連資料庫。
+
+預估：2 週。  
+人力假設：前端 1 人，後端 1 人。
 
 ### Phase 3：MVP 核心流程
 
@@ -1108,6 +1235,9 @@ MVP 應追蹤：
 - 結算。
 - 分享。
 
+預估：3 到 4 週。  
+人力假設：前端 1 人，後端 1 人，設計支援 0.5 人。
+
 ### Phase 4：後台基礎
 
 - 管理員登入。
@@ -1115,11 +1245,23 @@ MVP 應追蹤：
 - 錯誤紀錄。
 - 回饋檢視。
 
+預估：1 到 2 週。  
+人力假設：全端 1 人。
+
 ### Phase 5：測試與封閉試用
 
 - 10 到 30 位真實用戶測試。
 - 收集卡點。
 - 修正 MVP。
+
+預估：2 週。  
+人力假設：產品/營運 1 人，前端或全端 1 人。
+
+整體粗估：
+
+- 若 1 名前端 + 1 名後端穩定投入，MVP 約 8 到 10 週。
+- 若只有 1 名全端開發，MVP 約 12 到 16 週。
+- 若視覺設計反覆大改，需另加 1 到 3 週緩衝。
 
 ## 15. 結論
 
