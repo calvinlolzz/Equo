@@ -1346,7 +1346,7 @@
     }
 
     #expenseForm .expense-focus-note {
-      order: 1;
+      order: 0;
     }
 
     #expenseForm .expense-smart-hint {
@@ -1542,9 +1542,9 @@
     .expense-focus-note {
       margin: 0;
       border-radius: 16px;
-      padding: 10px 12px;
-      background: rgba(10,132,255,.08);
-      border: 1px solid rgba(10,132,255,.12);
+      padding: 9px 12px;
+      background: rgba(255,255,255,.50);
+      border: 1px solid rgba(255,255,255,.62);
       color: rgba(28,28,30,.68);
       font-size: 12px;
       font-weight: 720;
@@ -1617,24 +1617,26 @@
     }
 
     .ai-card {
-      border-radius: 24px;
-      padding: 12px;
+      border-radius: 26px;
+      padding: 15px;
       background:
-        linear-gradient(145deg, rgba(10,132,255,.16), rgba(191,90,242,.14)),
-        rgba(255,255,255,.58);
+        linear-gradient(145deg, rgba(10,132,255,.22), rgba(48,209,88,.12)),
+        rgba(255,255,255,.68);
       border: 1px solid rgba(255,255,255,.72);
-      box-shadow: 0 14px 34px rgba(35,45,75,.12);
+      box-shadow: 0 18px 42px rgba(35,45,75,.14);
     }
 
     .ai-card h3 {
       margin: 0;
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 860;
     }
 
     .ai-card textarea {
-      min-height: 58px;
+      min-height: 64px;
       margin-top: 10px;
+      font-size: 15px;
+      line-height: 1.45;
     }
 
     .action-grid {
@@ -1646,6 +1648,10 @@
 
     .action-grid.three-actions {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .action-grid.ai-actions {
+      grid-template-columns: minmax(0, 1.35fr) minmax(112px, .65fr);
     }
 
     .soft-btn, .mini-btn {
@@ -3339,14 +3345,14 @@
         </button>
       </div>
       <form id="expenseForm" class="form-grid">
-        <p class="expense-focus-note">用一句話快速填寫，或直接輸入金額、項目和付款人。</p>
+        <p class="expense-focus-note">先用一句話帶入內容，不準確時再手動改。</p>
         <p id="expenseSmartHint" class="expense-smart-hint mini-note">已幫你選好最合適的群組。</p>
         <div class="ai-card">
-          <h3>AI 快速填寫</h3>
+          <h3>一句話記帳</h3>
           <p class="mini-note">例如：今天聚餐 4200 元，阿華付款，4 人平均分攤。</p>
-          <textarea id="aiPrompt" placeholder="輸入一句話，系統會先填好表單">今天聚餐 4200 元，阿華付款，4 人平均分攤</textarea>
-          <div class="action-grid">
-            <button class="soft-btn" type="button" onclick="parseAiPrompt()">解析文字</button>
+          <textarea id="aiPrompt" placeholder="輸入：金額、誰付款、幾個人分">今天聚餐 4200 元，阿華付款，4 人平均分攤</textarea>
+          <div class="action-grid ai-actions">
+            <button class="primary" type="button" onclick="parseAiPrompt()">自動填入</button>
             <button class="soft-btn" type="button" onclick="scanReceipt()">掃描發票</button>
           </div>
         </div>
@@ -3362,8 +3368,8 @@
           </label>
         </div>
         <div class="input-card">
-          <h3>參與分攤成員</h3>
-          <p class="mini-note">取消勾選後，該成員不會分攤這筆費用。少人時可先新增成員。</p>
+          <h3>誰一起分</h3>
+          <p class="mini-note">只保留要一起分攤的人。少人時再新增成員。</p>
           <div id="participantGrid" class="participant-grid"></div>
           <button class="small-action subtle-action" type="button" onclick="openMemberSheet()" style="margin-top:10px">新增成員</button>
         </div>
@@ -3408,7 +3414,7 @@
           </label>
         </div>
         <div class="input-card expense-preview-card">
-          <h3>預覽分攤</h3>
+          <h3>確認分攤</h3>
           <p id="exchangeHint" class="mini-note"></p>
           <div id="splitPreview" class="preview"></div>
         </div>
@@ -7037,12 +7043,18 @@
       const converted = amount * (exchangeRates[currency] || 1);
       const participants = selectedParticipants();
       const each = participants.length ? converted / participants.length : 0;
+      const payerId = document.getElementById("expensePayer").value || currentUserId;
       document.getElementById("exchangeHint").textContent = currency === group.currency
         ? `以 ${group.currency} 計算，${participants.length} 位成員每位平均 ${money(each)}`
         : `${formatCurrency(amount, currency)} 會換算為 ${money(converted)}，再由 ${participants.length} 位成員分攤`;
-      document.getElementById("splitPreview").innerHTML = participants.map(id => `
-        <div class="preview-row"><span>${users[id].name}</span><strong>${money(each)}</strong></div>
-      `).join("");
+      const owedRows = participants
+        .filter(id => id !== payerId)
+        .map(id => `<div class="preview-row"><span>${users[id]?.name || "成員"} 要給 ${users[payerId]?.name || "付款人"}</span><strong>${money(each)}</strong></div>`);
+      document.getElementById("splitPreview").innerHTML = `
+        <div class="preview-row"><span>${users[payerId]?.name || "付款人"} 先付</span><strong>${money(converted)}</strong></div>
+        <div class="preview-row"><span>每人分攤</span><strong>${money(each)}</strong></div>
+        ${owedRows.length ? owedRows.join("") : `<div class="preview-row"><span>這筆不用互相轉帳</span><strong>已算清</strong></div>`}
+      `;
       updateExpenseReadyState();
     }
 
@@ -7395,7 +7407,10 @@
       updateExpenseGroupHint();
     });
     document.getElementById("expenseAmount").addEventListener("input", updatePreview);
+    document.getElementById("expenseTitle").addEventListener("input", updateExpenseReadyState);
+    document.getElementById("expensePayer").addEventListener("change", updatePreview);
     document.getElementById("expenseCurrency").addEventListener("change", updatePreview);
+    document.getElementById("splitType").addEventListener("change", updatePreview);
     document.getElementById("authForm").addEventListener("submit", signInWithEmail);
     document.getElementById("feedbackForm").addEventListener("submit", event => {
       event.preventDefault();
