@@ -9,11 +9,11 @@ Thumbs.db
 tmp/
 dist/
 node_modules/
+.worktrees/
 
 # Environment secrets
 .env
 .env.*
 .codex/
 .agents/
-
 
