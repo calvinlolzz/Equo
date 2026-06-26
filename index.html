@@ -1050,6 +1050,31 @@
 
     .member-avatar:first-child { margin-left: 0; }
 
+    .group-focus-card {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 22px;
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.68), rgba(255,255,255,.34)),
+        rgba(10,132,255,.08);
+      border: 1px solid rgba(255,255,255,.62);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.64),
+        0 12px 30px rgba(35,45,75,.08);
+    }
+
+    .group-focus-card h3 {
+      margin: 0;
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 880;
+      letter-spacing: 0;
+    }
+
+    .group-focus-card .action-grid {
+      margin-top: 12px;
+    }
+
     .segmented {
       margin-top: 14px;
       display: grid;
@@ -2201,6 +2226,14 @@
       box-shadow: 0 14px 30px rgba(0,0,0,.2);
     }
 
+    body[data-theme="dark"] .group-focus-card {
+      background:
+        linear-gradient(145deg, rgba(100,210,255,.10), rgba(50,215,75,.06)),
+        rgba(255,255,255,.07);
+      border-color: rgba(255,255,255,.13);
+      box-shadow: 0 14px 30px rgba(0,0,0,.2);
+    }
+
     body[data-theme="dark"] .next-action-card h3 {
       color: var(--text);
     }
@@ -2961,9 +2994,10 @@
             <strong id="groupMine">$0</strong>
           </div>
         </div>
+        <div id="groupFocusAction" class="group-focus-card"></div>
         <div class="segmented">
           <button class="segment active" type="button" data-panel="activity" onclick="switchPanel('activity')">支出</button>
-          <button class="segment" type="button" data-panel="settle" onclick="switchPanel('settle')">誰付誰</button>
+          <button class="segment" type="button" data-panel="settle" onclick="switchPanel('settle')">結算</button>
           <button class="segment" type="button" data-panel="members" onclick="switchPanel('members')">成員</button>
         </div>
       </section>
@@ -3004,7 +3038,7 @@
 
       <section class="section group-panel" id="settlePanel" style="display:none">
         <div class="section-head">
-          <h2>最少轉帳</h2>
+          <h2>誰該轉給誰</h2>
           <button id="shareSettlementButton" class="small-action" type="button" onclick="shareSettlement()">分享結算</button>
         </div>
         <div id="expenseSuccessCard" class="success-card"></div>
@@ -5952,7 +5986,17 @@
     function renderGroupNextAction(group) {
       const target = document.getElementById("groupNextAction");
       if (!target) return;
-      if (!group || groupExpenses(group.id).length || !canEditExpense(group) || latestFlowNotice?.groupId === group.id) {
+      if (!group || groupExpenses(group.id).length || latestFlowNotice?.groupId === group.id) {
+        target.innerHTML = "";
+        target.style.display = "none";
+        return;
+      }
+      if (document.getElementById("groupFocusAction")) {
+        target.innerHTML = "";
+        target.style.display = "none";
+        return;
+      }
+      if (!canEditExpense(group)) {
         target.innerHTML = "";
         target.style.display = "none";
         return;
@@ -5973,6 +6017,76 @@
       `;
     }
 
+    function renderGroupFocusAction(group) {
+      const target = document.getElementById("groupFocusAction");
+      if (!target) return;
+      if (!group) {
+        target.innerHTML = `
+          <div>
+            <p class="eyebrow">下一步</p>
+            <h3>建立第一個群組</h3>
+            <p class="mini-note" style="margin-top:6px">建立聚餐、旅遊或室友群組後，就能開始記支出。</p>
+          </div>
+          <div class="action-grid">
+            <button class="primary" type="button" onclick="openGroupSheet()">建立群組</button>
+            <button class="soft-btn" type="button" onclick="goHome()">回首頁</button>
+          </div>
+        `;
+        target.style.display = "";
+        return;
+      }
+      const rows = settlements(group.id).filter(row =>
+        currentUserRole(group) === "子女" ? row.from === currentUserId || row.to === currentUserId : true
+      );
+      const expenseCount = groupExpenses(group.id).length;
+      let eyebrow = "下一步";
+      let title = "新增第一筆支出";
+      let note = "輸入金額、付款人和分攤成員，系統會自動算誰該付給誰。";
+      let primary = "新增支出";
+      let primaryAction = "openAddSheet()";
+      let secondary = canManageGroup(group) ? "邀請成員" : "查看成員";
+      let secondaryAction = canManageGroup(group) ? "openInviteSheet()" : "switchPanel('members')";
+
+      if (!canEditExpense(group)) {
+        primary = "查看支出";
+        primaryAction = "switchPanel('activity')";
+        secondary = "查看成員";
+        secondaryAction = "switchPanel('members')";
+      }
+
+      if (rows.length) {
+        const first = rows[0];
+        eyebrow = "現在要做";
+        title = `${rows.length} 筆轉帳待處理`;
+        note = `${users[first.from]?.name || "成員"} 轉給 ${users[first.to]?.name || "成員"} ${money(first.amount)}，可直接分享到群組。`;
+        primary = canShareSettlement(group) ? "分享結算" : "查看結算";
+        primaryAction = canShareSettlement(group) ? "shareSettlement()" : "switchPanel('settle')";
+        secondary = "查看明細";
+        secondaryAction = "switchPanel('settle')";
+      } else if (expenseCount) {
+        eyebrow = "目前狀態";
+        title = "目前都算清";
+        note = "沒有待付款，也沒有人欠款。可以分享狀態，或繼續新增下一筆。";
+        primary = "新增支出";
+        primaryAction = canEditExpense(group) ? "openAddSheet()" : "switchPanel('activity')";
+        secondary = canShareSettlement(group) ? "分享狀態" : "查看支出";
+        secondaryAction = canShareSettlement(group) ? "shareSettlement()" : "switchPanel('activity')";
+      }
+
+      target.style.display = "";
+      target.innerHTML = `
+        <div>
+          <p class="eyebrow">${eyebrow}</p>
+          <h3>${title}</h3>
+          <p class="mini-note" style="margin-top:6px">${note}</p>
+        </div>
+        <div class="action-grid">
+          <button class="primary" type="button" onclick="${primaryAction}">${primary}</button>
+          <button class="soft-btn" type="button" onclick="${secondaryAction}">${secondary}</button>
+        </div>
+      `;
+    }
+
     function renderGroup() {
       const group = getGroup(activeGroupId);
       if (!group) {
@@ -5984,6 +6098,7 @@
         document.getElementById("groupSpent").textContent = money(0);
         document.getElementById("groupMine").textContent = money(0);
         document.getElementById("memberStack").innerHTML = avatarHtml(currentUserId);
+        renderGroupFocusAction(null);
         document.getElementById("groupExpenses").innerHTML = emptyAction({
           title: "還沒有群組",
           note: "先建立一個群組，再新增第一筆支出。",
@@ -6040,6 +6155,7 @@
       document.getElementById("groupSpent").textContent = money(totalForGroup(activeGroupId));
       document.getElementById("groupMine").textContent = (mine >= 0 ? "+" : "-") + money(Math.abs(mine));
       document.getElementById("memberStack").innerHTML = group.members.map(id => avatarHtml(id)).join("");
+      renderGroupFocusAction(group);
       renderGroupFlowNotice(group);
       renderGroupNextAction(group);
       const visibleExpenses = filteredGroupExpenses(activeGroupId);
