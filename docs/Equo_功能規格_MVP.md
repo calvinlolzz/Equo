@@ -511,7 +511,8 @@ MVP 只解決一件事：
 
 #### 使用者
 
-- Email 或 Google 登入擇一。
+- Google 登入。
+- Email magic link 登入。
 - 登出。
 - 基本個人資料。
 - 人形頭像或帳號照片。
@@ -555,6 +556,7 @@ MVP 只解決一件事：
 - 標記已付款。
 - 確認收款。
 - 分享結算文字。
+- 產生提醒付款文字，使用者自行複製或分享到 LINE。
 - 支出新增、編輯、刪除後，後端自動重新計算未確認的結算版本。
 - 已標記付款或已確認收款的紀錄不可被靜默覆蓋，必須保留歷史版本。
 
@@ -593,6 +595,10 @@ MVP 只解決一件事：
 - 多幣別匯率自動更新。
 - 完整離線資料庫同步。
 - 匿名資料自動歸戶。
+- 單筆支出多付款人。
+- App push notification。
+- Email 付款提醒。
+- 密碼登入、忘記密碼、密碼重設。
 
 備註：
 
@@ -617,10 +623,42 @@ MVP 只解決一件事：
 
 ```text
 GET    /api/v1/me
+POST   /api/v1/auth/magic-link
 POST   /api/v1/auth/logout
 POST   /api/v1/account/delete-request
 POST   /api/v1/account/delete-cancel
 ```
+
+登入規則：
+
+- MVP 支援 Google 登入與 Email magic link。
+- MVP 不支援密碼登入，避免處理密碼規則、忘記密碼與密碼外洩風險。
+- Magic link 有效期 10 分鐘。
+- 同一 email 重新寄送間隔至少 60 秒。
+- Access token 建議有效期 1 小時。
+- Refresh token 建議有效期 30 天。
+- MVP 不限制同時登入裝置數。
+- MVP 不做閒置自動登出，依 token 過期處理。
+
+### 8.1.1 前端 URL 路由
+
+```text
+/                      -> 首頁
+/login                 -> 登入
+/groups                -> 群組列表
+/groups/:id            -> 群組詳情
+/groups/:id/expenses   -> 支出列表
+/groups/:id/settlement -> 結算頁
+/invite/:token         -> 邀請接受頁
+/settings              -> 設定
+```
+
+路由規則：
+
+- PWA 與分享連結必須支援 deep linking。
+- 未登入使用者進入受保護頁面時，導到 `/login`，登入後回到原頁。
+- 無權限使用者進入群組頁時，顯示加入或返回入口，不顯示完整帳務。
+- 瀏覽器上一頁需能回到上一個列表或頁面狀態。
 
 ### 8.2 Groups
 
@@ -630,6 +668,7 @@ POST   /api/v1/groups
 GET    /api/v1/groups/:groupId
 PATCH  /api/v1/groups/:groupId
 POST   /api/v1/groups/:groupId/archive
+POST   /api/v1/groups/:groupId/unarchive
 POST   /api/v1/groups/:groupId/transfer-owner
 ```
 
@@ -736,6 +775,7 @@ GET    /api/v1/groups/:groupId/settlement
 POST   /api/v1/groups/:groupId/settlement/recalculate
 PATCH  /api/v1/groups/:groupId/settlement/:transferId
 POST   /api/v1/groups/:groupId/settlement/share-draft
+POST   /api/v1/groups/:groupId/settlement/reminder-draft
 ```
 
 結算重算規則：
@@ -768,6 +808,15 @@ https://example.com/groups/xxx
 - MVP 不提供公開完整帳務頁；未登入者只能看到群組名稱、結算摘要標題與登入/加入入口。
 - 已登入但非群組成員者，需先接受邀請或由成員加入後才能看明細。
 
+提醒付款規則：
+
+- MVP 不發送 push notification。
+- MVP 不發送 email 提醒。
+- `reminder-draft` 只產生提醒文字。
+- 使用者自行複製或使用系統分享貼到 LINE。
+- 提醒文字只包含未付款項目，不包含已確認付款與 $0 項目。
+- 單次提醒文字控制在 200 字內。
+
 ### 8.7 Sync
 
 MVP 不做真正即時多人同步。
@@ -791,7 +840,23 @@ POST   /api/v1/feedback
 POST   /api/v1/client-errors
 ```
 
-### 8.9 Admin
+### 8.9 Export
+
+```text
+GET /api/v1/export
+GET /api/v1/groups/:groupId/export
+```
+
+匯出規則：
+
+- MVP 支援全部可見資料匯出與單一群組匯出。
+- 只匯出目前登入者有權查看的資料。
+- 不匯出其他使用者的 email、登入識別與內部權限欄位。
+- 檔案格式為 JSON。
+- 檔名格式：`equo_export_YYYY-MM-DD.json` 或 `equo_group_{groupId}_YYYY-MM-DD.json`。
+- 匯出用途是資料權利與備份，不作為正式資料匯入入口。
+
+### 8.10 Admin
 
 ```text
 GET    /api/v1/admin/overview
@@ -989,12 +1054,15 @@ MVP 演算法：
 - 已確認付款的 transfer 保留為歷史紀錄，不因新版本消失。
 - 若新版本與已確認付款互相衝突，前端需提示「此群組已有付款紀錄，請確認是否重新結算」。
 - superseded 版本保留 180 天；超過後可由後台任務保留摘要並清理明細。
+- 結算金額為 0 的成員不產生 transfer。
+- 結算頁可在成員明細顯示「已平衡」，但分享文字不包含 $0 項目。
 
 ### 10.4 群組封存與資料保留
 
 - 封存群組仍可查看歷史支出、成員與結算。
 - 封存群組不可新增支出、不可新增成員、不可產生新邀請。
-- 擁有者可以解除封存。
+- 擁有者可以解除封存，不限制次數與時間。
+- 解除封存後，原本 active 成員狀態不變，已移出成員不會自動恢復。
 - 封存群組仍計入使用者歷史資料，但不出現在首頁 active 列表。
 - MVP 不設定使用者群組數量上限；若未來加入免費方案限制，封存群組是否計入需另行定義。
 - 測試期垃圾群組可由後台標記，滿 30 天未更新且支出少於 2 筆時，進入管理員清理候選清單。
@@ -1029,12 +1097,24 @@ MVP 使用固定分類選單，不開放自由輸入。
 - 不允許 0 元支出。
 - 不允許負數支出；退款或折讓放到後續版本。
 
+顯示格式：
+
+- App 內金額統一顯示 `$1,200`。
+- 對外分享文字統一顯示 `NT$1,200`。
+- 使用千分位逗號。
+- 不顯示小數位，除非未來支援非整數幣別。
+- 金額格式由共用 money formatter 處理，不在各元件自行組字串。
+
 #### 日期與時區
 
 - `expense_date` 是使用者輸入的本地日期，使用 DATE 型別，不含時區。
 - `created_at`、`updated_at`、`paid_at`、`confirmed_at` 使用 UTC timestamp。
 - 列表按 `expense_date` 分組，顯示時不做時區換日。
 - 後端仍記錄 request timezone，方便排查跨時區問題。
+- `expense_date` 預設為使用者本地今天。
+- 允許回溯日期，最早可選 1 年前。
+- 允許未來日期，最遠可選 1 年後，用於預付住宿或預付票券。
+- 超出日期範圍時，後端回傳 validation error。
 
 ### 10.6 支出刪除與復原
 
@@ -1044,6 +1124,27 @@ MVP 使用固定分類選單，不開放自由輸入。
 - MVP 可接受刪除與復原各觸發一次重算，優先保持資料一致。
 - Soft delete 明細保留 180 天；之後可由後台任務清理或轉為摘要保留。
 - 已被清理的支出不可復原。
+
+### 10.7 成員數與被移出成員
+
+- 群組只有擁有者一人時，不允許新增支出。
+- 單人群組首頁顯示「請先新增成員」。
+- 單人群組結算區塊隱藏或顯示「目前沒有需要結算的款項」。
+- 成員被移出後，不能再查看該群組。
+- 被移出成員的歷史支出與結算紀錄保留。
+- 若被移出成員仍有未付款項，群組內其他 active 成員仍可看到該筆待處理關係。
+- 被移出成員可透過新邀請重新加入，但會建立或認領新的 active 狀態，不自動恢復舊狀態。
+
+### 10.8 Prototype 資料遷移
+
+正式版不遷移 `index.html` prototype 或 demo 中的本機資料。
+
+規則：
+
+- demo 資料視為展示與測試資料。
+- 正式產品從正式後端資料庫重新開始。
+- 不製作 prototype localStorage 或 snapshot 的正式遷移腳本。
+- 若封閉測試者需要保留資料，僅提供 JSON 匯出供人工參考，不做正式匯入。
 
 ## 11. 權限規格 MVP
 
@@ -1333,6 +1434,11 @@ MVP 至少需要：
 - 單元測試：金額、分攤、結算。
 - API 測試：權限、建立、修改、刪除。
 - E2E 測試：建立群組到分享結算。
+- E2E 測試：邀請連結 deep link、登入後返回原頁。
+- E2E 測試：封存與解除封存。
+- E2E 測試：單人群組不能新增支出。
+- E2E 測試：支出日期回溯、未來日期、超出範圍錯誤。
+- E2E 測試：提醒付款文字與 JSON 匯出。
 - 手機版視覺測試。
 - 後端安全測試。
 
