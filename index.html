@@ -497,8 +497,7 @@
       grid-template-columns: 1fr 1fr;
     }
 
-    #home.home-empty .summary,
-    #home.home-empty #onboardingCard {
+    #home.home-empty .summary {
       display: none;
     }
 
@@ -1377,12 +1376,15 @@
       order: 1;
     }
 
-    #expenseForm .input-card:has(#splitPreview) {
-      order: 1;
+    #expenseForm .expense-preview-card {
+      order: 7;
+    }
+
+    #expenseForm .expense-advanced-toggle {
+      order: 5;
     }
 
     .expense-advanced-toggle {
-      order: 5;
       width: 100%;
       min-height: 46px;
       border-radius: 18px;
@@ -1407,8 +1409,11 @@
       transform: rotate(180deg);
     }
 
-    .expense-advanced {
+    #expenseForm .expense-advanced {
       order: 6;
+    }
+
+    .expense-advanced {
       display: grid;
       gap: 10px;
     }
@@ -1419,10 +1424,20 @@
 
     #expenseForm .sheet-actionbar {
       order: 20;
+      position: static;
+      margin: 12px 0 0;
+      padding: 0;
+      border-top: 0;
+      background: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    #expenseForm .submit-status {
+      order: 19;
     }
 
     .submit-status {
-      order: 19;
       margin: 0;
       min-height: 18px;
       color: var(--muted);
@@ -3335,7 +3350,7 @@
             <textarea id="expenseNote">含服務費</textarea>
           </label>
         </div>
-        <div class="input-card">
+        <div class="input-card expense-preview-card">
           <h3>預覽分攤</h3>
           <p id="exchangeHint" class="mini-note"></p>
           <div id="splitPreview" class="preview"></div>
