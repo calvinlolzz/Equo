@@ -542,7 +542,11 @@ MVP 只解決一件事：
 - 平均分攤。
 - 排除特定成員不分攤。
 - 個別成員固定加減金額微調。
-- 選擇付款人。
+- 選擇單一或多位付款人。
+- 百分比分攤。
+- 份數分攤。
+- 多人代墊拆帳。
+- 退款或負數支出。
 - 選擇參與分攤成員。
 - 支出列表。
 - 儲存後先顯示「已新增，同步中」，同步失敗再提示使用者重試。
@@ -594,7 +598,6 @@ MVP 只解決一件事：
 - 多幣別匯率自動更新。
 - 完整離線資料庫同步。
 - 匿名資料自動歸戶。
-- 單筆支出多付款人。
 - App push notification。
 - Email 付款提醒。
 - Email magic link 登入。
@@ -740,8 +743,28 @@ DELETE /api/v1/groups/:groupId/expenses/:expenseId
   "title": "晚餐",
   "amount": 1200,
   "currency": "TWD",
-  "payer_member_id": "member-id",
-  "participant_member_ids": ["member-id-1", "member-id-2"],
+  "payment_type": "multiple_payers",
+  "payments": [
+    {
+      "member_id": "member-id-1",
+      "amount": 800
+    },
+    {
+      "member_id": "member-id-2",
+      "amount": 400
+    }
+  ],
+  "split_method": "share",
+  "splits": [
+    {
+      "member_id": "member-id-1",
+      "shares": 2
+    },
+    {
+      "member_id": "member-id-2",
+      "shares": 1
+    }
+  ],
   "adjustments": [
     {
       "member_id": "member-id-2",
@@ -765,6 +788,9 @@ DELETE /api/v1/groups/:groupId/expenses/:expenseId
 - `POST /expenses/preview` 不寫入資料庫，只呼叫後端同一套分攤計算邏輯回傳預覽。
 - `PATCH /expenses/:expenseId` 必須帶 `version`，版本不一致時回傳 409 Conflict。
 - 409 文案：「這筆支出剛被修改，請重新載入後再確認」。
+- `payments` 合計必須等於 `amount`。
+- `split_method` 可為 `equal`、`percent`、`share`、`fixed_adjustment`。
+- 退款或負數支出需標記 `expense_kind=refund`，並由後端反向計入餘額。
 
 ### 8.6 Settlement
 
@@ -928,7 +954,9 @@ GET    /api/v1/admin/errors
 - title
 - amount
 - currency
-- payer_member_id
+- expense_kind
+- payment_type
+- split_method
 - category
 - note
 - expense_date
@@ -942,6 +970,15 @@ GET    /api/v1/admin/errors
 - deleted_at
 - delete_finalized_at
 
+### 9.5.1 expense_payments
+
+- id
+- expense_id
+- member_id
+- amount
+- payment_source
+- created_at
+
 ### 9.6 expense_splits
 
 - id
@@ -949,6 +986,8 @@ GET    /api/v1/admin/errors
 - member_id
 - amount
 - split_type
+- percent
+- shares
 - adjustment_amount
 - adjustment_reason
 
@@ -992,14 +1031,20 @@ GET    /api/v1/admin/errors
 
 ### 10.1 MVP 分攤方式
 
-MVP 預設支援平均分攤，但必須保留兩個低成本彈性：
+MVP 支援以下分攤方式：
 
-- 排除特定成員：未勾選者不分攤該筆支出。
-- 固定金額微調：可對單一成員加上或減少固定金額，例如「未喝酒 -200」。
+1. 平均分攤。
+2. 排除特定成員：未勾選者不分攤該筆支出。
+3. 固定金額微調：可對單一成員加上或減少固定金額，例如「未喝酒 -200」。
+4. 百分比分攤。
+5. 份數分攤。
+6. 單筆支出多付款人。
+7. 多人代墊拆帳。
+8. 退款或負數支出。
 
-MVP 不支援百分比分攤、份數分攤、多人代墊拆帳；這些放在後續版本。
+預設仍以平均分攤作為第一選項，其他方式需收在進階設定中，避免新增支出流程變複雜。
 
-公式：
+平均分攤公式：
 
 ```text
 可分攤金額 = 支出金額 - 所有固定加減金額合計
@@ -1008,11 +1053,57 @@ MVP 不支援百分比分攤、份數分攤、多人代墊拆帳；這些放在�
 其他參與者餘額 = -自己應分攤金額
 ```
 
+百分比分攤公式：
+
+```text
+成員應付 = 支出金額 * 成員百分比
+所有百分比加總必須等於 100%
+```
+
+份數分攤公式：
+
+```text
+每份金額 = 支出金額 / 總份數
+成員應付 = 每份金額 * 成員份數
+```
+
+多付款人公式：
+
+```text
+成員餘額 = 該成員付款總額 - 該成員應分攤金額
+```
+
+退款或負數支出公式：
+
+```text
+退款金額以負數或 expense_kind=refund 表示
+系統將退款反向計入付款與應分攤結果
+```
+
 限制：
 
 - 固定微調後，任一成員應付金額不得小於 0。
 - 所有成員應付金額加總必須等於支出金額。
+- 多付款人的付款金額加總必須等於支出金額。
+- 百分比分攤的百分比合計必須等於 100%。
+- 份數分攤的總份數必須大於 0。
+- 退款或負數支出不可讓任一成員產生不合理負應付；後端需以 preview 提醒使用者。
 - 若微調造成金額不合法，後端回傳 validation error，前端顯示白話提示。
+
+### 10.1.1 多付款人與多人代墊拆帳差異
+
+單筆支出多付款人：
+
+- 指同一張帳單本身就由多個人一起付款。
+- 例：晚餐 NT$3,000，A 刷卡 NT$2,000，B 付現 NT$1,000。
+- 系統只需要知道這張帳單總額、每個人付了多少、最後每個人應分攤多少。
+
+多人代墊拆帳：
+
+- 指一次活動中有多個人各自先墊了不同項目，最後要一起結算。
+- 例：A 墊餐費 NT$2,000，B 墊計程車 NT$600，C 墊飲料 NT$400，最後三筆一起算誰該補誰。
+- 實作上可以由多筆支出組成，也可以在同一流程中快速輸入多筆代墊項目。
+- MVP 支援方式：先以多筆支出 + 結算最小化處理；UI 可提供「繼續新增下一筆代墊」的快速流程。
 
 ### 10.2 四捨五入
 
@@ -1089,11 +1180,13 @@ MVP 使用固定分類選單，不開放自由輸入。
 
 #### 金額
 
-- MVP 只允許正數支出。
-- 最小金額為 1 TWD。
-- 最大金額為 1,000,000 TWD。
+- 一般支出金額必須大於 0。
+- 一般支出最小金額為 1 TWD。
+- 一般支出最大金額為 1,000,000 TWD。
 - 不允許 0 元支出。
-- 不允許負數支出；退款或折讓放到後續版本。
+- 退款可用負數或 `expense_kind=refund` 表示。
+- 單筆退款絕對值最大為 1,000,000 TWD。
+- 退款必須選擇對應參與成員，並進入同一套結算規則。
 
 顯示格式：
 
@@ -1430,8 +1523,10 @@ API Contract 最低要求：
 MVP 至少需要：
 
 - 單元測試：金額、分攤、結算。
+- 單元測試：平均、百分比、份數、固定加減、退款、多付款人。
 - API 測試：權限、建立、修改、刪除。
 - E2E 測試：建立群組到分享結算。
+- E2E 測試：多付款人支出與多人代墊連續新增。
 - E2E 測試：邀請連結 deep link、登入後返回原頁。
 - E2E 測試：封存與解除封存。
 - E2E 測試：單人群組不能新增支出。
