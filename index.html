@@ -2899,7 +2899,7 @@
 
       <section id="homeReminderSection" class="section">
         <div class="section-head">
-          <h2>其他待處理</h2>
+          <h2>待處理款項</h2>
         </div>
         <div id="reminders" class="card-list"></div>
       </section>
@@ -5697,10 +5697,10 @@
       if (!item) {
         target.innerHTML = `
           <div>
-            <strong>${groups.length ? "今天沒有待處理款項" : "30 秒完成第一筆分帳"}</strong>
-            <p class="mini-note">${groups.length ? "有新支出或付款狀態時，會在這裡提醒你。" : "輸入金額、付款人、分攤成員，系統會自動算誰該付誰。"}</p>
+            <strong>${groups.length ? "今天要記哪一筆？" : "30 秒完成第一筆分帳"}</strong>
+            <p class="mini-note">${groups.length ? "新增支出後，系統會直接算誰該付給誰。" : "輸入金額、付款人、分攤成員，系統會自動算誰該付誰。"}</p>
           </div>
-          <button class="mini-btn" type="button" onclick="${groups.length ? "openAddSheet()" : "openGroupSheet()"}">${groups.length ? "記一筆" : "開始"}</button>
+          <button class="mini-btn" type="button" onclick="${groups.length ? "openAddSheet()" : "openGroupSheet()"}">${groups.length ? "新增支出" : "開始"}</button>
         `;
         return;
       }
@@ -5778,25 +5778,7 @@
           action: row.from === currentUserId ? "前往付款" : "提醒對方",
           groupId: group.id
         })));
-      const recurringGroup = getGroup("g3") || groups.find(group => group.name.includes("室友")) || groups[0];
-      const fixedReminders = groups.length ? [
-        ...settlementItems,
-        ...(recurringGroup && canManageGroup(recurringGroup) ? [{
-          id: "recurring:g3:this-month",
-          title: recurringStatus["this-month"] ? "本月固定帳單已建立" : "本月固定帳單待建立",
-          body: "室友生活費 · 房租 / 網路 / 電費",
-          action: recurringStatus["this-month"] ? "查看帳單" : "產生帳單",
-          groupId: "g3"
-        }] : []),
-        ...(visibleExpenses().length ? [{
-          id: "export:monthly",
-          title: "本月報表可匯出",
-          body: "包含支出明細、幣別換算與結算建議",
-          action: "前往匯出",
-          groupId: null
-        }] : [])
-      ] : [];
-      return fixedReminders.filter(item => !reminderStatus[item.id]);
+      return settlementItems.filter(item => !reminderStatus[item.id]);
     }
 
     function renderReminders() {
@@ -5813,10 +5795,10 @@
           <span class="pill">待辦</span>
         </div>
       `).join("") || emptyAction({
-        title: "目前沒有待辦",
-        note: groups.length ? "有未付款、固定帳單或可匯出的報表時，會出現在這裡。" : "建立群組後，待付款與提醒會集中在這裡。",
-        primary: groups.length ? "" : "新增群組",
-        action: groups.length ? "" : "openGroupSheet()"
+        title: "目前都算清",
+        note: groups.length ? "沒有待付款，也沒有人欠你錢。" : "建立群組後，待付款會集中在這裡。",
+        primary: groups.length ? "新增支出" : "新增群組",
+        action: groups.length ? "openAddSheet()" : "openGroupSheet()"
       });
       return items.length;
     }
@@ -5892,7 +5874,6 @@
         </div>
         <div class="mini-actions" style="justify-content:flex-start;margin-top:0">
           <button class="mini-btn" type="button" onclick="openExpenseSheet('${expense.id}')">查看明細</button>
-          <button class="mini-btn" type="button" onclick="shareSettlement()">分享結算</button>
         </div>
       `;
     }
@@ -6435,7 +6416,7 @@
       if (status) status.textContent = editingExpenseId ? "正在確認修改內容..." : "正在確認分攤內容...";
       expenseSubmitTimer = setTimeout(() => {
         updateExpenseReadyState();
-      }, 450);
+      }, 80);
     }
 
     function updateExpenseReadyState() {
@@ -6932,15 +6913,16 @@
       const rows = settlements(groupId);
       const date = new Intl.DateTimeFormat("zh-TW", { month: "2-digit", day: "2-digit" }).format(new Date());
       const title = `${group.name} 結算`;
-      const lines = rows.map((row, index) => `${index + 1}. ${users[row.from]?.name || "成員"} 付給 ${users[row.to]?.name || "成員"} ${money(row.amount)}`);
+      const total = groupExpenses(groupId).reduce((sum, expense) => sum + Number(expense.amount || 0) * rateToTwd(expense.currency || "TWD"), 0);
+      const lines = rows.map((row, index) => `${index + 1}. ${users[row.from]?.name || "成員"} → ${users[row.to]?.name || "成員"} ${money(row.amount)}`);
       const text = [
-        `Equo 算好｜${title}`,
-        `${date} 更新`,
+        `【${group.name}】分帳結果`,
+        `${date} 更新${total ? ` · 總支出 ${money(total)}` : ""}`,
         "",
-        lines.length ? "需要轉帳：" : "目前大家已經算平。",
+        lines.length ? "誰該轉給誰：" : "目前都算清。",
         lines.length ? lines.join("\n") : "不需要再互相轉帳。",
         "",
-        lines.length ? "轉帳完成後，回到群組標記付款即可。" : "有新支出時我再更新結算。"
+        lines.length ? "照上面轉帳就可以了。" : "沒有待付款，也沒有人欠款。"
       ].join("\n");
       return { title, text };
     }
@@ -7382,7 +7364,17 @@
         date: "剛剛"
       });
       latestCreatedExpenseId = String(newExpenseId);
-      latestFlowNotice = null;
+      latestSettlementAction = null;
+      latestFlowNotice = {
+        groupId: group.id,
+        eyebrow: "支出已建立",
+        title: "結算已算好",
+        note: "可以直接複製給朋友，照上面轉帳即可。",
+        primary: "分享結算",
+        primaryAction: "shareSettlement()",
+        secondary: "再新增一筆",
+        secondaryAction: "openAddSheet()"
+      };
       activeGroupId = group.id;
       lastExpenseGroupId = group.id;
       localStorage.setItem("floatpay-last-expense-group", group.id);
