@@ -377,6 +377,50 @@
       line-height: 1.6;
     }
 
+    .ready-actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .members-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .member-row {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      min-height: 54px;
+      padding: 8px 10px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .52);
+      border: 1px solid rgba(255, 255, 255, .62);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+    }
+
+    .member-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(145deg, var(--green), #5b8a91);
+      font-weight: 900;
+    }
+
+    .member-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 830;
+    }
+
     .sheet {
       position: fixed;
       inset: 0;
@@ -597,9 +641,18 @@
           <span class="badge">已建立</span>
           <h1 id="ready-title">家庭日常</h1>
         </div>
-        <p class="next-step">下一步只要加入第一筆支出。Equo 會在需要時才顯示結算與提醒。</p>
-        <button class="btn primary" type="button" onclick="openExpenseModal()">新增第一筆支出</button>
-        <button class="btn secondary" type="button" onclick="openGroupModal()">調整群組</button>
+        <p class="next-step">先加入一起分帳的人，再加入第一筆支出。Equo 會在需要時才顯示結算與提醒。</p>
+        <ul class="members-list" id="members-list" aria-label="群組成員">
+          <li class="member-row" id="empty-member-row">
+            <span class="member-avatar" aria-hidden="true">＋</span>
+            <span class="member-name">還沒有成員</span>
+          </li>
+        </ul>
+        <div class="ready-actions">
+          <button class="btn primary" type="button" onclick="openMemberModal()">加入成員</button>
+          <button class="btn secondary" type="button" onclick="openExpenseModal()">新增第一筆支出</button>
+          <button class="quiet-link" type="button" onclick="openGroupModal()">調整群組</button>
+        </div>
       </section>
     </div>
   </main>
@@ -633,6 +686,26 @@
     </div>
   </section>
 
+  <section class="sheet add-member-modal" id="member-modal" aria-modal="true" aria-label="加入成員">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <h2>加入成員</h2>
+        <button class="close" type="button" onclick="closeMemberModal()" aria-label="關閉">×</button>
+      </div>
+      <form class="form" onsubmit="addMember(event)">
+        <div class="photo-pick" aria-hidden="true">人</div>
+        <label class="field">
+          <span>名字</span>
+          <input id="member-name-input" autocomplete="off" placeholder="例如：小美" />
+        </label>
+        <div class="sheet-actions">
+          <button class="btn secondary" type="button" onclick="closeMemberModal()">取消</button>
+          <button class="btn primary" type="submit">加入</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <section class="sheet first-expense-modal" id="expense-modal" aria-modal="true" aria-label="新增第一筆支出">
     <div class="sheet-card">
       <div class="sheet-head">
@@ -660,12 +733,15 @@
 
   <script>
     const groupModal = document.getElementById("group-modal");
+    const memberModal = document.getElementById("member-modal");
     const expenseModal = document.getElementById("expense-modal");
     const emptyState = document.getElementById("empty-state");
     const groupReady = document.getElementById("group-ready");
     const groupNameInput = document.getElementById("group-name-input");
     const createGroupButton = document.getElementById("create-group-button");
     const readyTitle = document.getElementById("ready-title");
+    const membersList = document.getElementById("members-list");
+    const emptyMemberRow = document.getElementById("empty-member-row");
     const toast = document.getElementById("toast-region");
     let toastTimer = 0;
 
@@ -694,6 +770,38 @@
       showToast("群組已建立");
     }
 
+    function openMemberModal() {
+      memberModal.classList.add("open");
+      document.getElementById("member-name-input").focus();
+    }
+
+    function closeMemberModal() {
+      memberModal.classList.remove("open");
+    }
+
+    function addMember(event) {
+      event.preventDefault();
+      const input = document.getElementById("member-name-input");
+      const name = input.value.trim();
+      if (!name) return;
+      emptyMemberRow.hidden = true;
+      const row = document.createElement("li");
+      const avatar = document.createElement("span");
+      const label = document.createElement("span");
+      row.className = "member-row";
+      row.setAttribute("aria-label", name);
+      avatar.className = "member-avatar";
+      avatar.setAttribute("aria-hidden", "true");
+      avatar.textContent = name.slice(0, 1);
+      label.className = "member-name";
+      label.textContent = name;
+      row.append(avatar, label);
+      membersList.appendChild(row);
+      input.value = "";
+      closeMemberModal();
+      showToast(`${name} 已加入`);
+    }
+
     function openExpenseModal() {
       expenseModal.classList.add("open");
       document.getElementById("expense-name-input").focus();
@@ -705,8 +813,9 @@
 
     function saveExpense(event) {
       event.preventDefault();
+      const item = document.getElementById("expense-name-input").value.trim() || "第一筆支出";
       closeExpenseModal();
-      showToast("第一筆支出已加入");
+      showToast(`${item} 已加入`);
     }
 
     function showToast(message) {
@@ -716,7 +825,7 @@
       toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2200);
     }
 
-    [groupModal, expenseModal].forEach(modal => {
+    [groupModal, memberModal, expenseModal].forEach(modal => {
       modal.addEventListener("click", event => {
         if (event.target === modal) modal.classList.remove("open");
       });
@@ -725,6 +834,7 @@
     window.addEventListener("keydown", event => {
       if (event.key === "Escape") {
         closeGroupModal();
+        closeMemberModal();
         closeExpenseModal();
       }
     });

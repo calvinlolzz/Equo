@@ -15,9 +15,14 @@ REQUIRED = {
     "group name input": "group-name-input",
     "currency picker": "currency-picker",
     "first expense modal": "first-expense-modal",
+    "add member modal": "add-member-modal",
+    "member name input": "member-name-input",
+    "members list": "members-list",
     "toast": "toast-region",
     "reduced motion": "prefers-reduced-motion: reduce",
     "group creation action": "createGroup",
+    "member creation action": "addMember",
+    "open member action": "openMemberModal",
     "single next step action": "openExpenseModal",
 }
 
