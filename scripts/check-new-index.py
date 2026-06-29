@@ -7,16 +7,18 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = ROOT / "references" / "index.html"
 
 REQUIRED = {
-    "fresh page marker": "Fresh Calm Index",
-    "approved style name": "Calm Household",
+    "pizo-inspired marker": "Pizo Inspired Create Flow",
     "liquid glass marker": "liquid-glass",
-    "household tray": "household-tray",
-    "expense sheet": "expense-sheet",
+    "create flow marker": "pizo-inspired-create",
+    "empty state": "empty-state",
+    "create group modal": "create-group-modal",
+    "group name input": "group-name-input",
+    "currency picker": "currency-picker",
+    "first expense modal": "first-expense-modal",
     "toast": "toast-region",
     "reduced motion": "prefers-reduced-motion: reduce",
-    "nav interaction": "data-view",
-    "add expense action": "openExpenseSheet",
-    "settle action": "settleNow",
+    "group creation action": "createGroup",
+    "single next step action": "openExpenseModal",
 }
 
 FORBIDDEN = {
@@ -25,6 +27,11 @@ FORBIDDEN = {
     "old floatpay storage keys": "floatpay-",
     "old Supabase CDN app script": "@supabase/supabase-js",
     "old glass class dependency": 'class="summary glass',
+    "rejected dashboard tray": "household-tray",
+    "rejected bottom navigation": 'class="nav"',
+    "rejected multi-view navigation": "data-view",
+    "rejected settlement CTA": "settleNow",
+    "rejected expense-first sheet": "openExpenseSheet",
 }
 
 
@@ -42,7 +49,7 @@ def main() -> int:
             for label in present_forbidden:
                 print(f"- {label}")
         return 1
-    print("PASS: fresh Calm Household index markers verified")
+    print("PASS: Pizo-inspired low-friction create flow verified")
     return 0
 
 
