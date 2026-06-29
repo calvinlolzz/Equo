@@ -421,6 +421,64 @@
       font-weight: 830;
     }
 
+    .summary-section {
+      display: grid;
+      gap: 10px;
+      padding-top: 2px;
+    }
+
+    .summary-title {
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 880;
+    }
+
+    .summary-card {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .52);
+      border: 1px solid rgba(255, 255, 255, .62);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.72);
+    }
+
+    .expense-row,
+    .settlement-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 42px;
+    }
+
+    .expense-name,
+    .settlement-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 820;
+    }
+
+    .expense-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .expense-amount,
+    .settlement-amount {
+      color: var(--green-dark);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .empty-summary {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
     .sheet {
       position: fixed;
       inset: 0;
@@ -653,6 +711,20 @@
           <button class="btn secondary" type="button" onclick="openExpenseModal()">新增第一筆支出</button>
           <button class="quiet-link" type="button" onclick="openGroupModal()">調整群組</button>
         </div>
+        <section class="summary-section expense-summary" id="expense-summary" aria-labelledby="expense-summary-title">
+          <h2 class="summary-title" id="expense-summary-title">最近支出</h2>
+          <div class="summary-card">
+            <div class="empty-summary" id="empty-expense-summary">新增第一筆支出後，這裡會顯示摘要。</div>
+            <div class="expenses-list" id="expenses-list" aria-label="最近支出"></div>
+          </div>
+        </section>
+        <section class="summary-section settlement-preview" id="settlement-preview" aria-labelledby="settlement-preview-title">
+          <h2 class="summary-title" id="settlement-preview-title">結算預覽</h2>
+          <div class="summary-card">
+            <div class="empty-summary" id="empty-settlement-preview">有支出和成員後，Equo 會先顯示最簡單的結算方向。</div>
+            <div id="settlement-result" aria-live="polite"></div>
+          </div>
+        </section>
       </section>
     </div>
   </main>
@@ -742,8 +814,14 @@
     const readyTitle = document.getElementById("ready-title");
     const membersList = document.getElementById("members-list");
     const emptyMemberRow = document.getElementById("empty-member-row");
+    const expensesList = document.getElementById("expenses-list");
+    const settlementResult = document.getElementById("settlement-result");
+    const emptyExpenseSummary = document.getElementById("empty-expense-summary");
+    const emptySettlementPreview = document.getElementById("empty-settlement-preview");
     const toast = document.getElementById("toast-region");
     let toastTimer = 0;
+    const members = [];
+    const expenses = [];
 
     function openGroupModal() {
       groupModal.classList.add("open");
@@ -797,9 +875,11 @@
       label.textContent = name;
       row.append(avatar, label);
       membersList.appendChild(row);
+      members.push(name);
       input.value = "";
       closeMemberModal();
       showToast(`${name} 已加入`);
+      renderExpenseSummary();
     }
 
     function openExpenseModal() {
@@ -814,8 +894,50 @@
     function saveExpense(event) {
       event.preventDefault();
       const item = document.getElementById("expense-name-input").value.trim() || "第一筆支出";
+      const amount = Number(document.getElementById("expense-amount-input").value || 0);
+      expenses.push({ name: item, amount });
       closeExpenseModal();
+      renderExpenseSummary();
       showToast(`${item} 已加入`);
+    }
+
+    function renderExpenseSummary() {
+      expensesList.textContent = "";
+      emptyExpenseSummary.hidden = expenses.length > 0;
+      emptySettlementPreview.hidden = expenses.length > 0 && members.length > 0;
+
+      expenses.slice(-2).forEach(expense => {
+        const row = document.createElement("div");
+        const text = document.createElement("div");
+        const title = document.createElement("div");
+        const meta = document.createElement("div");
+        const amount = document.createElement("div");
+        row.className = "expense-row";
+        title.className = "expense-name";
+        title.textContent = expense.name;
+        meta.className = "expense-meta";
+        meta.textContent = members.length ? `${members.length + 1} 人平均分` : "先加入成員再分攤";
+        amount.className = "expense-amount";
+        amount.textContent = `$${expense.amount.toLocaleString("zh-TW")}`;
+        text.append(title, meta);
+        row.append(text, amount);
+        expensesList.appendChild(row);
+      });
+
+      settlementResult.textContent = "";
+      if (expenses.length === 0 || members.length === 0) return;
+      const latest = expenses[expenses.length - 1];
+      const perPerson = Math.round(latest.amount / (members.length + 1));
+      const row = document.createElement("div");
+      const text = document.createElement("div");
+      const amount = document.createElement("div");
+      row.className = "settlement-row";
+      text.className = "settlement-text";
+      text.textContent = `${members[0]} 先付給你`;
+      amount.className = "settlement-amount";
+      amount.textContent = `$${perPerson.toLocaleString("zh-TW")}`;
+      row.append(text, amount);
+      settlementResult.appendChild(row);
     }
 
     function showToast(message) {

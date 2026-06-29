@@ -18,12 +18,16 @@ REQUIRED = {
     "add member modal": "add-member-modal",
     "member name input": "member-name-input",
     "members list": "members-list",
+    "expense summary": "expense-summary",
+    "expense list": "expenses-list",
+    "settlement preview": "settlement-preview",
     "toast": "toast-region",
     "reduced motion": "prefers-reduced-motion: reduce",
     "group creation action": "createGroup",
     "member creation action": "addMember",
     "open member action": "openMemberModal",
     "single next step action": "openExpenseModal",
+    "expense summary action": "renderExpenseSummary",
 }
 
 FORBIDDEN = {
