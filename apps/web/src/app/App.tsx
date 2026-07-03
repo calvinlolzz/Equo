@@ -21,6 +21,9 @@ import {
 import { GroupRail } from "./GroupRail";
 import { StartFlow } from "./StartFlowPanel";
 import type { Activity, ArchivedGroup, Expense, Group, GroupData, Member, StartMode } from "./appTypes";
+import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
+import { canSubmitExpenseDraft } from "./expenseDraft";
+import { computeMemberBalances } from "./groupBalances";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
   | "createGroup"
@@ -65,6 +68,24 @@ const currencyOptions = [
   { code: "KRW", label: UI_TEXT.currencies.krw },
   { code: "EUR", label: UI_TEXT.currencies.eur },
 ];
+
+function dateKey(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function lastEightDays() {
+  const days: { key: string; day: number; month: number }[] = [];
+  for (let offset = 7; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setDate(date.getDate() - offset);
+    days.push({ key: dateKey(date.toISOString()), day: date.getDate(), month: date.getMonth() + 1 });
+  }
+  return days;
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -143,26 +164,46 @@ export function App() {
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
   const [status, setStatus] = useState("Demo \u6a21\u5f0f\u5df2\u555f\u7528\uff0c\u53ef\u4ee5\u76f4\u63a5\u64cd\u4f5c\u4e3b\u8981\u6d41\u7a0b\u3002");
   const [busy, setBusy] = useState(false);
+  const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
+  const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
+  const [composerMode, setComposerMode] = useState<ComposerMode>("expense");
+  const [composerTitle, setComposerTitle] = useState<string>(text.dinner);
+  const [composerAmount, setComposerAmount] = useState("");
+  const [composerPayerId, setComposerPayerId] = useState("");
+  const [composerShareIds, setComposerShareIds] = useState<string[]>([]);
 
   const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
   const activeData = activeGroup ? groupData[activeGroup.id] ?? createGroupData(activeGroup) : null;
   const members = activeData?.members ?? [];
   const expenses = activeData?.expenses ?? [];
   const activities = activeData?.activities ?? [];
-  const totalExpenseMinor = expenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
-  const averageExpenseMinor = expenses.length ? Math.round(totalExpenseMinor / expenses.length) : 0;
-  const payerMember = members[0];
+  const spendableExpenses = useMemo(() => expenses.filter((expense) => expense.kind !== "settlement"), [expenses]);
+  const totalExpenseMinor = spendableExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
+  const averageExpenseMinor = spendableExpenses.length ? Math.round(totalExpenseMinor / spendableExpenses.length) : 0;
 
-  const balances = useMemo(() => {
-    const map = new Map<string, number>();
-    members.forEach((member) => map.set(member.id, 0));
-    expenses.forEach((expense) => {
-      map.set(expense.payerId, (map.get(expense.payerId) ?? 0) + expense.amountMinor);
-      const share = Math.round(expense.amountMinor / Math.max(1, expense.shareMemberIds.length));
-      expense.shareMemberIds.forEach((id) => map.set(id, (map.get(id) ?? 0) - share));
-    });
-    return map;
-  }, [expenses, members]);
+  const balances = useMemo(() => computeMemberBalances(members, expenses), [expenses, members]);
+
+  const ownerMember = members.find((member) => member.role === "owner") ?? members[0];
+
+  const dateChips = useMemo(() => lastEightDays(), []);
+  const selectedDayExpenses = useMemo(
+    () => spendableExpenses.filter((expense) => dateKey(expense.createdAt) === selectedDateKey),
+    [spendableExpenses, selectedDateKey],
+  );
+  const groupSpendMinor = selectedDayExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
+  const personalSpendMinor = useMemo(() => {
+    if (!ownerMember) return 0;
+    return selectedDayExpenses.reduce((sum, expense) => {
+      if (!expense.shareMemberIds.includes(ownerMember.id)) return sum;
+      const baseAmount = Math.floor(expense.amountMinor / Math.max(1, expense.shareMemberIds.length));
+      const remainder = expense.amountMinor % Math.max(1, expense.shareMemberIds.length);
+      const index = expense.shareMemberIds.indexOf(ownerMember.id);
+      const share = baseAmount + (index < remainder ? 1 : 0);
+      return sum + share;
+    }, 0);
+  }, [selectedDayExpenses, ownerMember]);
+  const selectedDateChip = dateChips.find((chip) => chip.key === selectedDateKey);
+  const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
   const debt = useMemo(() => {
     const debtor = members.find((member) => (balances.get(member.id) ?? 0) < 0);
@@ -182,10 +223,34 @@ export function App() {
 
   useEffect(() => {
     const routeId = getRouteGroupId();
-    if (routeId && routeId !== activeGroupId && groups.some((group) => group.id === routeId)) {
-      setActiveGroupId(routeId);
+    if (!routeId) return;
+    const routeGroupExists = groups.some((group) => group.id === routeId);
+    if (routeId === activeGroupId) {
+      if (!routeGroupExists) {
+        setActiveGroupId("");
+        setGroupRoute(null, "replace");
+        setStatus(text.groupNotFound);
+      }
+      return;
     }
+    if (routeGroupExists) {
+      setActiveGroupId(routeId);
+      return;
+    }
+    setActiveGroupId("");
+    setGroupRoute(null, "replace");
+    setStatus(text.groupNotFound);
   }, [activeGroupId, groups]);
+
+  useEffect(() => {
+    if (!expenseComposerOpen) return;
+    setComposerMode("expense");
+    setComposerTitle(text.dinner);
+    setComposerAmount("");
+    setComposerPayerId(members[0]?.id ?? "");
+    setComposerShareIds(members.map((member) => member.id));
+    // Intentionally resets only when the composer opens, not on every members change.
+  }, [expenseComposerOpen]);
 
   function selectGroup(group: Group) {
     setActiveGroupId(group.id);
@@ -305,17 +370,31 @@ export function App() {
     setStatus(`${text.addVirtualMember}: ${member.name}`);
   }
 
-  function addExpense() {
+  function toggleComposerShareMember(memberId: string) {
+    setComposerShareIds((current) => {
+      if (current.includes(memberId)) {
+        if (current.length <= 1) return current;
+        return current.filter((id) => id !== memberId);
+      }
+      return [...current, memberId];
+    });
+  }
+
+  function submitExpense() {
     if (!activeGroup || members.length === 0) return;
+    if (!canSubmitExpenseDraft({ amount: composerAmount, selectedShareMemberCount: composerShareIds.length })) return;
     const now = new Date().toISOString();
+    const amountMinor = Math.round(Number(composerAmount) * 100);
+    const payerId = composerPayerId || members[0].id;
     const expense: Expense = {
       id: crypto.randomUUID(),
-      title: text.dinner,
-      amountMinor: 120000,
+      title: composerTitle.trim() || text.dinner,
+      amountMinor,
       currency: activeGroup.currency,
       createdAt: now,
-      payerId: members[0].id,
-      shareMemberIds: members.map((member) => member.id),
+      payerId,
+      shareMemberIds: composerShareIds.length ? composerShareIds : members.map((member) => member.id),
+      kind: "expense",
     };
     const activity: Activity = {
       id: crypto.randomUUID(),
@@ -328,6 +407,34 @@ export function App() {
     });
     setExpenseComposerOpen(false);
     setStatus(`${text.addExpense}: ${expense.title}`);
+  }
+
+  function settleDebt() {
+    if (!activeGroup || !debt) return;
+    const now = new Date().toISOString();
+    const settlement: Expense = {
+      id: crypto.randomUUID(),
+      title: text.settlementTransfer,
+      amountMinor: debt.amountMinor,
+      currency: activeGroup.currency,
+      createdAt: now,
+      payerId: debt.from.id,
+      shareMemberIds: [debt.to.id],
+      kind: "settlement",
+    };
+    const activity: Activity = {
+      id: crypto.randomUUID(),
+      text: `${text.clearDebt}: ${debt.from.name} → ${debt.to.name} ${formatTwd(debt.amountMinor)}`,
+      createdAt: now,
+    };
+    setGroupData((current) => {
+      const data = current[activeGroup.id] ?? createGroupData(activeGroup);
+      return {
+        ...current,
+        [activeGroup.id]: { ...data, expenses: [settlement, ...data.expenses], activities: [activity, ...data.activities].slice(0, 8) },
+      };
+    });
+    setStatus(`${text.clearDebt}: ${debt.from.name} → ${debt.to.name}`);
   }
 
   function archiveActiveGroup() {
@@ -372,6 +479,10 @@ export function App() {
     dialog === "currencyPanel" ||
     dialog === "recordsPanel" ||
     dialog === "analysisPanel";
+  const composerSubmitState = getComposerSubmitState({
+    mode: composerMode,
+    canSubmitExpense: canSubmitExpenseDraft({ amount: composerAmount, selectedShareMemberCount: composerShareIds.length }),
+  });
 
   return (
     <main className="app-shell">
@@ -481,10 +592,10 @@ export function App() {
             <section className="spending-card glass-panel" id="group-analysis" aria-label={text.personalSpend}>
               <div className="section-title-row">
                 <div className="tab-pair" aria-label={text.personalSpend}>
-                  <button className="soft-tab active" type="button">
+                  <button className={spendTab === "personal" ? "soft-tab active" : "soft-tab"} type="button" onClick={() => setSpendTab("personal")}>
                     {text.personalSpend}
                   </button>
-                  <button className="soft-tab" type="button">
+                  <button className={spendTab === "group" ? "soft-tab active" : "soft-tab"} type="button" onClick={() => setSpendTab("group")}>
                     {text.groupSpend}
                   </button>
                 </div>
@@ -494,13 +605,18 @@ export function App() {
               </div>
               <div className="spending-date-row">
                 <div>
-                  <span>{`${new Date().getMonth() + 1}/${new Date().getDate()}`}</span>
-                  <strong>{formatTwd(totalExpenseMinor)}</strong>
+                  <span>{selectedDateChip ? `${selectedDateChip.month}月${selectedDateChip.day}日` : `${new Date().getMonth() + 1}月${new Date().getDate()}日`}</span>
+                  <strong>{formatTwd(spendDisplayAmountMinor)}</strong>
                 </div>
                 <div className="date-chip-row" aria-label="\u65e5\u671f">
-                  {[26, 27, 28, 29, 30, 1, 2, 3].map((day) => (
-                    <button className={day === new Date().getDate() ? "date-chip active" : "date-chip"} type="button" key={day}>
-                      {day}
+                  {dateChips.map((chip) => (
+                    <button
+                      className={chip.key === selectedDateKey ? "date-chip active" : "date-chip"}
+                      type="button"
+                      key={chip.key}
+                      onClick={() => setSelectedDateKey(chip.key)}
+                    >
+                      {chip.day}
                     </button>
                   ))}
                 </div>
@@ -534,9 +650,11 @@ export function App() {
                 ) : (
                   <div className="pizo-debt-empty">{text.settled}</div>
                 )}
-                <button className="settlement-clear-action" type="button" onClick={() => setStatus(text.clearDebt)}>
-                  {text.clearDebt}
-                </button>
+                {debt ? (
+                  <button className="settlement-clear-action" type="button" onClick={settleDebt}>
+                    {text.clearDebt}
+                  </button>
+                ) : null}
               </div>
             </section>
 
@@ -549,24 +667,38 @@ export function App() {
               </div>
               {expenses.length ? (
                 <div className="expense-record-list">
-                  {expenses.slice(0, 5).map((expense) => (
-                    <button className="expense-record-row pizo-expense-row" type="button" key={expense.id}>
-                      <span className="member-avatar photo">{initial(payerMember?.name)}</span>
-                      <span className="expense-record-main">
-                        <strong>{expense.title}</strong>
-                        <small>{formatTime(expense.createdAt)}</small>
-                      </span>
-                      <span className="expense-record-amount">
-                        <small>{expense.currency}</small>
-                        {formatTwd(expense.amountMinor)}
-                        <i className="mini-avatar-stack" aria-hidden="true">
-                          {members.slice(0, 3).map((member) => (
-                            <em key={member.id}>{initial(member.name)}</em>
-                          ))}
-                        </i>
-                      </span>
-                    </button>
-                  ))}
+                  {expenses.slice(0, 5).map((expense) => {
+                    const payer = members.find((member) => member.id === expense.payerId);
+                    const shareMembers = expense.shareMemberIds
+                      .map((id) => members.find((member) => member.id === id))
+                      .filter((member): member is Member => Boolean(member))
+                      .slice(0, 3);
+                    const isSettlement = expense.kind === "settlement";
+                    return (
+                      <button className="expense-record-row pizo-expense-row" type="button" key={expense.id}>
+                        {isSettlement ? (
+                          <span className="member-avatar photo settlement-avatar">
+                            <History aria-hidden="true" size={16} />
+                          </span>
+                        ) : (
+                          <span className="member-avatar photo">{initial(payer?.name)}</span>
+                        )}
+                        <span className="expense-record-main">
+                          <strong>{expense.title}</strong>
+                          <small>{formatTime(expense.createdAt)}</small>
+                        </span>
+                        <span className="expense-record-amount">
+                          <small>{expense.currency}</small>
+                          {formatTwd(expense.amountMinor)}
+                          <i className="mini-avatar-stack" aria-hidden="true">
+                            {shareMembers.map((member) => (
+                              <em key={member.id}>{initial(member.name)}</em>
+                            ))}
+                          </i>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="empty-copy">{text.noRecords}</p>
@@ -593,10 +725,34 @@ export function App() {
                 <p className="empty-copy">{text.noActivity}</p>
               )}
             </section>
+
+            <section className="home-section mobile-group-manage" aria-label={text.groupManage}>
+              <div className="section-title-row">
+                <h3>{text.groupManage}</h3>
+              </div>
+              <div className="mobile-group-manage-grid">
+                <button className="secondary-action" type="button" onClick={openEditGroup}>
+                  <Pencil aria-hidden="true" size={16} />
+                  {text.editGroup}
+                </button>
+                <button className="secondary-action" type="button" onClick={() => setDialog("currencyPanel")}>
+                  <CircleDollarSign aria-hidden="true" size={16} />
+                  {text.currency}
+                </button>
+                <button className="secondary-action" type="button" onClick={() => setDialog("archive")}>
+                  <Archive aria-hidden="true" size={16} />
+                  {text.archiveGroup}
+                </button>
+                <button className="mobile-danger-action" type="button" onClick={() => setDialog("delete")}>
+                  <Trash2 aria-hidden="true" size={16} />
+                  {text.deleteGroup}
+                </button>
+              </div>
+            </section>
           </section>
 
           <aside className="group-side-nav glass-panel" aria-label={text.groupHome}>
-            <button className="profile-dot" type="button" aria-label={text.profile}>
+            <button className="profile-dot" type="button" aria-label={text.profile} onClick={openMemberList}>
               <UserRound aria-hidden="true" size={16} />
             </button>
             <div className="side-group-card">
@@ -639,6 +795,41 @@ export function App() {
           <button className="floating-action" type="button" aria-label={text.addExpense} onClick={() => setExpenseComposerOpen(true)}>
             <Plus aria-hidden="true" size={34} />
           </button>
+
+          <nav className="mobile-tab-bar" aria-label={text.groupHome}>
+            <button
+              className="mobile-tab-item"
+              type="button"
+              onClick={() => {
+                setDialog(null);
+                setExpenseComposerOpen(false);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
+              <House aria-hidden="true" size={20} />
+              <span>{text.navHome}</span>
+            </button>
+            <button className="mobile-tab-item" type="button" onClick={() => setDialog("recordsPanel")}>
+              <History aria-hidden="true" size={20} />
+              <span>{text.navRecords}</span>
+            </button>
+            <button
+              className="mobile-tab-center"
+              type="button"
+              aria-label={text.addExpense}
+              onClick={() => setExpenseComposerOpen(true)}
+            >
+              <Plus aria-hidden="true" size={26} />
+            </button>
+            <button className="mobile-tab-item" type="button" onClick={() => setDialog("analysisPanel")}>
+              <ChartNoAxesColumn aria-hidden="true" size={20} />
+              <span>{text.navAnalysis}</span>
+            </button>
+            <button className="mobile-tab-item" type="button" onClick={openMemberList}>
+              <UserRound aria-hidden="true" size={20} />
+              <span>{text.navMembers}</span>
+            </button>
+          </nav>
         </section>
       )}
 
@@ -652,20 +843,92 @@ export function App() {
               <p className="eyebrow">Expense</p>
               <h2>{text.addExpense}</h2>
             </div>
-            <div className="amount-display">
-              <span>{activeGroup?.currency ?? "TWD"}</span>
-              <strong>$1,200</strong>
+
+            <div className="composer-type-row" role="tablist" aria-label={text.addExpense}>
+              {COMPOSER_MODES.map((mode) => (
+                <button
+                  key={mode.id}
+                  className={mode.id === composerMode ? "composer-type active" : "composer-type"}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode.id === composerMode}
+                  onClick={() => setComposerMode(mode.id)}
+                >
+                  {mode.label}
+                </button>
+              ))}
             </div>
-            <label>
-              <span>{text.title}</span>
-              <input value={text.dinner} aria-label={text.title} readOnly />
-            </label>
+
+            {composerMode === "expense" ? (
+              <>
+                <label>
+                  <span>{text.title}</span>
+                  <input
+                    value={composerTitle}
+                    onChange={(event) => setComposerTitle(event.target.value)}
+                    aria-label={text.title}
+                  />
+                </label>
+
+                <div className="composer-amount-card">
+                  <span>{activeGroup?.currency ?? "TWD"}</span>
+                  <input
+                    value={composerAmount}
+                    onChange={(event) => setComposerAmount(event.target.value)}
+                    inputMode="decimal"
+                    placeholder="0"
+                    aria-label={text.amount}
+                  />
+                </div>
+
+                <div className="composer-card-section">
+                  <div className="composer-section-head">
+                    <span>{text.payer}</span>
+                  </div>
+                  <div className="payer-chip-grid">
+                    {members.map((member) => (
+                      <button
+                        className={member.id === composerPayerId ? "payer-chip active" : "payer-chip"}
+                        type="button"
+                        key={member.id}
+                        onClick={() => setComposerPayerId(member.id)}
+                      >
+                        <span className="member-avatar">{initial(member.name)}</span>
+                        <strong>{member.name}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="composer-card-section">
+                  <div className="composer-section-head">
+                    <span>{text.shareMembers}</span>
+                  </div>
+                  <div className="payer-chip-grid">
+                    {members.map((member) => (
+                      <button
+                        className={composerShareIds.includes(member.id) ? "payer-chip active" : "payer-chip"}
+                        type="button"
+                        key={member.id}
+                        onClick={() => toggleComposerShareMember(member.id)}
+                      >
+                        <span className="member-avatar">{initial(member.name)}</span>
+                        <strong>{member.name}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            <p className="composer-hint">{composerSubmitState.hint}</p>
+
             <div className="dialog-action-row">
               <button className="secondary-action" type="button" onClick={() => setExpenseComposerOpen(false)}>
                 {text.cancel}
               </button>
-              <button className="primary-action" type="button" onClick={addExpense}>
-                {text.addExpense}
+              <button className="primary-action" type="button" disabled={composerSubmitState.disabled} onClick={submitExpense}>
+                {composerSubmitState.label}
               </button>
             </div>
           </section>
@@ -761,7 +1024,7 @@ export function App() {
                 <div className="panel-stat-grid">
                   <div>
                     <span>{"\u7b46\u6578"}</span>
-                    <strong>{expenses.length}</strong>
+                    <strong>{spendableExpenses.length}</strong>
                   </div>
                   <div>
                     <span>{"\u7e3d\u652f\u51fa"}</span>
@@ -778,7 +1041,7 @@ export function App() {
                     expenses.map((expense) => (
                       <button className="record-dialog-row" type="button" key={expense.id}>
                         <span className="record-dialog-icon">
-                          <ReceiptText aria-hidden="true" size={18} />
+                          {expense.kind === "settlement" ? <History aria-hidden="true" size={18} /> : <ReceiptText aria-hidden="true" size={18} />}
                         </span>
                         <span>
                           <strong>{expense.title}</strong>

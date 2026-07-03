@@ -19,6 +19,7 @@ export type Expense = {
   createdAt: string;
   payerId: string;
   shareMemberIds: string[];
+  kind?: "expense" | "settlement";
 };
 
 export type Activity = {

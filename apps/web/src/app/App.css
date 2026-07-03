@@ -760,12 +760,12 @@ label span {
 
 .hero-donut-ring span {
   max-width: 80px;
-  overflow: hidden;
   color: rgba(247, 251, 248, 0.58);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.3;
+  text-align: center;
+  white-space: normal;
 }
 
 .hero-donut-ring strong {
@@ -847,10 +847,22 @@ label span {
 
 .date-chip-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 8px;
   max-width: 190px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.date-chip-row::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.date-chip {
+  flex: 0 0 auto;
 }
 
 .date-chip {
@@ -1007,6 +1019,30 @@ label span {
   border-color: rgba(255, 143, 143, 0.18);
   color: #ff9d9d;
   background: rgba(255, 143, 143, 0.045);
+}
+
+.mobile-group-manage {
+  display: none;
+}
+
+.mobile-group-manage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mobile-danger-action {
+  width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 143, 143, 0.24);
+  border-radius: 14px;
+  color: #ff9d9d;
+  background: rgba(255, 143, 143, 0.08);
+  font-weight: 860;
 }
 
 .room-hero {
@@ -1520,6 +1556,11 @@ label span {
     linear-gradient(135deg, #2d211f, #7d4f3f 48%, #d9d9d9);
 }
 
+.member-avatar.settlement-avatar {
+  color: #07110f;
+  background: #ffd67a;
+}
+
 .pizo-expense-row {
   position: relative;
   overflow: hidden;
@@ -1697,7 +1738,7 @@ label span {
   text-align: right;
 }
 
-.floating-add-expense {
+.floating-action {
   position: fixed;
   right: max(26px, calc((100vw - 1180px) / 2 + 26px));
   bottom: 28px;
@@ -1712,6 +1753,51 @@ label span {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
   font-size: 42px;
   line-height: 1;
+}
+
+.mobile-tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: none;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(145deg, rgba(20, 22, 21, 0.92), rgba(10, 12, 11, 0.94));
+  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(24px) saturate(1.25);
+}
+
+.mobile-tab-item {
+  min-height: 44px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 4px 0;
+  color: rgba(247, 251, 248, 0.58);
+  background: transparent;
+}
+
+.mobile-tab-item span {
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.mobile-tab-center {
+  position: relative;
+  top: -18px;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #07110f;
+  background: #ffd67a;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
 }
 
 .composer-backdrop {
@@ -2748,6 +2834,35 @@ label span {
   .action-panel {
     min-height: auto;
   }
+
+  .workspace-grid {
+    height: auto;
+    overflow: visible;
+  }
+
+  .pizo-home {
+    max-height: none;
+    max-width: none;
+    overflow: visible;
+    padding: 0 0 120px;
+  }
+
+  .workspace-grid > .group-rail,
+  .workspace-grid > .group-side-nav {
+    display: none;
+  }
+
+  .floating-action {
+    display: none;
+  }
+
+  .mobile-tab-bar {
+    display: grid;
+  }
+
+  .mobile-group-manage {
+    display: grid;
+  }
 }
 
 @media (max-width: 620px) {
@@ -2816,6 +2931,16 @@ label span {
     justify-items: start;
   }
 
+  .spending-date-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .date-chip-row {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
   .transfer-arrow {
     justify-self: center;
     transform: rotate(90deg);
@@ -2835,7 +2960,7 @@ label span {
     text-align: left;
   }
 
-  .floating-add-expense {
+  .floating-action {
     right: 20px;
     bottom: 20px;
     width: 58px;
@@ -2852,7 +2977,20 @@ label span {
   }
 
   .flow-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
     border-radius: 18px 18px 14px 14px;
+  }
+
+  .panel-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 40px);
+  }
+
+  .expense-composer {
+    width: 100%;
+    max-height: calc(100dvh - 40px);
   }
 }
 
