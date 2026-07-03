@@ -1,0 +1,36 @@
+{
+  "name": "equo-mvp",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/web run dev",
+    "build": "npm --workspace apps/web run build",
+    "test": "npm --workspace apps/web run test",
+    "check:encoding": "python scripts/check-encoding.py",
+    "check:demo": "python scripts/check-new-index.py",
+    "check:plan": "python scripts/check-mvp-technical-plan.py",
+    "check:scaffold": "python scripts/check-mvp-scaffold.py",
+    "check:api-contracts": "python scripts/check-api-contract-stage.py",
+    "check:auth-groups": "python scripts/check-auth-groups-stage.py",
+    "check:supabase-repository": "python scripts/check-supabase-repository-stage.py",
+    "check:expenses-settlement": "python scripts/check-expenses-settlement-stage.py",
+    "check:balance-view": "python scripts/check-balance-view-stage.py",
+    "check:http-runtime": "python scripts/check-http-runtime-stage.py",
+    "check:runtime-adapters": "python scripts/check-runtime-adapters-stage.py",
+    "check:supabase-live-compat": "python scripts/check-supabase-live-compat-stage.py",
+    "check:supabase-hardening": "python scripts/check-supabase-hardening-stage.py",
+    "check:production-readiness": "python scripts/check-production-readiness-stage.py",
+    "check:launch-readiness": "python scripts/check-launch-readiness-stage.py",
+    "check:web-client": "python scripts/check-web-client-stage.py",
+    "smoke:production": "python scripts/smoke-production-api.py",
+    "smoke:production:web": "python scripts/smoke-production-web.py",
+    "smoke:production:all": "npm run smoke:production:web && npm run smoke:production"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3"
+  }
+}

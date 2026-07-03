@@ -1,50 +1,98 @@
-# 部署與資料庫接入規劃
+# Equo MVP Deployment
 
-## 目前路線
+Date: 2026-07-01
 
-Equo 算好目前採用：
+This document describes the current MVP deployment path. Older static-only deployment notes have been replaced because the formal MVP now includes a Vercel API runtime and server-side Supabase access.
 
-- GitHub：保存專案原始碼
-- Vercel：部署免費網頁版
-- Supabase：後續提供登入、多人同步與線上資料庫
+## Hosting Target
 
-## Vercel 部署
+- Web host: Vercel
+- Frontend build output: `apps/web/dist`
+- API runtime: `api/v1/[...path].ts`
+- Database: Supabase project `cmfgptuzbayzdrxuoapm`
+- Auth: Google-only MVP with Equo server session cookie
 
-1. 登入 Vercel。
-2. Import Git Repository。
-3. 選擇 `calvinlolzz/Equo`。
-4. Framework Preset 選 `Other`。
-5. Build Command 留空。
-6. Output Directory 留空。
-7. 先不填 Supabase 環境變數也可以部署；App 會維持本機資料模式。
-8. 點選 Deploy。
+## Vercel Build Settings
 
-完成後，Vercel 會產生一個 `*.vercel.app` 正式網址。之後每次推送 GitHub `main` 分支，Vercel 會自動重新部署。
+These are declared in `vercel.json`:
 
-## Supabase 環境變數
+- Install command: `npm install`
+- Build command: `npm run build`
+- Output directory: `apps/web/dist`
+- API path: `/api/v1/*` routes to `api/v1/[...path].ts`
+- Static files and built assets are served from the filesystem before fallback.
+- Frontend deep links such as `/group/:groupId` fallback to `/index.html`.
 
-建立 Supabase 專案後，請在 Vercel Project Settings > Environment Variables 加入：
+## Required Vercel Env Vars
+
+Set these for both Preview and Production:
 
 ```text
+VITE_GOOGLE_OAUTH_CLIENT_ID
+GOOGLE_OAUTH_CLIENT_ID
+SESSION_SECRET
 SUPABASE_URL
-SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
 ```
 
-加入後需要重新部署一次，正式站才會讀到新的設定。
+`SUPABASE_SERVICE_ROLE_KEY` and `SESSION_SECRET` are server-only. Do not expose them as public client variables.
 
-## Supabase 接入順序
+Current linked Vercel project status:
 
-1. 建立 Supabase 專案。
-2. 在 SQL Editor 執行 `supabase/schema.sql`。
-3. 開啟 Auth Provider。
-4. 將 `SUPABASE_URL` 與 `SUPABASE_ANON_KEY` 放到 Vercel。
-5. 將目前 `localStorage` 資料流程逐步改成 Supabase API。
-6. 測試不同帳號、不同群組、不同家庭角色的資料權限。
+- Present: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SESSION_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `VITE_GOOGLE_OAUTH_CLIENT_ID`
+- Production API smoke passes on `https://equo-mu.vercel.app`.
 
-## Apple / Google 登入
+## Google OAuth Setup
 
-Email 登入可先作為測試入口。Apple / Google 登入需要另外設定 OAuth Provider，請看 [OAUTH.md](OAUTH.md)。
+Use a Google OAuth web client ID.
 
-## 交付狀態
+Authorized JavaScript origins should include:
 
-目前 Vercel 部署可以先供用戶試用 App 原型。Supabase 尚未接上前，資料會留在使用者自己的瀏覽器裡，不會跨裝置同步。
+- `https://equo-mu.vercel.app`
+- The preview deployment URL used for launch testing.
+- `http://127.0.0.1:14062` when local Google sign-in testing is needed.
+
+`VITE_GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_ID` should be the same OAuth client ID for this MVP.
+
+## Deployment Flow
+
+1. Run local checks:
+
+   ```powershell
+   npm test
+   npm run build
+   Get-ChildItem scripts -Filter 'check-*.py' | ForEach-Object { python $_.FullName }
+   ```
+
+2. Deploy a Vercel preview.
+3. Run the production smoke script against the preview:
+
+   ```powershell
+   $env:EQUO_BASE_URL="https://your-preview.vercel.app"
+   python scripts\smoke-production-web.py
+   python scripts\smoke-production-api.py
+   ```
+
+   If preview deployment protection is enabled, use the logged-in Vercel path instead:
+
+   ```powershell
+   vercel curl /api/v1/unknown --deployment "https://your-preview.vercel.app" -- --include
+   ```
+
+4. Sign in with Google in the preview and complete:
+   - create group
+   - create invite
+   - add expense
+   - calculate settlement
+
+5. Promote the verified preview to production.
+
+## Supabase Notes
+
+The live project has already been upgraded for MVP compatibility and hardened:
+
+- `mvp_live_compat`
+- `mvp_live_rls_indexes`
+- `harden_legacy_rpc_surface`
+
+Security advisors currently only leave `auth_leaked_password_protection`, which is an Auth dashboard setting. Enable it before password auth is introduced. The MVP remains Google-only.

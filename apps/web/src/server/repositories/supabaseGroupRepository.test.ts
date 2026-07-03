@@ -1,0 +1,222 @@
+import { describe, expect, test } from "vitest";
+import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
+import { createSupabaseGroupRepository, upsertUserByGoogleIdentity } from "./supabaseGroupRepository.js";
+
+function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
+  const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
+
+  return {
+    calls,
+    async one(sql, params) {
+      calls.push({ method: "one", sql, params });
+
+      if (sql.includes("insert into public.users")) {
+        return {
+          id: params[0],
+          google_sub: params[1],
+          email: params[2],
+          display_name: params[3],
+        } as never;
+      }
+
+      if (sql.includes("insert into public.groups")) {
+        return { id: "group_1", name: params[0], currency: params[1], owner_member_id: null } as never;
+      }
+
+      if (sql.includes("from public.groups g")) {
+        return [
+          { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
+        ] as never;
+      }
+
+      if (sql.includes("from public.group_members") && sql.includes("status = 'active'")) {
+        return [
+          {
+            id: "member_owner",
+            group_id: params[0],
+            user_id: "user_alice",
+            display_name: "Alice",
+            role: "owner",
+            status: "active",
+          },
+        ] as never;
+      }
+
+      if (sql.includes("insert into public.group_members")) {
+        return {
+          id: "member_owner",
+          group_id: params[0],
+          user_id: params[1],
+          display_name: params[2],
+          role: "owner",
+          status: "active",
+        } as never;
+      }
+
+      if (sql.includes("update public.groups")) {
+        return { id: params[1], name: "?曹漪??", currency: "TWD", owner_member_id: params[0] } as never;
+      }
+
+      if (sql.includes("insert into public.invites")) {
+        return {
+          id: "invite_1",
+          group_id: params[0],
+          token_hash: params[1],
+          max_uses: params[2],
+          use_count: 0,
+          expires_at: params[3],
+        } as never;
+      }
+
+      throw new Error(`Unexpected one query: ${sql}`);
+    },
+    async maybeOne(sql, params) {
+      calls.push({ method: "maybeOne", sql, params });
+      return {
+        id: "member_owner",
+        group_id: params[0],
+        user_id: params[1],
+        display_name: "Alice",
+        role: "owner",
+        status: "active",
+      } as never;
+    },
+    async exec(sql, params) {
+      calls.push({ method: "exec", sql, params });
+    },
+  };
+}
+
+const context = {
+  user: {
+    id: "user_alice",
+    google_sub: "google-alice",
+    email: "alice@example.com",
+    display_name: "Alice",
+  },
+};
+
+describe("createSupabaseGroupRepository", () => {
+  test("upserts legacy profile alongside MVP user for live schema compatibility", async () => {
+    const client = makeClient();
+
+    await upsertUserByGoogleIdentity(client, {
+      auth_user_id: "user_alice",
+      google_sub: "google-alice",
+      email: "alice@example.com",
+      display_name: "Alice",
+      avatar_url: "https://example.com/alice.png",
+    });
+
+    expect(client.calls.map((call) => call.sql)).toEqual([
+      expect.stringContaining("insert into public.users"),
+      expect.stringContaining("insert into public.profiles"),
+    ]);
+  });
+
+  test("uses the persisted user id when upserting a profile after Google sub conflict", async () => {
+    const client = makeClient();
+    client.one = async (sql, params) => {
+      client.calls.push({ method: "one", sql, params });
+
+      return {
+        id: "existing_user_id",
+        google_sub: params[1],
+        email: params[2],
+        display_name: params[3],
+      } as never;
+    };
+
+    await upsertUserByGoogleIdentity(client, {
+      auth_user_id: "new_supabase_auth_user_id",
+      google_sub: "google-alice",
+      email: "alice@example.com",
+      display_name: "Alice",
+    });
+
+    expect(client.calls[1]).toMatchObject({
+      method: "exec",
+      params: ["existing_user_id", "Alice", null],
+    });
+  });
+
+  test("writes group and owner member in order", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    await repository.createGroup(context, {
+      client_request_id: "req_group",
+      name: "?曹漪??",
+      currency: "TWD",
+    });
+
+    expect(client.calls.map((call) => call.sql)).toEqual([
+      expect.stringContaining("owner_id"),
+      expect.stringContaining("insert into public.group_members"),
+      expect.stringContaining("update public.groups"),
+    ]);
+    expect(client.calls[0].params).toEqual(["?曹漪??", "TWD", "user_alice"]);
+  });
+
+  test("lists active groups for the current user", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const groups = await repository.listGroups(context);
+
+    expect(groups).toEqual([
+      { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
+    ]);
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      params: ["user_alice"],
+    });
+    expect(client.calls[0].sql).toContain("join public.group_members");
+  });
+
+  test("lists active group members", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const members = await repository.listMembers("group_1");
+
+    expect(members).toEqual([
+      {
+        id: "member_owner",
+        group_id: "group_1",
+        user_id: "user_alice",
+        display_name: "Alice",
+        role: "owner",
+        status: "active",
+      },
+    ]);
+    expect(client.calls[0].params).toEqual(["group_1"]);
+  });
+
+  test("stores invite token_hash instead of token", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const invite = await repository.createInvite(context, "group_1", {
+      client_request_id: "req_invite",
+      max_uses: 5,
+    });
+
+    expect(invite.token).toContain("EQO");
+    expect(invite.token_hash).toContain("sha256:");
+    expect(client.calls.some((call) => call.sql.includes("token_hash"))).toBe(true);
+  });
+
+  test("records client_request_id for idempotency", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    await repository.recordClientRequest("group_1", "req_001", "resource_1");
+
+    expect(client.calls[0]).toMatchObject({
+      method: "exec",
+      params: ["group_1", "req_001", "resource_1"],
+    });
+    expect(client.calls[0].sql).toContain("client_request_id");
+  });
+});
