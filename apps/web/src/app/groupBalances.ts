@@ -7,6 +7,12 @@ export function computeMemberBalances(members: Member[], expenses: Expense[]): M
 
   expenses.forEach((expense) => {
     balances.set(expense.payerId, (balances.get(expense.payerId) ?? 0) + expense.amountMinor);
+    if (expense.shareAmountsMinor) {
+      Object.entries(expense.shareAmountsMinor).forEach(([memberId, amountMinor]) => {
+        balances.set(memberId, (balances.get(memberId) ?? 0) - amountMinor);
+      });
+      return;
+    }
     const shares = buildEqualExpenseShares(expense.shareMemberIds, expense.amountMinor);
     shares.forEach((share) => {
       balances.set(share.member_id, (balances.get(share.member_id) ?? 0) - share.amount_minor);

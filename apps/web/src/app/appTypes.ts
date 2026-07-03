@@ -20,6 +20,13 @@ export type Expense = {
   payerId: string;
   shareMemberIds: string[];
   kind?: "expense" | "settlement";
+  category?: string;
+  note?: string;
+  imageDataUrl?: string;
+  sourceCurrency?: string;
+  sourceAmountMinor?: number;
+  exchangeRate?: number;
+  shareAmountsMinor?: Record<string, number>;
 };
 
 export type Activity = {

@@ -20,12 +20,12 @@ type StartFlowProps = {
   onSelectGroup: (group: Group) => void;
   onSelectTemplate: (template: Template) => void;
   onSetStartMode: (mode: StartMode) => void;
-  onStatus: (message: string) => void;
+  onOpenInviteInput: () => void;
 };
 
 const text = UI_TEXT.app;
 
-export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplateLabel, startMode, templates, onCreateGroup, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onStatus }: StartFlowProps) {
+export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplateLabel, startMode, templates, onCreateGroup, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onOpenInviteInput }: StartFlowProps) {
   return (
     <section className="create-flow-shell">
       <div className="start-flow-card glass-panel">
@@ -85,9 +85,9 @@ export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplat
             </div>
             <label>
               <span>{text.inviteCode}</span>
-              <input placeholder="EQO..." aria-label={text.inviteCode} />
+              <input placeholder="EQO..." aria-label={text.inviteCode} readOnly onFocus={onOpenInviteInput} />
             </label>
-            <button className="secondary-action" type="button" onClick={() => onStatus("Demo \u6a21\u5f0f\u5c1a\u672a\u9023\u63a5\u9080\u8acb\u78bc API\u3002")}>
+            <button className="secondary-action" type="button" onClick={onOpenInviteInput}>
               <Ticket aria-hidden="true" size={18} />
               {text.joinGroup}
             </button>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Archive,
@@ -10,9 +10,11 @@ import {
   House,
   Inbox,
   Link,
+  Menu,
   Pencil,
   Plus,
   ReceiptText,
+  Settings,
   Trash2,
   UserRound,
   X,
@@ -22,13 +24,17 @@ import { GroupRail } from "./GroupRail";
 import { StartFlow } from "./StartFlowPanel";
 import type { Activity, ArchivedGroup, Expense, Group, GroupData, Member, StartMode } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
+import { convertToGroupAmountMinor } from "./expenseCurrency";
 import { canSubmitExpenseDraft } from "./expenseDraft";
+import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { buildEqualShareAmountsMinor, getCustomSplitRemainderMinor } from "./expenseShareSplit";
 import { computeMemberBalances } from "./groupBalances";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
   | "createGroup"
   | "editGroup"
   | "inviteMembers"
+  | "inviteInput"
   | "currencyPanel"
   | "recordsPanel"
   | "analysisPanel"
@@ -144,14 +150,23 @@ function initial(name: string | undefined) {
 function createGroupData(group: Group): GroupData {
   const now = new Date().toISOString();
   return {
-    members: [{ id: `${group.id}_owner`, name: "Demo", role: "owner" }],
+    members: [{ id: `${group.id}_owner`, name: "我", role: "owner" }],
     expenses: [],
-    activities: [{ id: crypto.randomUUID(), text: `Demo ${text.createGroup}: ${group.name}`, createdAt: now }],
+    activities: [{ id: crypto.randomUUID(), text: `${text.createGroup}: ${group.name}`, createdAt: now }],
   };
 }
 
+function toLocalDateTimeInputValue(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export function App() {
-  const [demoMode, setDemoMode] = useState(true);
   const [groups, setGroups] = useState<Group[]>(() => readJson<Group[]>(GROUPS_KEY, []));
   const [groupData, setGroupData] = useState<Record<string, GroupData>>(() => readJson<Record<string, GroupData>>(GROUP_DATA_KEY, {}));
   const [archivedGroups, setArchivedGroups] = useState<ArchivedGroup[]>(() => readJson<ArchivedGroup[]>(ARCHIVED_GROUPS_KEY, []));
@@ -162,15 +177,30 @@ export function App() {
   const [virtualMemberName, setVirtualMemberName] = useState("");
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
-  const [status, setStatus] = useState("Demo \u6a21\u5f0f\u5df2\u555f\u7528\uff0c\u53ef\u4ee5\u76f4\u63a5\u64cd\u4f5c\u4e3b\u8981\u6d41\u7a0b\u3002");
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
+  const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  const [inviteInputValue, setInviteInputValue] = useState("");
+  const [inviteInputError, setInviteInputError] = useState("");
+
   const [composerMode, setComposerMode] = useState<ComposerMode>("expense");
-  const [composerTitle, setComposerTitle] = useState<string>(text.dinner);
+  const [composerCategory, setComposerCategory] = useState<string>("general");
+  const [composerDateTime, setComposerDateTime] = useState<string>(() => toLocalDateTimeInputValue(new Date().toISOString()));
+  const [composerCurrency, setComposerCurrency] = useState<string>("TWD");
+  const [composerExchangeRate, setComposerExchangeRate] = useState<string>("1");
+  const [composerTitle, setComposerTitle] = useState<string>("");
   const [composerAmount, setComposerAmount] = useState("");
   const [composerPayerId, setComposerPayerId] = useState("");
   const [composerShareIds, setComposerShareIds] = useState<string[]>([]);
+  const [composerPayerExpanded, setComposerPayerExpanded] = useState(false);
+  const [composerCustomSplit, setComposerCustomSplit] = useState(false);
+  const [composerShareAmounts, setComposerShareAmounts] = useState<Record<string, string>>({});
+  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>("");
+  const [composerNote, setComposerNote] = useState("");
 
   const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
   const activeData = activeGroup ? groupData[activeGroup.id] ?? createGroupData(activeGroup) : null;
@@ -229,7 +259,7 @@ export function App() {
       if (!routeGroupExists) {
         setActiveGroupId("");
         setGroupRoute(null, "replace");
-        setStatus(text.groupNotFound);
+        showToast(text.groupNotFound);
       }
       return;
     }
@@ -239,23 +269,49 @@ export function App() {
     }
     setActiveGroupId("");
     setGroupRoute(null, "replace");
-    setStatus(text.groupNotFound);
+    showToast(text.groupNotFound);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId, groups]);
 
   useEffect(() => {
     if (!expenseComposerOpen) return;
     setComposerMode("expense");
-    setComposerTitle(text.dinner);
+    setComposerCategory("general");
+    setComposerDateTime(toLocalDateTimeInputValue(new Date().toISOString()));
+    setComposerCurrency(activeGroup?.currency ?? "TWD");
+    setComposerExchangeRate("1");
+    setComposerTitle("");
     setComposerAmount("");
     setComposerPayerId(members[0]?.id ?? "");
     setComposerShareIds(members.map((member) => member.id));
+    setComposerPayerExpanded(false);
+    setComposerCustomSplit(false);
+    setComposerShareAmounts({});
+    setComposerImageDataUrl("");
+    setComposerNote("");
     // Intentionally resets only when the composer opens, not on every members change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expenseComposerOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
+  function showToast(message: string) {
+    if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
+    const id = Date.now();
+    setToast({ id, text: message });
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast((current) => (current?.id === id ? null : current));
+    }, 2600);
+  }
 
   function selectGroup(group: Group) {
     setActiveGroupId(group.id);
     setGroupRoute(group.id);
-    setStatus(`${text.groupHome}: ${group.name}`);
+    setGroupDrawerOpen(false);
   }
 
   function createGroup() {
@@ -267,7 +323,7 @@ export function App() {
     setActiveGroupId(group.id);
     setGroupRoute(group.id, "replace");
     setDialog(null);
-    setStatus(`${text.createGroup}: ${name}`);
+    showToast(`${text.createGroup}: ${name}`);
   }
 
   function openEditGroup() {
@@ -291,7 +347,7 @@ export function App() {
       return { ...current, [activeGroup.id]: { ...data, activities: [activity, ...data.activities].slice(0, 8) } };
     });
     setDialog(null);
-    setStatus(`${text.editGroup}: ${name}`);
+    showToast(`${text.editGroup}: ${name}`);
   }
 
   function updateActiveCurrency(currency: string) {
@@ -310,16 +366,20 @@ export function App() {
       return { ...current, [activeGroup.id]: { ...data, activities: [activity, ...data.activities].slice(0, 8) } };
     });
     setDialog(null);
-    setStatus(`${text.currency}: ${currency}`);
+    showToast(`${text.currency}: ${currency}`);
   }
 
   function openInviteMembers() {
     if (!activeGroup) return;
+    setGroupDrawerOpen(false);
+    setSettingsDrawerOpen(false);
     setDialog("inviteMembers");
   }
 
   function openMemberList() {
     if (!activeGroup) return;
+    setGroupDrawerOpen(false);
+    setSettingsDrawerOpen(false);
     setDialog("memberList");
   }
 
@@ -327,15 +387,17 @@ export function App() {
     if (!value) return;
     try {
       await navigator.clipboard?.writeText(value);
-      setStatus("\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f\u3002");
+      showToast("\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f\u3002");
     } catch {
-      setStatus("\u526a\u8cbc\u7c3f\u7121\u6cd5\u4f7f\u7528\uff0c\u8acb\u624b\u52d5\u8907\u88fd\u3002");
+      showToast("\u526a\u8cbc\u7c3f\u7121\u6cd5\u4f7f\u7528\uff0c\u8acb\u624b\u52d5\u8907\u88fd\u3002");
     }
   }
 
   function handleSideNavClick(id: string) {
+    setGroupDrawerOpen(false);
+    setSettingsDrawerOpen(false);
     if (id === "members") {
-      openMemberList();
+      setDialog("memberList");
       return;
     }
     if (id === "records") {
@@ -350,7 +412,7 @@ export function App() {
       setDialog("currencyPanel");
       return;
     }
-    setStatus(text.groupHome);
+    showToast(text.groupHome);
   }
 
   function addVirtualMember() {
@@ -367,7 +429,7 @@ export function App() {
     });
     setVirtualMemberName("");
     setDialog(null);
-    setStatus(`${text.addVirtualMember}: ${member.name}`);
+    showToast(`${text.addVirtualMember}: ${member.name}`);
   }
 
   function toggleComposerShareMember(memberId: string) {
@@ -382,20 +444,48 @@ export function App() {
 
   function submitExpense() {
     if (!activeGroup || members.length === 0) return;
-    if (!canSubmitExpenseDraft({ amount: composerAmount, selectedShareMemberCount: composerShareIds.length })) return;
+    const totalAmountMinor = composerNeedsExchangeRate
+      ? convertToGroupAmountMinor({ amount: composerAmount, exchangeRate: composerExchangeRate })
+      : Math.round((Number(composerAmount) || 0) * 100);
+    const customShareAmountsMinor: Record<string, number> = {};
+    composerShareIds.forEach((id) => {
+      customShareAmountsMinor[id] = Math.round((Number(composerShareAmounts[id]) || 0) * 100);
+    });
+    if (
+      !canSubmitExpenseDraft({
+        amount: composerAmount,
+        selectedShareMemberCount: composerShareIds.length,
+        isCustomSplit: composerCustomSplit,
+        totalAmountMinor,
+        shareAmountsMinor: customShareAmountsMinor,
+      })
+    ) {
+      return;
+    }
     const now = new Date().toISOString();
-    const amountMinor = Math.round(Number(composerAmount) * 100);
+    const createdAt = composerDateTime ? new Date(composerDateTime).toISOString() : now;
     const payerId = composerPayerId || members[0].id;
+    const shareMemberIds = composerShareIds.length ? composerShareIds : members.map((member) => member.id);
+    const categoryLabel = UI_TEXT.categories[composerCategory as keyof typeof UI_TEXT.categories] ?? UI_TEXT.categories.general;
     const expense: Expense = {
       id: crypto.randomUUID(),
-      title: composerTitle.trim() || text.dinner,
-      amountMinor,
+      title: composerTitle.trim() || categoryLabel,
+      amountMinor: totalAmountMinor,
       currency: activeGroup.currency,
-      createdAt: now,
+      createdAt,
       payerId,
-      shareMemberIds: composerShareIds.length ? composerShareIds : members.map((member) => member.id),
+      shareMemberIds,
       kind: "expense",
+      category: composerCategory,
+      note: composerNote.trim() || undefined,
+      imageDataUrl: composerImageDataUrl || undefined,
+      shareAmountsMinor: composerCustomSplit ? customShareAmountsMinor : undefined,
     };
+    if (composerNeedsExchangeRate) {
+      expense.sourceCurrency = composerCurrency;
+      expense.sourceAmountMinor = Math.round((Number(composerAmount) || 0) * 100);
+      expense.exchangeRate = Number(composerExchangeRate) || 1;
+    }
     const activity: Activity = {
       id: crypto.randomUUID(),
       text: `${text.addExpense}: ${expense.title} (${formatTwd(expense.amountMinor)})`,
@@ -406,7 +496,46 @@ export function App() {
       return { ...current, [activeGroup.id]: { ...data, expenses: [expense, ...data.expenses], activities: [activity, ...data.activities].slice(0, 8) } };
     });
     setExpenseComposerOpen(false);
-    setStatus(`${text.addExpense}: ${expense.title}`);
+    showToast(`${text.addExpense}: ${expense.title}`);
+  }
+
+  function toggleComposerCustomSplit() {
+    setComposerCustomSplit((current) => {
+      const next = !current;
+      if (next) {
+        const equalShares = buildEqualShareAmountsMinor(composerShareIds, composerTotalAmountMinor);
+        const nextShareAmounts: Record<string, string> = {};
+        composerShareIds.forEach((id) => {
+          nextShareAmounts[id] = (((equalShares[id] ?? 0) / 100).toFixed(2)).replace(/\.00$/, "");
+        });
+        setComposerShareAmounts(nextShareAmounts);
+      }
+      return next;
+    });
+  }
+
+  function resetComposerSplitEvenly() {
+    const equalShares = buildEqualShareAmountsMinor(composerShareIds, composerTotalAmountMinor);
+    const nextShareAmounts: Record<string, string> = {};
+    composerShareIds.forEach((id) => {
+      nextShareAmounts[id] = (((equalShares[id] ?? 0) / 100).toFixed(2)).replace(/\.00$/, "");
+    });
+    setComposerShareAmounts(nextShareAmounts);
+  }
+
+  async function handleComposerImagePick(file: File | null) {
+    if (!file) return;
+    try {
+      const dataUrl = await downscaleImageFileToDataUrl(file);
+      setComposerImageDataUrl(dataUrl);
+    } catch {
+      showToast("圖片處理失敗，請再試一次。");
+    }
+  }
+
+  function submitInviteInput() {
+    if (!inviteInputValue.trim()) return;
+    setInviteInputError(text.inviteNotFound);
   }
 
   function settleDebt() {
@@ -434,7 +563,7 @@ export function App() {
         [activeGroup.id]: { ...data, expenses: [settlement, ...data.expenses], activities: [activity, ...data.activities].slice(0, 8) },
       };
     });
-    setStatus(`${text.clearDebt}: ${debt.from.name} → ${debt.to.name}`);
+    showToast(`${text.clearDebt}: ${debt.from.name} → ${debt.to.name}`);
   }
 
   function archiveActiveGroup() {
@@ -446,7 +575,7 @@ export function App() {
     setActiveGroupId("");
     setGroupRoute(null);
     setDialog(null);
-    setStatus(`${text.archiveGroup}: ${activeGroup.name}`);
+    showToast(`${text.archiveGroup}: ${activeGroup.name}`);
     setBusy(false);
   }
 
@@ -461,7 +590,7 @@ export function App() {
     setActiveGroupId("");
     setGroupRoute(null);
     setDialog(null);
-    setStatus(`${text.deleteGroup}: ${activeGroup.name}`);
+    showToast(`${text.deleteGroup}: ${activeGroup.name}`);
   }
 
   function openHome() {
@@ -479,29 +608,147 @@ export function App() {
     dialog === "currencyPanel" ||
     dialog === "recordsPanel" ||
     dialog === "analysisPanel";
+  const composerNeedsExchangeRate = Boolean(activeGroup) && composerCurrency !== (activeGroup?.currency ?? "TWD");
+  const composerTotalAmountMinor = composerNeedsExchangeRate
+    ? convertToGroupAmountMinor({ amount: composerAmount, exchangeRate: composerExchangeRate })
+    : Math.round((Number(composerAmount) || 0) * 100);
+  const composerCustomShareAmountsMinor = useMemo(() => {
+    const result: Record<string, number> = {};
+    composerShareIds.forEach((id) => {
+      result[id] = Math.round((Number(composerShareAmounts[id]) || 0) * 100);
+    });
+    return result;
+  }, [composerShareIds, composerShareAmounts]);
   const composerSubmitState = getComposerSubmitState({
     mode: composerMode,
-    canSubmitExpense: canSubmitExpenseDraft({ amount: composerAmount, selectedShareMemberCount: composerShareIds.length }),
+    canSubmitExpense: canSubmitExpenseDraft({
+      amount: composerAmount,
+      selectedShareMemberCount: composerShareIds.length,
+      isCustomSplit: composerCustomSplit,
+      totalAmountMinor: composerTotalAmountMinor,
+      shareAmountsMinor: composerCustomShareAmountsMinor,
+    }),
   });
+  const composerRemainderMinor = getCustomSplitRemainderMinor({
+    totalAmountMinor: composerTotalAmountMinor,
+    shareAmountsMinor: composerCustomShareAmountsMinor,
+  });
+  const composerPayer = members.find((member) => member.id === composerPayerId) ?? members[0];
+
+  function renderGroupSideNavContent(insideDrawer = false) {
+    if (!activeGroup) return null;
+    const closeDrawer = () => {
+      if (insideDrawer) setSettingsDrawerOpen(false);
+    };
+    return (
+      <>
+        <button
+          className="profile-bar"
+          type="button"
+          aria-label={text.profile}
+          onClick={() => {
+            closeDrawer();
+            openMemberList();
+          }}
+        >
+          <UserRound aria-hidden="true" size={18} />
+          <span>{text.profile}</span>
+        </button>
+        <div className="side-group-card">
+          <div className="side-cover" />
+          <div className="side-group-name">
+            <div className="side-group-title-row">
+              <h2>{activeGroup.name}</h2>
+              <button
+                className="side-edit-group"
+                type="button"
+                aria-label={text.editGroup}
+                onClick={() => {
+                  closeDrawer();
+                  openEditGroup();
+                }}
+              >
+                <Pencil aria-hidden="true" size={15} />
+              </button>
+            </div>
+            <span>
+              {members.length} {text.people}
+            </span>
+          </div>
+        </div>
+        <nav className="side-nav-list" aria-label={text.groupHome}>
+          {sideNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                className={item.id === "home" ? "side-nav-item active" : "side-nav-item"}
+                type="button"
+                key={item.id}
+                onClick={() => {
+                  closeDrawer();
+                  handleSideNavClick(item.id);
+                }}
+              >
+                <Icon aria-hidden="true" size={19} />
+                {item.id === "currency" ? `${item.label} ${activeGroup.currency}` : item.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="side-danger-actions">
+          <button
+            className="side-archive-action"
+            type="button"
+            onClick={() => {
+              closeDrawer();
+              setDialog("archive");
+            }}
+          >
+            <Archive aria-hidden="true" size={16} />
+            {text.archiveGroup}
+          </button>
+          <button
+            className="side-delete-action"
+            type="button"
+            onClick={() => {
+              closeDrawer();
+              setDialog("delete");
+            }}
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            {text.deleteGroup}
+          </button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <main className="app-shell">
       <header className="top-bar">
+        {activeGroup ? (
+          <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.members} onClick={() => setGroupDrawerOpen(true)}>
+            <Menu aria-hidden="true" size={22} />
+          </button>
+        ) : null}
         <button className="brand-mark" type="button" onClick={openHome}>
           Equo
         </button>
         <div className="top-actions">
-          <label className="demo-switch">
-            <input type="checkbox" checked={demoMode} onChange={(event) => setDemoMode(event.target.checked)} />
-            <span>Demo</span>
-          </label>
+          {activeGroup ? (
+            <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} onClick={() => setSettingsDrawerOpen(true)}>
+              <Settings aria-hidden="true" size={22} />
+            </button>
+          ) : null}
         </div>
       </header>
 
-      <section className="status-dock" aria-live="polite">
-        <span className={busy ? "pulse-dot active" : "pulse-dot"} />
-        <p>{status}</p>
-      </section>
+      {toast ? (
+        <div className="toast-dock" role="status" aria-live="polite">
+          <span className={busy ? "pulse-dot active" : "pulse-dot"} />
+          <p>{toast.text}</p>
+        </div>
+      ) : null}
 
       {!activeGroup ? (
         <StartFlow
@@ -519,7 +766,7 @@ export function App() {
             setGroupName(template.defaultName);
           }}
           onSetStartMode={setStartMode}
-          onStatus={setStatus}
+          onOpenInviteInput={() => setDialog("inviteInput")}
         />
       ) : (
         <section className="workspace-grid">
@@ -528,10 +775,26 @@ export function App() {
             groups={groups}
             onCreateGroup={() => setDialog("createGroup")}
             onOpenArchivedGroups={() => setDialog("archivedList")}
-            onRefresh={() => setStatus("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
+            onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
             onSelectGroup={selectGroup}
-            onShowInviteCode={() => setStatus(text.inputInviteCode)}
+            onShowInviteCode={() => setDialog("inviteInput")}
           />
+
+          {groupDrawerOpen ? (
+            <div className="side-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGroupDrawerOpen(false); }}>
+              <div className="side-drawer side-drawer-left" role="dialog" aria-modal="true" aria-label={text.members}>
+                <GroupRail
+                  activeGroup={activeGroup}
+                  groups={groups}
+                  onCreateGroup={() => { setGroupDrawerOpen(false); setDialog("createGroup"); }}
+                  onOpenArchivedGroups={() => { setGroupDrawerOpen(false); setDialog("archivedList"); }}
+                  onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
+                  onSelectGroup={selectGroup}
+                  onShowInviteCode={() => { setGroupDrawerOpen(false); setDialog("inviteInput"); }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           <section className="group-room pizo-home" aria-label={text.groupHome}>
             <article className="group-home-card glass-panel" id="group-home">
@@ -542,7 +805,6 @@ export function App() {
                     {text.members} <strong>{members.length}</strong> {text.total} <strong>{formatTwd(totalExpenseMinor)}</strong>
                   </p>
                 </div>
-                <span className="status-pill">{demoMode ? "Demo" : "API"}</span>
               </div>
 
               <div className="hero-summary-grid" id="group-members" aria-label={text.members}>
@@ -726,71 +988,19 @@ export function App() {
               )}
             </section>
 
-            <section className="home-section mobile-group-manage" aria-label={text.groupManage}>
-              <div className="section-title-row">
-                <h3>{text.groupManage}</h3>
-              </div>
-              <div className="mobile-group-manage-grid">
-                <button className="secondary-action" type="button" onClick={openEditGroup}>
-                  <Pencil aria-hidden="true" size={16} />
-                  {text.editGroup}
-                </button>
-                <button className="secondary-action" type="button" onClick={() => setDialog("currencyPanel")}>
-                  <CircleDollarSign aria-hidden="true" size={16} />
-                  {text.currency}
-                </button>
-                <button className="secondary-action" type="button" onClick={() => setDialog("archive")}>
-                  <Archive aria-hidden="true" size={16} />
-                  {text.archiveGroup}
-                </button>
-                <button className="mobile-danger-action" type="button" onClick={() => setDialog("delete")}>
-                  <Trash2 aria-hidden="true" size={16} />
-                  {text.deleteGroup}
-                </button>
-              </div>
-            </section>
           </section>
 
           <aside className="group-side-nav glass-panel" aria-label={text.groupHome}>
-            <button className="profile-dot" type="button" aria-label={text.profile} onClick={openMemberList}>
-              <UserRound aria-hidden="true" size={16} />
-            </button>
-            <div className="side-group-card">
-              <div className="side-cover" />
-              <div className="side-group-name">
-                <div className="side-group-title-row">
-                  <h2>{activeGroup.name}</h2>
-                  <button className="side-edit-group" type="button" aria-label={text.editGroup} onClick={openEditGroup}>
-                    <Pencil aria-hidden="true" size={15} />
-                  </button>
-                </div>
-                <span>
-                  {members.length} {text.people}
-                </span>
+            {renderGroupSideNavContent()}
+          </aside>
+
+          {settingsDrawerOpen ? (
+            <div className="side-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsDrawerOpen(false); }}>
+              <div className="side-drawer side-drawer-right" role="dialog" aria-modal="true" aria-label={text.groupManage}>
+                {renderGroupSideNavContent(true)}
               </div>
             </div>
-            <nav className="side-nav-list" aria-label={text.groupHome}>
-              {sideNavItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button className={item.id === "home" ? "side-nav-item active" : "side-nav-item"} type="button" key={item.id} onClick={() => handleSideNavClick(item.id)}>
-                    <Icon aria-hidden="true" size={19} />
-                    {item.id === "currency" ? `${item.label} ${activeGroup.currency}` : item.label}
-                  </button>
-                );
-              })}
-            </nav>
-            <div className="side-danger-actions">
-              <button className="side-archive-action" type="button" onClick={() => setDialog("archive")}>
-                <Archive aria-hidden="true" size={16} />
-                {text.archiveGroup}
-              </button>
-              <button className="side-delete-action" type="button" onClick={() => setDialog("delete")}>
-                <Trash2 aria-hidden="true" size={16} />
-                {text.deleteGroup}
-              </button>
-            </div>
-          </aside>
+          ) : null}
 
           <button className="floating-action" type="button" aria-label={text.addExpense} onClick={() => setExpenseComposerOpen(true)}>
             <Plus aria-hidden="true" size={34} />
@@ -834,8 +1044,15 @@ export function App() {
       )}
 
       {expenseComposerOpen ? (
-        <div className="composer-backdrop" role="presentation">
-          <section className="expense-composer glass-panel" role="dialog" aria-modal="true" aria-label={text.addExpense}>
+        <div
+          className="composer-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setExpenseComposerOpen(false);
+          }}
+        >
+          <section className="expense-composer expense-sheet glass-panel" role="dialog" aria-modal="true" aria-label={text.addExpense}>
+            <div className="sheet-drag-handle" aria-hidden="true" />
             <button className="composer-close" type="button" aria-label={text.cancel} onClick={() => setExpenseComposerOpen(false)}>
               <X aria-hidden="true" size={18} />
             </button>
@@ -844,7 +1061,12 @@ export function App() {
               <h2>{text.addExpense}</h2>
             </div>
 
-            <div className="composer-type-row" role="tablist" aria-label={text.addExpense}>
+            <div className="composer-type-row segmented-control" role="tablist" aria-label={text.addExpense}>
+              <span
+                className="segmented-pill"
+                style={{ transform: `translateX(${COMPOSER_MODES.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
+                aria-hidden="true"
+              />
               {COMPOSER_MODES.map((mode) => (
                 <button
                   key={mode.id}
@@ -861,17 +1083,41 @@ export function App() {
 
             {composerMode === "expense" ? (
               <>
-                <label>
-                  <span>{text.title}</span>
-                  <input
-                    value={composerTitle}
-                    onChange={(event) => setComposerTitle(event.target.value)}
-                    aria-label={text.title}
-                  />
-                </label>
+                <div className="composer-meta-grid">
+                  <label>
+                    <span>{text.category}</span>
+                    <select value={composerCategory} onChange={(event) => setComposerCategory(event.target.value)} aria-label={text.category}>
+                      {Object.entries(UI_TEXT.categories).map(([key, label]) => (
+                        <option value={key} key={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>{text.date}</span>
+                    <input
+                      type="datetime-local"
+                      value={composerDateTime}
+                      onChange={(event) => setComposerDateTime(event.target.value)}
+                      aria-label={text.date}
+                    />
+                  </label>
+                </div>
 
                 <div className="composer-amount-card">
-                  <span>{activeGroup?.currency ?? "TWD"}</span>
+                  <select
+                    className="composer-currency-select"
+                    value={composerCurrency}
+                    onChange={(event) => setComposerCurrency(event.target.value)}
+                    aria-label={text.currency}
+                  >
+                    {currencyOptions.map((currency) => (
+                      <option value={currency.code} key={currency.code}>
+                        {currency.code}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     value={composerAmount}
                     onChange={(event) => setComposerAmount(event.target.value)}
@@ -881,62 +1127,170 @@ export function App() {
                   />
                 </div>
 
+                {composerNeedsExchangeRate ? (
+                  <div className="composer-exchange-row">
+                    <span>
+                      1 {composerCurrency} → {activeGroup?.currency ?? "TWD"}
+                    </span>
+                    <input
+                      value={composerExchangeRate}
+                      onChange={(event) => setComposerExchangeRate(event.target.value)}
+                      inputMode="decimal"
+                      aria-label={text.exchangeRateLabel}
+                    />
+                  </div>
+                ) : null}
+
+                <label>
+                  <span>{text.title}</span>
+                  <input
+                    value={composerTitle}
+                    onChange={(event) => setComposerTitle(event.target.value)}
+                    placeholder={text.title}
+                    aria-label={text.title}
+                  />
+                </label>
+
                 <div className="composer-card-section">
-                  <div className="composer-section-head">
-                    <span>{text.payer}</span>
-                  </div>
-                  <div className="payer-chip-grid">
-                    {members.map((member) => (
-                      <button
-                        className={member.id === composerPayerId ? "payer-chip active" : "payer-chip"}
-                        type="button"
-                        key={member.id}
-                        onClick={() => setComposerPayerId(member.id)}
-                      >
-                        <span className="member-avatar">{initial(member.name)}</span>
-                        <strong>{member.name}</strong>
-                      </button>
-                    ))}
-                  </div>
+                  <button className="composer-payer-summary" type="button" onClick={() => setComposerPayerExpanded((current) => !current)}>
+                    <span className="composer-section-head-label">{text.payer}</span>
+                    <span className="composer-payer-summary-value">
+                      <span className="member-avatar">{initial(composerPayer?.name)}</span>
+                      <strong>{composerPayer?.name ?? ""}</strong>
+                      <ChevronRight aria-hidden="true" size={16} className={composerPayerExpanded ? "chevron rotated" : "chevron"} />
+                    </span>
+                  </button>
+                  {composerPayerExpanded ? (
+                    <div className="payer-chip-grid">
+                      {members.map((member) => (
+                        <button
+                          className={member.id === composerPayerId ? "payer-chip active" : "payer-chip"}
+                          type="button"
+                          key={member.id}
+                          onClick={() => {
+                            setComposerPayerId(member.id);
+                            setComposerPayerExpanded(false);
+                          }}
+                        >
+                          <span className="member-avatar">{initial(member.name)}</span>
+                          <strong>{member.name}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="composer-card-section">
                   <div className="composer-section-head">
-                    <span>{text.shareMembers}</span>
+                    <span>{text.whoPays}</span>
+                    <button className="text-action" type="button" onClick={toggleComposerCustomSplit}>
+                      {text.allocationSettings}
+                    </button>
                   </div>
-                  <div className="payer-chip-grid">
-                    {members.map((member) => (
-                      <button
-                        className={composerShareIds.includes(member.id) ? "payer-chip active" : "payer-chip"}
-                        type="button"
-                        key={member.id}
-                        onClick={() => toggleComposerShareMember(member.id)}
-                      >
-                        <span className="member-avatar">{initial(member.name)}</span>
-                        <strong>{member.name}</strong>
+                  <div className="share-member-list">
+                    {members.map((member) => {
+                      const included = composerShareIds.includes(member.id);
+                      const equalShares = buildEqualShareAmountsMinor(composerShareIds, composerTotalAmountMinor);
+                      const displayAmountMinor = included
+                        ? composerCustomSplit
+                          ? Math.round((Number(composerShareAmounts[member.id]) || 0) * 100)
+                          : equalShares[member.id] ?? 0
+                        : 0;
+                      return (
+                        <div className={included ? "share-member-row" : "share-member-row dimmed"} key={member.id}>
+                          <button
+                            className="share-member-toggle"
+                            type="button"
+                            onClick={() => toggleComposerShareMember(member.id)}
+                          >
+                            <span className="member-avatar">{initial(member.name)}</span>
+                            <strong>{member.name}</strong>
+                          </button>
+                          {composerCustomSplit && included ? (
+                            <input
+                              className="share-member-amount-input"
+                              value={composerShareAmounts[member.id] ?? ""}
+                              onChange={(event) =>
+                                setComposerShareAmounts((current) => ({ ...current, [member.id]: event.target.value }))
+                              }
+                              inputMode="decimal"
+                              aria-label={`${member.name} ${text.amount}`}
+                            />
+                          ) : (
+                            <span className="share-member-amount">{formatTwd(displayAmountMinor)}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {composerCustomSplit ? (
+                    <div className="composer-split-footer">
+                      <span>
+                        {text.remainingAmount} {formatTwd(composerRemainderMinor)}
+                      </span>
+                      <button className="composer-mini-action" type="button" onClick={resetComposerSplitEvenly}>
+                        {text.splitEvenly}
                       </button>
-                    ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="composer-card-section composer-photo-note-row">
+                  <div className="composer-photo-picker">
+                    <span className="composer-section-head-label">{text.photo}</span>
+                    {composerImageDataUrl ? (
+                      <div className="composer-photo-preview">
+                        <img src={composerImageDataUrl} alt="" />
+                        <button
+                          className="composer-photo-remove"
+                          type="button"
+                          aria-label={text.removePhoto}
+                          onClick={() => setComposerImageDataUrl("")}
+                        >
+                          <X aria-hidden="true" size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="composer-photo-add">
+                        <Plus aria-hidden="true" size={22} />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                    )}
                   </div>
+                  <label className="composer-note-field">
+                    <span>{text.note}</span>
+                    <input
+                      value={composerNote}
+                      onChange={(event) => setComposerNote(event.target.value)}
+                      placeholder={text.notePlaceholder}
+                      aria-label={text.note}
+                    />
+                  </label>
                 </div>
               </>
             ) : null}
 
             <p className="composer-hint">{composerSubmitState.hint}</p>
 
-            <div className="dialog-action-row">
-              <button className="secondary-action" type="button" onClick={() => setExpenseComposerOpen(false)}>
-                {text.cancel}
-              </button>
-              <button className="primary-action" type="button" disabled={composerSubmitState.disabled} onClick={submitExpense}>
-                {composerSubmitState.label}
-              </button>
-            </div>
+            <button className="composer-submit-full" type="button" disabled={composerSubmitState.disabled} onClick={submitExpense}>
+              {composerSubmitState.label}
+            </button>
           </section>
         </div>
       ) : null}
 
       {dialog ? (
-        <div className="modal-backdrop" role="presentation">
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDialog(null);
+          }}
+        >
           <section className={panelDialogOpen ? "flow-dialog panel-dialog glass-panel" : "flow-dialog glass-panel"} role="dialog" aria-modal="true" aria-label={text.groupHome}>
             <button className="dialog-close" type="button" aria-label={text.cancel} onClick={() => setDialog(null)}>
               <X aria-hidden="true" size={18} />
@@ -1040,12 +1394,18 @@ export function App() {
                   {expenses.length ? (
                     expenses.map((expense) => (
                       <button className="record-dialog-row" type="button" key={expense.id}>
-                        <span className="record-dialog-icon">
-                          {expense.kind === "settlement" ? <History aria-hidden="true" size={18} /> : <ReceiptText aria-hidden="true" size={18} />}
-                        </span>
+                        {expense.imageDataUrl ? (
+                          <span className="record-dialog-thumb">
+                            <img src={expense.imageDataUrl} alt="" />
+                          </span>
+                        ) : (
+                          <span className="record-dialog-icon">
+                            {expense.kind === "settlement" ? <History aria-hidden="true" size={18} /> : <ReceiptText aria-hidden="true" size={18} />}
+                          </span>
+                        )}
                         <span>
                           <strong>{expense.title}</strong>
-                          <small>{formatActivityTime(expense.createdAt)}</small>
+                          <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
                         </span>
                         <b>{formatTwd(expense.amountMinor)}</b>
                       </button>
@@ -1165,6 +1525,44 @@ export function App() {
                       {text.copyLink}
                     </button>
                   </div>
+                </div>
+              </>
+            ) : null}
+
+            {dialog === "inviteInput" ? (
+              <>
+                <div className="dialog-header">
+                  <h3>{text.inviteInputTitle}</h3>
+                  <p>{text.inviteInputDescription}</p>
+                </div>
+                <label>
+                  <span>{text.inviteCode}</span>
+                  <input
+                    value={inviteInputValue}
+                    onChange={(event) => {
+                      setInviteInputValue(event.target.value);
+                      setInviteInputError("");
+                    }}
+                    placeholder={text.inviteInputPlaceholder}
+                    aria-label={text.inviteCode}
+                  />
+                </label>
+                {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
+                <div className="dialog-action-row">
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() => {
+                      setDialog(null);
+                      setInviteInputValue("");
+                      setInviteInputError("");
+                    }}
+                  >
+                    {text.cancel}
+                  </button>
+                  <button className="primary-action" type="button" disabled={!inviteInputValue.trim()} onClick={submitInviteInput}>
+                    {text.joinGroupAction}
+                  </button>
                 </div>
               </>
             ) : null}

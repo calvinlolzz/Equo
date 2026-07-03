@@ -107,25 +107,23 @@ label span {
   flex-wrap: wrap;
 }
 
-.demo-switch {
-  min-height: 44px;
-  display: inline-flex;
+.top-bar-icon-button {
+  width: 44px;
+  height: 44px;
+  display: none;
   align-items: center;
-  gap: 9px;
-  padding: 0 12px;
+  justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
+  border-radius: 12px;
+  color: #f7fbf8;
   background: rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
 }
 
-.demo-switch input {
-  width: 17px;
-  height: 17px;
-  accent-color: #6de2b8;
-}
-
-.demo-switch span {
-  margin: 0;
+.top-bar-icon-button:hover {
+  border-color: rgba(255, 214, 122, 0.34);
+  color: #ffd67a;
+  background: rgba(255, 214, 122, 0.08);
 }
 
 .ghost-action {
@@ -142,20 +140,29 @@ label span {
   font-weight: 800;
 }
 
-.status-dock {
+.toast-dock {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  z-index: 60;
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.07);
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: linear-gradient(145deg, rgba(28, 30, 28, 0.96), rgba(14, 16, 14, 0.96));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(18px) saturate(1.2);
+  transform: translate(-50%, 0);
+  animation: toast-in 220ms ease-out;
 }
 
-.status-dock p {
+.toast-dock p {
   margin: 0;
+  font-size: 14px;
 }
 
 .pulse-dot {
@@ -1021,28 +1028,67 @@ label span {
   background: rgba(255, 143, 143, 0.045);
 }
 
-.mobile-group-manage {
-  display: none;
-}
-
-.mobile-group-manage-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.mobile-danger-action {
+.profile-bar {
   width: 100%;
   min-height: 48px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid rgba(255, 143, 143, 0.24);
-  border-radius: 14px;
-  color: #ff9d9d;
-  background: rgba(255, 143, 143, 0.08);
+  gap: 10px;
+  border-radius: 10px;
+  padding: 0 14px;
+  margin-bottom: 4px;
+  color: #07110f;
+  background: rgba(247, 251, 248, 0.92);
   font-weight: 860;
+}
+
+.profile-bar span {
+  margin: 0;
+}
+
+.mobile-only {
+  display: none;
+}
+
+.side-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(10px);
+  animation: backdrop-fade-in 200ms ease-out;
+}
+
+.side-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 46;
+  width: min(320px, 84vw);
+  overflow-y: auto;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(145deg, rgba(20, 26, 24, 0.98), rgba(8, 12, 11, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+}
+
+.side-drawer-left {
+  left: 0;
+  padding: 0;
+  border-radius: 0 20px 20px 0;
+  animation: drawer-slide-in-left 220ms ease-out;
+}
+
+.side-drawer-right {
+  right: 0;
+  border-radius: 20px 0 0 20px;
+  animation: drawer-slide-in-right 220ms ease-out;
+}
+
+.side-drawer-left .group-rail {
+  max-height: none;
+  height: 100%;
 }
 
 .room-hero {
@@ -1803,13 +1849,14 @@ label span {
 .composer-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 40;
   display: grid;
   align-items: end;
   justify-items: center;
-  padding: 24px;
+  padding: 24px 24px 0;
   background: rgba(0, 0, 0, 0.44);
   backdrop-filter: blur(10px);
+  animation: backdrop-fade-in 220ms ease-out;
 }
 
 .modal-backdrop {
@@ -2215,6 +2262,20 @@ label span {
   background: #ffd67a;
 }
 
+.record-dialog-thumb {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+.record-dialog-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .record-dialog-row span:not(.record-dialog-icon),
 .member-dialog-row span:not(.member-avatar) {
   min-width: 0;
@@ -2250,6 +2311,12 @@ label span {
   color: rgba(247, 251, 248, 0.62);
   background: rgba(255, 255, 255, 0.07);
   text-align: center;
+}
+
+.dialog-inline-error {
+  margin: -4px 0 0;
+  color: #ff9d9d;
+  font-size: 13px;
 }
 
 .panel-stat-grid {
@@ -2547,6 +2614,20 @@ label span {
   padding: 22px;
 }
 
+.expense-sheet {
+  position: relative;
+  border-radius: 22px 22px 0 0;
+  animation: sheet-rise 260ms ease-out;
+}
+
+.sheet-drag-handle {
+  width: 44px;
+  height: 5px;
+  margin: -6px auto 0;
+  border-radius: 999px;
+  background: rgba(247, 251, 248, 0.28);
+}
+
 .composer-header {
   display: flex;
   align-items: flex-start;
@@ -2586,7 +2667,28 @@ label span {
   gap: 8px;
 }
 
+.segmented-control {
+  position: relative;
+  gap: 0;
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.segmented-pill {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 3);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background: #ffd67a;
+  transition: transform 200ms ease;
+}
+
 .composer-type {
+  position: relative;
+  z-index: 1;
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -2594,13 +2696,12 @@ label span {
   gap: 6px;
   border-radius: 999px;
   color: rgba(247, 251, 248, 0.72);
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   font-weight: 860;
 }
 
 .composer-type.active {
   color: #07110f;
-  background: #6de2b8;
 }
 
 .composer-mode-note,
@@ -2637,6 +2738,196 @@ label span {
   font-size: 42px;
   font-weight: 950;
   text-align: right;
+}
+
+.composer-currency-select {
+  width: auto;
+  min-height: 40px;
+  border: 0;
+  padding: 0 6px 0 0;
+  color: #07110f;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.composer-exchange-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+  color: rgba(247, 251, 248, 0.72);
+}
+
+.composer-exchange-row input {
+  width: 90px;
+  min-height: 34px;
+  padding: 4px 8px;
+  text-align: right;
+}
+
+.composer-payer-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #f7fbf8;
+  background: transparent;
+}
+
+.composer-section-head-label {
+  color: rgba(247, 251, 248, 0.72);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.composer-payer-summary-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chevron {
+  transition: transform 160ms ease;
+}
+
+.chevron.rotated {
+  transform: rotate(90deg);
+}
+
+.share-member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.share-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 12px;
+  padding: 6px 10px;
+}
+
+.share-member-row.dimmed {
+  opacity: 0.42;
+}
+
+.share-member-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #f7fbf8;
+  background: transparent;
+}
+
+.share-member-toggle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-member-amount {
+  flex: 0 0 auto;
+  font-weight: 860;
+}
+
+.share-member-amount-input {
+  width: 96px;
+  min-height: 36px;
+  padding: 4px 8px;
+  text-align: right;
+}
+
+.composer-split-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.composer-photo-note-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.composer-photo-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.composer-photo-add {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(247, 251, 248, 0.42);
+  border-radius: 14px;
+  color: rgba(247, 251, 248, 0.62);
+  cursor: pointer;
+}
+
+.composer-photo-add input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.composer-photo-preview {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.composer-photo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-photo-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #f7fbf8;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.composer-note-field {
+  align-self: start;
+}
+
+.composer-submit-full {
+  width: 100%;
+  min-height: 52px;
+  border-radius: 16px;
+  color: #07110f;
+  background: #ffd67a;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.composer-submit-full:disabled {
+  opacity: 0.42;
 }
 
 .composer-category-row {
@@ -2801,6 +3092,58 @@ label span {
   }
 }
 
+@keyframes toast-in {
+  from {
+    transform: translate(-50%, -10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawer-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
 @media (max-width: 960px) {
   .create-flow-shell,
   .workspace-grid,
@@ -2860,8 +3203,13 @@ label span {
     display: grid;
   }
 
-  .mobile-group-manage {
-    display: grid;
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  .toast-dock {
+    top: auto;
+    bottom: calc(78px + env(safe-area-inset-bottom));
   }
 }
 
@@ -2950,14 +3298,9 @@ label span {
     grid-template-columns: 1fr;
   }
 
-  .composer-amount-card,
   .payer-chip-grid,
   .composer-split-summary {
     grid-template-columns: 1fr;
-  }
-
-  .composer-amount-card input {
-    text-align: left;
   }
 
   .floating-action {
@@ -2968,7 +3311,7 @@ label span {
   }
 
   .composer-backdrop {
-    padding: 10px;
+    padding: 0;
   }
 
   .modal-backdrop {
@@ -2991,6 +3334,17 @@ label span {
   .expense-composer {
     width: 100%;
     max-height: calc(100dvh - 40px);
+    border-radius: 22px 22px 0 0;
+  }
+
+  .composer-photo-note-row {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .composer-photo-add,
+  .composer-photo-preview {
+    width: 76px;
+    height: 76px;
   }
 }
 

@@ -22,4 +22,6 @@ export const ACTION_ICON_NAMES = {
   viewAll: "ChevronRight",
   floatingAdd: "Plus",
   close: "X",
+  openGroupDrawer: "Menu",
+  openGroupSettings: "Settings",
 } as const;

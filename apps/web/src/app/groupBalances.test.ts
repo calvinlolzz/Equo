@@ -92,4 +92,21 @@ describe("computeMemberBalances", () => {
     const total = [...withSettlement.values()].reduce((sum, value) => sum + value, 0);
     expect(total).toBe(0);
   });
+
+  test("honors a custom shareAmountsMinor split instead of the equal split", () => {
+    const expense = makeExpense({
+      amountMinor: 1000,
+      payerId: "member_a",
+      shareMemberIds: ["member_a", "member_b", "member_c"],
+      shareAmountsMinor: { member_a: 100, member_b: 300, member_c: 600 },
+    });
+    const balances = computeMemberBalances(members, [expense]);
+
+    expect(balances.get("member_a")).toBe(1000 - 100);
+    expect(balances.get("member_b")).toBe(-300);
+    expect(balances.get("member_c")).toBe(-600);
+
+    const total = [...balances.values()].reduce((sum, value) => sum + value, 0);
+    expect(total).toBe(0);
+  });
 });

@@ -31,6 +31,8 @@ describe("app iconography", () => {
       viewAll: "ChevronRight",
       floatingAdd: "Plus",
       close: "X",
+      openGroupDrawer: "Menu",
+      openGroupSettings: "Settings",
     });
   });
 });
