@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Plus, X } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
 import { convertToGroupAmountMinor } from "./expenseCurrency";
 import { canSubmitExpenseDraft } from "./expenseDraft";
 import { buildExpenseEditPrefill } from "./expenseEditPrefill";
-import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { buildEqualShareAmountsMinor, getCustomSplitRemainderMinor } from "./expenseShareSplit";
 import { UI_TEXT } from "./uiText";
 
@@ -37,7 +36,6 @@ export type ExpenseDraft = {
   shareMemberIds: string[];
   category: string;
   note?: string;
-  imageDataUrl?: string;
   shareAmountsMinor?: Record<string, number>;
   sourceCurrency?: string;
   sourceAmountMinor?: number;
@@ -49,19 +47,15 @@ export function ExpenseComposerSheet({
   groupCurrency,
   currencyOptions,
   initialExpense,
-  hidePhoto,
   onClose,
   onSubmit,
-  onImageError,
 }: {
   members: Member[];
   groupCurrency: string;
   currencyOptions: Array<{ code: string; label: string }>;
   initialExpense?: Expense;
-  hidePhoto?: boolean;
   onClose: () => void;
   onSubmit: (draft: ExpenseDraft) => void;
-  onImageError?: () => void;
 }) {
   const editPrefill = useMemo(
     () => (initialExpense ? buildExpenseEditPrefill(initialExpense, groupCurrency) : null),
@@ -84,7 +78,6 @@ export function ExpenseComposerSheet({
   const [composerPayerExpanded, setComposerPayerExpanded] = useState(false);
   const [composerCustomSplit, setComposerCustomSplit] = useState(editPrefill?.isCustomSplit ?? false);
   const [composerShareAmounts, setComposerShareAmounts] = useState<Record<string, string>>(editPrefill?.shareAmounts ?? {});
-  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>(editPrefill?.imageDataUrl ?? "");
   const [composerNote, setComposerNote] = useState(editPrefill?.note ?? "");
 
   const composerNeedsExchangeRate = composerCurrency !== groupCurrency;
@@ -152,16 +145,6 @@ export function ExpenseComposerSheet({
     setComposerShareAmounts(nextShareAmounts);
   }
 
-  async function handleComposerImagePick(file: File | null) {
-    if (!file) return;
-    try {
-      const dataUrl = await downscaleImageFileToDataUrl(file);
-      setComposerImageDataUrl(dataUrl);
-    } catch {
-      onImageError?.();
-    }
-  }
-
   function submitExpense() {
     if (members.length === 0) return;
     const totalAmountMinor = composerNeedsExchangeRate
@@ -194,7 +177,6 @@ export function ExpenseComposerSheet({
       shareMemberIds,
       category: composerCategory,
       note: composerNote.trim() || undefined,
-      imageDataUrl: composerImageDataUrl || undefined,
       shareAmountsMinor: composerCustomSplit ? customShareAmountsMinor : undefined,
     };
     if (composerNeedsExchangeRate) {
@@ -393,33 +375,6 @@ export function ExpenseComposerSheet({
             </div>
 
             <div className="composer-card-section composer-photo-note-row">
-              {hidePhoto ? null : (
-                <div className="composer-photo-picker">
-                  <span className="composer-section-head-label">{text.photo}</span>
-                  {composerImageDataUrl ? (
-                    <div className="composer-photo-preview">
-                      <img src={composerImageDataUrl} alt="" />
-                      <button
-                        className="composer-photo-remove"
-                        type="button"
-                        aria-label={text.removePhoto}
-                        onClick={() => setComposerImageDataUrl("")}
-                      >
-                        <X aria-hidden="true" size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="composer-photo-add">
-                      <Plus aria-hidden="true" size={22} />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)}
-                      />
-                    </label>
-                  )}
-                </div>
-              )}
               <label className="composer-note-field">
                 <span>{text.note}</span>
                 <input

@@ -33,8 +33,7 @@ CHECKS = (
     Check("missing API stays JSON", "/api/v1/unknown", 404, "application/json", '"Unknown API route."'),
 )
 
-HOME_REQUIRED_MARKERS = ("建立群組", "加入群組", "繼續使用")
-HOME_FORBIDDEN_MARKERS = ("使用 Equo", "使用 Google 登入", "使用 Apple 登入")
+HOME_REQUIRED_MARKERS = ("使用 Google 登入", "建立群組", "加入群組", "繼續使用")
 
 
 def fail(message: str) -> int:
@@ -54,7 +53,7 @@ def fetch(path: str) -> tuple[int, str, str, str]:
 
 
 def validate_home_experience(body: str) -> bool:
-    return all(marker in body for marker in HOME_REQUIRED_MARKERS) and not any(marker in body for marker in HOME_FORBIDDEN_MARKERS)
+    return all(marker in body for marker in HOME_REQUIRED_MARKERS)
 
 
 def collect_home_shell_text(home_html: str) -> str:
@@ -96,7 +95,7 @@ def main() -> int:
 
         if check.label == "home" and not validate_home_experience(collect_home_shell_text(body)):
             return fail(
-                "home: expected the create/join/continue home experience and no login gate; "
+                "home: expected the login wall copy and the create/join/continue flow in the bundle; "
                 f"body={body[:240]}"
             )
 

@@ -26,10 +26,9 @@ REQUIRED = {
     ],
     "scripts/check-built-web-home.py": [
         "HOME_REQUIRED_MARKERS",
-        "HOME_FORBIDDEN_MARKERS",
         "collect_dist_text",
         "validate_dist_home",
-        "built web home keeps create/join/continue flow",
+        "built web bundle keeps the login wall and create/join/continue flow",
     ],
     "scripts/test-check-built-web-home.py": [
         "valid_dist",
@@ -46,7 +45,6 @@ REQUIRED = {
     "scripts/smoke-production-web.py": [
         "EQUO_BASE_URL",
         "HOME_REQUIRED_MARKERS",
-        "HOME_FORBIDDEN_MARKERS",
         "collect_home_shell_text",
         "validate_home_experience",
         "/group/smoke-test",
@@ -56,13 +54,13 @@ REQUIRED = {
     ],
     "scripts/test-smoke-production-web.py": [
         "valid_home",
-        "login_gate",
+        "missing_login_wall",
         "production web smoke rules verified",
     ],
     "docs/launch_readiness_stage.md": [
         "Vercel Project Settings",
         "Required Environment Variables",
-        "Google OAuth Origins",
+        "Login Wall",
         "Production Smoke Test",
         "Launch Gate",
         "auth_leaked_password_protection",

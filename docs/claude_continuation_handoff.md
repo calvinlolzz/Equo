@@ -2,6 +2,16 @@
 
 Date: 2026-07-04
 
+## Login Wall Decision (2026-07-04, supersedes earlier "no forced login" guidance)
+
+The owner made a hard product decision: Equo now requires a Pizo-style hard login wall. With no valid session, the ONLY screen shown is `LoginScreen` (`apps/web/src/app/LoginScreen.tsx`) — centered logo mark, app name, tagline, a primary "使用 Google 登入" button, and a disabled "使用 Apple 登入" placeholder with a "即將推出" hint. There is no guest mode, no `稍後再說`, and no local/offline groups. The create/join/continue start flow described elsewhere in this document still exists, but only renders after a successful login.
+
+Sign-in mechanism: Supabase OAuth redirect (Google), not Google Identity Services (GIS). The client redirects to Supabase's `/auth/v1/authorize?provider=google&redirect_to=<origin>` (see `apps/web/src/app/supabaseOAuth.ts` for `buildAuthorizeUrl`/`parseOAuthFragment`). Supabase completes the Google consent flow and redirects back with `#access_token=...` in the URL fragment (implicit flow, no PKCE). The app parses that fragment on boot, exchanges the token via `POST /api/v1/auth/supabase`, and stores the resulting session the same way the app always has (`sessionStore.ts`).
+
+GIS (the old button flow that called `google.accounts.id` directly) is abandoned for good: it fails in production because the Google OAuth client has no authorized JavaScript origins configured, and fixing that is explicitly out of scope. `apps/web/src/app/googleIdentity.ts` and its test have been deleted; do not resurrect that flow.
+
+Any "do not require login before showing the start flow" language below is historical and no longer applies — it is superseded by this decision. The launch readiness guards (`scripts/check-built-web-home.py`, `scripts/smoke-production-web.py`, `scripts/check-launch-readiness-stage.py`) were updated accordingly: they now require BOTH the login wall copy (`使用 Google 登入`) AND the create/join/continue copy (`建立群組`, `加入群組`, `繼續使用`) to be present in the built bundle, since both screens ship in the same SPA bundle. There is no more "forbidden marker" concept for login-gate copy.
+
 ## Use This Workspace Only
 
 Continue from:
@@ -15,8 +25,8 @@ Do not continue from the repository root. The root workspace previously containe
 ## Current Product Direction
 
 - The official product should continue from the Claude-made dark, Pizo-like group workspace.
-- The first screen must remain the create, join, and continue flow. Do not replace it with a forced login page.
-- MVP auth remains Google-only unless the user explicitly changes scope.
+- A hard login wall (`LoginScreen`) is required before anything else. Once logged in, the first screen is the create, join, and continue flow. See "Login Wall Decision" above.
+- MVP auth remains Google-only unless the user explicitly changes scope. The mechanism is Supabase OAuth redirect, not GIS.
 - Keep primary actions obvious: create group, join group, add member, invite member, add expense, settle debt, archive group, and delete group.
 - UI behavior must be verified in a real browser, not only by reading code.
 - Prefer Pizo-style simple modal flows over full-page detours.
@@ -32,6 +42,8 @@ Read these before changing behavior:
 - `apps/web/src/app/App.tsx`
 - `apps/web/src/app/App.css`
 - `apps/web/src/app/uiText.ts`
+- `apps/web/src/app/LoginScreen.tsx`
+- `apps/web/src/app/supabaseOAuth.ts`
 - `apps/web/src/app/ProfileDialog.tsx`
 - `apps/web/src/app/StartFlowPanel.tsx`
 - `apps/web/src/app/cloudStore.ts`
@@ -76,8 +88,7 @@ Expected:
 
 - All web tests pass.
 - The web build succeeds.
-- The built home still contains `建立群組`, `加入群組`, and `繼續使用`.
-- The built home does not become a standalone login gate.
+- The built bundle contains the login wall copy (`使用 Google 登入`) AND the post-login create/join/continue copy (`建立群組`, `加入群組`, `繼續使用`).
 - Production web smoke passes.
 - Production API smoke passes, with Google token exchange skipped when `EQUO_GOOGLE_ID_TOKEN` is not set.
 
@@ -87,7 +98,8 @@ Expected:
 - Do not add extra tabs for archived groups. Pizo places archived groups behind the archive icon near the group list header.
 - Do not put the settle debt button outside the debt relationship card.
 - Do not overload the profile dialog with unrelated information.
-- Do not require login before showing the start flow.
+- Do require login before showing the start flow (hard login wall — see "Login Wall Decision" above; this reverses the earlier no-login-gate guidance).
+- Do not resurrect the GIS button flow (`googleIdentity.ts`); the login mechanism is the Supabase OAuth redirect.
 - Do not deploy from the repository root.
 - Do not write files with tools that corrupt UTF-8 Chinese text.
 
@@ -157,7 +169,7 @@ First read:
 
 Then implement the next product phase:
 1. Refine the profile dialog to match the Pizo-like structure: minimal content, account tab, other settings tab, linked/not-linked account states, unlink/link buttons, and no unnecessary footer buttons when there is no pending state.
-2. Preserve the create/join/continue start flow. Do not create a forced login gate.
+2. Preserve the create/join/continue start flow after login. The app requires a hard Pizo-style login wall (Supabase OAuth redirect) before it — see "Login Wall Decision" above.
 3. Keep archived groups behind the archive icon near the group list header.
 4. Keep group URLs under /group/<groupId> and preserve SPA fallback behavior.
 5. Verify in-browser after changes.

@@ -14,8 +14,7 @@ if hasattr(sys.stderr, "reconfigure"):
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIST = ROOT / "apps" / "web" / "dist"
 
-HOME_REQUIRED_MARKERS = ("建立群組", "加入群組", "繼續使用")
-HOME_FORBIDDEN_MARKERS = ("使用 Equo", "使用 Google 登入", "使用 Apple 登入")
+HOME_REQUIRED_MARKERS = ("使用 Google 登入", "建立群組", "加入群組", "繼續使用")
 
 
 def collect_dist_text(dist_dir: Path) -> str:
@@ -38,19 +37,19 @@ def collect_dist_text(dist_dir: Path) -> str:
 
 def validate_dist_home(dist_dir: Path = DEFAULT_DIST) -> bool:
     text = collect_dist_text(dist_dir)
-    return all(marker in text for marker in HOME_REQUIRED_MARKERS) and not any(marker in text for marker in HOME_FORBIDDEN_MARKERS)
+    return all(marker in text for marker in HOME_REQUIRED_MARKERS)
 
 
 def main() -> int:
     try:
         if validate_dist_home():
-            print("PASS: built web home keeps create/join/continue flow")
+            print("PASS: built web bundle keeps the login wall and create/join/continue flow")
             return 0
     except FileNotFoundError as error:
         print(f"FAIL: {error}")
         return 1
 
-    print("FAIL: built web home was replaced by login gate or is missing create/join/continue markers")
+    print("FAIL: built web bundle is missing the login wall or create/join/continue markers")
     return 1
 
 

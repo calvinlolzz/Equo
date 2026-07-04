@@ -1,4 +1,4 @@
-import { Plus, Ticket, X } from "lucide-react";
+import { Plus, Ticket } from "lucide-react";
 import type { Group, StartMode } from "./appTypes";
 import { UI_TEXT } from "./uiText";
 
@@ -15,9 +15,7 @@ type StartFlowProps = {
   selectedTemplateLabel: string;
   startMode: StartMode;
   templates: Template[];
-  localGroupsHintCount?: number;
   onCreateGroup: () => void;
-  onDismissLocalGroupsHint?: () => void;
   onGroupNameChange: (name: string) => void;
   onSelectGroup: (group: Group) => void;
   onSelectTemplate: (template: Template) => void;
@@ -27,7 +25,7 @@ type StartFlowProps = {
 
 const text = UI_TEXT.app;
 
-export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplateLabel, startMode, templates, localGroupsHintCount, onCreateGroup, onDismissLocalGroupsHint, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onOpenInviteInput }: StartFlowProps) {
+export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplateLabel, startMode, templates, onCreateGroup, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onOpenInviteInput }: StartFlowProps) {
   return (
     <section className="create-flow-shell">
       <div className="start-flow-card glass-panel">
@@ -102,23 +100,6 @@ export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplat
               <h2>{text.continueGroup}</h2>
               <span>{groups.length}</span>
             </div>
-            {localGroupsHintCount ? (
-              <div className="local-groups-hint">
-                <span>
-                  {text.localGroupsHintPrefix} {localGroupsHintCount} {text.localGroupsHintSuffix}
-                </span>
-                {onDismissLocalGroupsHint ? (
-                  <button
-                    className="local-groups-hint-dismiss"
-                    type="button"
-                    aria-label={text.cancel}
-                    onClick={onDismissLocalGroupsHint}
-                  >
-                    <X aria-hidden="true" size={14} />
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
             {groups.length ? (
               <div className="group-list">
                 {groups.map((group) => (

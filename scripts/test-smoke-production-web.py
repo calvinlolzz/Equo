@@ -20,15 +20,20 @@ def load_module():
 
 def main() -> int:
     module = load_module()
-    valid_home = "\n".join(["Equo", "建立群組", "加入群組", "繼續使用"])
-    login_gate = "\n".join(["Equo", "使用 Equo", "使用 Google 登入", "使用 Apple 登入"])
+    valid_home = "\n".join(["Equo", "使用 Google 登入", "建立群組", "加入群組", "繼續使用"])
+    missing_login_wall = "\n".join(["Equo", "建立群組", "加入群組", "繼續使用"])
+    missing_start_flow = "\n".join(["Equo", "使用 Google 登入"])
 
     if not module.validate_home_experience(valid_home):
-        print("FAIL: expected create/join/continue home to pass")
+        print("FAIL: expected login wall + create/join/continue bundle to pass")
         return 1
 
-    if module.validate_home_experience(login_gate):
-        print("FAIL: expected login gate home to fail")
+    if module.validate_home_experience(missing_login_wall):
+        print("FAIL: expected bundle missing the login wall copy to fail")
+        return 1
+
+    if module.validate_home_experience(missing_start_flow):
+        print("FAIL: expected bundle missing create/join/continue markers to fail")
         return 1
 
     print("PASS: production web smoke rules verified")

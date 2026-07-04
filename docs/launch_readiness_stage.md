@@ -18,23 +18,20 @@ The repository now declares the important Vercel build settings in `vercel.json`
 
 Configure these in Vercel for Production and Preview:
 
-- `VITE_GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_ID`
+- `VITE_SUPABASE_URL`
 - `SESSION_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 Do not configure `SUPABASE_SERVICE_ROLE_KEY` as a public or client-side variable.
 
-## Google OAuth Origins
+`VITE_GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_ID` were used by the old Google Identity Services (GIS) button flow, which is retired (see Login Wall below). They can remain configured harmlessly but are no longer read by the client.
 
-Before production launch, add these to the Google OAuth web client:
+## Login Wall
 
-- Production origin, for example `https://your-domain.com`
-- Vercel preview origin pattern or the exact preview URL used for testing
-- Local review origin if needed: `http://127.0.0.1:14062`
+As of 2026-07-04 the app requires a hard, Pizo-style login wall: with no valid session, the only screen is `LoginScreen` (Google via Supabase OAuth redirect; Apple is a disabled placeholder). There is no guest mode, no `稍後再說`, and no local-only groups. Once logged in, the user sees the familiar create/join/continue start flow. Both the login wall copy and the start flow copy ship in the same SPA bundle (the guard below checks for both).
 
-The OAuth client ID must match both `VITE_GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_ID`.
+Sign-in mechanism: the client redirects to `${VITE_SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=<origin>`. Supabase completes the Google consent flow and redirects back with `#access_token=...` in the URL fragment (implicit flow, no PKCE). The app exchanges that token via `POST /api/v1/auth/supabase` for an Equo session, exactly like the previous Google-button flow. The prior GIS button flow (`apps/web/src/app/googleIdentity.ts`) has been removed; its production origin misconfiguration was the reason for abandoning it.
 
 ## Production Smoke Test
 
@@ -44,7 +41,7 @@ Before deploying, run the local built-home guard after `npm run build`:
 python scripts\check-built-web-home.py
 ```
 
-This reads `apps/web/dist/index.html` and bundled assets. It fails if the built homepage no longer contains `建立群組`, `加入群組`, and `繼續使用`, or if those controls are replaced by the standalone login gate copy.
+This reads `apps/web/dist/index.html` and bundled assets. It fails if the built bundle is missing the login wall copy (`使用 Google 登入`) or the create/join/continue flow copy (`建立群組`, `加入群組`, `繼續使用`) that renders after login.
 
 After deploying, run:
 
@@ -63,8 +60,7 @@ python scripts\smoke-production-api.py
 
 Expected result:
 
-- `/` returns the app shell and the bundled home experience still contains `建立群組`, `加入群組`, and `繼續使用`.
-- `/` must not be replaced by the login gate copy `使用 Equo`, `使用 Google 登入`, or `使用 Apple 登入`.
+- `/` returns the app shell. The bundle contains both the login wall copy (`使用 Google 登入`) and the post-login create/join/continue copy (`建立群組`, `加入群組`, `繼續使用`), since they ship in the same SPA bundle.
 - `/group/smoke-test` returns the app shell, proving direct group links use the SPA fallback.
 - `/api/v1/unknown` returns `404`, proving server runtime env is configured.
 - `/api/v1/auth/google` returns `200` and `equo_session` when a valid Google ID token is supplied.
@@ -97,7 +93,7 @@ Before promoting to production:
 1. `npm run verify:release`
 2. all remaining `scripts/check-*.py` that are not covered by `verify:release`
 3. deploy preview
-4. run `scripts/smoke-production-web.py` against the preview and confirm the homepage is still the create/join/continue flow
+4. run `scripts/smoke-production-web.py` against the preview and confirm the bundle still contains both the login wall and the create/join/continue flow
 5. run `scripts/smoke-production-api.py` against the preview
-6. complete one browser flow: Google sign-in from profile, create group, invite, expense, settlement
+6. complete one browser flow: Google sign-in through the login wall (Supabase OAuth redirect), create group, invite, expense, settlement
 7. promote the verified preview to production

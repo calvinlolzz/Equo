@@ -285,25 +285,6 @@ label span {
   margin-bottom: 0;
 }
 
-.local-groups-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-radius: 12px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(247, 251, 248, 0.72);
-  font-size: 13px;
-}
-
-.local-groups-hint-dismiss {
-  display: inline-flex;
-  color: rgba(247, 251, 248, 0.6);
-  background: transparent;
-  padding: 2px;
-}
-
 .cloud-loading-skeleton {
   display: flex;
   align-items: center;
@@ -3516,12 +3497,6 @@ label span {
   font-weight: 900;
 }
 
-.profile-google-button {
-  flex: 0 0 auto;
-  min-width: 130px;
-  min-height: 40px;
-}
-
 .profile-other-row {
   display: flex;
   align-items: center;
@@ -3668,4 +3643,106 @@ label span {
     grid-area: action;
     justify-self: end;
   }
+}
+
+.login-screen {
+  min-height: calc(100vh - 40px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(400px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 28px;
+  padding: 40px 32px;
+  text-align: center;
+}
+
+.login-brand {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.login-logo-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #6de2b8, #4fc59a);
+  color: #07110f;
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.login-brand h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.login-brand p {
+  margin: 0;
+  color: rgba(247, 251, 248, 0.68);
+  font-size: 14px;
+}
+
+.login-error {
+  margin: 0;
+  color: #ff9d9d;
+  font-size: 13px;
+  text-align: center;
+}
+
+.login-actions {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.login-google-button {
+  width: 100%;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 16px;
+  color: #07110f;
+  background: #f7fbf8;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.login-apple-button {
+  width: 100%;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  color: rgba(247, 251, 248, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 15px;
+  font-weight: 900;
+  cursor: not-allowed;
+}
+
+.login-apple-button small {
+  color: rgba(247, 251, 248, 0.4);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.login-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(247, 251, 248, 0.72);
+  font-size: 14px;
 }

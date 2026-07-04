@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Contrast, FileText, Globe, Lock, LogOut, Pencil, X, Apple } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
-import { loadGoogleIdentityScript, renderGoogleSignInButton } from "./googleIdentity";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -49,7 +48,6 @@ export function ProfileDialog({
   onClose,
   onSave,
   onToast,
-  onGoogleCredential,
   onLogout,
 }: {
   profile: ProfileData;
@@ -57,7 +55,6 @@ export function ProfileDialog({
   onClose: () => void;
   onSave: (profile: ProfileData) => void;
   onToast: (message: string) => void;
-  onGoogleCredential: (credential: string) => void;
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
@@ -66,30 +63,7 @@ export function ProfileDialog({
   const [editingName, setEditingName] = useState(false);
   const [infoDialog, setInfoDialog] = useState<"privacy" | "terms" | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const googleButtonRef = useRef<HTMLDivElement | null>(null);
-  const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID ?? "";
   const isLoggedIn = Boolean(session);
-
-  useEffect(() => {
-    if (isLoggedIn || !clientId || !googleButtonRef.current) return;
-
-    let cancelled = false;
-    const container = googleButtonRef.current;
-
-    loadGoogleIdentityScript()
-      .then(() => {
-        if (cancelled || !container) return;
-        renderGoogleSignInButton(clientId, container, onGoogleCredential);
-      })
-      .catch(() => {
-        if (!cancelled) onToast(text.googleMissingClientIdToast);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, clientId]);
 
   async function handleAvatarPick(file: File | null) {
     if (!file) return;
@@ -200,25 +174,11 @@ export function ProfileDialog({
               </span>
               <span className="profile-account-info">
                 <strong>{text.googleAccount}</strong>
-                <small className={isLoggedIn ? "profile-status-linked" : undefined}>
-                  {isLoggedIn ? text.linked : text.notLinked}
-                </small>
+                <small className="profile-status-linked">{text.linked}</small>
               </span>
-              {isLoggedIn ? (
-                <button className="profile-link-action" type="button" onClick={onLogout}>
-                  {text.unlinkAccount}
-                </button>
-              ) : clientId ? (
-                <div className="profile-google-button" ref={googleButtonRef} />
-              ) : (
-                <button
-                  className="profile-link-action"
-                  type="button"
-                  onClick={() => onToast(text.googleMissingClientIdToast)}
-                >
-                  {text.linkAccount}
-                </button>
-              )}
+              <button className="profile-link-action" type="button" onClick={onLogout}>
+                {text.unlinkAccount}
+              </button>
             </div>
             <div className="profile-account-row">
               <span className="profile-account-icon">

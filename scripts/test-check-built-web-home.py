@@ -35,16 +35,23 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
       valid_dist = Path(tmp) / "valid"
       valid_dist.mkdir()
-      write_dist(valid_dist, "建立群組 加入群組 繼續使用")
+      write_dist(valid_dist, "使用 Google 登入 建立群組 加入群組 繼續使用")
       if not module.validate_dist_home(valid_dist):
-          print("FAIL: expected valid dist home to pass")
+          print("FAIL: expected valid dist home (login wall + create/join/continue) to pass")
           return 1
 
-      login_dist = Path(tmp) / "login"
-      login_dist.mkdir()
-      write_dist(login_dist, "使用 Equo 使用 Google 登入 使用 Apple 登入")
-      if module.validate_dist_home(login_dist):
-          print("FAIL: expected login gate dist home to fail")
+      missing_login_dist = Path(tmp) / "missing_login"
+      missing_login_dist.mkdir()
+      write_dist(missing_login_dist, "建立群組 加入群組 繼續使用")
+      if module.validate_dist_home(missing_login_dist):
+          print("FAIL: expected dist home missing the login wall copy to fail")
+          return 1
+
+      missing_start_flow_dist = Path(tmp) / "missing_start_flow"
+      missing_start_flow_dist.mkdir()
+      write_dist(missing_start_flow_dist, "使用 Google 登入")
+      if module.validate_dist_home(missing_start_flow_dist):
+          print("FAIL: expected dist home missing create/join/continue markers to fail")
           return 1
 
     print("PASS: built web home rules verified")
