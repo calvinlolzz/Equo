@@ -1,5 +1,5 @@
 import type { Expense, Member } from "./appTypes";
-import { buildEqualExpenseShares } from "./expenseSplit";
+import { getMemberShareMinor } from "./expenseShareSplit";
 
 export function computeMemberBalances(members: Member[], expenses: Expense[]): Map<string, number> {
   const balances = new Map<string, number>();
@@ -7,15 +7,10 @@ export function computeMemberBalances(members: Member[], expenses: Expense[]): M
 
   expenses.forEach((expense) => {
     balances.set(expense.payerId, (balances.get(expense.payerId) ?? 0) + expense.amountMinor);
-    if (expense.shareAmountsMinor) {
-      Object.entries(expense.shareAmountsMinor).forEach(([memberId, amountMinor]) => {
-        balances.set(memberId, (balances.get(memberId) ?? 0) - amountMinor);
-      });
-      return;
-    }
-    const shares = buildEqualExpenseShares(expense.shareMemberIds, expense.amountMinor);
-    shares.forEach((share) => {
-      balances.set(share.member_id, (balances.get(share.member_id) ?? 0) - share.amount_minor);
+    members.forEach((member) => {
+      const share = getMemberShareMinor(expense, member.id);
+      if (share === 0) return;
+      balances.set(member.id, (balances.get(member.id) ?? 0) - share);
     });
   });
 

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
+import type { Expense } from "./appTypes";
 import {
   buildEqualShareAmountsMinor,
   getCustomSplitRemainderMinor,
+  getMemberShareMinor,
   isCustomSplitValid,
   sumShareAmountsMinor,
 } from "./expenseShareSplit";
@@ -35,5 +37,40 @@ describe("isCustomSplitValid", () => {
 
   test("rejects an empty share map", () => {
     expect(isCustomSplitValid({ totalAmountMinor: 0, shareAmountsMinor: {} })).toBe(false);
+  });
+});
+
+describe("getMemberShareMinor", () => {
+  function makeExpense(overrides: Partial<Expense>): Pick<Expense, "amountMinor" | "shareMemberIds" | "shareAmountsMinor"> {
+    return {
+      amountMinor: 1000,
+      shareMemberIds: ["a", "b", "c"],
+      ...overrides,
+    };
+  }
+
+  test("returns the equal floor+remainder share when there is no custom split", () => {
+    const expense = makeExpense({});
+    expect(getMemberShareMinor(expense, "a")).toBe(334);
+    expect(getMemberShareMinor(expense, "b")).toBe(333);
+    expect(getMemberShareMinor(expense, "c")).toBe(333);
+  });
+
+  test("returns the custom share amount when shareAmountsMinor is present", () => {
+    const expense = makeExpense({ shareAmountsMinor: { a: 100, b: 300, c: 600 } });
+    expect(getMemberShareMinor(expense, "a")).toBe(100);
+    expect(getMemberShareMinor(expense, "b")).toBe(300);
+    expect(getMemberShareMinor(expense, "c")).toBe(600);
+  });
+
+  test("returns 0 for a member who is not in shareMemberIds", () => {
+    const expense = makeExpense({ shareMemberIds: ["b", "c"] });
+    expect(getMemberShareMinor(expense, "a")).toBe(0);
+
+    const customExpense = makeExpense({
+      shareMemberIds: ["b", "c"],
+      shareAmountsMinor: { b: 400, c: 600 },
+    });
+    expect(getMemberShareMinor(customExpense, "a")).toBe(0);
   });
 });

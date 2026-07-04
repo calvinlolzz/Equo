@@ -1,3 +1,5 @@
+import type { Expense } from "./appTypes";
+
 export function buildEqualShareAmountsMinor(memberIds: string[], amountMinor: number): Record<string, number> {
   if (memberIds.length === 0) return {};
   const baseAmount = Math.floor(amountMinor / memberIds.length);
@@ -32,4 +34,16 @@ export function isCustomSplitValid({
 }): boolean {
   if (Object.keys(shareAmountsMinor).length === 0) return false;
   return getCustomSplitRemainderMinor({ totalAmountMinor, shareAmountsMinor }) === 0;
+}
+
+export function getMemberShareMinor(
+  expense: Pick<Expense, "amountMinor" | "shareMemberIds" | "shareAmountsMinor">,
+  memberId: string,
+): number {
+  if (!expense.shareMemberIds.includes(memberId)) return 0;
+  if (expense.shareAmountsMinor) {
+    return expense.shareAmountsMinor[memberId] ?? 0;
+  }
+  const equalShares = buildEqualShareAmountsMinor(expense.shareMemberIds, expense.amountMinor);
+  return equalShares[memberId] ?? 0;
 }

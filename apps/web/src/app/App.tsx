@@ -20,14 +20,11 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { GroupRail } from "./GroupRail";
 import { StartFlow } from "./StartFlowPanel";
 import type { Activity, ArchivedGroup, Expense, Group, GroupData, Member, StartMode } from "./appTypes";
-import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
-import { convertToGroupAmountMinor } from "./expenseCurrency";
-import { canSubmitExpenseDraft } from "./expenseDraft";
-import { downscaleImageFileToDataUrl } from "./expenseImage";
-import { buildEqualShareAmountsMinor, getCustomSplitRemainderMinor } from "./expenseShareSplit";
+import { getMemberShareMinor } from "./expenseShareSplit";
 import { computeMemberBalances } from "./groupBalances";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
@@ -156,16 +153,6 @@ function createGroupData(group: Group): GroupData {
   };
 }
 
-function toLocalDateTimeInputValue(value: string) {
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
 export function App() {
   const [groups, setGroups] = useState<Group[]>(() => readJson<Group[]>(GROUPS_KEY, []));
   const [groupData, setGroupData] = useState<Record<string, GroupData>>(() => readJson<Record<string, GroupData>>(GROUP_DATA_KEY, {}));
@@ -186,21 +173,6 @@ export function App() {
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const [inviteInputValue, setInviteInputValue] = useState("");
   const [inviteInputError, setInviteInputError] = useState("");
-
-  const [composerMode, setComposerMode] = useState<ComposerMode>("expense");
-  const [composerCategory, setComposerCategory] = useState<string>("general");
-  const [composerDateTime, setComposerDateTime] = useState<string>(() => toLocalDateTimeInputValue(new Date().toISOString()));
-  const [composerCurrency, setComposerCurrency] = useState<string>("TWD");
-  const [composerExchangeRate, setComposerExchangeRate] = useState<string>("1");
-  const [composerTitle, setComposerTitle] = useState<string>("");
-  const [composerAmount, setComposerAmount] = useState("");
-  const [composerPayerId, setComposerPayerId] = useState("");
-  const [composerShareIds, setComposerShareIds] = useState<string[]>([]);
-  const [composerPayerExpanded, setComposerPayerExpanded] = useState(false);
-  const [composerCustomSplit, setComposerCustomSplit] = useState(false);
-  const [composerShareAmounts, setComposerShareAmounts] = useState<Record<string, string>>({});
-  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>("");
-  const [composerNote, setComposerNote] = useState("");
 
   const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
   const activeData = activeGroup ? groupData[activeGroup.id] ?? createGroupData(activeGroup) : null;
@@ -223,14 +195,7 @@ export function App() {
   const groupSpendMinor = selectedDayExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
   const personalSpendMinor = useMemo(() => {
     if (!ownerMember) return 0;
-    return selectedDayExpenses.reduce((sum, expense) => {
-      if (!expense.shareMemberIds.includes(ownerMember.id)) return sum;
-      const baseAmount = Math.floor(expense.amountMinor / Math.max(1, expense.shareMemberIds.length));
-      const remainder = expense.amountMinor % Math.max(1, expense.shareMemberIds.length);
-      const index = expense.shareMemberIds.indexOf(ownerMember.id);
-      const share = baseAmount + (index < remainder ? 1 : 0);
-      return sum + share;
-    }, 0);
+    return selectedDayExpenses.reduce((sum, expense) => sum + getMemberShareMinor(expense, ownerMember.id), 0);
   }, [selectedDayExpenses, ownerMember]);
   const selectedDateChip = dateChips.find((chip) => chip.key === selectedDateKey);
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
@@ -272,26 +237,6 @@ export function App() {
     showToast(text.groupNotFound);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId, groups]);
-
-  useEffect(() => {
-    if (!expenseComposerOpen) return;
-    setComposerMode("expense");
-    setComposerCategory("general");
-    setComposerDateTime(toLocalDateTimeInputValue(new Date().toISOString()));
-    setComposerCurrency(activeGroup?.currency ?? "TWD");
-    setComposerExchangeRate("1");
-    setComposerTitle("");
-    setComposerAmount("");
-    setComposerPayerId(members[0]?.id ?? "");
-    setComposerShareIds(members.map((member) => member.id));
-    setComposerPayerExpanded(false);
-    setComposerCustomSplit(false);
-    setComposerShareAmounts({});
-    setComposerImageDataUrl("");
-    setComposerNote("");
-    // Intentionally resets only when the composer opens, not on every members change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenseComposerOpen]);
 
   useEffect(() => {
     return () => {
@@ -432,59 +377,27 @@ export function App() {
     showToast(`${text.addVirtualMember}: ${member.name}`);
   }
 
-  function toggleComposerShareMember(memberId: string) {
-    setComposerShareIds((current) => {
-      if (current.includes(memberId)) {
-        if (current.length <= 1) return current;
-        return current.filter((id) => id !== memberId);
-      }
-      return [...current, memberId];
-    });
-  }
-
-  function submitExpense() {
-    if (!activeGroup || members.length === 0) return;
-    const totalAmountMinor = composerNeedsExchangeRate
-      ? convertToGroupAmountMinor({ amount: composerAmount, exchangeRate: composerExchangeRate })
-      : Math.round((Number(composerAmount) || 0) * 100);
-    const customShareAmountsMinor: Record<string, number> = {};
-    composerShareIds.forEach((id) => {
-      customShareAmountsMinor[id] = Math.round((Number(composerShareAmounts[id]) || 0) * 100);
-    });
-    if (
-      !canSubmitExpenseDraft({
-        amount: composerAmount,
-        selectedShareMemberCount: composerShareIds.length,
-        isCustomSplit: composerCustomSplit,
-        totalAmountMinor,
-        shareAmountsMinor: customShareAmountsMinor,
-      })
-    ) {
-      return;
-    }
+  function handleExpenseDraftSubmit(draft: ExpenseDraft) {
+    if (!activeGroup) return;
     const now = new Date().toISOString();
-    const createdAt = composerDateTime ? new Date(composerDateTime).toISOString() : now;
-    const payerId = composerPayerId || members[0].id;
-    const shareMemberIds = composerShareIds.length ? composerShareIds : members.map((member) => member.id);
-    const categoryLabel = UI_TEXT.categories[composerCategory as keyof typeof UI_TEXT.categories] ?? UI_TEXT.categories.general;
     const expense: Expense = {
       id: crypto.randomUUID(),
-      title: composerTitle.trim() || categoryLabel,
-      amountMinor: totalAmountMinor,
+      title: draft.title,
+      amountMinor: draft.amountMinor,
       currency: activeGroup.currency,
-      createdAt,
-      payerId,
-      shareMemberIds,
+      createdAt: draft.createdAt,
+      payerId: draft.payerId,
+      shareMemberIds: draft.shareMemberIds,
       kind: "expense",
-      category: composerCategory,
-      note: composerNote.trim() || undefined,
-      imageDataUrl: composerImageDataUrl || undefined,
-      shareAmountsMinor: composerCustomSplit ? customShareAmountsMinor : undefined,
+      category: draft.category,
+      note: draft.note,
+      imageDataUrl: draft.imageDataUrl,
+      shareAmountsMinor: draft.shareAmountsMinor,
     };
-    if (composerNeedsExchangeRate) {
-      expense.sourceCurrency = composerCurrency;
-      expense.sourceAmountMinor = Math.round((Number(composerAmount) || 0) * 100);
-      expense.exchangeRate = Number(composerExchangeRate) || 1;
+    if (draft.sourceCurrency) {
+      expense.sourceCurrency = draft.sourceCurrency;
+      expense.sourceAmountMinor = draft.sourceAmountMinor;
+      expense.exchangeRate = draft.exchangeRate;
     }
     const activity: Activity = {
       id: crypto.randomUUID(),
@@ -497,40 +410,6 @@ export function App() {
     });
     setExpenseComposerOpen(false);
     showToast(`${text.addExpense}: ${expense.title}`);
-  }
-
-  function toggleComposerCustomSplit() {
-    setComposerCustomSplit((current) => {
-      const next = !current;
-      if (next) {
-        const equalShares = buildEqualShareAmountsMinor(composerShareIds, composerTotalAmountMinor);
-        const nextShareAmounts: Record<string, string> = {};
-        composerShareIds.forEach((id) => {
-          nextShareAmounts[id] = (((equalShares[id] ?? 0) / 100).toFixed(2)).replace(/\.00$/, "");
-        });
-        setComposerShareAmounts(nextShareAmounts);
-      }
-      return next;
-    });
-  }
-
-  function resetComposerSplitEvenly() {
-    const equalShares = buildEqualShareAmountsMinor(composerShareIds, composerTotalAmountMinor);
-    const nextShareAmounts: Record<string, string> = {};
-    composerShareIds.forEach((id) => {
-      nextShareAmounts[id] = (((equalShares[id] ?? 0) / 100).toFixed(2)).replace(/\.00$/, "");
-    });
-    setComposerShareAmounts(nextShareAmounts);
-  }
-
-  async function handleComposerImagePick(file: File | null) {
-    if (!file) return;
-    try {
-      const dataUrl = await downscaleImageFileToDataUrl(file);
-      setComposerImageDataUrl(dataUrl);
-    } catch {
-      showToast("圖片處理失敗，請再試一次。");
-    }
   }
 
   function submitInviteInput() {
@@ -608,32 +487,6 @@ export function App() {
     dialog === "currencyPanel" ||
     dialog === "recordsPanel" ||
     dialog === "analysisPanel";
-  const composerNeedsExchangeRate = Boolean(activeGroup) && composerCurrency !== (activeGroup?.currency ?? "TWD");
-  const composerTotalAmountMinor = composerNeedsExchangeRate
-    ? convertToGroupAmountMinor({ amount: composerAmount, exchangeRate: composerExchangeRate })
-    : Math.round((Number(composerAmount) || 0) * 100);
-  const composerCustomShareAmountsMinor = useMemo(() => {
-    const result: Record<string, number> = {};
-    composerShareIds.forEach((id) => {
-      result[id] = Math.round((Number(composerShareAmounts[id]) || 0) * 100);
-    });
-    return result;
-  }, [composerShareIds, composerShareAmounts]);
-  const composerSubmitState = getComposerSubmitState({
-    mode: composerMode,
-    canSubmitExpense: canSubmitExpenseDraft({
-      amount: composerAmount,
-      selectedShareMemberCount: composerShareIds.length,
-      isCustomSplit: composerCustomSplit,
-      totalAmountMinor: composerTotalAmountMinor,
-      shareAmountsMinor: composerCustomShareAmountsMinor,
-    }),
-  });
-  const composerRemainderMinor = getCustomSplitRemainderMinor({
-    totalAmountMinor: composerTotalAmountMinor,
-    shareAmountsMinor: composerCustomShareAmountsMinor,
-  });
-  const composerPayer = members.find((member) => member.id === composerPayerId) ?? members[0];
 
   function renderGroupSideNavContent(insideDrawer = false) {
     if (!activeGroup) return null;
@@ -642,18 +495,19 @@ export function App() {
     };
     return (
       <>
-        <button
-          className="profile-bar"
-          type="button"
-          aria-label={text.profile}
-          onClick={() => {
-            closeDrawer();
-            openMemberList();
-          }}
-        >
-          <UserRound aria-hidden="true" size={18} />
-          <span>{text.profile}</span>
-        </button>
+        <div className="profile-dot-row">
+          <button
+            className="profile-dot"
+            type="button"
+            aria-label={text.profile}
+            onClick={() => {
+              closeDrawer();
+              openMemberList();
+            }}
+          >
+            <UserRound aria-hidden="true" size={18} />
+          </button>
+        </div>
         <div className="side-group-card">
           <div className="side-cover" />
           <div className="side-group-name">
@@ -1044,243 +898,14 @@ export function App() {
       )}
 
       {expenseComposerOpen ? (
-        <div
-          className="composer-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setExpenseComposerOpen(false);
-          }}
-        >
-          <section className="expense-composer expense-sheet glass-panel" role="dialog" aria-modal="true" aria-label={text.addExpense}>
-            <div className="sheet-drag-handle" aria-hidden="true" />
-            <button className="composer-close" type="button" aria-label={text.cancel} onClick={() => setExpenseComposerOpen(false)}>
-              <X aria-hidden="true" size={18} />
-            </button>
-            <div className="composer-header">
-              <p className="eyebrow">Expense</p>
-              <h2>{text.addExpense}</h2>
-            </div>
-
-            <div className="composer-type-row segmented-control" role="tablist" aria-label={text.addExpense}>
-              <span
-                className="segmented-pill"
-                style={{ transform: `translateX(${COMPOSER_MODES.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
-                aria-hidden="true"
-              />
-              {COMPOSER_MODES.map((mode) => (
-                <button
-                  key={mode.id}
-                  className={mode.id === composerMode ? "composer-type active" : "composer-type"}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode.id === composerMode}
-                  onClick={() => setComposerMode(mode.id)}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
-            {composerMode === "expense" ? (
-              <>
-                <div className="composer-meta-grid">
-                  <label>
-                    <span>{text.category}</span>
-                    <select value={composerCategory} onChange={(event) => setComposerCategory(event.target.value)} aria-label={text.category}>
-                      {Object.entries(UI_TEXT.categories).map(([key, label]) => (
-                        <option value={key} key={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>{text.date}</span>
-                    <input
-                      type="datetime-local"
-                      value={composerDateTime}
-                      onChange={(event) => setComposerDateTime(event.target.value)}
-                      aria-label={text.date}
-                    />
-                  </label>
-                </div>
-
-                <div className="composer-amount-card">
-                  <select
-                    className="composer-currency-select"
-                    value={composerCurrency}
-                    onChange={(event) => setComposerCurrency(event.target.value)}
-                    aria-label={text.currency}
-                  >
-                    {currencyOptions.map((currency) => (
-                      <option value={currency.code} key={currency.code}>
-                        {currency.code}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    value={composerAmount}
-                    onChange={(event) => setComposerAmount(event.target.value)}
-                    inputMode="decimal"
-                    placeholder="0"
-                    aria-label={text.amount}
-                  />
-                </div>
-
-                {composerNeedsExchangeRate ? (
-                  <div className="composer-exchange-row">
-                    <span>
-                      1 {composerCurrency} → {activeGroup?.currency ?? "TWD"}
-                    </span>
-                    <input
-                      value={composerExchangeRate}
-                      onChange={(event) => setComposerExchangeRate(event.target.value)}
-                      inputMode="decimal"
-                      aria-label={text.exchangeRateLabel}
-                    />
-                  </div>
-                ) : null}
-
-                <label>
-                  <span>{text.title}</span>
-                  <input
-                    value={composerTitle}
-                    onChange={(event) => setComposerTitle(event.target.value)}
-                    placeholder={text.title}
-                    aria-label={text.title}
-                  />
-                </label>
-
-                <div className="composer-card-section">
-                  <button className="composer-payer-summary" type="button" onClick={() => setComposerPayerExpanded((current) => !current)}>
-                    <span className="composer-section-head-label">{text.payer}</span>
-                    <span className="composer-payer-summary-value">
-                      <span className="member-avatar">{initial(composerPayer?.name)}</span>
-                      <strong>{composerPayer?.name ?? ""}</strong>
-                      <ChevronRight aria-hidden="true" size={16} className={composerPayerExpanded ? "chevron rotated" : "chevron"} />
-                    </span>
-                  </button>
-                  {composerPayerExpanded ? (
-                    <div className="payer-chip-grid">
-                      {members.map((member) => (
-                        <button
-                          className={member.id === composerPayerId ? "payer-chip active" : "payer-chip"}
-                          type="button"
-                          key={member.id}
-                          onClick={() => {
-                            setComposerPayerId(member.id);
-                            setComposerPayerExpanded(false);
-                          }}
-                        >
-                          <span className="member-avatar">{initial(member.name)}</span>
-                          <strong>{member.name}</strong>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="composer-card-section">
-                  <div className="composer-section-head">
-                    <span>{text.whoPays}</span>
-                    <button className="text-action" type="button" onClick={toggleComposerCustomSplit}>
-                      {text.allocationSettings}
-                    </button>
-                  </div>
-                  <div className="share-member-list">
-                    {members.map((member) => {
-                      const included = composerShareIds.includes(member.id);
-                      const equalShares = buildEqualShareAmountsMinor(composerShareIds, composerTotalAmountMinor);
-                      const displayAmountMinor = included
-                        ? composerCustomSplit
-                          ? Math.round((Number(composerShareAmounts[member.id]) || 0) * 100)
-                          : equalShares[member.id] ?? 0
-                        : 0;
-                      return (
-                        <div className={included ? "share-member-row" : "share-member-row dimmed"} key={member.id}>
-                          <button
-                            className="share-member-toggle"
-                            type="button"
-                            onClick={() => toggleComposerShareMember(member.id)}
-                          >
-                            <span className="member-avatar">{initial(member.name)}</span>
-                            <strong>{member.name}</strong>
-                          </button>
-                          {composerCustomSplit && included ? (
-                            <input
-                              className="share-member-amount-input"
-                              value={composerShareAmounts[member.id] ?? ""}
-                              onChange={(event) =>
-                                setComposerShareAmounts((current) => ({ ...current, [member.id]: event.target.value }))
-                              }
-                              inputMode="decimal"
-                              aria-label={`${member.name} ${text.amount}`}
-                            />
-                          ) : (
-                            <span className="share-member-amount">{formatTwd(displayAmountMinor)}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {composerCustomSplit ? (
-                    <div className="composer-split-footer">
-                      <span>
-                        {text.remainingAmount} {formatTwd(composerRemainderMinor)}
-                      </span>
-                      <button className="composer-mini-action" type="button" onClick={resetComposerSplitEvenly}>
-                        {text.splitEvenly}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="composer-card-section composer-photo-note-row">
-                  <div className="composer-photo-picker">
-                    <span className="composer-section-head-label">{text.photo}</span>
-                    {composerImageDataUrl ? (
-                      <div className="composer-photo-preview">
-                        <img src={composerImageDataUrl} alt="" />
-                        <button
-                          className="composer-photo-remove"
-                          type="button"
-                          aria-label={text.removePhoto}
-                          onClick={() => setComposerImageDataUrl("")}
-                        >
-                          <X aria-hidden="true" size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="composer-photo-add">
-                        <Plus aria-hidden="true" size={22} />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)}
-                        />
-                      </label>
-                    )}
-                  </div>
-                  <label className="composer-note-field">
-                    <span>{text.note}</span>
-                    <input
-                      value={composerNote}
-                      onChange={(event) => setComposerNote(event.target.value)}
-                      placeholder={text.notePlaceholder}
-                      aria-label={text.note}
-                    />
-                  </label>
-                </div>
-              </>
-            ) : null}
-
-            <p className="composer-hint">{composerSubmitState.hint}</p>
-
-            <button className="composer-submit-full" type="button" disabled={composerSubmitState.disabled} onClick={submitExpense}>
-              {composerSubmitState.label}
-            </button>
-          </section>
-        </div>
+        <ExpenseComposerSheet
+          members={members}
+          groupCurrency={activeGroup?.currency ?? "TWD"}
+          currencyOptions={currencyOptions}
+          onClose={() => setExpenseComposerOpen(false)}
+          onSubmit={handleExpenseDraftSubmit}
+          onImageError={() => showToast(text.photoError)}
+        />
       ) : null}
 
       {dialog ? (
