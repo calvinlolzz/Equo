@@ -10,7 +10,7 @@ export type ExpenseEditPrefill = {
   shareMemberIds: string[];
   isCustomSplit: boolean;
   shareAmounts: Record<string, string>;
-  imageDataUrl: string;
+  imageUrl: string;
   note: string;
   dateTimeIso: string;
 };
@@ -40,7 +40,7 @@ export function buildExpenseEditPrefill(expense: Expense, groupCurrency: string)
     shareMemberIds: expense.shareMemberIds,
     isCustomSplit: Boolean(expense.shareAmountsMinor),
     shareAmounts,
-    imageDataUrl: expense.imageDataUrl ?? "",
+    imageUrl: expense.imageUrl ?? "",
     note: expense.note ?? "",
     dateTimeIso: expense.createdAt,
   };

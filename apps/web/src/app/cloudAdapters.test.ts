@@ -15,7 +15,36 @@ describe("toGroup", () => {
   test("maps id, name, currency", () => {
     expect(
       toGroup({ id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_1" }),
-    ).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD" });
+    ).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
+  });
+
+  test("maps cover_image_url when present", () => {
+    expect(
+      toGroup({
+        id: "group_1",
+        name: "Tokyo Trip",
+        currency: "TWD",
+        owner_member_id: "member_1",
+        cover_image_url: "https://cdn.equo.local/cover.jpg",
+      }),
+    ).toEqual({
+      id: "group_1",
+      name: "Tokyo Trip",
+      currency: "TWD",
+      coverImageUrl: "https://cdn.equo.local/cover.jpg",
+    });
+  });
+
+  test("maps a null cover_image_url to undefined", () => {
+    expect(
+      toGroup({
+        id: "group_1",
+        name: "Tokyo Trip",
+        currency: "TWD",
+        owner_member_id: "member_1",
+        cover_image_url: null,
+      }).coverImageUrl,
+    ).toBeUndefined();
   });
 });
 
@@ -75,9 +104,29 @@ describe("toExpense", () => {
       kind: "expense",
       category: "food",
       note: "with friends",
-      imageDataUrl: undefined,
+      imageUrl: undefined,
       shareAmountsMinor: { member_1: 500, member_2: 500 },
     });
+  });
+
+  test("maps image_url to imageUrl when present", () => {
+    const expense = toExpense({
+      id: "expense_1",
+      group_id: "group_1",
+      title: "Dinner",
+      kind: "expense",
+      category: "food",
+      amount_minor: 1000,
+      currency: "TWD",
+      expense_date: "2026-06-30",
+      image_url: "https://cdn.equo.local/expense.jpg",
+      version: 1,
+      client_request_id: "req_1",
+      expense_payments: [{ payer_member_id: "member_1", amount_minor: 1000, currency: "TWD" }],
+      expense_shares: [{ member_id: "member_1", share_type: "fixed", amount_minor: 1000 }],
+    });
+
+    expect(expense.imageUrl).toBe("https://cdn.equo.local/expense.jpg");
   });
 
   test("falls back to expense_date when created_at is missing", () => {
@@ -164,7 +213,7 @@ describe("toGroupUiData", () => {
 
     const ui = toGroupUiData(detail);
 
-    expect(ui.group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD" });
+    expect(ui.group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
     expect(ui.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false }]);
     expect(ui.expenses).toHaveLength(1);
     expect(ui.expenses[0].title).toBe("Dinner");
@@ -225,6 +274,14 @@ describe("toCreateExpenseRequest", () => {
     const first = toCreateExpenseRequest(baseDraft, "TWD");
     const second = toCreateExpenseRequest(baseDraft, "TWD");
     expect(first.client_request_id).not.toBe(second.client_request_id);
+  });
+
+  test("passes imageUrl through as image_url when present, omits it when absent", () => {
+    const withImage = toCreateExpenseRequest({ ...baseDraft, imageUrl: "https://cdn.equo.local/expense.jpg" }, "TWD");
+    expect(withImage.image_url).toBe("https://cdn.equo.local/expense.jpg");
+
+    const withoutImage = toCreateExpenseRequest(baseDraft, "TWD");
+    expect(withoutImage.image_url).toBeUndefined();
   });
 });
 

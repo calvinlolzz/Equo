@@ -68,9 +68,9 @@ export function ExpenseDetailDialog({
           <X aria-hidden="true" size={18} />
         </button>
 
-        {!isSettlement && expense.imageDataUrl ? (
+        {!isSettlement && expense.imageUrl ? (
           <div className="expense-detail-image">
-            <img src={expense.imageDataUrl} alt="" />
+            <img src={expense.imageUrl} alt="" />
           </div>
         ) : null}
 

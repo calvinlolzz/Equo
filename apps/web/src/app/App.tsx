@@ -22,9 +22,10 @@ import {
 } from "lucide-react";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
-import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
+import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
+import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { ProfileDialog } from "./ProfileDialog";
@@ -194,6 +195,11 @@ export function App() {
   const [cloudActivities, setCloudActivities] = useState<Record<string, Activity[]>>(() =>
     readJson<Record<string, Activity[]>>(CLOUD_ACTIVITIES_KEY, {}),
   );
+  const [archivedGroups, setArchivedGroups] = useState<ArchivedGroupData[]>([]);
+  const [archivedGroupsLoading, setArchivedGroupsLoading] = useState(false);
+  const [unarchivingGroupId, setUnarchivingGroupId] = useState<string>("");
+  const [groupCoverDataUrl, setGroupCoverDataUrl] = useState<string>("");
+  const [groupCoverUrl, setGroupCoverUrl] = useState<string>("");
   const cloudInviteGroupIdRef = useRef("");
 
   function handleSessionExpired() {
@@ -403,13 +409,25 @@ export function App() {
     if (!cloudStore) return;
     const template = templates.find((item) => item.id === selectedTemplate) ?? templates[0];
     const name = groupName.trim() || template.defaultName;
+    const pickedCover = groupCoverDataUrl;
 
     try {
       const group = await cloudStore.createGroup({ name, currency: "TWD" });
       setActiveGroupId(group.id);
       setGroupRoute(group.id, "replace");
       setDialog(null);
+      setGroupCoverDataUrl("");
+      setGroupCoverUrl("");
       showToast(`${text.createGroup}: ${name}`);
+
+      if (pickedCover) {
+        try {
+          const uploadedUrl = await cloudStore.uploadGroupImage(group.id, "cover", pickedCover);
+          await cloudStore.updateGroupCover(group.id, name, uploadedUrl);
+        } catch {
+          showToast(text.coverUploadFailedAfterCreate);
+        }
+      }
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
     }
@@ -418,7 +436,19 @@ export function App() {
   function openEditGroup() {
     if (!activeGroup) return;
     setGroupName(activeGroup.name);
+    setGroupCoverDataUrl("");
+    setGroupCoverUrl(activeGroup.coverImageUrl ?? "");
     setDialog("editGroup");
+  }
+
+  async function handleGroupCoverPick(file: File | null) {
+    if (!file) return;
+    try {
+      const dataUrl = await downscaleImageFileToDataUrl(file);
+      setGroupCoverDataUrl(dataUrl);
+    } catch {
+      showToast(text.photoError);
+    }
   }
 
   async function updateActiveGroup() {
@@ -426,13 +456,50 @@ export function App() {
     const name = groupName.trim();
     if (!name) return;
 
+    setBusy(true);
     try {
-      await cloudStore.renameGroup(activeGroup.id, name);
+      if (groupCoverDataUrl) {
+        const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "cover", groupCoverDataUrl);
+        await cloudStore.updateGroupCover(activeGroup.id, name, uploadedUrl);
+      } else {
+        await cloudStore.renameGroup(activeGroup.id, name);
+      }
       recordCloudActivity(activeGroup.id, `${text.editGroup}: ${name}`);
       setDialog(null);
+      setGroupCoverDataUrl("");
       showToast(`${text.editGroup}: ${name}`);
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openArchivedGroups() {
+    if (!cloudStore) return;
+    setDialog("archivedList");
+    setArchivedGroupsLoading(true);
+    try {
+      const groups = await cloudStore.listArchivedGroups();
+      setArchivedGroups(groups);
+    } catch (error) {
+      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      setArchivedGroupsLoading(false);
+    }
+  }
+
+  async function unarchiveGroup(group: ArchivedGroupData) {
+    if (!cloudStore) return;
+    setUnarchivingGroupId(group.id);
+    try {
+      await cloudStore.unarchiveGroup(group.id);
+      setArchivedGroups((current) => current.filter((item) => item.id !== group.id));
+      showToast(`${text.restoredGroupPrefix}${group.name}`);
+    } catch (error) {
+      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      setUnarchivingGroupId("");
     }
   }
 
@@ -553,11 +620,25 @@ export function App() {
     if (!activeGroup || !cloudStore) return;
     const editingId = editingExpense?.id;
 
+    let finalDraft = draft;
+    if (draft.imageDataUrl) {
+      setBusy(true);
+      try {
+        const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "expense", draft.imageDataUrl);
+        finalDraft = { ...draft, imageUrl: uploadedUrl, imageDataUrl: undefined };
+      } catch {
+        setBusy(false);
+        showToast(text.imageUploadFailed);
+        return;
+      }
+      setBusy(false);
+    }
+
     try {
       if (editingId) {
-        await cloudStore.editExpense(activeGroup.id, editingId, draft, activeGroup.currency);
+        await cloudStore.editExpense(activeGroup.id, editingId, finalDraft, activeGroup.currency);
       } else {
-        await cloudStore.addExpense(activeGroup.id, draft, activeGroup.currency);
+        await cloudStore.addExpense(activeGroup.id, finalDraft, activeGroup.currency);
       }
       recordCloudActivity(
         activeGroup.id,
@@ -708,7 +789,9 @@ export function App() {
           </button>
         </div>
         <div className="side-group-card">
-          <div className="side-cover" />
+          <div className="side-cover">
+            {activeGroup.coverImageUrl ? <img src={activeGroup.coverImageUrl} alt="" /> : null}
+          </div>
           <div className="side-group-name">
             <div className="side-group-title-row">
               <h2>{activeGroup.name}</h2>
@@ -850,7 +933,7 @@ export function App() {
             activeGroup={activeGroup}
             groups={displayGroups}
             onCreateGroup={() => setDialog("createGroup")}
-            onOpenArchivedGroups={() => setDialog("archivedList")}
+            onOpenArchivedGroups={openArchivedGroups}
             onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
             onSelectGroup={selectGroup}
             onShowInviteCode={() => setDialog("inviteInput")}
@@ -863,7 +946,7 @@ export function App() {
                   activeGroup={activeGroup}
                   groups={displayGroups}
                   onCreateGroup={() => { setGroupDrawerOpen(false); setDialog("createGroup"); }}
-                  onOpenArchivedGroups={() => { setGroupDrawerOpen(false); setDialog("archivedList"); }}
+                  onOpenArchivedGroups={() => { setGroupDrawerOpen(false); openArchivedGroups(); }}
                   onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
                   onSelectGroup={selectGroup}
                   onShowInviteCode={() => { setGroupDrawerOpen(false); setDialog("inviteInput"); }}
@@ -1156,6 +1239,7 @@ export function App() {
             setEditingExpense(null);
           }}
           onSubmit={handleExpenseDraftSubmit}
+          onImageError={() => showToast(text.photoError)}
         />
       ) : null}
 
@@ -1202,12 +1286,33 @@ export function App() {
                   <h3>{text.createGroup}</h3>
                   <p>{"\u65b0\u7fa4\u7d44\u6703\u7acb\u5373\u51fa\u73fe\u5728\u5de6\u5074\u5217\u8868\u3002"}</p>
                 </div>
+                <label className="group-edit-cover" aria-label={text.coverImage}>
+                  {groupCoverDataUrl ? (
+                    <img src={groupCoverDataUrl} alt="" />
+                  ) : (
+                    <span>
+                      <Pencil aria-hidden="true" size={22} />
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
+                  />
+                </label>
                 <label>
                   <span>{text.name}</span>
                   <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
                 </label>
                 <div className="dialog-action-row">
-                  <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
+                  <button
+                    className="secondary-action"
+                    type="button"
+                    onClick={() => {
+                      setDialog(null);
+                      setGroupCoverDataUrl("");
+                    }}
+                  >
                     {text.cancel}
                   </button>
                   <button className="primary-action" type="button" onClick={createGroup}>
@@ -1223,11 +1328,20 @@ export function App() {
                   <h3>{text.editGroup}</h3>
                   <p>{"\u66f4\u65b0\u7fa4\u7d44\u540d\u7a31\uff0c\u53f3\u5074\u8207\u5de6\u5074\u5217\u8868\u6703\u540c\u6b65\u986f\u793a\u3002"}</p>
                 </div>
-                <div className="group-edit-cover">
-                  <span>
-                    <Pencil aria-hidden="true" size={22} />
-                  </span>
-                </div>
+                <label className="group-edit-cover" aria-label={text.coverImage}>
+                  {groupCoverDataUrl || groupCoverUrl ? (
+                    <img src={groupCoverDataUrl || groupCoverUrl} alt="" />
+                  ) : (
+                    <span>
+                      <Pencil aria-hidden="true" size={22} />
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
+                  />
+                </label>
                 <label>
                   <span>{text.name}</span>
                   <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
@@ -1240,7 +1354,7 @@ export function App() {
                   <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
                     {text.cancel}
                   </button>
-                  <button className="primary-action" type="button" disabled={!groupName.trim()} onClick={updateActiveGroup}>
+                  <button className="primary-action" type="button" disabled={!groupName.trim() || busy} onClick={updateActiveGroup}>
                     {text.save}
                   </button>
                 </div>
@@ -1299,9 +1413,9 @@ export function App() {
                         key={expense.id}
                         onClick={() => openExpenseDetail(expense.id)}
                       >
-                        {expense.imageDataUrl ? (
+                        {expense.imageUrl ? (
                           <span className="record-dialog-thumb">
-                            <img src={expense.imageDataUrl} alt="" />
+                            <img src={expense.imageUrl} alt="" />
                           </span>
                         ) : (
                           <span className="record-dialog-icon">
@@ -1571,7 +1685,39 @@ export function App() {
                   <p>{"\u5c01\u5b58\u5f8c\u7684\u7fa4\u7d44\u6703\u653e\u5728\u9019\u88e1\uff0c\u4e0d\u6703\u51fa\u73fe\u5728\u5de6\u5074\u4e3b\u5217\u8868\u3002"}</p>
                 </div>
                 <div className="dialog-section-list archived-dialog-list">
-                  <p className="dialog-empty">{"\u76ee\u524d\u6c92\u6709\u5df2\u5c01\u5b58\u7684\u7fa4\u7d44"}</p>
+                  {archivedGroupsLoading ? (
+                    <div className="cloud-loading-skeleton" aria-busy="true">
+                      <span className="pulse-dot active" />
+                    </div>
+                  ) : archivedGroups.length ? (
+                    archivedGroups.map((group) => (
+                      <div className="archived-dialog-row" key={group.id}>
+                        {group.coverImageUrl ? (
+                          <span className="record-dialog-thumb">
+                            <img src={group.coverImageUrl} alt="" />
+                          </span>
+                        ) : (
+                          <span className="record-dialog-icon">
+                            <Archive aria-hidden="true" size={18} />
+                          </span>
+                        )}
+                        <span>
+                          <strong>{group.name}</strong>
+                          <small>{group.currency}</small>
+                        </span>
+                        <button
+                          className="composer-mini-action"
+                          type="button"
+                          disabled={unarchivingGroupId === group.id}
+                          onClick={() => unarchiveGroup(group)}
+                        >
+                          {text.restoreGroup}
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="dialog-empty">{text.noArchivedGroups}</p>
+                  )}
                 </div>
               </>
             ) : null}

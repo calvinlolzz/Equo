@@ -30,7 +30,7 @@ describe("buildExpenseEditPrefill", () => {
       shareMemberIds: ["member_a", "member_b"],
       isCustomSplit: false,
       shareAmounts: {},
-      imageDataUrl: "",
+      imageUrl: "",
       note: "",
       dateTimeIso: "2026-02-03T10:20:00.000Z",
     });
@@ -61,10 +61,10 @@ describe("buildExpenseEditPrefill", () => {
   });
 
   test("carries over note and image when present", () => {
-    const expense = makeExpense({ note: "備註內容", imageDataUrl: "data:image/jpeg;base64,xyz" });
+    const expense = makeExpense({ note: "備註內容", imageUrl: "https://cdn.equo.local/expense.jpg" });
     const prefill = buildExpenseEditPrefill(expense, "TWD");
     expect(prefill.note).toBe("備註內容");
-    expect(prefill.imageDataUrl).toBe("data:image/jpeg;base64,xyz");
+    expect(prefill.imageUrl).toBe("https://cdn.equo.local/expense.jpg");
   });
 
   test("defaults category to general when missing", () => {

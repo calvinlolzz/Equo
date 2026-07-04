@@ -16,6 +16,7 @@ export function toGroup(summary: GroupSummary): Group {
     id: summary.id,
     name: summary.name,
     currency: summary.currency,
+    coverImageUrl: summary.cover_image_url ?? undefined,
   };
 }
 
@@ -57,8 +58,8 @@ export function toMembers(members: GroupMemberSummary[]): Member[] {
  *   math, records styling, and stats exclusion keep working unmodified;
  *   any other kind (only "expense" is created by this client) maps to
  *   "expense".
- * - imageDataUrl is always undefined - photos are a local-groups-only
- *   feature in this milestone.
+ * - imageUrl passes through from image_url (a cloud-hosted photo URL, if
+ *   the expense has one).
  */
 export function toExpense(summary: ExpenseSummary): Expense {
   const payments = summary.expense_payments ?? [];
@@ -81,7 +82,7 @@ export function toExpense(summary: ExpenseSummary): Expense {
     kind: summary.kind === "transfer" ? "settlement" : "expense",
     category: summary.category,
     note: summary.note ?? undefined,
-    imageDataUrl: undefined,
+    imageUrl: summary.image_url ?? undefined,
     shareAmountsMinor,
   };
 
@@ -130,6 +131,11 @@ function toDateOnly(iso: string): string {
  *   is always exact.
  * - expense_payments/shares amount_minor must be positive/non-negative
  *   integers -> both sources already produce integers.
+ *
+ * draft.imageUrl (an already-uploaded cloud photo URL) passes straight
+ * through as image_url. Uploading a newly-picked draft.imageDataUrl happens
+ * in the caller (App's submit flow) before this request is built, since it
+ * requires a groupId and a network round-trip this pure adapter can't do.
  */
 export function toCreateExpenseRequest(draft: ExpenseDraft, groupCurrency: string): CreateExpenseRequest {
   const shareAmountsMinor = draft.shareAmountsMinor ?? buildEqualShareAmountsMinor(draft.shareMemberIds, draft.amountMinor);
@@ -143,6 +149,7 @@ export function toCreateExpenseRequest(draft: ExpenseDraft, groupCurrency: strin
     currency: groupCurrency,
     expense_date: toDateOnly(draft.createdAt),
     note: draft.note,
+    image_url: draft.imageUrl,
     expense_payments: [
       {
         payer_member_id: draft.payerId,

@@ -104,8 +104,19 @@ export function StartFlow({ groups, groupName, selectedTemplate, selectedTemplat
               <div className="group-list">
                 {groups.map((group) => (
                   <button className="group-item" type="button" key={group.id} onClick={() => onSelectGroup(group)}>
-                    <strong>{group.name}</strong>
-                    <span>{group.currency}</span>
+                    <span className="group-item-row">
+                      {group.coverImageUrl ? (
+                        <span className="group-item-thumb">
+                          <img src={group.coverImageUrl} alt="" />
+                        </span>
+                      ) : (
+                        <span className="group-item-thumb placeholder" aria-hidden="true" />
+                      )}
+                      <span className="group-item-text">
+                        <strong>{group.name}</strong>
+                        <span>{group.currency}</span>
+                      </span>
+                    </span>
                   </button>
                 ))}
               </div>

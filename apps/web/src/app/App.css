@@ -482,7 +482,36 @@ label span {
   font-size: 16px;
 }
 
-.group-item span {
+.group-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.group-item-thumb {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.group-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-item-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.group-item-text span {
   color: rgba(247, 251, 248, 0.58);
   font-size: 13px;
 }
@@ -910,9 +939,16 @@ label span {
 .side-cover {
   min-height: 88px;
   border-radius: 12px;
+  overflow: hidden;
   background:
     linear-gradient(145deg, rgba(109, 226, 184, 0.34), rgba(255, 214, 122, 0.22)),
     rgba(255, 255, 255, 0.12);
+}
+
+.side-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .side-group-name {
@@ -2052,10 +2088,13 @@ label span {
 }
 
 .group-edit-cover {
+  position: relative;
   min-height: 118px;
   display: grid;
   place-items: center;
   border-radius: 16px;
+  overflow: hidden;
+  cursor: pointer;
   background:
     radial-gradient(circle at 32% 18%, rgba(255, 209, 51, 0.42), transparent 34%),
     linear-gradient(145deg, rgba(109, 226, 184, 0.32), rgba(255, 255, 255, 0.1)),
@@ -2072,6 +2111,21 @@ label span {
   background: #ffd67a;
   font-size: 25px;
   font-weight: 900;
+}
+
+.group-edit-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.group-edit-cover input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .dialog-option-list {

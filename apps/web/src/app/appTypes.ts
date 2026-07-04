@@ -2,6 +2,7 @@ export type Group = {
   id: string;
   name: string;
   currency: string;
+  coverImageUrl?: string;
 };
 
 export type Member = {
@@ -22,7 +23,7 @@ export type Expense = {
   kind?: "expense" | "settlement";
   category?: string;
   note?: string;
-  imageDataUrl?: string;
+  imageUrl?: string;
   sourceCurrency?: string;
   sourceAmountMinor?: number;
   exchangeRate?: number;

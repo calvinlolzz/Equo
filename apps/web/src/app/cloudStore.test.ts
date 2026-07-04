@@ -17,17 +17,20 @@ function makeFakeApiClient(overrides: Partial<ApiClientLike> = {}): ApiClientLik
   return {
     createGroup: vi.fn(async () => ({ group: group1, owner_member: member1 })),
     listGroups: vi.fn(async () => ({ groups: [group1] })),
+    listArchivedGroups: vi.fn(async () => ({ groups: [] })),
     getGroupDetail: vi.fn(async () => ({ group: group1, members: [member1], expenses: [], balances: [] })),
     updateGroup: vi.fn(async () => ({ group: group1 })),
     createVirtualMember: vi.fn(async () => ({
       member: { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bob", role: "member" as const, status: "active" as const },
     })),
     archiveGroup: vi.fn(async () => ({ group: group1 })),
+    unarchiveGroup: vi.fn(async () => ({ group: group1 })),
     deleteGroup: vi.fn(async () => ({ group: group1 })),
     createInvite: vi.fn(async () => ({ invite: { token: "INVITE123", max_uses: 10 } })),
     acceptInvite: vi.fn(async () => ({ group: group1, member: member1, claimed: false })),
     createExpense: vi.fn(async () => ({ expense: { id: "expense_1", title: "Dinner", amount_minor: 1000, currency: "TWD" } })),
     deleteExpense: vi.fn(async () => ({ expense: { id: "expense_1" } })),
+    uploadGroupImage: vi.fn(async () => ({ image: { url: "https://cdn.equo.local/image.jpg" } })),
     ...overrides,
   } as ApiClientLike;
 }
@@ -48,7 +51,7 @@ describe("createCloudGroupsStore", () => {
 
     await store.refreshGroups();
 
-    expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD" }]);
+    expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
     expect(store.getState().loadingGroups).toBe(false);
   });
 
@@ -58,7 +61,7 @@ describe("createCloudGroupsStore", () => {
 
     const data = await store.refreshGroupDetail("group_1");
 
-    expect(data.group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD" });
+    expect(data.group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
     expect(data.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false }]);
     expect(store.getState().groupDetails.group_1).toBe(data);
     expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
@@ -70,12 +73,12 @@ describe("createCloudGroupsStore", () => {
 
     const group = await store.createGroup({ name: "Tokyo Trip", currency: "TWD" });
 
-    expect(group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD" });
+    expect(group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
     expect(apiClient.createGroup).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Tokyo Trip", currency: "TWD", client_request_id: expect.any(String) }),
     );
     expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
-    expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD" }]);
+    expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
   });
 
   test("renameGroup updates the group then refreshes list and detail", async () => {
@@ -115,6 +118,70 @@ describe("createCloudGroupsStore", () => {
     expect(apiClient.archiveGroup).toHaveBeenCalledWith("group_1", { client_request_id: expect.any(String) });
     expect(apiClient.deleteGroup).toHaveBeenCalledWith("group_1", { client_request_id: expect.any(String) });
     expect(apiClient.listGroups).toHaveBeenCalledTimes(2);
+  });
+
+  test("listArchivedGroups maps cover_image_url and returns the archived list", async () => {
+    const apiClient = makeFakeApiClient({
+      listArchivedGroups: vi.fn(async () => ({
+        groups: [
+          {
+            id: "group_2",
+            name: "Old Trip",
+            currency: "TWD",
+            owner_member_id: "member_1",
+            archived_at: "2026-01-01T00:00:00.000Z",
+            cover_image_url: "https://cdn.equo.local/cover.jpg",
+          },
+        ],
+      })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+    const archived = await store.listArchivedGroups();
+
+    expect(archived).toEqual([
+      { id: "group_2", name: "Old Trip", currency: "TWD", coverImageUrl: "https://cdn.equo.local/cover.jpg" },
+    ]);
+  });
+
+  test("unarchiveGroup calls the api then refreshes the group list", async () => {
+    const apiClient = makeFakeApiClient();
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+    const group = await store.unarchiveGroup("group_1");
+
+    expect(group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
+    expect(apiClient.unarchiveGroup).toHaveBeenCalledWith("group_1", { client_request_id: expect.any(String) });
+    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+  });
+
+  test("uploadGroupImage returns the uploaded url", async () => {
+    const apiClient = makeFakeApiClient();
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+    const url = await store.uploadGroupImage("group_1", "cover", "data:image/jpeg;base64,abc");
+
+    expect(url).toBe("https://cdn.equo.local/image.jpg");
+    expect(apiClient.uploadGroupImage).toHaveBeenCalledWith("group_1", {
+      client_request_id: expect.any(String),
+      kind: "cover",
+      data_url: "data:image/jpeg;base64,abc",
+    });
+  });
+
+  test("updateGroupCover updates the group then refreshes list and detail", async () => {
+    const apiClient = makeFakeApiClient();
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+    await store.updateGroupCover("group_1", "Tokyo Trip", "https://cdn.equo.local/cover.jpg");
+
+    expect(apiClient.updateGroup).toHaveBeenCalledWith("group_1", {
+      client_request_id: expect.any(String),
+      name: "Tokyo Trip",
+      cover_image_url: "https://cdn.equo.local/cover.jpg",
+    });
+    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
   });
 
   test("addExpense maps the draft then refreshes group detail", async () => {
@@ -195,7 +262,7 @@ describe("createCloudGroupsStore", () => {
 
     const group = await store.acceptInvite("INVITE123", "Guest");
 
-    expect(group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD" });
+    expect(group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
     expect(apiClient.acceptInvite).toHaveBeenCalledWith("INVITE123", {
       client_request_id: expect.any(String),
       display_name: "Guest",

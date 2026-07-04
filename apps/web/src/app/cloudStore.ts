@@ -1,5 +1,5 @@
 import type { CreateGroupRequest } from "../contracts/schemas";
-import { createApiClient, type EquoApiClient, type GroupDetail } from "./apiClient";
+import { createApiClient, type ArchivedGroupSummary, type EquoApiClient, type GroupDetail } from "./apiClient";
 import { toCreateExpenseRequest, toGroup, toGroupUiData, toSettlementTransferRequest } from "./cloudAdapters";
 import type { Expense, Group, Member } from "./appTypes";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
@@ -8,6 +8,13 @@ export type CloudGroupData = {
   group: Group;
   members: Member[];
   expenses: Expense[];
+};
+
+export type ArchivedGroupData = {
+  id: string;
+  name: string;
+  currency: string;
+  coverImageUrl?: string;
 };
 
 export type CloudGroupsState = {
@@ -21,16 +28,28 @@ export type ApiClientLike = Pick<
   EquoApiClient,
   | "createGroup"
   | "listGroups"
+  | "listArchivedGroups"
   | "getGroupDetail"
   | "updateGroup"
   | "createVirtualMember"
   | "archiveGroup"
+  | "unarchiveGroup"
   | "deleteGroup"
   | "createInvite"
   | "acceptInvite"
   | "createExpense"
   | "deleteExpense"
+  | "uploadGroupImage"
 >;
+
+function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
+  return {
+    id: summary.id,
+    name: summary.name,
+    currency: summary.currency,
+    coverImageUrl: summary.cover_image_url ?? undefined,
+  };
+}
 
 function isUnauthenticatedError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
@@ -170,6 +189,25 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
     }
   }
 
+  async function listArchivedGroups(): Promise<ArchivedGroupData[]> {
+    try {
+      const { groups } = await apiClient.listArchivedGroups();
+      return groups.map(toArchivedGroupData);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async function unarchiveGroup(groupId: string): Promise<Group> {
+    try {
+      const { group } = await apiClient.unarchiveGroup(groupId, { client_request_id: crypto.randomUUID() });
+      await refreshGroups();
+      return toGroup(group);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async function deleteGroup(groupId: string) {
     try {
       await apiClient.deleteGroup(groupId, { client_request_id: crypto.randomUUID() });
@@ -241,6 +279,32 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
     }
   }
 
+  async function uploadGroupImage(groupId: string, kind: "expense" | "cover", dataUrl: string): Promise<string> {
+    try {
+      const { image } = await apiClient.uploadGroupImage(groupId, {
+        client_request_id: crypto.randomUUID(),
+        kind,
+        data_url: dataUrl,
+      });
+      return image.url;
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async function updateGroupCover(groupId: string, name: string, coverImageUrl?: string) {
+    try {
+      await apiClient.updateGroup(groupId, {
+        client_request_id: crypto.randomUUID(),
+        name,
+        cover_image_url: coverImageUrl,
+      });
+      await Promise.all([refreshGroups(), refreshGroupDetail(groupId)]);
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
   return {
     getState,
     subscribe,
@@ -250,6 +314,8 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
     renameGroup,
     addVirtualMember,
     archiveGroup,
+    listArchivedGroups,
+    unarchiveGroup,
     deleteGroup,
     addExpense,
     editExpense,
@@ -257,6 +323,8 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
     settleTransfer,
     createInvite,
     acceptInvite,
+    uploadGroupImage,
+    updateGroupCover,
   };
 }
 

@@ -35,8 +35,19 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
       <div className="group-list">
         {groups.map((group) => (
           <button className={activeGroup.id === group.id ? "group-item active" : "group-item"} type="button" key={group.id} onClick={() => onSelectGroup(group)}>
-            <strong>{group.name}</strong>
-            <span>{group.currency}</span>
+            <span className="group-item-row">
+              {group.coverImageUrl ? (
+                <span className="group-item-thumb">
+                  <img src={group.coverImageUrl} alt="" />
+                </span>
+              ) : (
+                <span className="group-item-thumb placeholder" aria-hidden="true" />
+              )}
+              <span className="group-item-text">
+                <strong>{group.name}</strong>
+                <span>{group.currency}</span>
+              </span>
+            </span>
           </button>
         ))}
         <button className="group-create-item" type="button" onClick={onCreateGroup}>
