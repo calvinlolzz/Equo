@@ -2,7 +2,12 @@ import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
-import type { ExpenseRecord, ExpenseRepository } from "./expenseRepository.js";
+import type {
+  ExpensePaymentRecord,
+  ExpenseRecord,
+  ExpenseRepository,
+  ExpenseShareRecord,
+} from "./expenseRepository.js";
 
 export function createSupabaseExpenseRepository(client: SupabaseQueryClient): ExpenseRepository {
   return {
@@ -91,15 +96,62 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
     },
 
     async listExpenses(groupId: string) {
-      return client.one<ExpenseRecord[]>(
+      const expenses = await client.one<ExpenseRecord[]>(
         `
-          select id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id
+          select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id
           from public.expenses
           where group_id = $1 and deleted_at is null
           order by expense_date desc, created_at desc
         `,
         [groupId],
       );
+
+      if (expenses.length === 0) {
+        return expenses;
+      }
+
+      const expenseIds = expenses.map((expense) => expense.id);
+
+      const [payments, shares] = await Promise.all([
+        client.one<Array<ExpensePaymentRecord & { expense_id: string }>>(
+          `
+            select expense_id, payer_member_id, amount_minor, currency
+            from public.expense_payments
+            where expense_id = any($1)
+          `,
+          [expenseIds],
+        ),
+        client.one<Array<ExpenseShareRecord & { expense_id: string }>>(
+          `
+            select expense_id, member_id, share_type, share_value, amount_minor
+            from public.expense_shares
+            where expense_id = any($1)
+          `,
+          [expenseIds],
+        ),
+      ]);
+
+      const paymentsByExpenseId = new Map<string, ExpensePaymentRecord[]>();
+      for (const payment of payments) {
+        const { expense_id, ...rest } = payment;
+        const list = paymentsByExpenseId.get(expense_id) ?? [];
+        list.push(rest);
+        paymentsByExpenseId.set(expense_id, list);
+      }
+
+      const sharesByExpenseId = new Map<string, ExpenseShareRecord[]>();
+      for (const share of shares) {
+        const { expense_id, ...rest } = share;
+        const list = sharesByExpenseId.get(expense_id) ?? [];
+        list.push(rest);
+        sharesByExpenseId.set(expense_id, list);
+      }
+
+      return expenses.map((expense) => ({
+        ...expense,
+        expense_payments: paymentsByExpenseId.get(expense.id) ?? [],
+        expense_shares: sharesByExpenseId.get(expense.id) ?? [],
+      }));
     },
 
     async softDeleteExpense(groupId: string, expenseId: string, client_request_id: string) {

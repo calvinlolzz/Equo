@@ -1,6 +1,19 @@
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 
+export type ExpensePaymentRecord = {
+  payer_member_id: string;
+  amount_minor: number;
+  currency: string;
+};
+
+export type ExpenseShareRecord = {
+  member_id: string;
+  share_type: string;
+  share_value?: number;
+  amount_minor: number;
+};
+
 export type ExpenseRecord = {
   id: string;
   group_id: string;
@@ -10,9 +23,13 @@ export type ExpenseRecord = {
   amount_minor: number;
   currency: string;
   expense_date?: string;
+  note?: string | null;
+  transfer_to_member_id?: string | null;
   created_at?: string;
   version: number;
   client_request_id: string;
+  expense_payments?: ExpensePaymentRecord[];
+  expense_shares?: ExpenseShareRecord[];
 };
 
 export type ExpenseRepository = {

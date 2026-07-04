@@ -134,8 +134,15 @@ const expenseRepository = {
         kind: "expense",
         amount_minor: 120000,
         currency: "TWD",
+        note: "Split unevenly, Bob paid",
+        transfer_to_member_id: null,
         version: 1,
         client_request_id: "expense_req",
+        expense_payments: [{ payer_member_id: "member_bob", amount_minor: 120000, currency: "TWD" }],
+        expense_shares: [
+          { member_id: "member_owner", share_type: "fixed", amount_minor: 80000 },
+          { member_id: "member_carol", share_type: "fixed", amount_minor: 40000 },
+        ],
       },
     ];
   },
@@ -194,9 +201,24 @@ describe("group handlers", () => {
     expect(result.ok && result.body).toMatchObject({
       group: { id: "group_1" },
       members: [{ id: "member_owner" }],
-      expenses: [{ id: "expense_1", title: "Dinner" }],
+      expenses: [
+        {
+          id: "expense_1",
+          title: "Dinner",
+          note: "Split unevenly, Bob paid",
+          transfer_to_member_id: null,
+          expense_payments: [{ payer_member_id: "member_bob", amount_minor: 120000, currency: "TWD" }],
+          expense_shares: [
+            { member_id: "member_owner", share_type: "fixed", amount_minor: 80000 },
+            { member_id: "member_carol", share_type: "fixed", amount_minor: 40000 },
+          ],
+        },
+      ],
       balances: [{ memberId: "member_owner" }],
     });
+    // The payer (member_bob) is excluded from expense_shares while still present in expense_payments.
+    const expense = result.ok ? (result.body as { expenses: Array<{ expense_shares: Array<{ member_id: string }> }> }).expenses[0] : undefined;
+    expect(expense?.expense_shares.some((share) => share.member_id === "member_bob")).toBe(false);
   });
 
   test("updates a group after membership check", async () => {

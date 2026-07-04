@@ -38,6 +38,41 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
   };
 }
 
+function makeListExpensesClient(overrides: {
+  expenses: unknown[];
+  payments: unknown[];
+  shares: unknown[];
+}): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
+  const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
+
+  return {
+    calls,
+    async one(sql, params) {
+      calls.push({ method: "one", sql, params });
+
+      if (sql.includes("from public.expenses")) {
+        return overrides.expenses as never;
+      }
+
+      if (sql.includes("from public.expense_payments")) {
+        return overrides.payments as never;
+      }
+
+      if (sql.includes("from public.expense_shares")) {
+        return overrides.shares as never;
+      }
+
+      throw new Error(`Unexpected one query: ${sql}`);
+    },
+    async maybeOne() {
+      return null;
+    },
+    async exec(sql, params) {
+      calls.push({ method: "exec", sql, params });
+    },
+  };
+}
+
 const context = {
   user: {
     id: "user_alice",
@@ -102,5 +137,95 @@ describe("createSupabaseExpenseRepository", () => {
       method: "exec",
       params: ["group_1", "req_expense", "expense_1"],
     });
+  });
+
+  test("listExpenses returns note, transfer_to_member_id, payments, and shares batched for the whole group", async () => {
+    const client = makeListExpensesClient({
+      expenses: [
+        {
+          id: "expense_1",
+          group_id: "group_1",
+          title: "Dinner",
+          kind: "expense",
+          category: "food",
+          amount_minor: 1200,
+          currency: "TWD",
+          expense_date: "2026-06-30",
+          note: "Split unevenly, Bob paid",
+          transfer_to_member_id: null,
+          created_at: "2026-06-30T00:00:00.000Z",
+          version: 1,
+          client_request_id: "expense_req_1",
+        },
+        {
+          id: "expense_2",
+          group_id: "group_1",
+          title: "Payback",
+          kind: "transfer",
+          category: "transfer",
+          amount_minor: 500,
+          currency: "TWD",
+          expense_date: "2026-07-01",
+          note: null,
+          transfer_to_member_id: "member_bob",
+          created_at: "2026-07-01T00:00:00.000Z",
+          version: 1,
+          client_request_id: "expense_req_2",
+        },
+      ],
+      payments: [
+        { expense_id: "expense_1", payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" },
+        { expense_id: "expense_2", payer_member_id: "member_alice", amount_minor: 500, currency: "TWD" },
+      ],
+      shares: [
+        // Custom (fixed) split, and the payer (member_bob) is excluded from the shares entirely.
+        { expense_id: "expense_1", member_id: "member_alice", share_type: "fixed", share_value: undefined, amount_minor: 800 },
+        { expense_id: "expense_1", member_id: "member_carol", share_type: "fixed", share_value: undefined, amount_minor: 400 },
+      ],
+    });
+    const repository = createSupabaseExpenseRepository(client);
+
+    const expenses = await repository.listExpenses("group_1");
+
+    expect(client.calls.map((call) => call.sql)).toEqual([
+      expect.stringContaining("from public.expenses"),
+      expect.stringContaining("from public.expense_payments"),
+      expect.stringContaining("from public.expense_shares"),
+    ]);
+    expect(client.calls[1]?.params).toEqual([["expense_1", "expense_2"]]);
+    expect(client.calls[2]?.params).toEqual([["expense_1", "expense_2"]]);
+
+    expect(expenses[0]).toMatchObject({
+      id: "expense_1",
+      note: "Split unevenly, Bob paid",
+      transfer_to_member_id: null,
+      expense_payments: [{ payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" }],
+      expense_shares: [
+        { member_id: "member_alice", share_type: "fixed", amount_minor: 800 },
+        { member_id: "member_carol", share_type: "fixed", amount_minor: 400 },
+      ],
+    });
+    // The payer (member_bob) does not appear in expense_shares for expense_1.
+    expect(
+      expenses[0]?.expense_shares?.some((share) => share.member_id === "member_bob"),
+    ).toBe(false);
+
+    expect(expenses[1]).toMatchObject({
+      id: "expense_2",
+      note: null,
+      transfer_to_member_id: "member_bob",
+      expense_payments: [{ payer_member_id: "member_alice", amount_minor: 500, currency: "TWD" }],
+      expense_shares: [],
+    });
+  });
+
+  test("listExpenses skips payments/shares queries when the group has no expenses", async () => {
+    const client = makeListExpensesClient({ expenses: [], payments: [], shares: [] });
+    const repository = createSupabaseExpenseRepository(client);
+
+    const expenses = await repository.listExpenses("group_empty");
+
+    expect(expenses).toEqual([]);
+    expect(client.calls.map((call) => call.sql)).toEqual([expect.stringContaining("from public.expenses")]);
   });
 });

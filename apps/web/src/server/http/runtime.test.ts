@@ -52,6 +52,16 @@ function makeClient(): SupabaseQueryClient {
         ] as never;
       }
 
+      if (sql.includes("from public.expense_payments")) {
+        return [{ expense_id: "expense_1", payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }] as never;
+      }
+
+      if (sql.includes("from public.expense_shares")) {
+        return [
+          { expense_id: "expense_1", member_id: "member_owner", share_type: "equal", amount_minor: 120000 },
+        ] as never;
+      }
+
       if (sql.includes("from public.group_member_balances")) {
         return [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" } }] as never;
       }

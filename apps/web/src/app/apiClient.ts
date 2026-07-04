@@ -31,6 +31,19 @@ export type GroupMemberSummary = {
   status: "active" | "removed";
 };
 
+export type ExpensePaymentSummary = {
+  payer_member_id: string;
+  amount_minor: number;
+  currency: string;
+};
+
+export type ExpenseShareSummary = {
+  member_id: string;
+  share_type: string;
+  share_value?: number;
+  amount_minor: number;
+};
+
 export type ExpenseSummary = {
   id: string;
   group_id: string;
@@ -40,9 +53,13 @@ export type ExpenseSummary = {
   amount_minor: number;
   currency: string;
   expense_date?: string;
+  note?: string | null;
+  transfer_to_member_id?: string | null;
   created_at?: string;
   version: number;
   client_request_id: string;
+  expense_payments?: ExpensePaymentSummary[];
+  expense_shares?: ExpenseShareSummary[];
 };
 
 export type BalanceSummary = {
@@ -225,6 +242,8 @@ export function createDemoApiClient() {
     amount_minor: number;
     currency: string;
     expense_date: string;
+    note?: string | null;
+    transfer_to_member_id?: string | null;
     expense_payments: CreateExpenseRequest["expense_payments"];
     expense_shares: CreateExpenseRequest["expense_shares"];
   }> = [];
@@ -406,6 +425,8 @@ export function createDemoApiClient() {
         amount_minor: payload.amount_minor,
         currency: payload.currency,
         expense_date: payload.expense_date,
+        note: payload.note ?? null,
+        transfer_to_member_id: payload.transfer_to_member_id ?? null,
         expense_payments: payload.expense_payments,
         expense_shares: payload.expense_shares,
       };
