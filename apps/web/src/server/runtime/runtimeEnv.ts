@@ -8,13 +8,20 @@ export type RuntimeEnv = {
 
 type EnvSource = Record<string, string | undefined>;
 
+function cleanEnvValue(value: string | undefined): string | undefined {
+  // Strip BOM and surrounding whitespace: values piped into `vercel env add`
+  // can arrive polluted, which breaks URL building and token comparisons.
+  const cleaned = value?.replace(/^[\s﻿]+|[\s﻿]+$/g, "");
+  return cleaned || undefined;
+}
+
 export function readRuntimeEnv(source: EnvSource): Partial<RuntimeEnv> {
   return {
-    SUPABASE_URL: source.SUPABASE_URL,
-    SUPABASE_ANON_KEY: source.SUPABASE_ANON_KEY,
-    SUPABASE_SERVICE_ROLE_KEY: source.SUPABASE_SERVICE_ROLE_KEY,
-    GOOGLE_OAUTH_CLIENT_ID: source.GOOGLE_OAUTH_CLIENT_ID,
-    SESSION_SECRET: source.SESSION_SECRET,
+    SUPABASE_URL: cleanEnvValue(source.SUPABASE_URL),
+    SUPABASE_ANON_KEY: cleanEnvValue(source.SUPABASE_ANON_KEY),
+    SUPABASE_SERVICE_ROLE_KEY: cleanEnvValue(source.SUPABASE_SERVICE_ROLE_KEY),
+    GOOGLE_OAUTH_CLIENT_ID: cleanEnvValue(source.GOOGLE_OAUTH_CLIENT_ID),
+    SESSION_SECRET: cleanEnvValue(source.SESSION_SECRET),
   };
 }
 

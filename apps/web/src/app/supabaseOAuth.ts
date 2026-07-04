@@ -1,6 +1,8 @@
 export function buildAuthorizeUrl(supabaseUrl: string, redirectTo: string): string {
-  const base = supabaseUrl.replace(/\/+$/, "");
-  return `${base}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+  // Strip BOM/whitespace defensively: a polluted env value would otherwise
+  // turn this into a relative URL and the redirect would silently no-op.
+  const base = supabaseUrl.replace(/^[\s﻿]+|[\s﻿]+$/g, "").replace(/\/+$/, "");
+  return `${base}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo.trim())}`;
 }
 
 export type OAuthFragmentResult =
