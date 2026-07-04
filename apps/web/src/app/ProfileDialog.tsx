@@ -105,6 +105,8 @@ export function ProfileDialog({
     onSave({ name: name.trim() || profile.name, avatarDataUrl: avatarDataUrl || undefined });
   }
 
+  const hasPendingChange = name.trim() !== profile.name || avatarDataUrl !== (profile.avatarDataUrl ?? "");
+
   return (
     <div
       className="modal-backdrop"
@@ -252,14 +254,16 @@ export function ProfileDialog({
           </div>
         )}
 
-        <div className="dialog-action-row">
-          <button className="secondary-action" type="button" onClick={onClose}>
-            {appText.cancel}
-          </button>
-          <button className="primary-action" type="button" onClick={handleConfirm}>
-            {appText.confirm}
-          </button>
-        </div>
+        {hasPendingChange ? (
+          <div className="dialog-action-row">
+            <button className="secondary-action" type="button" onClick={onClose}>
+              {appText.cancel}
+            </button>
+            <button className="primary-action" type="button" onClick={handleConfirm}>
+              {appText.confirm}
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {infoDialog ? (
