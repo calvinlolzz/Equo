@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
+import { createApiClient } from "./apiClient";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
 import { GroupRail } from "./GroupRail";
@@ -30,6 +31,7 @@ import type { Activity, ArchivedGroup, Expense, Group, GroupData, Member, StartM
 import { getMemberShareMinor } from "./expenseShareSplit";
 import { computeMemberBalances } from "./groupBalances";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
+import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
   | "createGroup"
@@ -180,6 +182,7 @@ export function App() {
   const [inviteInputValue, setInviteInputValue] = useState("");
   const [inviteInputError, setInviteInputError] = useState("");
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
+  const [session, setSession] = useState<StoredSession | null>(() => loadSession(Date.now()));
   const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
@@ -346,6 +349,37 @@ export function App() {
     setGroupDrawerOpen(false);
     setSettingsDrawerOpen(false);
     setDialog("profile");
+  }
+
+  async function loginWithGoogleCredential(credential: string) {
+    try {
+      const client = createApiClient({ authToken: "" });
+      const { session: nextSession } = await client.exchangeGoogleToken(credential);
+      const stored: StoredSession = {
+        token: nextSession.token,
+        expiresAt: nextSession.expires_at,
+        user: {
+          id: nextSession.user.id,
+          email: nextSession.user.email,
+          displayName: nextSession.user.display_name,
+        },
+      };
+      saveSession(stored);
+      setSession(stored);
+      setProfile((current) => {
+        if (current.name !== DEFAULT_PROFILE.name) return current;
+        return normalizeProfile({ ...current, name: stored.user.displayName });
+      });
+      showToast(`${text.loginSuccessPrefix}${stored.user.displayName}`);
+    } catch {
+      showToast(text.loginFailed);
+    }
+  }
+
+  function logout() {
+    clearSession();
+    setSession(null);
+    showToast(text.logoutSuccess);
   }
 
   function saveProfile(nextProfile: ProfileData) {
@@ -681,7 +715,11 @@ export function App() {
             <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} onClick={() => setSettingsDrawerOpen(true)}>
               <Settings aria-hidden="true" size={22} />
             </button>
-          ) : null}
+          ) : (
+            <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
+              {profile.avatarDataUrl ? <img src={profile.avatarDataUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
+            </button>
+          )}
         </div>
       </header>
 
@@ -1024,9 +1062,12 @@ export function App() {
       {dialog === "profile" ? (
         <ProfileDialog
           profile={profile}
+          session={session}
           onClose={() => setDialog(null)}
           onSave={saveProfile}
           onToast={showToast}
+          onGoogleCredential={loginWithGoogleCredential}
+          onLogout={logout}
         />
       ) : null}
 

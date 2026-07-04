@@ -3384,6 +3384,17 @@ label span {
   font-size: 16px;
 }
 
+.profile-identity-email {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  margin-top: 2px;
+  color: rgba(247, 251, 248, 0.5);
+  font-size: 12px;
+}
+
 .profile-logout-action {
   display: inline-flex;
   align-items: center;
@@ -3465,6 +3476,10 @@ label span {
   font-size: 12px;
 }
 
+.profile-account-info small.profile-status-linked {
+  color: #7ee0a8;
+}
+
 .profile-link-action {
   flex: 0 0 auto;
   border-radius: 999px;
@@ -3473,6 +3488,12 @@ label span {
   background: #ffd67a;
   font-size: 12px;
   font-weight: 900;
+}
+
+.profile-google-button {
+  flex: 0 0 auto;
+  min-width: 130px;
+  min-height: 40px;
 }
 
 .profile-other-row {
