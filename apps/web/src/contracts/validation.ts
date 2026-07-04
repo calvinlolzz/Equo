@@ -1,5 +1,5 @@
 import type { ErrorCode } from "./errors.js";
-import type { CreateExpenseRequest } from "./schemas.js";
+import type { CreateExpenseRequest, UploadGroupImageRequest } from "./schemas.js";
 
 export type ValidationIssue = {
   code: ErrorCode;
@@ -76,4 +76,47 @@ export function validateCreateExpenseRequest(request: CreateExpenseRequest): Val
     ok: issues.length === 0,
     issues,
   };
+}
+
+const DATA_URL_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
+const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
+
+export function decodedBase64Size(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+export function validateUploadGroupImageRequest(request: UploadGroupImageRequest): ValidationResult {
+  const issues: ValidationIssue[] = [];
+
+  if (!request.client_request_id?.trim()) {
+    issues.push(issue("IDEMPOTENCY_CONFLICT", "client_request_id is required"));
+  }
+
+  if (request.kind !== "expense" && request.kind !== "cover") {
+    issues.push(issue("INVALID_IMAGE", "kind must be 'expense' or 'cover'"));
+  }
+
+  const match = DATA_URL_PATTERN.exec(request.data_url ?? "");
+
+  if (!match) {
+    issues.push(issue("INVALID_IMAGE", "data_url must be a base64 jpeg, png, or webp data URL"));
+  } else if (decodedBase64Size(match[2]) > MAX_IMAGE_BYTES) {
+    issues.push(issue("INVALID_IMAGE", "data_url must decode to 1.5 MB or less"));
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+export function imageExtensionFromDataUrl(dataUrl: string): string | null {
+  const match = DATA_URL_PATTERN.exec(dataUrl);
+
+  if (!match) {
+    return null;
+  }
+
+  return match[1] === "jpeg" ? "jpg" : match[1];
 }

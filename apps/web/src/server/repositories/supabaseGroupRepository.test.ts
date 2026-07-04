@@ -23,6 +23,18 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
         return { id: "group_1", name: params[0], currency: params[1], owner_member_id: null } as never;
       }
 
+      if (sql.includes("from public.groups g") && sql.includes("archived_at is not null")) {
+        return [
+          {
+            id: "group_2",
+            name: "Osaka Trip",
+            currency: "TWD",
+            owner_member_id: "member_owner",
+            archived_at: "2026-07-01T00:00:00.000Z",
+          },
+        ] as never;
+      }
+
       if (sql.includes("from public.groups g")) {
         return [
           { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
@@ -51,6 +63,10 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
           role: "owner",
           status: "active",
         } as never;
+      }
+
+      if (sql.includes("update public.groups") && sql.includes("set archived_at = null")) {
+        return { id: params[0], name: "Osaka Trip", currency: "TWD", owner_member_id: "member_owner" } as never;
       }
 
       if (sql.includes("update public.groups")) {
@@ -155,7 +171,7 @@ describe("createSupabaseGroupRepository", () => {
       expect.stringContaining("insert into public.group_members"),
       expect.stringContaining("update public.groups"),
     ]);
-    expect(client.calls[0].params).toEqual(["?曹漪??", "TWD", "user_alice"]);
+    expect(client.calls[0].params).toEqual(["?曹漪??", "TWD", "user_alice", null]);
   });
 
   test("lists active groups for the current user", async () => {
@@ -218,5 +234,46 @@ describe("createSupabaseGroupRepository", () => {
       params: ["group_1", "req_001", "resource_1"],
     });
     expect(client.calls[0].sql).toContain("client_request_id");
+  });
+
+  test("lists archived groups for the current user", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const groups = await repository.listArchivedGroups(context);
+
+    expect(groups).toEqual([
+      {
+        id: "group_2",
+        name: "Osaka Trip",
+        currency: "TWD",
+        owner_member_id: "member_owner",
+        archived_at: "2026-07-01T00:00:00.000Z",
+      },
+    ]);
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      params: ["user_alice"],
+    });
+    expect(client.calls[0].sql).toContain("archived_at is not null");
+  });
+
+  test("unarchives a group", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const group = await repository.unarchiveGroup("group_2");
+
+    expect(group).toEqual({
+      id: "group_2",
+      name: "Osaka Trip",
+      currency: "TWD",
+      owner_member_id: "member_owner",
+    });
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      params: ["group_2"],
+    });
+    expect(client.calls[0].sql).toContain("set archived_at = null");
   });
 });

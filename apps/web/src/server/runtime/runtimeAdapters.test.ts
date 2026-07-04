@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createGoogleTokenVerifier } from "./googleTokenVerifier.js";
 import { missingRuntimeEnv, readRuntimeEnv } from "./runtimeEnv.js";
 import { createSupabaseRestQueryClient } from "./supabaseQueryClient.js";
+import { createSupabaseStorageClient } from "./supabaseStorageClient.js";
 
 describe("runtime adapters", () => {
   test("rejects Google tokens with the wrong audience", async () => {
@@ -76,22 +77,26 @@ describe("runtime adapters", () => {
     await expect(
       client.one(
         `
-          insert into public.groups (name, currency, owner_id)
-          values ($1, $2, $3)
-          returning id, name, currency, owner_member_id
+          insert into public.groups (name, currency, owner_id, cover_image_url)
+          values ($1, $2, $3, $4)
+          returning id, name, currency, owner_member_id, cover_image_url
         `,
-        ["Tokyo", "TWD", "user_1"],
+        ["Tokyo", "TWD", "user_1", null],
       ),
     ).resolves.toEqual({ id: "group_1", name: "Tokyo", currency: "TWD", owner_member_id: null });
 
-    expect(calls[0].url).toBe("https://example.supabase.co/rest/v1/groups?select=id,name,currency,owner_member_id");
+    expect(calls[0].url).toBe(
+      "https://example.supabase.co/rest/v1/groups?select=id,name,currency,owner_member_id,cover_image_url",
+    );
     expect(calls[0].init.method).toBe("POST");
     expect(calls[0].init.headers).toMatchObject({
       apikey: "service-role-key",
       Authorization: "Bearer service-role-key",
       Prefer: "return=representation",
     });
-    expect(calls[0].init.body).toBe(JSON.stringify({ name: "Tokyo", currency: "TWD", owner_id: "user_1" }));
+    expect(calls[0].init.body).toBe(
+      JSON.stringify({ name: "Tokyo", currency: "TWD", owner_id: "user_1", cover_image_url: null }),
+    );
   });
 
   test("lists groups without embedded REST joins to avoid ambiguous relationships", async () => {
@@ -142,7 +147,9 @@ describe("runtime adapters", () => {
     ]);
 
     expect(calls[0].url).toContain("/rest/v1/group_members?select=group_id");
-    expect(calls[1].url).toContain("/rest/v1/groups?select=id,name,currency,owner_member_id&id=in.(group_1,group_2)");
+    expect(calls[1].url).toContain(
+      "/rest/v1/groups?select=id,name,currency,owner_member_id,cover_image_url&id=in.(group_1,group_2)",
+    );
     expect(calls[1].url).toContain("archived_at=is.null");
     expect(calls[1].url).not.toContain("groups!inner");
   });
@@ -190,6 +197,114 @@ describe("runtime adapters", () => {
     expect(JSON.parse(String(calls[1].init.body))).toEqual({ deleted_at: expect.any(String) });
   });
 
+  test("unarchives a group by clearing archived_at", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return {
+          ok: true,
+          async json() {
+            return [{ id: "group_1", name: "Tokyo", currency: "TWD", owner_member_id: "member_1", cover_image_url: null }];
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.one(
+        `
+          update public.groups
+          set archived_at = null, updated_at = now()
+          where id = $1 and deleted_at is null
+          returning id, name, currency, owner_member_id, cover_image_url
+        `,
+        ["group_1"],
+      ),
+    ).resolves.toEqual({
+      id: "group_1",
+      name: "Tokyo",
+      currency: "TWD",
+      owner_member_id: "member_1",
+      cover_image_url: null,
+    });
+
+    expect(calls[0].url).toContain(
+      "/rest/v1/groups?id=eq.group_1&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url",
+    );
+    expect(calls[0].init.method).toBe("PATCH");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ archived_at: null });
+  });
+
+  test("lists archived groups via a membership lookup followed by an archived_at filter", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        if (String(url).includes("/group_members?")) {
+          return {
+            ok: true,
+            async json() {
+              return [{ group_id: "group_1" }];
+            },
+          } as Response;
+        }
+
+        return {
+          ok: true,
+          async json() {
+            return [
+              {
+                id: "group_1",
+                name: "Tokyo",
+                currency: "TWD",
+                owner_member_id: "member_1",
+                archived_at: "2026-07-01T00:00:00.000Z",
+                cover_image_url: null,
+              },
+            ];
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.one(
+        `
+          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url
+          from public.groups g
+          join public.group_members gm on gm.group_id = g.id
+          where gm.user_id = $1
+            and gm.status = 'active'
+            and g.archived_at is not null
+            and g.deleted_at is null
+          order by g.updated_at desc, g.created_at desc
+          limit 50
+        `,
+        ["user_1"],
+      ),
+    ).resolves.toEqual([
+      {
+        id: "group_1",
+        name: "Tokyo",
+        currency: "TWD",
+        owner_member_id: "member_1",
+        archived_at: "2026-07-01T00:00:00.000Z",
+        cover_image_url: null,
+      },
+    ]);
+
+    expect(calls[0].url).toContain("/rest/v1/group_members?select=group_id");
+    expect(calls[1].url).toContain(
+      "/rest/v1/groups?select=id,name,currency,owner_member_id,archived_at,cover_image_url&id=in.(group_1)",
+    );
+    expect(calls[1].url).toContain("archived_at=not.is.null");
+  });
+
   test("creates virtual members with the provided display name", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createSupabaseRestQueryClient({
@@ -232,5 +347,51 @@ describe("runtime adapters", () => {
       role: "member",
       status: "active",
     });
+  });
+});
+
+describe("createSupabaseStorageClient", () => {
+  test("uploads bytes to the equo-images bucket with service role auth", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const storage = createSupabaseStorageClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      randomUUID: () => "fixed-uuid",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return { ok: true } as Response;
+      },
+    });
+
+    const bytes = new Uint8Array([1, 2, 3]);
+    await expect(
+      storage.uploadImage({ groupId: "group_1", ext: "jpg", bytes, contentType: "image/jpeg" }),
+    ).resolves.toEqual({
+      url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/fixed-uuid.jpg",
+    });
+
+    expect(calls[0].url).toBe(
+      "https://example.supabase.co/storage/v1/object/equo-images/group_1/fixed-uuid.jpg",
+    );
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.headers).toMatchObject({
+      Authorization: "Bearer service-role-key",
+      "Content-Type": "image/jpeg",
+      "x-upsert": "false",
+    });
+    expect(calls[0].init.body).toBeInstanceOf(Blob);
+    expect(await (calls[0].init.body as Blob).arrayBuffer()).toEqual(bytes.buffer);
+  });
+
+  test("throws when the upload response is not ok", async () => {
+    const storage = createSupabaseStorageClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async () => ({ ok: false, status: 413 }) as Response,
+    });
+
+    await expect(
+      storage.uploadImage({ groupId: "group_1", ext: "jpg", bytes: new Uint8Array(), contentType: "image/jpeg" }),
+    ).rejects.toThrow("Supabase storage upload failed: 413");
   });
 });

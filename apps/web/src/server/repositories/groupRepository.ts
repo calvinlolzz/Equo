@@ -13,6 +13,16 @@ export type GroupRecord = {
   name: string;
   currency: string;
   owner_member_id: string;
+  cover_image_url?: string | null;
+};
+
+export type ArchivedGroupRecord = {
+  id: string;
+  name: string;
+  currency: string;
+  owner_member_id: string;
+  archived_at: string;
+  cover_image_url?: string | null;
 };
 
 export type GroupMemberRecord = {
@@ -36,6 +46,7 @@ export type InviteRecord = {
 
 export type GroupRepository = {
   listGroups(context: AuthenticatedContext): Promise<GroupRecord[]>;
+  listArchivedGroups(context: AuthenticatedContext): Promise<ArchivedGroupRecord[]>;
   listMembers(groupId: string): Promise<GroupMemberRecord[]>;
   createGroup(context: AuthenticatedContext, request: CreateGroupRequest): Promise<{
     group: GroupRecord;
@@ -43,6 +54,7 @@ export type GroupRepository = {
   }>;
   updateGroup(groupId: string, request: UpdateGroupRequest): Promise<GroupRecord>;
   archiveGroup(groupId: string): Promise<GroupRecord>;
+  unarchiveGroup(groupId: string): Promise<GroupRecord>;
   deleteGroup(groupId: string): Promise<GroupRecord>;
   createVirtualMember(groupId: string, displayName: string): Promise<GroupMemberRecord>;
   findActiveMember(groupId: string, userId: string): Promise<GroupMemberRecord | null>;

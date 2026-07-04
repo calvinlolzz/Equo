@@ -60,6 +60,8 @@ type RestGroupRow = {
   name: string;
   currency: string;
   owner_member_id: string;
+  archived_at?: string | null;
+  cover_image_url?: string | null;
 };
 
 export function createSupabaseRestQueryClient(options: SupabaseRestOptions): SupabaseQueryClient {
@@ -138,11 +140,36 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "POST",
         table: "groups",
-        query: "select=id,name,currency,owner_member_id",
-        body: { name: params[0], currency: params[1], owner_id: params[2] },
+        query: "select=id,name,currency,owner_member_id,cover_image_url",
+        body: { name: params[0], currency: params[1], owner_id: params[2], cover_image_url: params[3] ?? null },
         returnRepresentation: true,
       });
       return firstRow(rows);
+    }
+
+    if (
+      normalized.includes("from public.groups g") &&
+      normalized.includes("join public.group_members gm") &&
+      normalized.includes("g.archived_at is not null")
+    ) {
+      const membershipRows = await request<MembershipGroupRow>({
+        method: "GET",
+        table: "group_members",
+        query: `select=group_id&user_id=eq.${encodeFilter(params[0])}&status=eq.active&limit=50`,
+        returnRepresentation: true,
+      });
+      const groupIds = [...new Set(membershipRows.map((row) => row.group_id).filter(Boolean))];
+
+      if (groupIds.length === 0) {
+        return [] as T;
+      }
+
+      return request<RestGroupRow>({
+        method: "GET",
+        table: "groups",
+        query: `select=id,name,currency,owner_member_id,archived_at,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=not.is.null&deleted_at=is.null`,
+        returnRepresentation: true,
+      }) as T;
     }
 
     if (normalized.includes("from public.groups g") && normalized.includes("join public.group_members gm")) {
@@ -161,7 +188,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return request<RestGroupRow>({
         method: "GET",
         table: "groups",
-        query: `select=id,name,currency,owner_member_id&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=is.null&deleted_at=is.null`,
+        query: `select=id,name,currency,owner_member_id,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=is.null&deleted_at=is.null`,
         returnRepresentation: true,
       }) as T;
     }
@@ -189,7 +216,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "PATCH",
         table: "groups",
-        query: `id=eq.${encodeFilter(params[1])}&select=id,name,currency,owner_member_id`,
+        query: `id=eq.${encodeFilter(params[1])}&select=id,name,currency,owner_member_id,cover_image_url`,
         body: { owner_member_id: params[0] },
         returnRepresentation: true,
       });
@@ -200,8 +227,8 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "PATCH",
         table: "groups",
-        query: `id=eq.${encodeFilter(params[1])}&deleted_at=is.null&select=id,name,currency,owner_member_id`,
-        body: { name: params[0] },
+        query: `id=eq.${encodeFilter(params[2])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
+        body: params[1] == null ? { name: params[0] } : { name: params[0], cover_image_url: params[1] },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -211,8 +238,19 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "PATCH",
         table: "groups",
-        query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id`,
+        query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
         body: { archived_at: new Date().toISOString() },
+        returnRepresentation: true,
+      });
+      return firstRow(rows);
+    }
+
+    if (normalized.includes("update public.groups") && normalized.includes("set archived_at = null")) {
+      const rows = await request<T>({
+        method: "PATCH",
+        table: "groups",
+        query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
+        body: { archived_at: null },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -222,7 +260,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "PATCH",
         table: "groups",
-        query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id`,
+        query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
         body: { deleted_at: new Date().toISOString() },
         returnRepresentation: true,
       });
@@ -280,7 +318,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "GET",
         table: "groups",
-        query: `select=id,name,currency,owner_member_id&id=eq.${encodeFilter(params[0])}&deleted_at=is.null&limit=1`,
+        query: `select=id,name,currency,owner_member_id,cover_image_url&id=eq.${encodeFilter(params[0])}&deleted_at=is.null&limit=1`,
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -322,7 +360,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "POST",
         table: "expenses",
-        query: "select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id",
+        query: "select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id,image_url",
         body: {
           group_id: params[0],
           created_by_member_id: params[1],
@@ -335,6 +373,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
           note: params[8],
           transfer_to_member_id: params[9],
           client_request_id: params[10],
+          image_url: params[11] ?? null,
         },
         returnRepresentation: true,
       });
@@ -374,7 +413,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return request<T>({
         method: "GET",
         table: "expenses",
-        query: `select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id&group_id=eq.${encodeFilter(params[0])}&deleted_at=is.null&order=expense_date.desc,created_at.desc`,
+        query: `select=id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url&group_id=eq.${encodeFilter(params[0])}&deleted_at=is.null&order=expense_date.desc,created_at.desc`,
         returnRepresentation: true,
       }) as T;
     }

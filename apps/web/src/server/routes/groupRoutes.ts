@@ -22,7 +22,9 @@ import {
   handleCreateVirtualMember,
   handleDeleteGroup,
   handleGetGroupDetail,
+  handleListArchivedGroups,
   handleListGroups,
+  handleUnarchiveGroup,
   handleUpdateGroup,
 } from "../handlers/groups.js";
 
@@ -57,6 +59,16 @@ export async function listGroupsRoute(options: RouteOptions) {
   }
 
   return handleListGroups(createSupabaseGroupRepository(options.client), auth.context);
+}
+
+export async function listArchivedGroupsRoute(options: RouteOptions) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleListArchivedGroups(createSupabaseGroupRepository(options.client), auth.context);
 }
 
 export async function getGroupDetailRoute(options: RouteOptions, groupId: string) {
@@ -107,6 +119,16 @@ export async function archiveGroupRoute(options: RouteOptions, groupId: string, 
   }
 
   return handleArchiveGroup(createSupabaseGroupRepository(options.client), auth.context, groupId, clientRequestId);
+}
+
+export async function unarchiveGroupRoute(options: RouteOptions, groupId: string, clientRequestId: string) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleUnarchiveGroup(createSupabaseGroupRepository(options.client), auth.context, groupId, clientRequestId);
 }
 
 export async function deleteGroupRoute(options: RouteOptions, groupId: string, clientRequestId: string) {

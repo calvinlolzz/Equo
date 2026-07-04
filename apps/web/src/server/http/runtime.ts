@@ -6,6 +6,7 @@ import type {
   CreateInviteRequest,
   CreateVirtualMemberRequest,
   UpdateGroupRequest,
+  UploadGroupImageRequest,
 } from "../../contracts/schemas.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { verifySessionToken } from "../auth/sessionToken.js";
@@ -18,17 +19,22 @@ import {
   archiveGroupRoute,
   acceptInviteRoute,
   deleteGroupRoute,
+  listArchivedGroupsRoute,
   listGroupsRoute,
   getGroupDetailRoute,
+  unarchiveGroupRoute,
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
 import { createExpenseRoute, deleteExpenseRoute } from "../routes/expenseRoutes.js";
+import { uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
+import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
 
 type RuntimeOptions = {
   client: SupabaseQueryClient;
+  storage: SupabaseStorageClient;
   verifier: GoogleTokenVerifier;
   supabaseVerifier?: GoogleTokenVerifier;
   sessionSecret?: string;
@@ -58,6 +64,7 @@ function routeOptions(options: RuntimeOptions, request: HttpRuntimeRequest) {
 
   return {
     client: options.client,
+    storage: options.storage,
     verifier,
     idToken: token,
   };
@@ -97,6 +104,15 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "GET /api/v1/groups",
       async handle(request) {
         const result = await listGroupsRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/groups\/archived$/,
+      label: "GET /api/v1/groups/archived",
+      async handle(request) {
+        const result = await listArchivedGroupsRoute(routeOptions(options, request));
         return jsonResponse(result.status, result.body);
       },
     },
@@ -173,6 +189,16 @@ export function createHttpRuntime(options: RuntimeOptions) {
       },
     },
     {
+      method: "POST",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/unarchive$/,
+      label: "POST /api/v1/groups/:groupId/unarchive",
+      async handle(request, match) {
+        const payload = body<{ client_request_id: string }>(request);
+        const result = await unarchiveGroupRoute(routeOptions(options, request), match[1], payload.client_request_id);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
       method: "DELETE",
       pattern: /^\/api\/v1\/groups\/([^/]+)$/,
       label: "DELETE /api/v1/groups/:groupId",
@@ -217,6 +243,19 @@ export function createHttpRuntime(options: RuntimeOptions) {
           routeOptions(options, request),
           match[1],
           body<CreateExpenseRequest>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/images$/,
+      label: "POST /api/v1/groups/:groupId/images",
+      async handle(request, match) {
+        const result = await uploadGroupImageRoute(
+          routeOptions(options, request),
+          match[1],
+          body<UploadGroupImageRequest>(request),
         );
         return jsonResponse(result.status, result.body);
       },

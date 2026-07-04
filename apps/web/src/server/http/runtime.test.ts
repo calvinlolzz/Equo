@@ -1,6 +1,15 @@
 import { describe, expect, test } from "vitest";
 import { createHttpRuntime } from "./runtime.js";
 import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
+import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
+
+function makeStorage(): SupabaseStorageClient {
+  return {
+    async uploadImage({ groupId, ext }) {
+      return { url: `https://example.supabase.co/storage/v1/object/public/equo-images/${groupId}/uploaded.${ext}` };
+    },
+  };
+}
 
 function makeClient(): SupabaseQueryClient {
   return {
@@ -16,6 +25,18 @@ function makeClient(): SupabaseQueryClient {
 
       if (sql.includes("insert into public.groups")) {
         return { id: "group_1", name: params[0], currency: params[1], owner_member_id: null } as never;
+      }
+
+      if (sql.includes("from public.groups g") && sql.includes("archived_at is not null")) {
+        return [
+          {
+            id: "group_2",
+            name: "Osaka Trip",
+            currency: "TWD",
+            owner_member_id: "member_owner",
+            archived_at: "2026-07-01T00:00:00.000Z",
+          },
+        ] as never;
       }
 
       if (sql.includes("from public.groups g")) {
@@ -77,6 +98,10 @@ function makeClient(): SupabaseQueryClient {
         } as never;
       }
 
+      if (sql.includes("update public.groups") && sql.includes("set archived_at = null")) {
+        return { id: params[0], name: "Osaka Trip", currency: "TWD", owner_member_id: "member_owner" } as never;
+      }
+
       if (sql.includes("update public.groups")) {
         return { id: params[1], name: "Tokyo Trip", currency: "TWD", owner_member_id: params[0] } as never;
       }
@@ -101,6 +126,7 @@ describe("createHttpRuntime", () => {
   test("exchanges Google tokens for Equo sessions that can authorize API routes", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async (idToken) => ({
         auth_user_id: idToken,
         google_sub: idToken,
@@ -136,6 +162,7 @@ describe("createHttpRuntime", () => {
   test("authorizes API routes from the Equo session cookie", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async (idToken) => ({
         auth_user_id: idToken,
         google_sub: idToken,
@@ -167,6 +194,7 @@ describe("createHttpRuntime", () => {
   test("routes group creation requests", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async (idToken) => ({
         auth_user_id: "user_alice",
         google_sub: idToken,
@@ -188,6 +216,7 @@ describe("createHttpRuntime", () => {
   test("routes authenticated group list requests", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async (idToken) => ({
         auth_user_id: "user_alice",
         google_sub: idToken,
@@ -211,6 +240,7 @@ describe("createHttpRuntime", () => {
   test("routes authenticated group detail requests", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async (idToken) => ({
         auth_user_id: "user_alice",
         google_sub: idToken,
@@ -234,9 +264,150 @@ describe("createHttpRuntime", () => {
     });
   });
 
+  test("routes GET /groups/archived without falling through to the group-detail handler", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/groups/archived",
+      headers: { authorization: "Bearer google-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      groups: [{ id: "group_2", name: "Osaka Trip", archived_at: "2026-07-01T00:00:00.000Z" }],
+    });
+    // A response shaped like the group-detail handler's would include `members`/`expenses`/`balances`.
+    expect(response.body).not.toHaveProperty("members");
+    expect(response.body).not.toHaveProperty("expenses");
+    expect(response.body).not.toHaveProperty("balances");
+  });
+
+  test("routes group unarchive requests", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_2/unarchive",
+      headers: { authorization: "Bearer google-token" },
+      json: { client_request_id: "req_unarchive" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      group: { id: "group_2", name: "Osaka Trip" },
+    });
+  });
+
+  test("uploads a group image through the storage adapter", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const tinyPngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/images",
+      headers: { authorization: "Bearer google-token" },
+      json: {
+        client_request_id: "req_image",
+        kind: "expense",
+        data_url: `data:image/png;base64,${tinyPngBase64}`,
+      },
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      image: { url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/uploaded.png" },
+    });
+  });
+
+  test("rejects image uploads with an unsupported content type", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/images",
+      headers: { authorization: "Bearer google-token" },
+      json: {
+        client_request_id: "req_image",
+        kind: "expense",
+        data_url: "data:text/plain;base64,aGVsbG8=",
+      },
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects image uploads that decode to more than 1.5 MB", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    // ~2 MB of decoded bytes once base64-inflated.
+    const oversizedBase64 = "A".repeat(Math.ceil((2 * 1024 * 1024 * 4) / 3));
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/images",
+      headers: { authorization: "Bearer google-token" },
+      json: {
+        client_request_id: "req_image",
+        kind: "expense",
+        data_url: `data:image/jpeg;base64,${oversizedBase64}`,
+      },
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   test("returns 404 for unknown API paths", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async () => null,
     });
 
@@ -253,6 +424,7 @@ describe("createHttpRuntime", () => {
     let capturedToken = "";
     const runtime = createHttpRuntime({
       client: makeClient(),
+      storage: makeStorage(),
       verifier: async (idToken) => {
         capturedToken = idToken;
         return {

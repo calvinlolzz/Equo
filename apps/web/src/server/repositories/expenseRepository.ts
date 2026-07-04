@@ -25,6 +25,7 @@ export type ExpenseRecord = {
   expense_date?: string;
   note?: string | null;
   transfer_to_member_id?: string | null;
+  image_url?: string | null;
   created_at?: string;
   version: number;
   client_request_id: string;

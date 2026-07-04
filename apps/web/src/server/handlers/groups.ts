@@ -65,6 +65,16 @@ export async function handleListGroups(repository: GroupRepository, context: Aut
   } satisfies HandlerResult<unknown>;
 }
 
+export async function handleListArchivedGroups(repository: GroupRepository, context: AuthenticatedContext) {
+  const groups = await repository.listArchivedGroups(context);
+
+  return {
+    ok: true,
+    status: 200,
+    body: { groups },
+  } satisfies HandlerResult<unknown>;
+}
+
 export async function handleUpdateGroup(
   repository: GroupRepository,
   context: AuthenticatedContext,
@@ -100,6 +110,28 @@ export async function handleArchiveGroup(
   }
 
   const group = await repository.archiveGroup(groupId);
+  await repository.recordClientRequest(groupId, clientRequestId, group.id);
+
+  return {
+    ok: true,
+    status: 200,
+    body: { group },
+  } satisfies HandlerResult<unknown>;
+}
+
+export async function handleUnarchiveGroup(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  clientRequestId: string,
+) {
+  const member = await requireGroupMember(repository, context, groupId);
+
+  if (!member) {
+    return forbidden(clientRequestId);
+  }
+
+  const group = await repository.unarchiveGroup(groupId);
   await repository.recordClientRequest(groupId, clientRequestId, group.id);
 
   return {

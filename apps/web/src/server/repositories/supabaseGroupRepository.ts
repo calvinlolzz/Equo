@@ -7,6 +7,7 @@ import type {
 import type { GoogleIdentity } from "../auth/google.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
+  ArchivedGroupRecord,
   GroupMemberRecord,
   GroupRecord,
   GroupRepository,
@@ -67,12 +68,29 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     async listGroups(context: AuthenticatedContext) {
       return client.one<GroupRecord[]>(
         `
-          select g.id, g.name, g.currency, g.owner_member_id
+          select g.id, g.name, g.currency, g.owner_member_id, g.cover_image_url
           from public.groups g
           join public.group_members gm on gm.group_id = g.id
           where gm.user_id = $1
             and gm.status = 'active'
             and g.archived_at is null
+            and g.deleted_at is null
+          order by g.updated_at desc, g.created_at desc
+          limit 50
+        `,
+        [context.user.id],
+      );
+    },
+
+    async listArchivedGroups(context: AuthenticatedContext) {
+      return client.one<ArchivedGroupRecord[]>(
+        `
+          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url
+          from public.groups g
+          join public.group_members gm on gm.group_id = g.id
+          where gm.user_id = $1
+            and gm.status = 'active'
+            and g.archived_at is not null
             and g.deleted_at is null
           order by g.updated_at desc, g.created_at desc
           limit 50
@@ -96,11 +114,11 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     async createGroup(context: AuthenticatedContext, request: CreateGroupRequest) {
       const group = await client.one<GroupRecord>(
         `
-          insert into public.groups (name, currency, owner_id)
-          values ($1, $2, $3)
-          returning id, name, currency, owner_member_id
+          insert into public.groups (name, currency, owner_id, cover_image_url)
+          values ($1, $2, $3, $4)
+          returning id, name, currency, owner_member_id, cover_image_url
         `,
-        [request.name, request.currency, context.user.id],
+        [request.name, request.currency, context.user.id, request.cover_image_url ?? null],
       );
       const ownerMember = await client.one<GroupMemberRecord>(
         `
@@ -115,7 +133,7 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
           update public.groups
           set owner_member_id = $1, updated_at = now()
           where id = $2
-          returning id, name, currency, owner_member_id
+          returning id, name, currency, owner_member_id, cover_image_url
         `,
         [ownerMember.id, group.id],
       );
@@ -127,11 +145,11 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
       return client.one<GroupRecord>(
         `
           update public.groups
-          set name = $1, updated_at = now()
-          where id = $2 and deleted_at is null
-          returning id, name, currency, owner_member_id
+          set name = $1, cover_image_url = coalesce($2, cover_image_url), updated_at = now()
+          where id = $3 and deleted_at is null
+          returning id, name, currency, owner_member_id, cover_image_url
         `,
-        [request.name, groupId],
+        [request.name, request.cover_image_url ?? null, groupId],
       );
     },
 
@@ -141,7 +159,19 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
           update public.groups
           set archived_at = now(), updated_at = now()
           where id = $1 and deleted_at is null
-          returning id, name, currency, owner_member_id
+          returning id, name, currency, owner_member_id, cover_image_url
+        `,
+        [groupId],
+      );
+    },
+
+    async unarchiveGroup(groupId: string) {
+      return client.one<GroupRecord>(
+        `
+          update public.groups
+          set archived_at = null, updated_at = now()
+          where id = $1 and deleted_at is null
+          returning id, name, currency, owner_member_id, cover_image_url
         `,
         [groupId],
       );
@@ -153,7 +183,7 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
           update public.groups
           set deleted_at = now(), updated_at = now()
           where id = $1 and deleted_at is null
-          returning id, name, currency, owner_member_id
+          returning id, name, currency, owner_member_id, cover_image_url
         `,
         [groupId],
       );
@@ -219,7 +249,7 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
 
       const group = await client.one<GroupRecord>(
         `
-          select id, name, currency, owner_member_id
+          select id, name, currency, owner_member_id, cover_image_url
           from public.groups
           where id = $1 and deleted_at is null
         `,

@@ -40,10 +40,11 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
             expense_date,
             note,
             transfer_to_member_id,
-            client_request_id
+            client_request_id,
+            image_url
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          returning id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          returning id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id, image_url
         `,
         [
           groupId,
@@ -57,6 +58,7 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
           request.note ?? null,
           request.transfer_to_member_id ?? null,
           request.client_request_id,
+          request.image_url ?? null,
         ],
       );
 
@@ -98,7 +100,7 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
     async listExpenses(groupId: string) {
       const expenses = await client.one<ExpenseRecord[]>(
         `
-          select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id
+          select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id, image_url
           from public.expenses
           where group_id = $1 and deleted_at is null
           order by expense_date desc, created_at desc

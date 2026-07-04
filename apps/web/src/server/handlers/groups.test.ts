@@ -8,7 +8,9 @@ import {
   handleCreateVirtualMember,
   handleDeleteGroup,
   handleGetGroupDetail,
+  handleListArchivedGroups,
   handleListGroups,
+  handleUnarchiveGroup,
   handleUpdateGroup,
 } from "./groups.js";
 
@@ -25,6 +27,17 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
   return {
     async listGroups() {
       return [{ id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" }];
+    },
+    async listArchivedGroups() {
+      return [
+        {
+          id: "group_2",
+          name: "Osaka Trip",
+          currency: "TWD",
+          owner_member_id: "member_owner",
+          archived_at: "2026-07-01T00:00:00.000Z",
+        },
+      ];
     },
     async listMembers() {
       return [
@@ -56,6 +69,9 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
     },
     async archiveGroup(groupId) {
       return { id: groupId, name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" };
+    },
+    async unarchiveGroup(groupId) {
+      return { id: groupId, name: "Osaka Trip", currency: "TWD", owner_member_id: "member_owner" };
     },
     async deleteGroup(groupId) {
       return { id: groupId, name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" };
@@ -188,6 +204,15 @@ describe("group handlers", () => {
     });
   });
 
+  test("lists archived groups for the current user", async () => {
+    const result = await handleListArchivedGroups(makeRepository(), context);
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({
+      groups: [{ id: "group_2", name: "Osaka Trip", archived_at: "2026-07-01T00:00:00.000Z" }],
+    });
+  });
+
   test("returns group detail with members, expenses, and balances", async () => {
     const result = await handleGetGroupDetail(
       makeRepository(),
@@ -253,6 +278,25 @@ describe("group handlers", () => {
     expect(deleteResult.status).toBe(200);
     expect(archiveResult.ok && archiveResult.body).toMatchObject({ group: { id: "group_1" } });
     expect(deleteResult.ok && deleteResult.body).toMatchObject({ group: { id: "group_1" } });
+  });
+
+  test("unarchives a group after membership check", async () => {
+    const result = await handleUnarchiveGroup(makeRepository(), context, "group_2", "req_unarchive");
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({ group: { id: "group_2", name: "Osaka Trip" } });
+  });
+
+  test("rejects unarchive when user is not a group member", async () => {
+    const result = await handleUnarchiveGroup(
+      makeRepository({ findActiveMember: async () => null }),
+      context,
+      "group_2",
+      "req_unarchive",
+    );
+
+    expect(result.status).toBe(403);
+    expect(!result.ok && result.body.error.code).toBe("FORBIDDEN");
   });
 
   test("rejects invite creation when user is not a group member", async () => {

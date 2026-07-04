@@ -25,12 +25,14 @@ export async function handleV1Request(request: VercelRequest, response: VercelRe
     { missingRuntimeEnv, readRuntimeEnv },
     { createSupabaseAccessTokenVerifier },
     { createSupabaseRestQueryClient },
+    { createSupabaseStorageClient },
   ] = await Promise.all([
     import("../apps/web/src/server/http/runtime.js"),
     import("../apps/web/src/server/runtime/googleTokenVerifier.js"),
     import("../apps/web/src/server/runtime/runtimeEnv.js"),
     import("../apps/web/src/server/runtime/supabaseAuthVerifier.js"),
     import("../apps/web/src/server/runtime/supabaseQueryClient.js"),
+    import("../apps/web/src/server/runtime/supabaseStorageClient.js"),
   ]);
 
   const runtimeEnv = readRuntimeEnv({
@@ -62,6 +64,10 @@ export async function handleV1Request(request: VercelRequest, response: VercelRe
   };
   const runtime = createHttpRuntime({
     client: createSupabaseRestQueryClient({
+      url: requiredEnv.SUPABASE_URL,
+      serviceRoleKey: requiredEnv.SUPABASE_SERVICE_ROLE_KEY,
+    }),
+    storage: createSupabaseStorageClient({
       url: requiredEnv.SUPABASE_URL,
       serviceRoleKey: requiredEnv.SUPABASE_SERVICE_ROLE_KEY,
     }),

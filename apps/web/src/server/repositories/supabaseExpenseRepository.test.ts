@@ -139,6 +139,31 @@ describe("createSupabaseExpenseRepository", () => {
     });
   });
 
+  test("threads an optional image_url through to the expenses insert", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
+
+    await repository.createExpense(context, "group_1", {
+      ...validRequest,
+      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+    });
+
+    const insertCall = client.calls.find((call) => call.sql.includes("insert into public.expenses"));
+    expect(insertCall?.params.at(-1)).toBe(
+      "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+    );
+  });
+
+  test("defaults image_url to null when not provided", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
+
+    await repository.createExpense(context, "group_1", validRequest);
+
+    const insertCall = client.calls.find((call) => call.sql.includes("insert into public.expenses"));
+    expect(insertCall?.params.at(-1)).toBeNull();
+  });
+
   test("listExpenses returns note, transfer_to_member_id, payments, and shares batched for the whole group", async () => {
     const client = makeListExpensesClient({
       expenses: [
@@ -153,6 +178,7 @@ describe("createSupabaseExpenseRepository", () => {
           expense_date: "2026-06-30",
           note: "Split unevenly, Bob paid",
           transfer_to_member_id: null,
+          image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
           created_at: "2026-06-30T00:00:00.000Z",
           version: 1,
           client_request_id: "expense_req_1",
@@ -199,6 +225,7 @@ describe("createSupabaseExpenseRepository", () => {
       id: "expense_1",
       note: "Split unevenly, Bob paid",
       transfer_to_member_id: null,
+      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
       expense_payments: [{ payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" }],
       expense_shares: [
         { member_id: "member_alice", share_type: "fixed", amount_minor: 800 },

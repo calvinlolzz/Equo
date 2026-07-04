@@ -7,10 +7,12 @@ export type IdempotentRequest = {
 export type CreateGroupRequest = IdempotentRequest & {
   name: string;
   currency: CurrencyCode;
+  cover_image_url?: string;
 };
 
 export type UpdateGroupRequest = IdempotentRequest & {
   name: string;
+  cover_image_url?: string;
 };
 
 export type CreateVirtualMemberRequest = IdempotentRequest & {
@@ -52,8 +54,14 @@ export type CreateExpenseRequest = IdempotentRequest & {
   expense_date: string;
   note?: string;
   transfer_to_member_id?: string;
+  image_url?: string;
   expense_payments: ExpensePaymentInput[];
   expense_shares: ExpenseShareInput[];
+};
+
+export type UploadGroupImageRequest = IdempotentRequest & {
+  kind: "expense" | "cover";
+  data_url: string;
 };
 
 export type ConfirmSettlementRequest = IdempotentRequest & {
@@ -68,6 +76,7 @@ export type GroupSummaryResponse = ApiResourceId & {
   name: string;
   currency: CurrencyCode;
   archived_at: string | null;
+  cover_image_url?: string | null;
 };
 
 export type ExpenseResponse = ApiResourceId & {

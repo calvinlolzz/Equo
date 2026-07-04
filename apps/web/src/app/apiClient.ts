@@ -6,6 +6,7 @@ import type {
   CreateGroupRequest,
   CreateInviteRequest,
   UpdateGroupRequest,
+  UploadGroupImageRequest,
 } from "../contracts/schemas";
 import { calculateSettlement as calculateSettlementTransfers } from "../domain/settlement";
 
@@ -20,6 +21,11 @@ export type GroupSummary = {
   name: string;
   currency: string;
   owner_member_id: string;
+  cover_image_url?: string | null;
+};
+
+export type ArchivedGroupSummary = GroupSummary & {
+  archived_at: string;
 };
 
 export type GroupMemberSummary = {
@@ -55,6 +61,7 @@ export type ExpenseSummary = {
   expense_date?: string;
   note?: string | null;
   transfer_to_member_id?: string | null;
+  image_url?: string | null;
   created_at?: string;
   version: number;
   client_request_id: string;
@@ -159,6 +166,11 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         method: "GET",
       });
     },
+    listArchivedGroups() {
+      return request<{ groups: ArchivedGroupSummary[] }>("/groups/archived", {
+        method: "GET",
+      });
+    },
     getGroupDetail(groupId: string) {
       return request<GroupDetail>(`/groups/${groupId}`, {
         method: "GET",
@@ -178,6 +190,12 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
     },
     archiveGroup(groupId: string, payload: { client_request_id: string }) {
       return request<{ group: GroupSummary }>(`/groups/${groupId}/archive`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    unarchiveGroup(groupId: string, payload: { client_request_id: string }) {
+      return request<{ group: GroupSummary }>(`/groups/${groupId}/unarchive`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -218,6 +236,12 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         body: JSON.stringify(payload),
       });
     },
+    uploadGroupImage(groupId: string, payload: UploadGroupImageRequest) {
+      return request<{ image: { url: string } }>(`/groups/${groupId}/images`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
     calculateSettlement(groupId: string) {
       return request<{
         settlement: { id: string; settlement_version: number; status: string };
@@ -241,6 +265,7 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
 
 export function createDemoApiClient() {
   const groups = new Map<string, GroupSummary>();
+  const archivedGroups = new Map<string, ArchivedGroupSummary>();
   const members = new Map<string, GroupMemberSummary[]>();
   const inviteTokens = new Map<string, string>();
   const expenses: Array<{
@@ -254,6 +279,7 @@ export function createDemoApiClient() {
     expense_date: string;
     note?: string | null;
     transfer_to_member_id?: string | null;
+    image_url?: string | null;
     expense_payments: CreateExpenseRequest["expense_payments"];
     expense_shares: CreateExpenseRequest["expense_shares"];
   }> = [];
@@ -284,6 +310,7 @@ export function createDemoApiClient() {
         name: payload.name,
         currency: payload.currency,
         owner_member_id: `demo_owner_${groups.size + 1}`,
+        cover_image_url: payload.cover_image_url ?? null,
       };
       groups.set(id, group);
       members.set(id, [
@@ -300,6 +327,9 @@ export function createDemoApiClient() {
     },
     async listGroups() {
       return { groups: Array.from(groups.values()).reverse() };
+    },
+    async listArchivedGroups() {
+      return { groups: Array.from(archivedGroups.values()).reverse() };
     },
     async getGroupDetail(groupId: string) {
       const group = groups.get(groupId);
@@ -343,7 +373,11 @@ export function createDemoApiClient() {
         throw new Error("Group not found");
       }
 
-      const updatedGroup = { ...group, name: payload.name };
+      const updatedGroup = {
+        ...group,
+        name: payload.name,
+        cover_image_url: payload.cover_image_url ?? group.cover_image_url,
+      };
       groups.set(groupId, updatedGroup);
       return { group: updatedGroup };
     },
@@ -370,7 +404,17 @@ export function createDemoApiClient() {
         throw new Error("Group not found");
       }
       groups.delete(groupId);
-      members.delete(groupId);
+      archivedGroups.set(groupId, { ...group, archived_at: new Date().toISOString() });
+      return { group };
+    },
+    async unarchiveGroup(groupId: string, _payload: { client_request_id: string }) {
+      const archivedGroup = archivedGroups.get(groupId);
+      if (!archivedGroup) {
+        throw new Error("Group not found");
+      }
+      const { archived_at: _archived_at, ...group } = archivedGroup;
+      archivedGroups.delete(groupId);
+      groups.set(groupId, group);
       return { group };
     },
     async deleteGroup(groupId: string, _payload: { client_request_id: string }) {
@@ -437,11 +481,19 @@ export function createDemoApiClient() {
         expense_date: payload.expense_date,
         note: payload.note ?? null,
         transfer_to_member_id: payload.transfer_to_member_id ?? null,
+        image_url: payload.image_url ?? null,
         expense_payments: payload.expense_payments,
         expense_shares: payload.expense_shares,
       };
       expenses.push(expense);
       return { expense };
+    },
+    async uploadGroupImage(groupId: string, payload: UploadGroupImageRequest) {
+      return {
+        image: {
+          url: `https://demo.equo.local/equo-images/${groupId}/${payload.kind}-${Date.now()}.jpg`,
+        },
+      };
     },
     async calculateSettlement(groupId: string) {
       const detail = await this.getGroupDetail(groupId);

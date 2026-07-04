@@ -12,6 +12,7 @@ export const errorCodes = [
   "INVITE_EXPIRED",
   "INVITE_REVOKED",
   "RUNTIME_ENV_MISSING",
+  "INVALID_IMAGE",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];
