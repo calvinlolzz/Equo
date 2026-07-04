@@ -49,6 +49,7 @@ export function ExpenseComposerSheet({
   groupCurrency,
   currencyOptions,
   initialExpense,
+  hidePhoto,
   onClose,
   onSubmit,
   onImageError,
@@ -57,6 +58,7 @@ export function ExpenseComposerSheet({
   groupCurrency: string;
   currencyOptions: Array<{ code: string; label: string }>;
   initialExpense?: Expense;
+  hidePhoto?: boolean;
   onClose: () => void;
   onSubmit: (draft: ExpenseDraft) => void;
   onImageError?: () => void;
@@ -391,31 +393,33 @@ export function ExpenseComposerSheet({
             </div>
 
             <div className="composer-card-section composer-photo-note-row">
-              <div className="composer-photo-picker">
-                <span className="composer-section-head-label">{text.photo}</span>
-                {composerImageDataUrl ? (
-                  <div className="composer-photo-preview">
-                    <img src={composerImageDataUrl} alt="" />
-                    <button
-                      className="composer-photo-remove"
-                      type="button"
-                      aria-label={text.removePhoto}
-                      onClick={() => setComposerImageDataUrl("")}
-                    >
-                      <X aria-hidden="true" size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="composer-photo-add">
-                    <Plus aria-hidden="true" size={22} />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)}
-                    />
-                  </label>
-                )}
-              </div>
+              {hidePhoto ? null : (
+                <div className="composer-photo-picker">
+                  <span className="composer-section-head-label">{text.photo}</span>
+                  {composerImageDataUrl ? (
+                    <div className="composer-photo-preview">
+                      <img src={composerImageDataUrl} alt="" />
+                      <button
+                        className="composer-photo-remove"
+                        type="button"
+                        aria-label={text.removePhoto}
+                        onClick={() => setComposerImageDataUrl("")}
+                      >
+                        <X aria-hidden="true" size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="composer-photo-add">
+                      <Plus aria-hidden="true" size={22} />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
               <label className="composer-note-field">
                 <span>{text.note}</span>
                 <input

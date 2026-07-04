@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
@@ -32,6 +33,9 @@ CHECKS = (
     Check("missing API stays JSON", "/api/v1/unknown", 404, "application/json", '"Unknown API route."'),
 )
 
+HOME_REQUIRED_MARKERS = ("建立群組", "加入群組", "繼續使用")
+HOME_FORBIDDEN_MARKERS = ("使用 Equo", "使用 Google 登入", "使用 Apple 登入")
+
 
 def fail(message: str) -> int:
     print(f"FAIL: {message}")
@@ -47,6 +51,25 @@ def fetch(path: str) -> tuple[int, str, str, str]:
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
         return error.code, error.headers.get("Content-Type", ""), body, error.geturl()
+
+
+def validate_home_experience(body: str) -> bool:
+    return all(marker in body for marker in HOME_REQUIRED_MARKERS) and not any(marker in body for marker in HOME_FORBIDDEN_MARKERS)
+
+
+def collect_home_shell_text(home_html: str) -> str:
+    asset_paths = re.findall(r'''["'](/assets/[^"']+\.(?:js|css))["']''', home_html)
+    parts = [home_html]
+
+    for asset_path in asset_paths:
+        try:
+            status, _content_type, asset_body, _final_url = fetch(asset_path)
+        except (TimeoutError, URLError):
+            continue
+        if status == 200:
+            parts.append(asset_body)
+
+    return "\n".join(parts)
 
 
 def main() -> int:
@@ -70,6 +93,12 @@ def main() -> int:
 
         if check.body_contains and check.body_contains not in body:
             return fail(f"{check.label}: expected body marker {check.body_contains!r}; body={body[:240]}")
+
+        if check.label == "home" and not validate_home_experience(collect_home_shell_text(body)):
+            return fail(
+                "home: expected the create/join/continue home experience and no login gate; "
+                f"body={body[:240]}"
+            )
 
     print("PASS: production web smoke checks passed")
     return 0

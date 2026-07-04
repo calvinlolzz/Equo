@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   AlertTriangle,
   Archive,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
+import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
 import { GroupRail } from "./GroupRail";
@@ -54,6 +55,7 @@ type DialogMode =
 const GROUPS_KEY = "equo.clean.groups";
 const GROUP_DATA_KEY = "equo.clean.group_data";
 const ARCHIVED_GROUPS_KEY = "equo.clean.archived_groups";
+const CLOUD_ACTIVITIES_KEY = "equo.clean.cloud_activities";
 
 const text = UI_TEXT.app;
 
@@ -126,6 +128,18 @@ function setGroupRoute(groupId: string | null, mode: "push" | "replace" = "push"
   }
 }
 
+function getInviteTokenFromUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("invite") ?? "";
+}
+
+function clearInviteTokenFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("invite")) return;
+  url.searchParams.delete("invite");
+  window.history.replaceState(null, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
+
 function formatTwd(amountMinor: number) {
   return `$${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
 }
@@ -185,12 +199,70 @@ export function App() {
   const [session, setSession] = useState<StoredSession | null>(() => loadSession(Date.now()));
   const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [localGroupsHintDismissed, setLocalGroupsHintDismissed] = useState(false);
+  const [cloudInviteToken, setCloudInviteToken] = useState("");
+  const [cloudInviteLoading, setCloudInviteLoading] = useState(false);
+  const [pendingInviteToken, setPendingInviteToken] = useState("");
+  const [cloudActivities, setCloudActivities] = useState<Record<string, Activity[]>>(() =>
+    readJson<Record<string, Activity[]>>(CLOUD_ACTIVITIES_KEY, {}),
+  );
+  const cloudInviteGroupIdRef = useRef("");
 
-  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
-  const activeData = activeGroup ? groupData[activeGroup.id] ?? createGroupData(activeGroup) : null;
-  const members = activeData?.members ?? [];
-  const expenses = activeData?.expenses ?? [];
-  const activities = activeData?.activities ?? [];
+  const cloudMode = Boolean(session);
+
+  function handleSessionExpired() {
+    clearSession();
+    setSession(null);
+    showToast(text.sessionExpired);
+  }
+
+  const cloudStore = useMemo<CloudGroupsStore | null>(() => {
+    if (!session) return null;
+    return createCloudGroupsStore({
+      apiClient: createApiClient({ authToken: session.token }),
+      onSessionExpired: handleSessionExpired,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  const cloudState = useSyncExternalStore(
+    (listener) => (cloudStore ? cloudStore.subscribe(listener) : () => {}),
+    () => (cloudStore ? cloudStore.getState() : null),
+    () => (cloudStore ? cloudStore.getState() : null),
+  );
+
+  useEffect(() => {
+    if (!cloudStore) return;
+    cloudStore.refreshGroups().catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudStore]);
+
+  const cloudGroups = useMemo(() => cloudState?.groups ?? [], [cloudState]);
+  const cloudActiveDetail = cloudMode && activeGroupId ? cloudState?.groupDetails[activeGroupId] ?? null : null;
+  const cloudActiveLoading = cloudMode && activeGroupId ? Boolean(cloudState?.loadingGroupIds[activeGroupId]) : false;
+
+  const localGroups = groups;
+  const displayGroups = cloudMode ? cloudGroups : localGroups;
+
+  const activeGroup = cloudMode
+    ? cloudActiveDetail?.group ?? (cloudGroups.find((group) => group.id === activeGroupId) ?? null)
+    : groups.find((group) => group.id === activeGroupId) ?? null;
+  const activeData = cloudMode
+    ? null
+    : activeGroup
+      ? groupData[activeGroup.id] ?? createGroupData(activeGroup)
+      : null;
+  const members = cloudMode ? cloudActiveDetail?.members ?? [] : activeData?.members ?? [];
+  const expenses = cloudMode ? cloudActiveDetail?.expenses ?? [] : activeData?.expenses ?? [];
+  const activities = cloudMode ? cloudActivities[activeGroupId] ?? [] : activeData?.activities ?? [];
+
+  function recordCloudActivity(groupId: string, activityText: string) {
+    const activity: Activity = { id: crypto.randomUUID(), text: activityText, createdAt: new Date().toISOString() };
+    setCloudActivities((current) => ({
+      ...current,
+      [groupId]: [activity, ...(current[groupId] ?? [])].slice(0, 8),
+    }));
+  }
   const spendableExpenses = useMemo(() => expenses.filter((expense) => expense.kind !== "settlement"), [expenses]);
   const totalExpenseMinor = spendableExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
   const averageExpenseMinor = spendableExpenses.length ? Math.round(totalExpenseMinor / spendableExpenses.length) : 0;
@@ -232,8 +304,10 @@ export function App() {
   useEffect(() => writeJson(GROUP_DATA_KEY, groupData), [groupData]);
   useEffect(() => writeJson(ARCHIVED_GROUPS_KEY, archivedGroups), [archivedGroups]);
   useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
+  useEffect(() => writeJson(CLOUD_ACTIVITIES_KEY, cloudActivities), [cloudActivities]);
 
   useEffect(() => {
+    if (cloudMode) return;
     const routeId = getRouteGroupId();
     if (!routeId) return;
     const routeGroupExists = groups.some((group) => group.id === routeId);
@@ -253,12 +327,60 @@ export function App() {
     setGroupRoute(null, "replace");
     showToast(text.groupNotFound);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroupId, groups]);
+  }, [activeGroupId, groups, cloudMode]);
+
+  useEffect(() => {
+    if (!cloudMode) return;
+    if (!cloudState || cloudState.loadingGroups) return;
+    const routeId = getRouteGroupId();
+    if (!routeId) return;
+    const routeGroupExists = cloudGroups.some((group) => group.id === routeId);
+    if (routeId === activeGroupId) {
+      if (!routeGroupExists) {
+        setActiveGroupId("");
+        setGroupRoute(null, "replace");
+        showToast(text.groupNotFound);
+      }
+      return;
+    }
+    if (routeGroupExists) {
+      setActiveGroupId(routeId);
+      return;
+    }
+    setActiveGroupId("");
+    setGroupRoute(null, "replace");
+    showToast(text.groupNotFound);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId, cloudGroups, cloudMode, cloudState?.loadingGroups]);
+
+  useEffect(() => {
+    if (!cloudMode || !cloudStore || !activeGroupId) return;
+    if (cloudState?.groupDetails[activeGroupId]) return;
+    cloudStore
+      .refreshGroupDetail(activeGroupId)
+      .catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId, cloudMode, cloudStore]);
 
   useEffect(() => {
     return () => {
       if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const token = getInviteTokenFromUrl();
+    if (!token) return;
+    clearInviteTokenFromUrl();
+    if (session) {
+      setCloudInviteToken(token);
+      setDialog("inviteInput");
+    } else {
+      setPendingInviteToken(token);
+      showToast(text.cloudInviteLoginRequired);
+      setDialog("profile");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function showToast(message: string) {
@@ -276,9 +398,23 @@ export function App() {
     setGroupDrawerOpen(false);
   }
 
-  function createGroup() {
+  async function createGroup() {
     const template = templates.find((item) => item.id === selectedTemplate) ?? templates[0];
     const name = groupName.trim() || template.defaultName;
+
+    if (cloudMode && cloudStore) {
+      try {
+        const group = await cloudStore.createGroup({ name, currency: "TWD" });
+        setActiveGroupId(group.id);
+        setGroupRoute(group.id, "replace");
+        setDialog(null);
+        showToast(`${text.createGroup}: ${name}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
     const group: Group = { id: `demo_group_${crypto.randomUUID()}`, name, currency: "TWD" };
     setGroups((current) => [group, ...current.filter((item) => item.id !== group.id)].slice(0, 8));
     setGroupData((current) => ({ ...current, [group.id]: createGroupData(group) }));
@@ -294,10 +430,23 @@ export function App() {
     setDialog("editGroup");
   }
 
-  function updateActiveGroup() {
+  async function updateActiveGroup() {
     if (!activeGroup) return;
     const name = groupName.trim();
     if (!name) return;
+
+    if (cloudMode && cloudStore) {
+      try {
+        await cloudStore.renameGroup(activeGroup.id, name);
+        recordCloudActivity(activeGroup.id, `${text.editGroup}: ${name}`);
+        setDialog(null);
+        showToast(`${text.editGroup}: ${name}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
     setGroups((current) => current.map((group) => (group.id === activeGroup.id ? { ...group, name } : group)));
     setGroupData((current) => {
       const data = current[activeGroup.id] ?? createGroupData(activeGroup);
@@ -317,6 +466,13 @@ export function App() {
       setDialog(null);
       return;
     }
+
+    if (cloudMode) {
+      setDialog(null);
+      showToast(text.cloudCurrencyUnsupported);
+      return;
+    }
+
     setGroups((current) => current.map((group) => (group.id === activeGroup.id ? { ...group, currency } : group)));
     setGroupData((current) => {
       const data = current[activeGroup.id] ?? createGroupData(activeGroup);
@@ -331,11 +487,25 @@ export function App() {
     showToast(`${text.currency}: ${currency}`);
   }
 
-  function openInviteMembers() {
+  async function openInviteMembers() {
     if (!activeGroup) return;
     setGroupDrawerOpen(false);
     setSettingsDrawerOpen(false);
     setDialog("inviteMembers");
+
+    if (cloudMode && cloudStore) {
+      if (cloudInviteGroupIdRef.current === activeGroup.id && cloudInviteToken) return;
+      setCloudInviteLoading(true);
+      try {
+        const token = await cloudStore.createInvite(activeGroup.id);
+        cloudInviteGroupIdRef.current = activeGroup.id;
+        setCloudInviteToken(token);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      } finally {
+        setCloudInviteLoading(false);
+      }
+    }
   }
 
   function openMemberList() {
@@ -370,7 +540,14 @@ export function App() {
         if (current.name !== DEFAULT_PROFILE.name) return current;
         return normalizeProfile({ ...current, name: stored.user.displayName });
       });
+      setActiveGroupId("");
+      setGroupRoute(null, "replace");
       showToast(`${text.loginSuccessPrefix}${stored.user.displayName}`);
+      if (pendingInviteToken) {
+        setCloudInviteToken(pendingInviteToken);
+        setPendingInviteToken("");
+        setDialog("inviteInput");
+      }
     } catch {
       showToast(text.loginFailed);
     }
@@ -379,6 +556,8 @@ export function App() {
   function logout() {
     clearSession();
     setSession(null);
+    setActiveGroupId("");
+    setGroupRoute(null, "replace");
     showToast(text.logoutSuccess);
   }
 
@@ -431,9 +610,24 @@ export function App() {
     showToast(text.groupHome);
   }
 
-  function addVirtualMember() {
+  async function addVirtualMember() {
     if (!activeGroup || !virtualMemberName.trim()) return;
-    const member: Member = { id: `${activeGroup.id}_member_${crypto.randomUUID()}`, name: virtualMemberName.trim(), virtual: true };
+    const name = virtualMemberName.trim();
+
+    if (cloudMode && cloudStore) {
+      try {
+        await cloudStore.addVirtualMember(activeGroup.id, name);
+        recordCloudActivity(activeGroup.id, `${text.addVirtualMember}: ${name}`);
+        setVirtualMemberName("");
+        setDialog(null);
+        showToast(`${text.addVirtualMember}: ${name}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
+    const member: Member = { id: `${activeGroup.id}_member_${crypto.randomUUID()}`, name, virtual: true };
     const activity: Activity = {
       id: crypto.randomUUID(),
       text: `${text.addVirtualMember}: ${member.name}`,
@@ -448,10 +642,33 @@ export function App() {
     showToast(`${text.addVirtualMember}: ${member.name}`);
   }
 
-  function handleExpenseDraftSubmit(draft: ExpenseDraft) {
+  async function handleExpenseDraftSubmit(draft: ExpenseDraft) {
     if (!activeGroup) return;
-    const now = new Date().toISOString();
     const editingId = editingExpense?.id;
+
+    if (cloudMode && cloudStore) {
+      try {
+        if (editingId) {
+          await cloudStore.editExpense(activeGroup.id, editingId, draft, activeGroup.currency);
+        } else {
+          await cloudStore.addExpense(activeGroup.id, draft, activeGroup.currency);
+        }
+        recordCloudActivity(
+          activeGroup.id,
+          editingId
+            ? `${text.editExpense}: ${draft.title}`
+            : `${text.addExpense}: ${draft.title} (${formatTwd(draft.amountMinor)})`,
+        );
+        setExpenseComposerOpen(false);
+        setEditingExpense(null);
+        showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
+    const now = new Date().toISOString();
     const expense: Expense = {
       id: editingId ?? crypto.randomUUID(),
       title: draft.title,
@@ -502,8 +719,22 @@ export function App() {
     setExpenseComposerOpen(true);
   }
 
-  function deleteExpense(expense: Expense) {
+  async function deleteExpense(expense: Expense) {
     if (!activeGroup) return;
+
+    if (cloudMode && cloudStore) {
+      try {
+        await cloudStore.deleteExpense(activeGroup.id, expense.id);
+        recordCloudActivity(activeGroup.id, `${text.deleteExpense}: ${expense.title}`);
+        setDialog(null);
+        setSelectedExpenseId("");
+        showToast(`${text.deleteExpense}: ${expense.title}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
     const now = new Date().toISOString();
     const activity: Activity = {
       id: crypto.randomUUID(),
@@ -526,16 +757,47 @@ export function App() {
     showToast(`${text.deleteExpense}: ${expense.title}`);
   }
 
-  function submitInviteInput() {
+  async function submitInviteInput() {
     if (!inviteInputValue.trim()) return;
+
+    if (cloudMode && cloudStore) {
+      try {
+        const group = await cloudStore.acceptInvite(inviteInputValue.trim(), profile.name);
+        setInviteInputValue("");
+        setInviteInputError("");
+        setDialog(null);
+        showToast(`${text.cloudInviteJoinedPrefix}${group.name}`);
+        setActiveGroupId(group.id);
+        setGroupRoute(group.id);
+      } catch (error) {
+        setInviteInputError((error as Error).message || text.inviteNotFound);
+      }
+      return;
+    }
+
     setInviteInputError(text.inviteNotFound);
   }
 
-  function settleTransfer(fromId: string, toId: string, amountMinor: number) {
+  async function settleTransfer(fromId: string, toId: string, amountMinor: number) {
     if (!activeGroup) return;
     const fromMember = members.find((member) => member.id === fromId);
     const toMember = members.find((member) => member.id === toId);
     if (!fromMember || !toMember) return;
+
+    if (cloudMode && cloudStore) {
+      try {
+        await cloudStore.settleTransfer(activeGroup.id, fromId, toId, amountMinor, activeGroup.currency);
+        recordCloudActivity(
+          activeGroup.id,
+          `${text.clearDebt}: ${fromMember.name} → ${toMember.name} ${formatTwd(amountMinor)}`,
+        );
+        showToast(`${text.clearDebt}: ${fromMember.name} → ${toMember.name}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
     const now = new Date().toISOString();
     const settlement: Expense = {
       id: crypto.randomUUID(),
@@ -567,9 +829,24 @@ export function App() {
     settleTransfer(debt.from.id, debt.to.id, debt.amountMinor);
   }
 
-  function archiveActiveGroup() {
+  async function archiveActiveGroup() {
     if (!activeGroup) return;
     setBusy(true);
+
+    if (cloudMode && cloudStore) {
+      try {
+        await cloudStore.archiveGroup(activeGroup.id);
+        setActiveGroupId("");
+        setGroupRoute(null);
+        setDialog(null);
+        showToast(`${text.archiveGroup}: ${activeGroup.name}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      setBusy(false);
+      return;
+    }
+
     const archived: ArchivedGroup = { ...activeGroup, archivedAt: new Date().toISOString() };
     setArchivedGroups((current) => [archived, ...current.filter((group) => group.id !== activeGroup.id)].slice(0, 8));
     setGroups((current) => current.filter((group) => group.id !== activeGroup.id));
@@ -580,8 +857,22 @@ export function App() {
     setBusy(false);
   }
 
-  function deleteActiveGroup() {
+  async function deleteActiveGroup() {
     if (!activeGroup) return;
+
+    if (cloudMode && cloudStore) {
+      try {
+        await cloudStore.deleteGroup(activeGroup.id);
+        setActiveGroupId("");
+        setGroupRoute(null);
+        setDialog(null);
+        showToast(`${text.deleteGroup}: ${activeGroup.name}`);
+      } catch (error) {
+        showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      }
+      return;
+    }
+
     setGroups((current) => current.filter((group) => group.id !== activeGroup.id));
     setGroupData((current) => {
       const next = { ...current };
@@ -600,8 +891,15 @@ export function App() {
   }
 
   const selectedTemplateLabel = templates.find((template) => template.id === selectedTemplate)?.label ?? text.createGroup;
-  const inviteCode = activeGroup ? `EQO-${activeGroup.id.replace(/^demo_group_/, "").replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase()}` : "";
-  const inviteLink = activeGroup && typeof window !== "undefined" ? `${window.location.origin}/?invite=${encodeURIComponent(inviteCode)}` : "";
+  const localInviteCode = activeGroup ? `EQO-${activeGroup.id.replace(/^demo_group_/, "").replace(/[^a-z0-9]/gi, "").slice(0, 8).toUpperCase()}` : "";
+  const inviteCode = cloudMode ? cloudInviteToken : localInviteCode;
+  const inviteLink =
+    activeGroup && inviteCode && typeof window !== "undefined"
+      ? cloudMode
+        ? `${window.location.origin}/?invite=${encodeURIComponent(inviteCode)}`
+        : `${window.location.origin}/?invite=${encodeURIComponent(localInviteCode)}`
+      : "";
+  const localGroupsHintCount = cloudMode && !localGroupsHintDismissed ? localGroups.length : 0;
   const panelDialogOpen =
     dialog === "archivedList" ||
     dialog === "inviteMembers" ||
@@ -732,13 +1030,15 @@ export function App() {
 
       {!activeGroup ? (
         <StartFlow
-          groups={groups}
+          groups={displayGroups}
           groupName={groupName}
           selectedTemplate={selectedTemplate}
           selectedTemplateLabel={selectedTemplateLabel}
           startMode={startMode}
           templates={templates}
+          localGroupsHintCount={localGroupsHintCount}
           onCreateGroup={createGroup}
+          onDismissLocalGroupsHint={() => setLocalGroupsHintDismissed(true)}
           onGroupNameChange={setGroupName}
           onSelectGroup={selectGroup}
           onSelectTemplate={(template) => {
@@ -752,7 +1052,7 @@ export function App() {
         <section className="workspace-grid">
           <GroupRail
             activeGroup={activeGroup}
-            groups={groups}
+            groups={displayGroups}
             onCreateGroup={() => setDialog("createGroup")}
             onOpenArchivedGroups={() => setDialog("archivedList")}
             onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
@@ -765,7 +1065,7 @@ export function App() {
               <div className="side-drawer side-drawer-left" role="dialog" aria-modal="true" aria-label={text.members}>
                 <GroupRail
                   activeGroup={activeGroup}
-                  groups={groups}
+                  groups={displayGroups}
                   onCreateGroup={() => { setGroupDrawerOpen(false); setDialog("createGroup"); }}
                   onOpenArchivedGroups={() => { setGroupDrawerOpen(false); setDialog("archivedList"); }}
                   onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
@@ -777,6 +1077,11 @@ export function App() {
           ) : null}
 
           <section className="group-room pizo-home" aria-label={text.groupHome}>
+            {cloudMode && cloudActiveLoading && !cloudActiveDetail ? (
+              <div className="group-home-card glass-panel cloud-loading-skeleton" aria-busy="true">
+                <span className="pulse-dot active" />
+              </div>
+            ) : null}
             <article className="group-home-card glass-panel" id="group-home">
               <div className="home-title-row">
                 <div>
@@ -1050,6 +1355,7 @@ export function App() {
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
           initialExpense={editingExpense ?? undefined}
+          hidePhoto={cloudMode}
           onClose={() => {
             setExpenseComposerOpen(false);
             setEditingExpense(null);
@@ -1347,11 +1653,11 @@ export function App() {
                 <div className="invite-dialog-card">
                   <div className="invite-dialog-code">
                     <span>{text.inviteCode}</span>
-                    <strong>{inviteCode}</strong>
+                    <strong>{cloudMode && cloudInviteLoading ? "..." : inviteCode}</strong>
                   </div>
                   <div className="invite-link-box">
                     <span>{text.inviteLink}</span>
-                    <strong>{inviteLink}</strong>
+                    <strong>{cloudMode && cloudInviteLoading ? "..." : inviteLink}</strong>
                   </div>
                   <div className="invite-action-grid">
                     <button className="secondary-action" type="button" onClick={() => copyInviteText(inviteCode)}>
@@ -1373,35 +1679,67 @@ export function App() {
                   <h3>{text.inviteInputTitle}</h3>
                   <p>{text.inviteInputDescription}</p>
                 </div>
-                <label>
-                  <span>{text.inviteCode}</span>
-                  <input
-                    value={inviteInputValue}
-                    onChange={(event) => {
-                      setInviteInputValue(event.target.value);
-                      setInviteInputError("");
-                    }}
-                    placeholder={text.inviteInputPlaceholder}
-                    aria-label={text.inviteCode}
-                  />
-                </label>
-                {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
-                <div className="dialog-action-row">
-                  <button
-                    className="secondary-action"
-                    type="button"
-                    onClick={() => {
-                      setDialog(null);
-                      setInviteInputValue("");
-                      setInviteInputError("");
-                    }}
-                  >
-                    {text.cancel}
-                  </button>
-                  <button className="primary-action" type="button" disabled={!inviteInputValue.trim()} onClick={submitInviteInput}>
-                    {text.joinGroupAction}
-                  </button>
-                </div>
+                {!cloudMode ? (
+                  <>
+                    <p className="dialog-inline-error">{text.cloudInviteLoginRequired}</p>
+                    <div className="dialog-action-row">
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={() => {
+                          setDialog(null);
+                          setInviteInputValue("");
+                          setInviteInputError("");
+                        }}
+                      >
+                        {text.cancel}
+                      </button>
+                      <button
+                        className="primary-action"
+                        type="button"
+                        onClick={() => {
+                          setInviteInputValue("");
+                          setInviteInputError("");
+                          setDialog("profile");
+                        }}
+                      >
+                        {text.profile}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      <span>{text.inviteCode}</span>
+                      <input
+                        value={inviteInputValue}
+                        onChange={(event) => {
+                          setInviteInputValue(event.target.value);
+                          setInviteInputError("");
+                        }}
+                        placeholder={text.inviteInputPlaceholder}
+                        aria-label={text.inviteCode}
+                      />
+                    </label>
+                    {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
+                    <div className="dialog-action-row">
+                      <button
+                        className="secondary-action"
+                        type="button"
+                        onClick={() => {
+                          setDialog(null);
+                          setInviteInputValue("");
+                          setInviteInputError("");
+                        }}
+                      >
+                        {text.cancel}
+                      </button>
+                      <button className="primary-action" type="button" disabled={!inviteInputValue.trim()} onClick={submitInviteInput}>
+                        {text.joinGroupAction}
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             ) : null}
 

@@ -285,6 +285,32 @@ label span {
   margin-bottom: 0;
 }
 
+.local-groups-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(247, 251, 248, 0.72);
+  font-size: 13px;
+}
+
+.local-groups-hint-dismiss {
+  display: inline-flex;
+  color: rgba(247, 251, 248, 0.6);
+  background: transparent;
+  padding: 2px;
+}
+
+.cloud-loading-skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
 .template-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

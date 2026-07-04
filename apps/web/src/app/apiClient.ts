@@ -88,12 +88,16 @@ export type GroupDetail = {
 
 export type EquoApiClient = ReturnType<typeof createApiClient>;
 
+export type ApiClientError = Error & { code?: string };
+
 async function readJson<T>(response: Response): Promise<T> {
   const payload = await response.json();
 
   if (!response.ok) {
     const message = payload?.error?.message ?? "Request failed";
-    throw new Error(message);
+    const error: ApiClientError = new Error(message);
+    error.code = payload?.error?.code;
+    throw error;
   }
 
   return payload as T;
@@ -207,6 +211,12 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
           body: JSON.stringify(payload),
         },
       );
+    },
+    deleteExpense(groupId: string, expenseId: string, payload: { client_request_id: string }) {
+      return request<{ expense: { id: string } }>(`/groups/${groupId}/expenses/${expenseId}`, {
+        method: "DELETE",
+        body: JSON.stringify(payload),
+      });
     },
     calculateSettlement(groupId: string) {
       return request<{

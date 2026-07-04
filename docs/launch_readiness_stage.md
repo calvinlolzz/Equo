@@ -38,10 +38,19 @@ The OAuth client ID must match both `VITE_GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OA
 
 ## Production Smoke Test
 
+Before deploying, run the local built-home guard after `npm run build`:
+
+```powershell
+python scripts\check-built-web-home.py
+```
+
+This reads `apps/web/dist/index.html` and bundled assets. It fails if the built homepage no longer contains `建立群組`, `加入群組`, and `繼續使用`, or if those controls are replaced by the standalone login gate copy.
+
 After deploying, run:
 
 ```powershell
 $env:EQUO_BASE_URL="https://your-deployment.vercel.app"
+python scripts\smoke-production-web.py
 python scripts\smoke-production-api.py
 ```
 
@@ -54,6 +63,9 @@ python scripts\smoke-production-api.py
 
 Expected result:
 
+- `/` returns the app shell and the bundled home experience still contains `建立群組`, `加入群組`, and `繼續使用`.
+- `/` must not be replaced by the login gate copy `使用 Equo`, `使用 Google 登入`, or `使用 Apple 登入`.
+- `/group/smoke-test` returns the app shell, proving direct group links use the SPA fallback.
 - `/api/v1/unknown` returns `404`, proving server runtime env is configured.
 - `/api/v1/auth/google` returns `200` and `equo_session` when a valid Google ID token is supplied.
 
@@ -82,10 +94,10 @@ Performance advisors still include older prototype schema items. Treat those as 
 
 Before promoting to production:
 
-1. `npm test`
-2. `npm run build`
-3. all `scripts/check-*.py`
-4. deploy preview
+1. `npm run verify:release`
+2. all remaining `scripts/check-*.py` that are not covered by `verify:release`
+3. deploy preview
+4. run `scripts/smoke-production-web.py` against the preview and confirm the homepage is still the create/join/continue flow
 5. run `scripts/smoke-production-api.py` against the preview
-6. complete one browser flow: Google sign-in, create group, invite, expense, settlement
+6. complete one browser flow: Google sign-in from profile, create group, invite, expense, settlement
 7. promote the verified preview to production

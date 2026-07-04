@@ -16,9 +16,25 @@ REQUIRED = {
     ],
     "package.json": [
         '"check:launch-readiness"',
+        '"check:built-web-home"',
+        '"test:built-web-home"',
+        '"test:smoke-web-rules"',
         '"smoke:production"',
         '"smoke:production:web"',
         '"smoke:production:all"',
+        '"verify:release"',
+    ],
+    "scripts/check-built-web-home.py": [
+        "HOME_REQUIRED_MARKERS",
+        "HOME_FORBIDDEN_MARKERS",
+        "collect_dist_text",
+        "validate_dist_home",
+        "built web home keeps create/join/continue flow",
+    ],
+    "scripts/test-check-built-web-home.py": [
+        "valid_dist",
+        "login_dist",
+        "built web home rules verified",
     ],
     "scripts/smoke-production-api.py": [
         "EQUO_BASE_URL",
@@ -29,10 +45,19 @@ REQUIRED = {
     ],
     "scripts/smoke-production-web.py": [
         "EQUO_BASE_URL",
+        "HOME_REQUIRED_MARKERS",
+        "HOME_FORBIDDEN_MARKERS",
+        "collect_home_shell_text",
+        "validate_home_experience",
         "/group/smoke-test",
         "/api/v1/unknown",
         "application/json",
         "production web smoke checks passed",
+    ],
+    "scripts/test-smoke-production-web.py": [
+        "valid_home",
+        "login_gate",
+        "production web smoke rules verified",
     ],
     "docs/launch_readiness_stage.md": [
         "Vercel Project Settings",

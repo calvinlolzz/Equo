@@ -93,6 +93,13 @@ export const UI_TEXT = {
     exchangeRateSummary: "原幣",
     payerLabel: "付款人",
     shareBreakdown: "分攤明細",
+    localGroupsHintPrefix: "本機另有",
+    localGroupsHintSuffix: "個未同步群組，登出後仍可使用。",
+    cloudCurrencyUnsupported: "雲端群組暫不支援變更幣別",
+    cloudSyncFailedPrefix: "同步失敗：",
+    cloudInviteJoinedPrefix: "已加入群組：",
+    cloudInviteLoginRequired: "請先登入 Google 帳號，才能使用邀請碼加入群組。",
+    sessionExpired: "登入已過期，請重新登入。",
   },
   currencies: {
     twd: "新台幣",
