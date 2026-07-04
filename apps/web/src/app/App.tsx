@@ -20,12 +20,16 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
+import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
 import { GroupRail } from "./GroupRail";
+import { ProfileDialog } from "./ProfileDialog";
 import { StartFlow } from "./StartFlowPanel";
 import type { Activity, ArchivedGroup, Expense, Group, GroupData, Member, StartMode } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
 import { computeMemberBalances } from "./groupBalances";
+import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
   | "createGroup"
@@ -41,6 +45,8 @@ type DialogMode =
   | "archivedList"
   | "archive"
   | "delete"
+  | "profile"
+  | "expenseDetail"
   | null;
 
 const GROUPS_KEY = "equo.clean.groups";
@@ -173,6 +179,9 @@ export function App() {
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const [inviteInputValue, setInviteInputValue] = useState("");
   const [inviteInputError, setInviteInputError] = useState("");
+  const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   const activeGroup = groups.find((group) => group.id === activeGroupId) ?? null;
   const activeData = activeGroup ? groupData[activeGroup.id] ?? createGroupData(activeGroup) : null;
@@ -200,21 +209,26 @@ export function App() {
   const selectedDateChip = dateChips.find((chip) => chip.key === selectedDateKey);
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
+  const settlementTransfers = useMemo(
+    () => (activeGroup ? buildSettlementTransfers(members, expenses, activeGroup.currency) : []),
+    [members, expenses, activeGroup],
+  );
+  const firstTransfer = settlementTransfers[0] ?? null;
   const debt = useMemo(() => {
-    const debtor = members.find((member) => (balances.get(member.id) ?? 0) < 0);
-    const creditor = members.find((member) => (balances.get(member.id) ?? 0) > 0);
-    if (!debtor || !creditor) return null;
-    return {
-      from: debtor,
-      to: creditor,
-      amountMinor: Math.min(Math.abs(balances.get(debtor.id) ?? 0), balances.get(creditor.id) ?? 0),
-    };
-  }, [balances, members]);
+    if (!firstTransfer) return null;
+    const from = members.find((member) => member.id === firstTransfer.fromMemberId);
+    const to = members.find((member) => member.id === firstTransfer.toMemberId);
+    if (!from || !to) return null;
+    return { from, to, amountMinor: firstTransfer.amount.amount_minor };
+  }, [firstTransfer, members]);
+  const extraTransferCount = Math.max(0, settlementTransfers.length - 1);
   const maxBalanceMinor = Math.max(1, ...members.map((member) => Math.abs(balances.get(member.id) ?? 0)));
+  const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
 
   useEffect(() => writeJson(GROUPS_KEY, groups), [groups]);
   useEffect(() => writeJson(GROUP_DATA_KEY, groupData), [groupData]);
   useEffect(() => writeJson(ARCHIVED_GROUPS_KEY, archivedGroups), [archivedGroups]);
+  useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
 
   useEffect(() => {
     const routeId = getRouteGroupId();
@@ -328,6 +342,29 @@ export function App() {
     setDialog("memberList");
   }
 
+  function openProfileDialog() {
+    setGroupDrawerOpen(false);
+    setSettingsDrawerOpen(false);
+    setDialog("profile");
+  }
+
+  function saveProfile(nextProfile: ProfileData) {
+    const normalized = normalizeProfile(nextProfile);
+    setProfile(normalized);
+    setGroupData((current) => {
+      const next: Record<string, GroupData> = {};
+      Object.entries(current).forEach(([groupId, data]) => {
+        next[groupId] = {
+          ...data,
+          members: data.members.map((member) => (member.role === "owner" ? { ...member, name: normalized.name } : member)),
+        };
+      });
+      return next;
+    });
+    setDialog(null);
+    showToast(`${text.profile}: ${normalized.name}`);
+  }
+
   async function copyInviteText(value: string) {
     if (!value) return;
     try {
@@ -380,8 +417,9 @@ export function App() {
   function handleExpenseDraftSubmit(draft: ExpenseDraft) {
     if (!activeGroup) return;
     const now = new Date().toISOString();
+    const editingId = editingExpense?.id;
     const expense: Expense = {
-      id: crypto.randomUUID(),
+      id: editingId ?? crypto.randomUUID(),
       title: draft.title,
       amountMinor: draft.amountMinor,
       currency: activeGroup.currency,
@@ -401,15 +439,57 @@ export function App() {
     }
     const activity: Activity = {
       id: crypto.randomUUID(),
-      text: `${text.addExpense}: ${expense.title} (${formatTwd(expense.amountMinor)})`,
+      text: editingId
+        ? `${text.editExpense}: ${expense.title}`
+        : `${text.addExpense}: ${expense.title} (${formatTwd(expense.amountMinor)})`,
       createdAt: now,
     };
     setGroupData((current) => {
       const data = current[activeGroup.id] ?? createGroupData(activeGroup);
-      return { ...current, [activeGroup.id]: { ...data, expenses: [expense, ...data.expenses], activities: [activity, ...data.activities].slice(0, 8) } };
+      const nextExpenses = editingId
+        ? data.expenses.map((item) => (item.id === editingId ? expense : item))
+        : [expense, ...data.expenses];
+      return { ...current, [activeGroup.id]: { ...data, expenses: nextExpenses, activities: [activity, ...data.activities].slice(0, 8) } };
     });
     setExpenseComposerOpen(false);
-    showToast(`${text.addExpense}: ${expense.title}`);
+    setEditingExpense(null);
+    showToast(editingId ? `${text.editExpense}: ${expense.title}` : `${text.addExpense}: ${expense.title}`);
+  }
+
+  function openExpenseDetail(expenseId: string) {
+    setSelectedExpenseId(expenseId);
+    setDialog("expenseDetail");
+  }
+
+  function openExpenseEdit(expense: Expense) {
+    setDialog(null);
+    setSelectedExpenseId("");
+    setEditingExpense(expense);
+    setExpenseComposerOpen(true);
+  }
+
+  function deleteExpense(expense: Expense) {
+    if (!activeGroup) return;
+    const now = new Date().toISOString();
+    const activity: Activity = {
+      id: crypto.randomUUID(),
+      text: `${text.deleteExpense}: ${expense.title}`,
+      createdAt: now,
+    };
+    setGroupData((current) => {
+      const data = current[activeGroup.id] ?? createGroupData(activeGroup);
+      return {
+        ...current,
+        [activeGroup.id]: {
+          ...data,
+          expenses: data.expenses.filter((item) => item.id !== expense.id),
+          activities: [activity, ...data.activities].slice(0, 8),
+        },
+      };
+    });
+    setDialog(null);
+    setSelectedExpenseId("");
+    showToast(`${text.deleteExpense}: ${expense.title}`);
   }
 
   function submitInviteInput() {
@@ -417,22 +497,25 @@ export function App() {
     setInviteInputError(text.inviteNotFound);
   }
 
-  function settleDebt() {
-    if (!activeGroup || !debt) return;
+  function settleTransfer(fromId: string, toId: string, amountMinor: number) {
+    if (!activeGroup) return;
+    const fromMember = members.find((member) => member.id === fromId);
+    const toMember = members.find((member) => member.id === toId);
+    if (!fromMember || !toMember) return;
     const now = new Date().toISOString();
     const settlement: Expense = {
       id: crypto.randomUUID(),
       title: text.settlementTransfer,
-      amountMinor: debt.amountMinor,
+      amountMinor,
       currency: activeGroup.currency,
       createdAt: now,
-      payerId: debt.from.id,
-      shareMemberIds: [debt.to.id],
+      payerId: fromId,
+      shareMemberIds: [toId],
       kind: "settlement",
     };
     const activity: Activity = {
       id: crypto.randomUUID(),
-      text: `${text.clearDebt}: ${debt.from.name} → ${debt.to.name} ${formatTwd(debt.amountMinor)}`,
+      text: `${text.clearDebt}: ${fromMember.name} → ${toMember.name} ${formatTwd(amountMinor)}`,
       createdAt: now,
     };
     setGroupData((current) => {
@@ -442,7 +525,12 @@ export function App() {
         [activeGroup.id]: { ...data, expenses: [settlement, ...data.expenses], activities: [activity, ...data.activities].slice(0, 8) },
       };
     });
-    showToast(`${text.clearDebt}: ${debt.from.name} → ${debt.to.name}`);
+    showToast(`${text.clearDebt}: ${fromMember.name} → ${toMember.name}`);
+  }
+
+  function settleDebt() {
+    if (!debt) return;
+    settleTransfer(debt.from.id, debt.to.id, debt.amountMinor);
   }
 
   function archiveActiveGroup() {
@@ -502,10 +590,10 @@ export function App() {
             aria-label={text.profile}
             onClick={() => {
               closeDrawer();
-              openMemberList();
+              openProfileDialog();
             }}
           >
-            <UserRound aria-hidden="true" size={18} />
+            {profile.avatarDataUrl ? <img src={profile.avatarDataUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
           </button>
         </div>
         <div className="side-group-card">
@@ -772,6 +860,11 @@ export function App() {
                   </button>
                 ) : null}
               </div>
+              {extraTransferCount > 0 ? (
+                <button className="text-action settlement-more-line" type="button" onClick={() => setDialog("analysisPanel")}>
+                  {`${UI_TEXT.settlement.moreTransfersPrefix} ${extraTransferCount} ${UI_TEXT.settlement.moreTransfersSuffix}`}
+                </button>
+              ) : null}
             </section>
 
             <section className="home-section pizo-record-section" id="group-records" aria-label={text.records}>
@@ -791,7 +884,12 @@ export function App() {
                       .slice(0, 3);
                     const isSettlement = expense.kind === "settlement";
                     return (
-                      <button className="expense-record-row pizo-expense-row" type="button" key={expense.id}>
+                      <button
+                        className="expense-record-row pizo-expense-row"
+                        type="button"
+                        key={expense.id}
+                        onClick={() => openExpenseDetail(expense.id)}
+                      >
                         {isSettlement ? (
                           <span className="member-avatar photo settlement-avatar">
                             <History aria-hidden="true" size={16} />
@@ -856,7 +954,15 @@ export function App() {
             </div>
           ) : null}
 
-          <button className="floating-action" type="button" aria-label={text.addExpense} onClick={() => setExpenseComposerOpen(true)}>
+          <button
+            className="floating-action"
+            type="button"
+            aria-label={text.addExpense}
+            onClick={() => {
+              setEditingExpense(null);
+              setExpenseComposerOpen(true);
+            }}
+          >
             <Plus aria-hidden="true" size={34} />
           </button>
 
@@ -881,7 +987,10 @@ export function App() {
               className="mobile-tab-center"
               type="button"
               aria-label={text.addExpense}
-              onClick={() => setExpenseComposerOpen(true)}
+              onClick={() => {
+                setEditingExpense(null);
+                setExpenseComposerOpen(true);
+              }}
             >
               <Plus aria-hidden="true" size={26} />
             </button>
@@ -902,13 +1011,39 @@ export function App() {
           members={members}
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
-          onClose={() => setExpenseComposerOpen(false)}
+          initialExpense={editingExpense ?? undefined}
+          onClose={() => {
+            setExpenseComposerOpen(false);
+            setEditingExpense(null);
+          }}
           onSubmit={handleExpenseDraftSubmit}
           onImageError={() => showToast(text.photoError)}
         />
       ) : null}
 
-      {dialog ? (
+      {dialog === "profile" ? (
+        <ProfileDialog
+          profile={profile}
+          onClose={() => setDialog(null)}
+          onSave={saveProfile}
+          onToast={showToast}
+        />
+      ) : null}
+
+      {dialog === "expenseDetail" && selectedExpense ? (
+        <ExpenseDetailDialog
+          expense={selectedExpense}
+          members={members}
+          onClose={() => {
+            setDialog(null);
+            setSelectedExpenseId("");
+          }}
+          onEdit={openExpenseEdit}
+          onDelete={deleteExpense}
+        />
+      ) : null}
+
+      {dialog && dialog !== "profile" && dialog !== "expenseDetail" ? (
         <div
           className="modal-backdrop"
           role="presentation"
@@ -1018,7 +1153,12 @@ export function App() {
                   <span className="dialog-list-title">{text.expense}</span>
                   {expenses.length ? (
                     expenses.map((expense) => (
-                      <button className="record-dialog-row" type="button" key={expense.id}>
+                      <button
+                        className="record-dialog-row"
+                        type="button"
+                        key={expense.id}
+                        onClick={() => openExpenseDetail(expense.id)}
+                      >
                         {expense.imageDataUrl ? (
                           <span className="record-dialog-thumb">
                             <img src={expense.imageDataUrl} alt="" />
@@ -1096,6 +1236,38 @@ export function App() {
                       </div>
                     );
                   })}
+                </div>
+                <div className="dialog-section-list">
+                  <span className="dialog-list-title">{UI_TEXT.settlement.suggestionSectionTitle}</span>
+                  {settlementTransfers.length ? (
+                    settlementTransfers.map((transfer) => {
+                      const from = members.find((member) => member.id === transfer.fromMemberId);
+                      const to = members.find((member) => member.id === transfer.toMemberId);
+                      return (
+                        <div className="settlement-suggestion-row" key={`${transfer.fromMemberId}_${transfer.toMemberId}`}>
+                          <div className="settlement-suggestion-person">
+                            <span className="member-avatar lime">{initial(from?.name)}</span>
+                            <strong>{from?.name ?? ""}</strong>
+                          </div>
+                          <b>{"\u2192"}</b>
+                          <div className="settlement-suggestion-person">
+                            <span className="member-avatar photo">{initial(to?.name)}</span>
+                            <strong>{to?.name ?? ""}</strong>
+                          </div>
+                          <span className="settlement-suggestion-amount">{formatTwd(transfer.amount.amount_minor)}</span>
+                          <button
+                            className="composer-mini-action"
+                            type="button"
+                            onClick={() => settleTransfer(transfer.fromMemberId, transfer.toMemberId, transfer.amount.amount_minor)}
+                          >
+                            {UI_TEXT.settlement.settleAction}
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="dialog-empty">{UI_TEXT.settlement.settled}</p>
+                  )}
                 </div>
               </>
             ) : null}

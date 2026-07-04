@@ -25,3 +25,13 @@ export const ACTION_ICON_NAMES = {
   openGroupDrawer: "Menu",
   openGroupSettings: "Settings",
 } as const;
+
+export const PROFILE_ICON_NAMES = {
+  editName: "Pencil",
+  logout: "LogOut",
+  appleAccount: "Apple",
+  switchTheme: "Contrast",
+  languageSetting: "Globe",
+  privacyPolicy: "Lock",
+  termsOfService: "FileText",
+} as const;

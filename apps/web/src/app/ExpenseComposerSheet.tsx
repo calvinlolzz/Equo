@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
-import type { Member } from "./appTypes";
+import type { Expense, Member } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
 import { convertToGroupAmountMinor } from "./expenseCurrency";
 import { canSubmitExpenseDraft } from "./expenseDraft";
+import { buildExpenseEditPrefill } from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { buildEqualShareAmountsMinor, getCustomSplitRemainderMinor } from "./expenseShareSplit";
 import { UI_TEXT } from "./uiText";
@@ -47,6 +48,7 @@ export function ExpenseComposerSheet({
   members,
   groupCurrency,
   currencyOptions,
+  initialExpense,
   onClose,
   onSubmit,
   onImageError,
@@ -54,24 +56,34 @@ export function ExpenseComposerSheet({
   members: Member[];
   groupCurrency: string;
   currencyOptions: Array<{ code: string; label: string }>;
+  initialExpense?: Expense;
   onClose: () => void;
   onSubmit: (draft: ExpenseDraft) => void;
   onImageError?: () => void;
 }) {
+  const editPrefill = useMemo(
+    () => (initialExpense ? buildExpenseEditPrefill(initialExpense, groupCurrency) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const [composerMode, setComposerMode] = useState<ComposerMode>("expense");
-  const [composerCategory, setComposerCategory] = useState<string>("general");
-  const [composerDateTime, setComposerDateTime] = useState<string>(() => toLocalDateTimeInputValue(new Date().toISOString()));
-  const [composerCurrency, setComposerCurrency] = useState<string>(groupCurrency);
-  const [composerExchangeRate, setComposerExchangeRate] = useState<string>("1");
-  const [composerTitle, setComposerTitle] = useState<string>("");
-  const [composerAmount, setComposerAmount] = useState("");
-  const [composerPayerId, setComposerPayerId] = useState(members[0]?.id ?? "");
-  const [composerShareIds, setComposerShareIds] = useState<string[]>(members.map((member) => member.id));
+  const [composerCategory, setComposerCategory] = useState<string>(editPrefill?.category ?? "general");
+  const [composerDateTime, setComposerDateTime] = useState<string>(() =>
+    toLocalDateTimeInputValue(editPrefill?.dateTimeIso ?? new Date().toISOString()),
+  );
+  const [composerCurrency, setComposerCurrency] = useState<string>(editPrefill?.currency ?? groupCurrency);
+  const [composerExchangeRate, setComposerExchangeRate] = useState<string>(editPrefill?.exchangeRate ?? "1");
+  const [composerTitle, setComposerTitle] = useState<string>(editPrefill?.title ?? "");
+  const [composerAmount, setComposerAmount] = useState(editPrefill?.amount ?? "");
+  const [composerPayerId, setComposerPayerId] = useState(editPrefill?.payerId ?? members[0]?.id ?? "");
+  const [composerShareIds, setComposerShareIds] = useState<string[]>(
+    editPrefill?.shareMemberIds ?? members.map((member) => member.id),
+  );
   const [composerPayerExpanded, setComposerPayerExpanded] = useState(false);
-  const [composerCustomSplit, setComposerCustomSplit] = useState(false);
-  const [composerShareAmounts, setComposerShareAmounts] = useState<Record<string, string>>({});
-  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>("");
-  const [composerNote, setComposerNote] = useState("");
+  const [composerCustomSplit, setComposerCustomSplit] = useState(editPrefill?.isCustomSplit ?? false);
+  const [composerShareAmounts, setComposerShareAmounts] = useState<Record<string, string>>(editPrefill?.shareAmounts ?? {});
+  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>(editPrefill?.imageDataUrl ?? "");
+  const [composerNote, setComposerNote] = useState(editPrefill?.note ?? "");
 
   const composerNeedsExchangeRate = composerCurrency !== groupCurrency;
   const composerTotalAmountMinor = composerNeedsExchangeRate
@@ -203,7 +215,7 @@ export function ExpenseComposerSheet({
         <div className="sheet-drag-handle" aria-hidden="true" />
         <div className="composer-header">
           <p className="eyebrow">Expense</p>
-          <h2>{text.addExpense}</h2>
+          <h2>{initialExpense ? text.editExpense : text.addExpense}</h2>
         </div>
 
         <div className="composer-type-row segmented-control" role="tablist" aria-label={text.addExpense}>
@@ -420,7 +432,7 @@ export function ExpenseComposerSheet({
         <p className="composer-hint">{composerSubmitState.hint}</p>
 
         <button className="composer-submit-full" type="button" disabled={composerSubmitState.disabled} onClick={submitExpense}>
-          {composerSubmitState.label}
+          {initialExpense && composerMode === "expense" ? text.saveChanges : composerSubmitState.label}
         </button>
       </section>
     </div>

@@ -3305,3 +3305,320 @@ label span {
     animation: none;
   }
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.profile-dot img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-avatar-picker {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  color: #07110f;
+  background: #ffd67a;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.profile-avatar-picker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-name-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-name-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: #f7fbf8;
+  background: transparent;
+  font-size: 17px;
+}
+
+.profile-name-display strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.profile-name-input {
+  width: 100%;
+  max-width: 160px;
+  border-radius: 10px;
+  padding: 6px 10px;
+  color: #f7fbf8;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 16px;
+}
+
+.profile-logout-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 0;
+  color: #ff9d9d;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.profile-tab-bar {
+  position: relative;
+  display: inline-flex;
+  gap: 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 10px;
+}
+
+.profile-tab-indicator {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 50%;
+  height: 2px;
+  background: #ffd67a;
+  transition: transform 200ms ease;
+}
+
+.profile-tab {
+  padding: 0 0 4px;
+  color: rgba(247, 251, 248, 0.5);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 860;
+}
+
+.profile-tab.active {
+  color: #f7fbf8;
+}
+
+.profile-account-list,
+.profile-other-list {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.profile-account-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+
+.profile-account-info {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-account-info strong {
+  font-size: 14px;
+}
+
+.profile-account-info small {
+  color: rgba(247, 251, 248, 0.5);
+  font-size: 12px;
+}
+
+.profile-link-action {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: #07110f;
+  background: #ffd67a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.profile-other-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #f7fbf8;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.info-subdialog-backdrop {
+  z-index: 60;
+}
+
+.settlement-more-line {
+  margin-top: 8px;
+  color: rgba(247, 251, 248, 0.58);
+  font-size: 12px;
+}
+
+.settlement-suggestion-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.settlement-suggestion-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settlement-suggestion-person strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settlement-suggestion-amount {
+  font-weight: 860;
+  white-space: nowrap;
+}
+
+.expense-detail-dialog {
+  width: min(420px, 100%);
+}
+
+.expense-detail-image {
+  border-radius: 16px;
+  overflow: hidden;
+  max-height: 220px;
+}
+
+.expense-detail-image img {
+  width: 100%;
+  height: 100%;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+.expense-detail-settlement-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.expense-detail-person {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.expense-detail-person small {
+  color: rgba(247, 251, 248, 0.52);
+  font-size: 12px;
+}
+
+.expense-detail-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.expense-detail-stat-grid > div {
+  display: grid;
+  gap: 4px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.expense-detail-stat-grid span {
+  color: rgba(247, 251, 248, 0.52);
+  font-size: 12px;
+}
+
+.expense-detail-source-line {
+  margin: 0;
+  color: rgba(247, 251, 248, 0.58);
+  font-size: 13px;
+}
+
+.expense-detail-payer-row {
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  .profile-dialog {
+    width: 100%;
+  }
+
+  .settlement-suggestion-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "from to"
+      "amount action";
+  }
+
+  .settlement-suggestion-row b {
+    display: none;
+  }
+
+  .settlement-suggestion-row .settlement-suggestion-person:first-child {
+    grid-area: from;
+  }
+
+  .settlement-suggestion-row .settlement-suggestion-person:last-of-type {
+    grid-area: to;
+  }
+
+  .settlement-suggestion-row .settlement-suggestion-amount {
+    grid-area: amount;
+  }
+
+  .settlement-suggestion-row .composer-mini-action {
+    grid-area: action;
+    justify-self: end;
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTION_ICON_NAMES, COMPOSER_MODE_ICON_NAMES, SIDE_NAV_ICON_NAMES } from "./appIconography";
+import { ACTION_ICON_NAMES, COMPOSER_MODE_ICON_NAMES, PROFILE_ICON_NAMES, SIDE_NAV_ICON_NAMES } from "./appIconography";
 
 describe("app iconography", () => {
   it("matches Pizo-like group navigation semantics", () => {
@@ -33,6 +33,18 @@ describe("app iconography", () => {
       close: "X",
       openGroupDrawer: "Menu",
       openGroupSettings: "Settings",
+    });
+  });
+
+  it("documents the profile dialog icon choices", () => {
+    expect(PROFILE_ICON_NAMES).toEqual({
+      editName: "Pencil",
+      logout: "LogOut",
+      appleAccount: "Apple",
+      switchTheme: "Contrast",
+      languageSetting: "Globe",
+      privacyPolicy: "Lock",
+      termsOfService: "FileText",
     });
   });
 });
