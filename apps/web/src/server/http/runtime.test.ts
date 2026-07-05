@@ -159,6 +159,58 @@ describe("createHttpRuntime", () => {
     expect(response.status).toBe(201);
   });
 
+  test("skips the per-request user upsert once a session token is issued (fast path)", async () => {
+    let userUpsertCount = 0;
+    const client = makeClient();
+    const countingClient: SupabaseQueryClient = {
+      ...client,
+      async one(sql, params) {
+        if (sql.includes("insert into public.users")) {
+          userUpsertCount += 1;
+        }
+        return client.one(sql, params);
+      },
+    };
+
+    const runtime = createHttpRuntime({
+      client: countingClient,
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: idToken,
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+      sessionSecret: "session-secret",
+      now: 1_000,
+    });
+
+    const login = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/auth/google",
+      headers: {},
+      json: { id_token: "google-alice" },
+    });
+    const sessionToken = (login.body as { session: { token: string } }).session.token;
+
+    expect(userUpsertCount).toBe(1); // the login exchange itself still upserts once.
+
+    await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups",
+      headers: { authorization: `Bearer ${sessionToken}` },
+      json: { client_request_id: "req_group", name: "Tokyo Trip", currency: "TWD" },
+    });
+    await runtime.handle({
+      method: "GET",
+      path: "/api/v1/groups",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+
+    // Neither subsequent session-token request should touch public.users again.
+    expect(userUpsertCount).toBe(1);
+  });
+
   test("authorizes API routes from the Equo session cookie", async () => {
     const runtime = createHttpRuntime({
       client: makeClient(),

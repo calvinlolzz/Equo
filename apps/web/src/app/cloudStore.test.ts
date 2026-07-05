@@ -67,7 +67,7 @@ describe("createCloudGroupsStore", () => {
     expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
   });
 
-  test("createGroup calls the api then refreshes the group list", async () => {
+  test("createGroup applies the response locally with no follow-up fetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
 
@@ -77,13 +77,32 @@ describe("createCloudGroupsStore", () => {
     expect(apiClient.createGroup).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Tokyo Trip", currency: "TWD", client_request_id: expect.any(String) }),
     );
-    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(apiClient.listGroups).not.toHaveBeenCalled();
+    expect(apiClient.getGroupDetail).not.toHaveBeenCalled();
     expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
+    expect(store.getState().groupDetails.group_1).toEqual({
+      group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
+      members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false }],
+      expenses: [],
+    });
   });
 
-  test("renameGroup updates the group then refreshes list and detail", async () => {
-    const apiClient = makeFakeApiClient();
+  test("createGroup inserts the new group at the head of an existing list", async () => {
+    const existingGroup = { id: "group_0", name: "Old Trip", currency: "TWD", owner_member_id: "member_0" };
+    const apiClient = makeFakeApiClient({ listGroups: vi.fn(async () => ({ groups: [existingGroup] })) });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+
+    await store.createGroup({ name: "Tokyo Trip", currency: "TWD" });
+
+    expect(store.getState().groups.map((group) => group.id)).toEqual(["group_1", "group_0"]);
+  });
+
+  test("renameGroup patches the group list entry and detail cache locally, no refetch", async () => {
+    const apiClient = makeFakeApiClient({ updateGroup: vi.fn(async () => ({ group: { ...group1, name: "Osaka Trip" } })) });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+    await store.refreshGroupDetail("group_1");
 
     await store.renameGroup("group_1", "Osaka Trip");
 
@@ -93,11 +112,14 @@ describe("createCloudGroupsStore", () => {
     });
     expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    expect(store.getState().groups[0].name).toBe("Osaka Trip");
+    expect(store.getState().groupDetails.group_1.group.name).toBe("Osaka Trip");
   });
 
-  test("addVirtualMember creates the member then refreshes detail", async () => {
+  test("addVirtualMember appends the mapped member to the cached detail, no refetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
 
     await store.addVirtualMember("group_1", "Bob");
 
@@ -106,18 +128,32 @@ describe("createCloudGroupsStore", () => {
       display_name: "Bob",
     });
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    expect(store.getState().groupDetails.group_1.members).toEqual([
+      { id: "member_1", name: "Alice", role: "owner", virtual: false },
+      { id: "member_2", name: "Bob", role: "member", virtual: true },
+    ]);
   });
 
-  test("archiveGroup and deleteGroup refresh the group list", async () => {
+  test("archiveGroup and deleteGroup remove the group from state with no refetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+    await store.refreshGroupDetail("group_1");
 
     await store.archiveGroup("group_1");
-    await store.deleteGroup("group_1");
 
     expect(apiClient.archiveGroup).toHaveBeenCalledWith("group_1", { client_request_id: expect.any(String) });
+    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(store.getState().groups).toEqual([]);
+    expect(store.getState().groupDetails.group_1).toBeUndefined();
+
+    await store.refreshGroups();
+    await store.refreshGroupDetail("group_1");
+    await store.deleteGroup("group_1");
+
     expect(apiClient.deleteGroup).toHaveBeenCalledWith("group_1", { client_request_id: expect.any(String) });
-    expect(apiClient.listGroups).toHaveBeenCalledTimes(2);
+    expect(store.getState().groups).toEqual([]);
+    expect(store.getState().groupDetails.group_1).toBeUndefined();
   });
 
   test("listArchivedGroups maps cover_image_url and returns the archived list", async () => {
@@ -144,7 +180,7 @@ describe("createCloudGroupsStore", () => {
     ]);
   });
 
-  test("unarchiveGroup calls the api then refreshes the group list", async () => {
+  test("unarchiveGroup inserts the returned group into state with no full list refetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
 
@@ -152,7 +188,8 @@ describe("createCloudGroupsStore", () => {
 
     expect(group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
     expect(apiClient.unarchiveGroup).toHaveBeenCalledWith("group_1", { client_request_id: expect.any(String) });
-    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(apiClient.listGroups).not.toHaveBeenCalled();
+    expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
   });
 
   test("uploadGroupImage returns the uploaded url", async () => {
@@ -169,9 +206,13 @@ describe("createCloudGroupsStore", () => {
     });
   });
 
-  test("updateGroupCover updates the group then refreshes list and detail", async () => {
-    const apiClient = makeFakeApiClient();
+  test("updateGroupCover patches the group list entry and detail cache locally, no refetch", async () => {
+    const apiClient = makeFakeApiClient({
+      updateGroup: vi.fn(async () => ({ group: { ...group1, cover_image_url: "https://cdn.equo.local/cover.jpg" } })),
+    });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+    await store.refreshGroupDetail("group_1");
 
     await store.updateGroupCover("group_1", "Tokyo Trip", "https://cdn.equo.local/cover.jpg");
 
@@ -182,11 +223,14 @@ describe("createCloudGroupsStore", () => {
     });
     expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    expect(store.getState().groups[0].coverImageUrl).toBe("https://cdn.equo.local/cover.jpg");
+    expect(store.getState().groupDetails.group_1.group.coverImageUrl).toBe("https://cdn.equo.local/cover.jpg");
   });
 
-  test("addExpense maps the draft then refreshes group detail", async () => {
+  test("addExpense builds the expense locally from the draft + response, no refetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
 
     await store.addExpense("group_1", baseDraft, "TWD");
 
@@ -195,11 +239,69 @@ describe("createCloudGroupsStore", () => {
       expect.objectContaining({ kind: "expense", amount_minor: 1000, currency: "TWD" }),
     );
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    const expenses = store.getState().groupDetails.group_1.expenses;
+    expect(expenses).toHaveLength(1);
+    expect(expenses[0]).toMatchObject({
+      id: "expense_1",
+      title: "Dinner",
+      amountMinor: 1000,
+      currency: "TWD",
+      payerId: "member_1",
+      shareMemberIds: ["member_1"],
+      kind: "expense",
+      category: "food",
+    });
   });
 
-  test("editExpense soft-deletes the old expense then creates the replacement", async () => {
-    const apiClient = makeFakeApiClient();
+  test("addExpense prepends the new expense ahead of existing ones", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () => ({
+        group: group1,
+        members: [member1],
+        expenses: [
+          {
+            id: "expense_0",
+            group_id: "group_1",
+            title: "Older",
+            kind: "expense",
+            amount_minor: 500,
+            currency: "TWD",
+            version: 1,
+            client_request_id: "req_0",
+          },
+        ],
+        balances: [],
+      })),
+    });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    await store.addExpense("group_1", baseDraft, "TWD");
+
+    const expenses = store.getState().groupDetails.group_1.expenses;
+    expect(expenses.map((expense) => expense.id)).toEqual(["expense_1", "expense_0"]);
+  });
+
+  test("editExpense soft-deletes the old expense, creates the replacement, and replaces it in place locally", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () => ({
+        group: group1,
+        members: [member1],
+        expenses: [
+          {
+            id: "expense_1",
+            group_id: "group_1",
+            title: "Lunch (old)",
+            kind: "expense",
+            amount_minor: 800,
+            currency: "TWD",
+            version: 1,
+            client_request_id: "req_orig",
+          },
+        ],
+        balances: [],
+      })),
+    });
     const calls: string[] = [];
     (apiClient.deleteExpense as any).mockImplementation(async () => {
       calls.push("delete");
@@ -209,6 +311,8 @@ describe("createCloudGroupsStore", () => {
       calls.push("create");
       return { expense: { id: "expense_2", title: "Lunch", amount_minor: 1000, currency: "TWD" } };
     });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
 
     await store.editExpense("group_1", "expense_1", baseDraft, "TWD");
 
@@ -216,11 +320,35 @@ describe("createCloudGroupsStore", () => {
     expect(apiClient.deleteExpense).toHaveBeenCalledWith("group_1", "expense_1", {
       client_request_id: expect.any(String),
     });
+    expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    const expenses = store.getState().groupDetails.group_1.expenses;
+    expect(expenses).toHaveLength(1);
+    expect(expenses[0].id).toBe("expense_2");
+    expect(expenses[0].title).toBe("Lunch");
   });
 
-  test("deleteExpense calls the delete endpoint then refreshes detail", async () => {
-    const apiClient = makeFakeApiClient();
+  test("deleteExpense removes the expense from the cached detail, no refetch", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () => ({
+        group: group1,
+        members: [member1],
+        expenses: [
+          {
+            id: "expense_1",
+            group_id: "group_1",
+            title: "Lunch",
+            kind: "expense",
+            amount_minor: 1000,
+            currency: "TWD",
+            version: 1,
+            client_request_id: "req_1",
+          },
+        ],
+        balances: [],
+      })),
+    });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
 
     await store.deleteExpense("group_1", "expense_1");
 
@@ -228,11 +356,15 @@ describe("createCloudGroupsStore", () => {
       client_request_id: expect.any(String),
     });
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    expect(store.getState().groupDetails.group_1.expenses).toEqual([]);
   });
 
-  test("settleTransfer creates a transfer-kind expense then refreshes detail", async () => {
-    const apiClient = makeFakeApiClient();
+  test("settleTransfer creates a transfer-kind expense and prepends the settlement locally, no refetch", async () => {
+    const apiClient = makeFakeApiClient({
+      createExpense: vi.fn(async () => ({ expense: { id: "expense_settle_1", title: "Settle up", amount_minor: 500, currency: "TWD" } })),
+    });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
 
     await store.settleTransfer("group_1", "member_1", "member_2", 500, "TWD");
 
@@ -241,6 +373,15 @@ describe("createCloudGroupsStore", () => {
       expect.objectContaining({ kind: "transfer", transfer_to_member_id: "member_2", amount_minor: 500 }),
     );
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    const expenses = store.getState().groupDetails.group_1.expenses;
+    expect(expenses).toHaveLength(1);
+    expect(expenses[0]).toMatchObject({
+      id: "expense_settle_1",
+      kind: "settlement",
+      payerId: "member_1",
+      shareMemberIds: ["member_2"],
+      amountMinor: 500,
+    });
   });
 
   test("createInvite returns the real token from the api", async () => {
@@ -256,7 +397,7 @@ describe("createCloudGroupsStore", () => {
     });
   });
 
-  test("acceptInvite joins the group then refreshes the group list", async () => {
+  test("acceptInvite joins the group and inserts it into state with no full list refetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
 
@@ -267,7 +408,8 @@ describe("createCloudGroupsStore", () => {
       client_request_id: expect.any(String),
       display_name: "Guest",
     });
-    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(apiClient.listGroups).not.toHaveBeenCalled();
+    expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
   });
 
   test("calls onSessionExpired and throws when the api reports UNAUTHENTICATED via error.code", async () => {
@@ -295,6 +437,27 @@ describe("createCloudGroupsStore", () => {
 
     await expect(store.addExpense("group_1", baseDraft, "TWD")).rejects.toThrow("Amount must be positive.");
     expect(onSessionExpired).not.toHaveBeenCalled();
+  });
+
+  test("on mutation failure, fires a background refresh to re-sync truth", async () => {
+    const apiClient = makeFakeApiClient({
+      updateGroup: vi.fn(async () => {
+        throw new Error("Network blip.");
+      }),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+    await store.refreshGroupDetail("group_1");
+    (apiClient.listGroups as any).mockClear();
+    (apiClient.getGroupDetail as any).mockClear();
+
+    await expect(store.renameGroup("group_1", "Osaka Trip")).rejects.toThrow("Network blip.");
+
+    // The background resync is fire-and-forget; give its microtasks a tick.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
   });
 
   test("subscribe notifies listeners on state changes", async () => {

@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { validateCreateExpenseRequest } from "../contracts/validation";
 import type { GroupDetail } from "./apiClient";
 import {
+  draftToExpense,
+  settlementTransferToDraft,
   toCreateExpenseRequest,
   toExpense,
   toGroup,
@@ -311,6 +313,107 @@ describe("toSettlementTransferRequest", () => {
       expense_payments: request.expense_payments,
       expense_shares: request.expense_shares,
     });
+
+    expect(expense.kind).toBe("settlement");
+    expect(expense.payerId).toBe("member_1");
+    expect(expense.shareMemberIds).toEqual(["member_2"]);
+    expect(expense.amountMinor).toBe(500);
+  });
+});
+
+describe("draftToExpense", () => {
+  const baseDraft: ExpenseDraft = {
+    title: "Lunch",
+    amountMinor: 1000,
+    createdAt: "2026-07-04T10:30:00.000Z",
+    payerId: "member_1",
+    shareMemberIds: ["member_1", "member_2"],
+    category: "food",
+  };
+
+  test("builds a local Expense from the draft plus createExpense's response, no server round-trip needed", () => {
+    const response = { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" };
+
+    const expense = draftToExpense(baseDraft, response);
+
+    expect(expense).toEqual({
+      id: "expense_1",
+      title: "Lunch",
+      amountMinor: 1000,
+      currency: "TWD",
+      createdAt: "2026-07-04T10:30:00.000Z",
+      payerId: "member_1",
+      shareMemberIds: ["member_1", "member_2"],
+      kind: "expense",
+      category: "food",
+      note: undefined,
+      imageUrl: undefined,
+      shareAmountsMinor: { member_1: 500, member_2: 500 },
+    });
+  });
+
+  test("uses draft.shareAmountsMinor for a custom split instead of an equal one", () => {
+    const draft: ExpenseDraft = { ...baseDraft, shareAmountsMinor: { member_1: 700, member_2: 300 } };
+    const response = { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" };
+
+    const expense = draftToExpense(draft, response);
+
+    expect(expense.shareAmountsMinor).toEqual({ member_1: 700, member_2: 300 });
+  });
+
+  test("passes note and imageUrl through from the draft when present", () => {
+    const draft: ExpenseDraft = { ...baseDraft, note: "extra", imageUrl: "https://cdn.equo.local/expense.jpg" };
+    const response = { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" };
+
+    const expense = draftToExpense(draft, response);
+
+    expect(expense.note).toBe("extra");
+    expect(expense.imageUrl).toBe("https://cdn.equo.local/expense.jpg");
+  });
+
+  test("defaults kind to expense, accepts an explicit kind override for settlements", () => {
+    const response = { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" };
+    expect(draftToExpense(baseDraft, response).kind).toBe("expense");
+    expect(draftToExpense(baseDraft, response, "settlement").kind).toBe("settlement");
+  });
+
+  test("round-trips the same shape toExpense would produce from a refetched server row", () => {
+    const response = { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" };
+    const local = draftToExpense(baseDraft, response);
+
+    const refetched = toExpense({
+      id: "expense_1",
+      group_id: "group_1",
+      title: "Lunch",
+      kind: "expense",
+      category: "food",
+      amount_minor: 1000,
+      currency: "TWD",
+      created_at: baseDraft.createdAt,
+      version: 1,
+      client_request_id: "req_1",
+      expense_payments: [{ payer_member_id: "member_1", amount_minor: 1000, currency: "TWD" }],
+      expense_shares: [
+        { member_id: "member_1", share_type: "fixed", amount_minor: 500 },
+        { member_id: "member_2", share_type: "fixed", amount_minor: 500 },
+      ],
+    });
+
+    expect(local).toEqual(refetched);
+  });
+});
+
+describe("settlementTransferToDraft", () => {
+  test("builds a draft shaped like toSettlementTransferRequest, so draftToExpense recovers a settlement's shareMemberIds/payerId", () => {
+    const draft = settlementTransferToDraft("member_1", "member_2", 500);
+
+    expect(draft.payerId).toBe("member_1");
+    expect(draft.shareMemberIds).toEqual(["member_2"]);
+    expect(draft.amountMinor).toBe(500);
+    expect(draft.shareAmountsMinor).toEqual({ member_2: 500 });
+
+    const response = { id: "expense_settle_1", title: draft.title, amount_minor: 500, currency: "TWD" };
+    const expense = draftToExpense(draft, response, "settlement");
 
     expect(expense.kind).toBe("settlement");
     expect(expense.payerId).toBe("member_1");

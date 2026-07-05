@@ -1763,6 +1763,16 @@ label span {
   background: #ffd67a;
 }
 
+.primary-action:disabled,
+.secondary-action:disabled,
+.danger-action:disabled,
+.create-submit:disabled,
+.composer-mini-action:disabled,
+.settlement-clear-action:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .activity-panel {
   padding: 20px;
 }

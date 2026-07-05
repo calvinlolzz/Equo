@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
@@ -87,6 +87,11 @@ export function ExpenseComposerSheet({
   const [composerImageUrl, setComposerImageUrl] = useState<string>(editPrefill?.imageUrl ?? "");
   const [composerNote, setComposerNote] = useState(editPrefill?.note ?? "");
   const [composerSubmitting, setComposerSubmitting] = useState(false);
+  // Synchronous double-submit guard: composerSubmitting is React state, so
+  // two rapid clicks on the submit button can both read it as false before
+  // the first click's setState commits. This ref is set/checked in the same
+  // tick the click handler runs, closing that race.
+  const composerSubmittingRef = useRef(false);
 
   const composerNeedsExchangeRate = composerCurrency !== groupCurrency;
   const composerTotalAmountMinor = composerNeedsExchangeRate
@@ -171,6 +176,7 @@ export function ExpenseComposerSheet({
 
   async function submitExpense() {
     if (members.length === 0) return;
+    if (composerSubmittingRef.current) return;
     const totalAmountMinor = composerNeedsExchangeRate
       ? convertToGroupAmountMinor({ amount: composerAmount, exchangeRate: composerExchangeRate })
       : Math.round((Number(composerAmount) || 0) * 100);
@@ -210,10 +216,12 @@ export function ExpenseComposerSheet({
       draft.sourceAmountMinor = Math.round((Number(composerAmount) || 0) * 100);
       draft.exchangeRate = Number(composerExchangeRate) || 1;
     }
+    composerSubmittingRef.current = true;
     setComposerSubmitting(true);
     try {
       await onSubmit(draft);
     } finally {
+      composerSubmittingRef.current = false;
       setComposerSubmitting(false);
     }
   }
@@ -452,7 +460,11 @@ export function ExpenseComposerSheet({
           disabled={composerSubmitState.disabled || composerSubmitting}
           onClick={submitExpense}
         >
-          {initialExpense && composerMode === "expense" ? text.saveChanges : composerSubmitState.label}
+          {composerSubmitting
+            ? text.savingChanges
+            : initialExpense && composerMode === "expense"
+              ? text.saveChanges
+              : composerSubmitState.label}
         </button>
       </section>
     </div>

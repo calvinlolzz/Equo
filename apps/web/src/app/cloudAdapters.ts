@@ -8,6 +8,18 @@ import { UI_TEXT } from "./uiText";
 const text = UI_TEXT.app;
 
 /**
+ * The subset of createExpense's response this app actually reads today
+ * (apiClient.createExpense's return type) - just enough to seed the locally
+ * built Expense with server-assigned identity/canonical amount fields.
+ */
+export type CreateExpenseResponse = {
+  id: string;
+  title: string;
+  amount_minor: number;
+  currency: string;
+};
+
+/**
  * Map a cloud GroupSummary to the local Group shape used by every existing
  * UI surface (home, rail, records, analysis, etc).
  */
@@ -209,5 +221,70 @@ export function toSettlementTransferRequest(
         amount_minor: amountMinor,
       },
     ],
+  };
+}
+
+/**
+ * Build a local Expense from a composer draft plus createExpense's response,
+ * without any follow-up fetch. This is the client-side mirror of what the
+ * server just persisted from toCreateExpenseRequest(draft, groupCurrency):
+ * - id comes from the response (the only server-assigned field we need).
+ * - title/amount_minor/currency also come from the response since they are
+ *   the canonical, possibly-normalized values the server stored (and are
+ *   already returned by createExpense), but they match the draft byte-for-
+ *   byte in every current call site.
+ * - Everything else (category/note/imageUrl/payerId/shareMemberIds/
+ *   shareAmountsMinor/createdAt/kind) is derived straight from the draft,
+ *   mirroring the exact mapping toCreateExpenseRequest used to build the
+ *   request: shareAmountsMinor falls back to an equal split when the draft
+ *   didn't provide a custom one, kind defaults to "expense" (settlement
+ *   transfers pass kind: "transfer" explicitly via toSettlementTransferRequest
+ *   equivalents below), and createdAt passes the draft's ISO string through
+ *   unchanged (created_at from the server would only differ in server clock
+ *   skew, which the UI doesn't depend on).
+ */
+export function draftToExpense(
+  draft: ExpenseDraft,
+  response: CreateExpenseResponse,
+  kind: Expense["kind"] = "expense",
+): Expense {
+  const shareAmountsMinor = draft.shareAmountsMinor ?? buildEqualShareAmountsMinor(draft.shareMemberIds, draft.amountMinor);
+
+  return {
+    id: response.id,
+    title: response.title,
+    amountMinor: response.amount_minor,
+    currency: response.currency,
+    createdAt: draft.createdAt,
+    payerId: draft.payerId,
+    shareMemberIds: draft.shareMemberIds,
+    kind,
+    category: draft.category,
+    note: draft.note,
+    imageUrl: draft.imageUrl,
+    shareAmountsMinor,
+  };
+}
+
+/**
+ * Build the ExpenseDraft-shaped input draftToExpense needs for a settlement
+ * transfer, mirroring toSettlementTransferRequest's shape exactly (title,
+ * category, single-member share to the recipient) so the resulting local
+ * Expense round-trips the same way a refetched settlement would via
+ * toExpense: kind "settlement", shareMemberIds [toId].
+ */
+export function settlementTransferToDraft(
+  fromId: string,
+  toId: string,
+  amountMinor: number,
+): ExpenseDraft {
+  return {
+    title: text.settlementTransfer,
+    amountMinor,
+    createdAt: new Date().toISOString(),
+    payerId: fromId,
+    shareMemberIds: [toId],
+    category: "general",
+    shareAmountsMinor: { [toId]: amountMinor },
   };
 }

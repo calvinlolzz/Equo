@@ -103,6 +103,11 @@ export const UI_TEXT = {
     restoreGroup: "還原群組",
     restoredGroupPrefix: "已還原群組：",
     noArchivedGroups: "目前沒有已封存的群組",
+    creatingGroup: "建立中…",
+    savingChanges: "儲存中…",
+    processing: "處理中…",
+    joiningGroup: "加入中…",
+    restoringGroup: "還原中…",
   },
   login: {
     tagline: "記帳分帳，輕鬆結清",

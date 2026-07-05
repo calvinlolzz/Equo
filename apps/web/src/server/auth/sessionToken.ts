@@ -90,6 +90,11 @@ export function verifySessionToken(token: string, secret: string, now = Date.now
       email: payload.email,
       display_name: payload.display_name,
       avatar_url: payload.avatar_url,
+      // A verified equo1 session token always encodes an already-resolved
+      // user (see createSessionToken's callers in authRoutes.ts, which only
+      // ever sign a token after upsertUserByGoogleIdentity succeeds) - mark
+      // it so route context builders can skip the redundant upsert.
+      resolved_user_id: payload.auth_user_id,
     };
   } catch {
     return null;

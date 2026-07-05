@@ -20,6 +20,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { createActionGuard } from "./actionGuard";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
 import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
@@ -178,6 +179,13 @@ export function App() {
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // pendingAction gates every mutation control's disabled/busy label. The
+  // guard (see actionGuard.ts) is the synchronous double-submit check -
+  // begin()/end() mutate a plain field, not React state, so two clicks in
+  // the same tick can't both pass; pendingAction (state) just re-renders the
+  // button to show the busy label.
+  const actionGuardRef = useRef(createActionGuard());
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
@@ -399,6 +407,23 @@ export function App() {
     }, 2600);
   }
 
+  /**
+   * Synchronous double-submit guard for mutation controls: returns false
+   * (does nothing else) if an action is already in flight, so callers can
+   * bail out before doing any work. See actionGuard.ts for why this can't
+   * just be a useState flag.
+   */
+  function beginAction(key: string): boolean {
+    if (!actionGuardRef.current.begin(key)) return false;
+    setPendingAction(key);
+    return true;
+  }
+
+  function endAction() {
+    actionGuardRef.current.end();
+    setPendingAction(null);
+  }
+
   function selectGroup(group: Group) {
     setActiveGroupId(group.id);
     setGroupRoute(group.id);
@@ -407,6 +432,10 @@ export function App() {
 
   async function createGroup() {
     if (!cloudStore) return;
+    // Synchronous guard checked before anything else, including the
+    // cloudStore null-check above having already run: two fast clicks both
+    // enter this function, but only the first passes beginAction.
+    if (!beginAction("createGroup")) return;
     const template = templates.find((item) => item.id === selectedTemplate) ?? templates[0];
     const name = groupName.trim() || template.defaultName;
     const pickedCover = groupCoverDataUrl;
@@ -430,6 +459,8 @@ export function App() {
       }
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
     }
   }
 
@@ -455,6 +486,7 @@ export function App() {
     if (!activeGroup || !cloudStore) return;
     const name = groupName.trim();
     if (!name) return;
+    if (!beginAction("editGroup")) return;
 
     setBusy(true);
     try {
@@ -472,6 +504,7 @@ export function App() {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
     } finally {
       setBusy(false);
+      endAction();
     }
   }
 
@@ -490,7 +523,7 @@ export function App() {
   }
 
   async function unarchiveGroup(group: ArchivedGroupData) {
-    if (!cloudStore) return;
+    if (!cloudStore || unarchivingGroupId) return;
     setUnarchivingGroupId(group.id);
     try {
       await cloudStore.unarchiveGroup(group.id);
@@ -603,6 +636,7 @@ export function App() {
 
   async function addVirtualMember() {
     if (!activeGroup || !cloudStore || !virtualMemberName.trim()) return;
+    if (!beginAction("addVirtualMember")) return;
     const name = virtualMemberName.trim();
 
     try {
@@ -613,6 +647,8 @@ export function App() {
       showToast(`${text.addVirtualMember}: ${name}`);
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
     }
   }
 
@@ -682,6 +718,7 @@ export function App() {
 
   async function submitInviteInput() {
     if (!inviteInputValue.trim() || !cloudStore) return;
+    if (!beginAction("joinGroup")) return;
 
     try {
       const group = await cloudStore.acceptInvite(inviteInputValue.trim(), profile.name);
@@ -693,6 +730,8 @@ export function App() {
       setGroupRoute(group.id);
     } catch (error) {
       setInviteInputError((error as Error).message || text.inviteNotFound);
+    } finally {
+      endAction();
     }
   }
 
@@ -701,6 +740,8 @@ export function App() {
     const fromMember = members.find((member) => member.id === fromId);
     const toMember = members.find((member) => member.id === toId);
     if (!fromMember || !toMember) return;
+    const actionKey = `settle:${fromId}:${toId}`;
+    if (!beginAction(actionKey)) return;
 
     try {
       await cloudStore.settleTransfer(activeGroup.id, fromId, toId, amountMinor, activeGroup.currency);
@@ -711,6 +752,8 @@ export function App() {
       showToast(`${text.clearDebt}: ${fromMember.name} → ${toMember.name}`);
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
     }
   }
 
@@ -721,6 +764,7 @@ export function App() {
 
   async function archiveActiveGroup() {
     if (!activeGroup || !cloudStore) return;
+    if (!beginAction("archiveGroup")) return;
     setBusy(true);
 
     try {
@@ -733,10 +777,12 @@ export function App() {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
     }
     setBusy(false);
+    endAction();
   }
 
   async function deleteActiveGroup() {
     if (!activeGroup || !cloudStore) return;
+    if (!beginAction("deleteGroup")) return;
 
     try {
       await cloudStore.deleteGroup(activeGroup.id);
@@ -746,6 +792,8 @@ export function App() {
       showToast(`${text.deleteGroup}: ${activeGroup.name}`);
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
     }
   }
 
@@ -913,6 +961,7 @@ export function App() {
         <StartFlow
           groups={displayGroups}
           groupName={groupName}
+          isCreatingGroup={pendingAction === "createGroup"}
           selectedTemplate={selectedTemplate}
           selectedTemplateLabel={selectedTemplateLabel}
           startMode={startMode}
@@ -1077,8 +1126,13 @@ export function App() {
                   <div className="pizo-debt-empty">{text.settled}</div>
                 )}
                 {debt ? (
-                  <button className="settlement-clear-action" type="button" onClick={settleDebt}>
-                    {text.clearDebt}
+                  <button
+                    className="settlement-clear-action"
+                    type="button"
+                    disabled={pendingAction === `settle:${debt.from.id}:${debt.to.id}`}
+                    onClick={settleDebt}
+                  >
+                    {pendingAction === `settle:${debt.from.id}:${debt.to.id}` ? text.processing : text.clearDebt}
                   </button>
                 ) : null}
               </div>
@@ -1315,8 +1369,8 @@ export function App() {
                   >
                     {text.cancel}
                   </button>
-                  <button className="primary-action" type="button" onClick={createGroup}>
-                    {text.createGroup}
+                  <button className="primary-action" type="button" disabled={pendingAction === "createGroup"} onClick={createGroup}>
+                    {pendingAction === "createGroup" ? text.creatingGroup : text.createGroup}
                   </button>
                 </div>
               </>
@@ -1354,8 +1408,8 @@ export function App() {
                   <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
                     {text.cancel}
                   </button>
-                  <button className="primary-action" type="button" disabled={!groupName.trim() || busy} onClick={updateActiveGroup}>
-                    {text.save}
+                  <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "editGroup"} onClick={updateActiveGroup}>
+                    {pendingAction === "editGroup" ? text.savingChanges : text.save}
                   </button>
                 </div>
               </>
@@ -1512,9 +1566,12 @@ export function App() {
                           <button
                             className="composer-mini-action"
                             type="button"
+                            disabled={pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`}
                             onClick={() => settleTransfer(transfer.fromMemberId, transfer.toMemberId, transfer.amount.amount_minor)}
                           >
-                            {UI_TEXT.settlement.settleAction}
+                            {pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`
+                              ? text.processing
+                              : UI_TEXT.settlement.settleAction}
                           </button>
                         </div>
                       );
@@ -1611,8 +1668,13 @@ export function App() {
                   >
                     {text.cancel}
                   </button>
-                  <button className="primary-action" type="button" disabled={!inviteInputValue.trim()} onClick={submitInviteInput}>
-                    {text.joinGroupAction}
+                  <button
+                    className="primary-action"
+                    type="button"
+                    disabled={!inviteInputValue.trim() || pendingAction === "joinGroup"}
+                    onClick={submitInviteInput}
+                  >
+                    {pendingAction === "joinGroup" ? text.joiningGroup : text.joinGroupAction}
                   </button>
                 </div>
               </>
@@ -1671,8 +1733,13 @@ export function App() {
                   <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
                     {text.cancel}
                   </button>
-                  <button className="primary-action" type="button" disabled={!virtualMemberName.trim()} onClick={addVirtualMember}>
-                    {text.addMember}
+                  <button
+                    className="primary-action"
+                    type="button"
+                    disabled={!virtualMemberName.trim() || pendingAction === "addVirtualMember"}
+                    onClick={addVirtualMember}
+                  >
+                    {pendingAction === "addVirtualMember" ? text.processing : text.addMember}
                   </button>
                 </div>
               </>
@@ -1708,10 +1775,10 @@ export function App() {
                         <button
                           className="composer-mini-action"
                           type="button"
-                          disabled={unarchivingGroupId === group.id}
+                          disabled={Boolean(unarchivingGroupId)}
                           onClick={() => unarchiveGroup(group)}
                         >
-                          {text.restoreGroup}
+                          {unarchivingGroupId === group.id ? text.restoringGroup : text.restoreGroup}
                         </button>
                       </div>
                     ))
@@ -1733,8 +1800,13 @@ export function App() {
                   <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
                     {text.cancel}
                   </button>
-                  <button className={dialog === "delete" ? "danger-action" : "primary-action"} type="button" onClick={dialog === "archive" ? archiveActiveGroup : deleteActiveGroup}>
-                    {text.confirm}
+                  <button
+                    className={dialog === "delete" ? "danger-action" : "primary-action"}
+                    type="button"
+                    disabled={pendingAction === "archiveGroup" || pendingAction === "deleteGroup"}
+                    onClick={dialog === "archive" ? archiveActiveGroup : deleteActiveGroup}
+                  >
+                    {pendingAction === "archiveGroup" || pendingAction === "deleteGroup" ? text.processing : text.confirm}
                   </button>
                 </div>
               </>

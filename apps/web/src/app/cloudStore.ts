@@ -1,6 +1,14 @@
 import type { CreateGroupRequest } from "../contracts/schemas";
 import { createApiClient, type ArchivedGroupSummary, type EquoApiClient, type GroupDetail } from "./apiClient";
-import { toCreateExpenseRequest, toGroup, toGroupUiData, toSettlementTransferRequest } from "./cloudAdapters";
+import {
+  draftToExpense,
+  settlementTransferToDraft,
+  toCreateExpenseRequest,
+  toGroup,
+  toGroupUiData,
+  toMembers,
+  toSettlementTransferRequest,
+} from "./cloudAdapters";
 import type { Expense, Group, Member } from "./appTypes";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
 
@@ -78,8 +86,21 @@ export type CreateCloudGroupsStoreOptions = {
 
 /**
  * Thin async layer owning cloud state: the groups list, a per-group detail
- * cache, loading flags, and mutation functions. Every mutation follows a
- * simple "call API, then re-fetch" model - there are no optimistic updates.
+ * cache, loading flags, and mutation functions.
+ *
+ * Every mutation applies the API response directly to local state instead of
+ * re-fetching the groups list / group detail on the success path - the
+ * response already carries everything needed (the updated group, member, or
+ * expense row), and balances/debts are computed client-side from the cached
+ * detail (computeMemberBalances), so a locally-patched detail cache is fully
+ * authoritative for rendering. This turns every mutation from 2-3 network
+ * round-trips into 1.
+ *
+ * The one exception is failure: after surfacing the error to the caller, a
+ * background refreshGroupDetail/refreshGroups call re-syncs from the server
+ * so a partially-applied local state never drifts from truth. refreshGroupDetail
+ * is also still used for the initial "open a group" load, where there is no
+ * response to apply from yet.
  *
  * This is a plain, hook-free store so it can be unit tested directly with a
  * fake api client (mirroring apiClient.test.ts) without any DOM/React
@@ -120,6 +141,54 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
     throw new Error(errorMessage(error));
   }
 
+  /** Fire-and-forget re-sync used as a safety net after a mutation failure. */
+  function resyncInBackground(groupId?: string) {
+    refreshGroups().catch(() => {});
+    if (groupId) {
+      refreshGroupDetail(groupId).catch(() => {});
+    }
+  }
+
+  /** Insert/replace a group at the head of the list (new or just-unarchived groups). */
+  function upsertGroupAtHead(group: Group) {
+    setState({ groups: [group, ...state.groups.filter((existing) => existing.id !== group.id)] });
+  }
+
+  /** Replace a group's entry in place, preserving its position in the list. */
+  function patchGroupInList(group: Group) {
+    const index = state.groups.findIndex((existing) => existing.id === group.id);
+    if (index === -1) {
+      setState({ groups: [...state.groups, group] });
+      return;
+    }
+    const groups = [...state.groups];
+    groups[index] = group;
+    setState({ groups });
+  }
+
+  function removeFromGroupsList(groupId: string) {
+    setState({ groups: state.groups.filter((existing) => existing.id !== groupId) });
+  }
+
+  function patchGroupDetail(groupId: string, patch: Partial<CloudGroupData>) {
+    const current = state.groupDetails[groupId];
+    if (!current) return;
+    setState({ groupDetails: { ...state.groupDetails, [groupId]: { ...current, ...patch } } });
+  }
+
+  function dropGroupDetail(groupId: string) {
+    if (!state.groupDetails[groupId]) return;
+    const groupDetails = { ...state.groupDetails };
+    delete groupDetails[groupId];
+    setState({ groupDetails });
+  }
+
+  function prependExpense(groupId: string, expense: Expense) {
+    const current = state.groupDetails[groupId];
+    if (!current) return;
+    patchGroupDetail(groupId, { expenses: [expense, ...current.expenses] });
+  }
+
   async function refreshGroups() {
     setState({ loadingGroups: true });
     try {
@@ -148,34 +217,52 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
 
   async function createGroup(payload: Omit<CreateGroupRequest, "client_request_id">): Promise<Group> {
     try {
-      const { group } = await apiClient.createGroup({
+      const { group, owner_member } = await apiClient.createGroup({
         client_request_id: crypto.randomUUID(),
         ...payload,
       });
-      await refreshGroups();
-      return toGroup(group);
+      const localGroup = toGroup(group);
+      upsertGroupAtHead(localGroup);
+      setState({
+        groupDetails: {
+          ...state.groupDetails,
+          [localGroup.id]: { group: localGroup, members: toMembers([owner_member]), expenses: [] },
+        },
+      });
+      return localGroup;
     } catch (error) {
+      resyncInBackground();
       return handleError(error);
     }
   }
 
   async function renameGroup(groupId: string, name: string) {
     try {
-      await apiClient.updateGroup(groupId, { client_request_id: crypto.randomUUID(), name });
-      await Promise.all([refreshGroups(), refreshGroupDetail(groupId)]);
+      const { group } = await apiClient.updateGroup(groupId, { client_request_id: crypto.randomUUID(), name });
+      const localGroup = toGroup(group);
+      patchGroupInList(localGroup);
+      patchGroupDetail(groupId, { group: localGroup });
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
 
   async function addVirtualMember(groupId: string, displayName: string) {
     try {
-      await apiClient.createVirtualMember(groupId, {
+      const { member } = await apiClient.createVirtualMember(groupId, {
         client_request_id: crypto.randomUUID(),
         display_name: displayName,
       });
-      await refreshGroupDetail(groupId);
+      const current = state.groupDetails[groupId];
+      if (current) {
+        const [mapped] = toMembers([member]);
+        if (mapped) {
+          patchGroupDetail(groupId, { members: [...current.members, mapped] });
+        }
+      }
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
@@ -183,8 +270,10 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
   async function archiveGroup(groupId: string) {
     try {
       await apiClient.archiveGroup(groupId, { client_request_id: crypto.randomUUID() });
-      await refreshGroups();
+      removeFromGroupsList(groupId);
+      dropGroupDetail(groupId);
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
@@ -201,9 +290,11 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
   async function unarchiveGroup(groupId: string): Promise<Group> {
     try {
       const { group } = await apiClient.unarchiveGroup(groupId, { client_request_id: crypto.randomUUID() });
-      await refreshGroups();
-      return toGroup(group);
+      const localGroup = toGroup(group);
+      upsertGroupAtHead(localGroup);
+      return localGroup;
     } catch (error) {
+      resyncInBackground();
       return handleError(error);
     }
   }
@@ -211,17 +302,20 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
   async function deleteGroup(groupId: string) {
     try {
       await apiClient.deleteGroup(groupId, { client_request_id: crypto.randomUUID() });
-      await refreshGroups();
+      removeFromGroupsList(groupId);
+      dropGroupDetail(groupId);
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
 
   async function addExpense(groupId: string, draft: ExpenseDraft, groupCurrency: string) {
     try {
-      await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
-      await refreshGroupDetail(groupId);
+      const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
+      prependExpense(groupId, draftToExpense(draft, expense, "expense"));
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
@@ -229,9 +323,19 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
   async function editExpense(groupId: string, expenseId: string, draft: ExpenseDraft, groupCurrency: string) {
     try {
       await apiClient.deleteExpense(groupId, expenseId, { client_request_id: crypto.randomUUID() });
-      await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
-      await refreshGroupDetail(groupId);
+      const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
+      const current = state.groupDetails[groupId];
+      if (current) {
+        const nextExpense = draftToExpense(draft, expense, "expense");
+        const index = current.expenses.findIndex((item) => item.id === expenseId);
+        const expenses =
+          index === -1
+            ? [nextExpense, ...current.expenses]
+            : [...current.expenses.slice(0, index), nextExpense, ...current.expenses.slice(index + 1)];
+        patchGroupDetail(groupId, { expenses });
+      }
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
@@ -239,17 +343,23 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
   async function deleteExpense(groupId: string, expenseId: string) {
     try {
       await apiClient.deleteExpense(groupId, expenseId, { client_request_id: crypto.randomUUID() });
-      await refreshGroupDetail(groupId);
+      const current = state.groupDetails[groupId];
+      if (current) {
+        patchGroupDetail(groupId, { expenses: current.expenses.filter((expense) => expense.id !== expenseId) });
+      }
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
 
   async function settleTransfer(groupId: string, fromId: string, toId: string, amountMinor: number, currency: string) {
     try {
-      await apiClient.createExpense(groupId, toSettlementTransferRequest(fromId, toId, amountMinor, currency));
-      await refreshGroupDetail(groupId);
+      const { expense } = await apiClient.createExpense(groupId, toSettlementTransferRequest(fromId, toId, amountMinor, currency));
+      const draft = settlementTransferToDraft(fromId, toId, amountMinor);
+      prependExpense(groupId, draftToExpense(draft, expense, "settlement"));
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
@@ -272,9 +382,11 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
         client_request_id: crypto.randomUUID(),
         display_name: displayName,
       });
-      await refreshGroups();
-      return toGroup(result.group);
+      const localGroup = toGroup(result.group);
+      upsertGroupAtHead(localGroup);
+      return localGroup;
     } catch (error) {
+      resyncInBackground();
       return handleError(error);
     }
   }
@@ -294,13 +406,16 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCl
 
   async function updateGroupCover(groupId: string, name: string, coverImageUrl?: string) {
     try {
-      await apiClient.updateGroup(groupId, {
+      const { group } = await apiClient.updateGroup(groupId, {
         client_request_id: crypto.randomUUID(),
         name,
         cover_image_url: coverImageUrl,
       });
-      await Promise.all([refreshGroups(), refreshGroupDetail(groupId)]);
+      const localGroup = toGroup(group);
+      patchGroupInList(localGroup);
+      patchGroupDetail(groupId, { group: localGroup });
     } catch (error) {
+      resyncInBackground(groupId);
       handleError(error);
     }
   }
