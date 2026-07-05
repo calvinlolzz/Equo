@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "regions": ["sin1"],
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/dist",
