@@ -2,9 +2,14 @@ import { describe, expect, test } from "vitest";
 import type { Expense } from "./appTypes";
 import {
   buildEqualShareAmountsMinor,
+  buildPercentShareAmounts,
   getCustomSplitRemainderMinor,
   getMemberShareMinor,
+  getPaymentsRemainderMinor,
+  getPercentSplitRemainder,
   isCustomSplitValid,
+  isPaymentsSplitValid,
+  isPercentSplitValid,
   sumShareAmountsMinor,
 } from "./expenseShareSplit";
 
@@ -37,6 +42,82 @@ describe("isCustomSplitValid", () => {
 
   test("rejects an empty share map", () => {
     expect(isCustomSplitValid({ totalAmountMinor: 0, shareAmountsMinor: {} })).toBe(false);
+  });
+});
+
+describe("buildPercentShareAmounts", () => {
+  test("allocates exact percents directly", () => {
+    expect(buildPercentShareAmounts(["a", "b"], { a: 70, b: 30 }, 1000)).toEqual({ a: 700, b: 300 });
+  });
+
+  test("largest-remainder allocation sums exactly to the total", () => {
+    // 33.33% / 33.33% / 33.34% of 1000 = 333.3 / 333.3 / 333.4 raw
+    const result = buildPercentShareAmounts(["a", "b", "c"], { a: 33.33, b: 33.33, c: 33.34 }, 1000);
+    expect(result.a + result.b + result.c).toBe(1000);
+    expect(result.c).toBe(334);
+  });
+
+  test("one-third splits reconcile exactly with ties broken by member order", () => {
+    // Equal thirds cannot each round the same way; the leftover minor unit
+    // goes to the largest fractional remainder, ties broken by member order.
+    const result = buildPercentShareAmounts(["a", "b", "c"], { a: 33.33, b: 33.33, c: 33.33 }, 100);
+    expect(result.a + result.b + result.c).toBe(100);
+    expect(result).toEqual({ a: 34, b: 33, c: 33 });
+  });
+
+  test("survives awkward totals without drift", () => {
+    for (const total of [1, 7, 99, 101, 12345]) {
+      const result = buildPercentShareAmounts(["a", "b", "c"], { a: 33.33, b: 33.33, c: 33.34 }, total);
+      expect(result.a + result.b + result.c).toBe(total);
+    }
+  });
+
+  test("returns an empty map with no members", () => {
+    expect(buildPercentShareAmounts([], { a: 100 }, 1000)).toEqual({});
+  });
+});
+
+describe("isPercentSplitValid / getPercentSplitRemainder", () => {
+  test("requires percents to sum to exactly 100", () => {
+    expect(isPercentSplitValid(["a", "b"], { a: 70, b: 30 })).toBe(true);
+    expect(isPercentSplitValid(["a", "b"], { a: 70, b: 29 })).toBe(false);
+    expect(isPercentSplitValid(["a", "b", "c"], { a: 33.33, b: 33.33, c: 33.34 })).toBe(true);
+  });
+
+  test("requires every member's percent to be greater than 0", () => {
+    expect(isPercentSplitValid(["a", "b"], { a: 100, b: 0 })).toBe(false);
+    expect(isPercentSplitValid(["a", "b"], { a: 100 })).toBe(false);
+  });
+
+  test("rejects an empty member list", () => {
+    expect(isPercentSplitValid([], {})).toBe(false);
+  });
+
+  test("remainder reports the missing percentage points", () => {
+    expect(getPercentSplitRemainder(["a", "b"], { a: 40, b: 30 })).toBe(30);
+    expect(getPercentSplitRemainder(["a", "b"], { a: 70, b: 30 })).toBe(0);
+    expect(getPercentSplitRemainder(["a"], { a: 120 })).toBe(-20);
+  });
+});
+
+describe("getPaymentsRemainderMinor / isPaymentsSplitValid", () => {
+  test("computes the leftover amount versus the total, mirroring custom shares", () => {
+    expect(getPaymentsRemainderMinor({ totalAmountMinor: 1000, paymentAmountsMinor: { a: 600, b: 300 } })).toBe(100);
+    expect(getPaymentsRemainderMinor({ totalAmountMinor: 900, paymentAmountsMinor: { a: 600, b: 300 } })).toBe(0);
+  });
+
+  test("valid only when payments sum exactly to the total", () => {
+    expect(isPaymentsSplitValid({ totalAmountMinor: 900, paymentAmountsMinor: { a: 600, b: 300 } })).toBe(true);
+    expect(isPaymentsSplitValid({ totalAmountMinor: 1000, paymentAmountsMinor: { a: 600, b: 300 } })).toBe(false);
+  });
+
+  test("rejects zero or non-integer payments (validation.ts requires positive integers)", () => {
+    expect(isPaymentsSplitValid({ totalAmountMinor: 600, paymentAmountsMinor: { a: 600, b: 0 } })).toBe(false);
+    expect(isPaymentsSplitValid({ totalAmountMinor: 600, paymentAmountsMinor: { a: 599.5, b: 0.5 } })).toBe(false);
+  });
+
+  test("rejects an empty payments map", () => {
+    expect(isPaymentsSplitValid({ totalAmountMinor: 0, paymentAmountsMinor: {} })).toBe(false);
   });
 });
 

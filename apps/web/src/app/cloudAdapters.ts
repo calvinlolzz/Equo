@@ -1,8 +1,8 @@
-import type { CreateExpenseRequest } from "../contracts/schemas";
+import type { CreateExpenseRequest, ExpensePaymentInput, ExpenseShareInput } from "../contracts/schemas";
 import type { GroupDetail, GroupMemberSummary, GroupSummary, ExpenseSummary } from "./apiClient";
 import type { Expense, Group, Member } from "./appTypes";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
-import { buildEqualShareAmountsMinor } from "./expenseShareSplit";
+import { buildEqualShareAmountsMinor, buildPercentShareAmounts } from "./expenseShareSplit";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -49,28 +49,84 @@ export function toMembers(members: GroupMemberSummary[]): Member[] {
     }));
 }
 
+/** API ExpenseKind -> app-level Expense kind (see the comment on appTypes.Expense). */
+function apiKindToExpenseKind(kind: string): NonNullable<Expense["kind"]> {
+  if (kind === "transfer") return "settlement";
+  if (kind === "income") return "income";
+  return "expense";
+}
+
+/** ExpenseDraft kind -> app-level Expense kind (transfer drafts become settlements). */
+function draftKindToExpenseKind(kind: ExpenseDraft["kind"]): NonNullable<Expense["kind"]> {
+  if (kind === "transfer") return "settlement";
+  if (kind === "income") return "income";
+  return "expense";
+}
+
 /**
- * Map a single cloud expense (or transfer) to the local Expense shape.
+ * The per-beneficiary/per-member split a draft describes, as exact minor
+ * amounts that sum to draft.amountMinor:
+ * - percent mode -> largest-remainder allocation from sharePercents
+ * - custom amounts -> draft.shareAmountsMinor as-is (already gated to sum
+ *   to the total by the composer)
+ * - equal -> buildEqualShareAmountsMinor's floor+remainder split
+ */
+function resolveDraftShareAmountsMinor(draft: ExpenseDraft): Record<string, number> {
+  if (draft.shareType === "percent" && draft.sharePercents) {
+    return buildPercentShareAmounts(draft.shareMemberIds, draft.sharePercents, draft.amountMinor);
+  }
+  return draft.shareAmountsMinor ?? buildEqualShareAmountsMinor(draft.shareMemberIds, draft.amountMinor);
+}
+
+/**
+ * The payments list a draft describes. Multi-payer drafts carry an explicit
+ * payments array; single-payer drafts fall back to payerId paying the full
+ * amount. Zero-amount rows are dropped because validation.ts requires every
+ * expense_payments amount_minor to be a POSITIVE integer.
+ */
+function resolveDraftPayments(draft: ExpenseDraft): Array<{ payerId: string; amountMinor: number }> {
+  if (draft.payments && draft.payments.length > 0) {
+    return draft.payments.filter((payment) => payment.amountMinor > 0);
+  }
+  return [{ payerId: draft.payerId, amountMinor: draft.amountMinor }];
+}
+
+/**
+ * The beneficiary payments an income draft describes (agreed income
+ * encoding: expense_payments = each beneficiary's portion). Zero portions
+ * are dropped - validation.ts requires positive payment amounts, and a
+ * zero-portion beneficiary contributes nothing to balances anyway.
+ */
+function resolveIncomeBeneficiaryPayments(draft: ExpenseDraft): Array<{ payerId: string; amountMinor: number }> {
+  const beneficiaryAmounts = resolveDraftShareAmountsMinor(draft);
+  return draft.shareMemberIds
+    .map((memberId) => ({ payerId: memberId, amountMinor: beneficiaryAmounts[memberId] ?? 0 }))
+    .filter((payment) => payment.amountMinor > 0);
+}
+
+/**
+ * Map a single cloud expense (or income/transfer) to the local Expense shape.
  *
  * Mapping decisions:
  * - amountMinor / currency / category / note pass through directly.
  * - createdAt prefers created_at (server timestamp) and falls back to
  *   expense_date (a plain YYYY-MM-DD date) when created_at is absent.
- * - payerId is the first expense_payments entry's payer_member_id. The
- *   contracts only ever produce a single payment per expense today, so
- *   "first" is also "only".
+ * - payments carries every expense_payments entry (multi-payer expenses,
+ *   or an income's per-beneficiary portions); payerId stays the FIRST
+ *   entry's payer for backward-compatible single-payer display.
  * - shareMemberIds is the list of member_ids present in expense_shares.
  * - shareAmountsMinor is ALWAYS built from expense_shares (even when the
  *   split happens to be even). The server is the source of truth for
  *   amounts, and always building it keeps this mapping simple and correct
- *   without having to detect "is this an equal split" - getMemberShareMinor
- *   only special-cases a missing shareAmountsMinor, so providing exact
- *   amounts here is always safe and never changes displayed behavior for
- *   evenly split expenses.
- * - kind "transfer" becomes local kind "settlement" so existing balance
- *   math, records styling, and stats exclusion keep working unmodified;
- *   any other kind (only "expense" is created by this client) maps to
- *   "expense".
+ *   without having to detect "is this an equal split".
+ * - share_type "percent" rows surface as shareType "percent" plus
+ *   sharePercents (from share_value) so edit-prefill can reopen the percent
+ *   inputs; the exact amounts still live in shareAmountsMinor.
+ * - kind maps per apiKindToExpenseKind: "transfer" -> "settlement" (so
+ *   existing balance math, records styling, and stats exclusion keep
+ *   working unmodified), "income" -> "income", anything else -> "expense".
+ * - transfer_to_member_id passes through for settlement rows (from -> to
+ *   display); older display code still falls back to shareMemberIds[0].
  * - imageUrl passes through from image_url (a cloud-hosted photo URL, if
  *   the expense has one).
  */
@@ -84,6 +140,13 @@ export function toExpense(summary: ExpenseSummary): Expense {
     shareAmountsMinor[share.member_id] = share.amount_minor;
   });
 
+  const sharePercents: Record<string, number> = {};
+  shares.forEach((share) => {
+    if (share.share_type === "percent" && typeof share.share_value === "number") {
+      sharePercents[share.member_id] = share.share_value;
+    }
+  });
+
   const expense: Expense = {
     id: summary.id,
     title: summary.title,
@@ -92,12 +155,26 @@ export function toExpense(summary: ExpenseSummary): Expense {
     createdAt: summary.created_at ?? summary.expense_date ?? new Date().toISOString(),
     payerId: payments[0]?.payer_member_id ?? "",
     shareMemberIds,
-    kind: summary.kind === "transfer" ? "settlement" : "expense",
+    kind: apiKindToExpenseKind(summary.kind),
     category: summary.category,
     note: summary.note ?? undefined,
     imageUrl: summary.image_url ?? undefined,
     shareAmountsMinor,
   };
+
+  if (payments.length > 0) {
+    expense.payments = payments.map((payment) => ({
+      payerId: payment.payer_member_id,
+      amountMinor: payment.amount_minor,
+    }));
+  }
+  if (Object.keys(sharePercents).length > 0) {
+    expense.shareType = "percent";
+    expense.sharePercents = sharePercents;
+  }
+  if (summary.transfer_to_member_id) {
+    expense.transferToMemberId = summary.transfer_to_member_id;
+  }
 
   return expense;
 }
@@ -125,25 +202,51 @@ function toDateOnly(iso: string): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Draft share list -> API expense_shares, honoring percent mode. */
+function toExpenseShareInputs(draft: ExpenseDraft): ExpenseShareInput[] {
+  const shareAmountsMinor = resolveDraftShareAmountsMinor(draft);
+  return draft.shareMemberIds.map((memberId) =>
+    draft.shareType === "percent"
+      ? {
+          member_id: memberId,
+          share_type: "percent" as const,
+          share_value: draft.sharePercents?.[memberId] ?? 0,
+          amount_minor: shareAmountsMinor[memberId] ?? 0,
+        }
+      : {
+          member_id: memberId,
+          share_type: "fixed" as const,
+          amount_minor: shareAmountsMinor[memberId] ?? 0,
+        },
+  );
+}
+
 /**
  * Build a CreateExpenseRequest from a composer draft. The draft's
  * amountMinor is already converted into the group currency by the composer
  * (source-currency fields are dropped for cloud sync - acceptable v1 per
  * spec), so this request always uses the group currency for both the
- * payment and the shares.
+ * payments and the shares.
  *
- * validation.ts constraints honored here:
+ * validation.ts constraints honored here (per draft kind):
  * - amount_minor must be a positive integer -> draft amounts are already
  *   integer minor units.
- * - expense_payments total must equal amount_minor -> single payment for
- *   the full amount.
- * - expense_shares total must equal amount_minor -> shares are built from
- *   draft.shareAmountsMinor when present (custom split, already validated
- *   to sum to the total by canSubmitExpenseDraft), otherwise computed via
- *   buildEqualShareAmountsMinor which distributes the remainder so the sum
- *   is always exact.
- * - expense_payments/shares amount_minor must be positive/non-negative
- *   integers -> both sources already produce integers.
+ * - expense_payments total must equal amount_minor, every entry a positive
+ *   integer in the expense currency:
+ *   - expense: the multi-payer rows (gated to sum exactly by the composer)
+ *     or a single full-amount payment.
+ *   - income: one entry per beneficiary portion (agreed income encoding);
+ *     portions come from resolveDraftShareAmountsMinor so they sum exactly.
+ *   - transfer: a single full-amount payment by the sender.
+ * - expense_shares total must equal amount_minor (skipped by validation.ts
+ *   for transfers, but we still send the recipient's full-amount share so
+ *   the round-trip recovers shareMemberIds):
+ *   - expense: the split rows; percent mode sends share_type "percent" +
+ *     share_value AND the exact amount_minor from buildPercentShareAmounts
+ *     (validation.ts reconciles amount_minor totals regardless of
+ *     share_type, so the amounts must be sent and must sum exactly).
+ *   - income: a single share for the collector holding the full amount.
+ * - kind "transfer" requires transfer_to_member_id -> draft.transferToMemberId.
  *
  * draft.imageUrl (an already-uploaded cloud photo URL) passes straight
  * through as image_url. Uploading a newly-picked draft.imageDataUrl happens
@@ -151,35 +254,70 @@ function toDateOnly(iso: string): string {
  * requires a groupId and a network round-trip this pure adapter can't do.
  */
 export function toCreateExpenseRequest(draft: ExpenseDraft, groupCurrency: string): CreateExpenseRequest {
-  const shareAmountsMinor = draft.shareAmountsMinor ?? buildEqualShareAmountsMinor(draft.shareMemberIds, draft.amountMinor);
+  const kind = draft.kind ?? "expense";
 
-  return {
+  const base = {
     client_request_id: crypto.randomUUID(),
     title: draft.title,
-    kind: "expense",
     category: draft.category,
     amount_minor: draft.amountMinor,
     currency: groupCurrency,
     expense_date: toDateOnly(draft.createdAt),
     note: draft.note,
     image_url: draft.imageUrl,
-    expense_payments: [
-      {
-        payer_member_id: draft.payerId,
-        amount_minor: draft.amountMinor,
-        currency: groupCurrency,
-      },
-    ],
-    expense_shares: draft.shareMemberIds.map((memberId) => ({
-      member_id: memberId,
-      share_type: "fixed",
-      amount_minor: shareAmountsMinor[memberId] ?? 0,
-    })),
+  };
+
+  const toPaymentInput = (payment: { payerId: string; amountMinor: number }): ExpensePaymentInput => ({
+    payer_member_id: payment.payerId,
+    amount_minor: payment.amountMinor,
+    currency: groupCurrency,
+  });
+
+  if (kind === "transfer") {
+    const toId = draft.transferToMemberId ?? draft.shareMemberIds[0] ?? "";
+    return {
+      ...base,
+      kind: "transfer",
+      transfer_to_member_id: toId,
+      expense_payments: [toPaymentInput({ payerId: draft.payerId, amountMinor: draft.amountMinor })],
+      expense_shares: [
+        {
+          member_id: toId,
+          share_type: "fixed",
+          amount_minor: draft.amountMinor,
+        },
+      ],
+    };
+  }
+
+  if (kind === "income") {
+    return {
+      ...base,
+      kind: "income",
+      expense_payments: resolveIncomeBeneficiaryPayments(draft).map(toPaymentInput),
+      expense_shares: [
+        {
+          member_id: draft.payerId,
+          share_type: "fixed",
+          amount_minor: draft.amountMinor,
+        },
+      ],
+    };
+  }
+
+  return {
+    ...base,
+    kind: "expense",
+    expense_payments: resolveDraftPayments(draft).map(toPaymentInput),
+    expense_shares: toExpenseShareInputs(draft),
   };
 }
 
 /**
- * Build a CreateExpenseRequest representing a settlement transfer.
+ * Build a CreateExpenseRequest representing a settlement transfer (the
+ * one-tap settle flow; a manual composer transfer goes through
+ * toCreateExpenseRequest with draft.kind "transfer" and produces the exact
+ * same wire shape, just with a user-chosen title/date/note).
  *
  * validation.ts constraints honored here:
  * - kind "transfer" requires transfer_to_member_id -> set to toId.
@@ -234,24 +372,30 @@ export function toSettlementTransferRequest(
  *   the canonical, possibly-normalized values the server stored (and are
  *   already returned by createExpense), but they match the draft byte-for-
  *   byte in every current call site.
- * - Everything else (category/note/imageUrl/payerId/shareMemberIds/
- *   shareAmountsMinor/createdAt/kind) is derived straight from the draft,
- *   mirroring the exact mapping toCreateExpenseRequest used to build the
- *   request: shareAmountsMinor falls back to an equal split when the draft
- *   didn't provide a custom one, kind defaults to "expense" (settlement
- *   transfers pass kind: "transfer" explicitly via toSettlementTransferRequest
- *   equivalents below), and createdAt passes the draft's ISO string through
- *   unchanged (created_at from the server would only differ in server clock
- *   skew, which the UI doesn't depend on).
+ * - Everything else mirrors the exact per-kind mapping toCreateExpenseRequest
+ *   used to build the request, so this local echo equals what a refetch
+ *   through toExpense would produce:
+ *   - expense: payments from the draft's payer rows (or the single payer),
+ *     shares from the draft's split (percent mode keeps shareType/
+ *     sharePercents and derives the exact amounts).
+ *   - income: payments = the beneficiary portions, payerId = first
+ *     beneficiary, shareMemberIds = [collector] holding the full amount.
+ *   - transfer (app kind "settlement"): a single full payment by the
+ *     sender, single full share to the recipient, transferToMemberId set.
+ * - kind is derived from draft.kind (kindOverride is kept for the legacy
+ *   settle-flow call sites that pass an explicit "settlement").
+ * - createdAt passes the draft's ISO string through unchanged (created_at
+ *   from the server would only differ in server clock skew, which the UI
+ *   doesn't depend on).
  */
 export function draftToExpense(
   draft: ExpenseDraft,
   response: CreateExpenseResponse,
-  kind: Expense["kind"] = "expense",
+  kindOverride?: Expense["kind"],
 ): Expense {
-  const shareAmountsMinor = draft.shareAmountsMinor ?? buildEqualShareAmountsMinor(draft.shareMemberIds, draft.amountMinor);
+  const kind = kindOverride ?? draftKindToExpenseKind(draft.kind);
 
-  return {
+  const base: Expense = {
     id: response.id,
     title: response.title,
     amountMinor: response.amount_minor,
@@ -263,8 +407,42 @@ export function draftToExpense(
     category: draft.category,
     note: draft.note,
     imageUrl: draft.imageUrl,
-    shareAmountsMinor,
   };
+
+  if (kind === "settlement") {
+    const toId = draft.transferToMemberId ?? draft.shareMemberIds[0] ?? "";
+    return {
+      ...base,
+      payments: [{ payerId: draft.payerId, amountMinor: response.amount_minor }],
+      shareMemberIds: [toId],
+      shareAmountsMinor: { [toId]: response.amount_minor },
+      transferToMemberId: toId,
+    };
+  }
+
+  if (kind === "income") {
+    const payments = resolveIncomeBeneficiaryPayments(draft);
+    return {
+      ...base,
+      payerId: payments[0]?.payerId ?? "",
+      payments,
+      shareMemberIds: [draft.payerId],
+      shareAmountsMinor: { [draft.payerId]: response.amount_minor },
+    };
+  }
+
+  const payments = resolveDraftPayments(draft);
+  const expense: Expense = {
+    ...base,
+    payerId: payments[0]?.payerId ?? draft.payerId,
+    payments,
+    shareAmountsMinor: resolveDraftShareAmountsMinor(draft),
+  };
+  if (draft.shareType === "percent" && draft.sharePercents) {
+    expense.shareType = "percent";
+    expense.sharePercents = draft.sharePercents;
+  }
+  return expense;
 }
 
 /**
@@ -272,7 +450,7 @@ export function draftToExpense(
  * transfer, mirroring toSettlementTransferRequest's shape exactly (title,
  * category, single-member share to the recipient) so the resulting local
  * Expense round-trips the same way a refetched settlement would via
- * toExpense: kind "settlement", shareMemberIds [toId].
+ * toExpense: kind "settlement", shareMemberIds [toId], transferToMemberId.
  */
 export function settlementTransferToDraft(
   fromId: string,
@@ -286,6 +464,8 @@ export function settlementTransferToDraft(
     payerId: fromId,
     shareMemberIds: [toId],
     category: "general",
+    kind: "transfer",
+    transferToMemberId: toId,
     shareAmountsMinor: { [toId]: amountMinor },
   };
 }

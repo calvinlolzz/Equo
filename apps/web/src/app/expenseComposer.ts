@@ -8,24 +8,37 @@ export const COMPOSER_MODES = [
 
 export type ComposerMode = (typeof COMPOSER_MODES)[number]["id"];
 
+const SUBMIT_LABELS: Record<ComposerMode, string> = {
+  expense: UI_TEXT.composerSubmit.addExpense,
+  income: UI_TEXT.composerSubmit.addIncome,
+  transfer: UI_TEXT.composerSubmit.addTransfer,
+};
+
+const SUBMIT_HINTS: Record<ComposerMode, string> = {
+  expense: UI_TEXT.composerSubmit.expenseHint,
+  income: UI_TEXT.composerSubmit.incomeHint,
+  transfer: UI_TEXT.composerSubmit.transferHint,
+};
+
+/**
+ * Submit button state for the composer. All three modes are live: the
+ * button is enabled whenever the current mode's draft passes its gating
+ * (see canSubmitExpenseDraft / canSubmitTransferDraft), and the label is
+ * 新增支出 / 新增收入 / 新增轉帳 on create - editing keeps 儲存變更 for
+ * every kind.
+ */
 export function getComposerSubmitState({
   mode,
-  canSubmitExpense,
+  canSubmit,
+  isEditing = false,
 }: {
   mode: ComposerMode;
-  canSubmitExpense: boolean;
+  canSubmit: boolean;
+  isEditing?: boolean;
 }) {
-  if (mode !== "expense") {
-    return {
-      disabled: true,
-      label: mode === "income" ? UI_TEXT.composerSubmit.incomeUnavailable : UI_TEXT.composerSubmit.transferUnavailable,
-      hint: UI_TEXT.composerSubmit.futureModeHint,
-    };
-  }
-
   return {
-    disabled: !canSubmitExpense,
-    label: UI_TEXT.composerSubmit.addExpense,
-    hint: UI_TEXT.composerSubmit.expenseHint,
+    disabled: !canSubmit,
+    label: isEditing ? UI_TEXT.app.saveChanges : SUBMIT_LABELS[mode],
+    hint: SUBMIT_HINTS[mode],
   };
 }

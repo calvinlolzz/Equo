@@ -2301,6 +2301,104 @@ label span {
   color: rgba(247, 251, 248, 0.58);
 }
 
+.split-mode-toggle {
+  display: inline-flex;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.split-mode-option {
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: rgba(247, 251, 248, 0.66);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.split-mode-option.active {
+  color: #07110f;
+  background: #ffd67a;
+}
+
+.composer-payer-row-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.composer-payer-row-select {
+  min-height: 36px;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 4px 8px;
+}
+
+.composer-payer-row-remove {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: rgba(247, 251, 248, 0.72);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.share-percent-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.share-percent-cell small {
+  color: rgba(247, 251, 248, 0.6);
+  font-weight: 820;
+}
+
+.share-percent-input {
+  width: 64px;
+}
+
+.amount-income {
+  color: #6de2b8;
+}
+
+.member-avatar.income-avatar {
+  color: #07110f;
+  background: linear-gradient(135deg, rgba(109, 226, 184, 0.94), rgba(160, 240, 205, 0.85));
+}
+
+.payer-count-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 4px;
+  color: #07110f;
+  background: #ffd67a;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  box-shadow: 0 0 0 2px rgba(9, 18, 15, 0.85);
+}
+
+.payer-avatar-stack {
+  position: relative;
+  display: inline-grid;
+}
+
 @keyframes pulse {
   0%,
   100% {

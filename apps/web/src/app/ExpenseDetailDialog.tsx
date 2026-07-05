@@ -15,6 +15,11 @@ function formatTwd(amountMinor: number) {
   return `$${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
 }
 
+/** Trim float noise so 33.330000000000005 renders as 33.33%. */
+function formatPercentValue(value: number) {
+  return `${Number(value.toFixed(2))}%`;
+}
+
 function formatDateTime(value: string) {
   const date = new Date(value);
   const year = date.getFullYear();
@@ -40,12 +45,22 @@ export function ExpenseDetailDialog({
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isSettlement = expense.kind === "settlement";
+  const isIncome = expense.kind === "income";
   const payer = members.find((member) => member.id === expense.payerId);
-  const recipient = members.find((member) => member.id === expense.shareMemberIds[0]);
+  const recipient = members.find(
+    (member) => member.id === (expense.transferToMemberId ?? expense.shareMemberIds[0]),
+  );
   const categoryLabel = expense.category
     ? UI_TEXT.categories[expense.category as keyof typeof UI_TEXT.categories] ?? UI_TEXT.categories.general
     : UI_TEXT.categories.general;
   const shareMembers = members.filter((member) => expense.shareMemberIds.includes(member.id));
+  // For income the "payments" are the beneficiaries' portions (分給誰); for
+  // an expense they are the payers (付款人). Either way there is one row per
+  // entry with its amount whenever there is more than one - a single-payer
+  // expense keeps the original name-only row.
+  const payments = expense.payments ?? [];
+  const collector = isIncome ? members.find((member) => member.id === expense.shareMemberIds[0]) : null;
+  const dialogTitle = isSettlement ? detailText.settlementTitle : isIncome ? detailText.incomeTitle : detailText.title;
 
   function handleDeleteClick() {
     if (!confirmingDelete) {
@@ -53,6 +68,15 @@ export function ExpenseDetailDialog({
       return;
     }
     onDelete(expense);
+  }
+
+  function renderShareAmount(memberId: string) {
+    const shareMinor = getMemberShareMinor(expense, memberId);
+    const percent = expense.shareType === "percent" ? expense.sharePercents?.[memberId] : undefined;
+    if (typeof percent === "number") {
+      return `${formatPercentValue(percent)}（${formatTwd(shareMinor)}）`;
+    }
+    return formatTwd(shareMinor);
   }
 
   return (
@@ -63,7 +87,7 @@ export function ExpenseDetailDialog({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="flow-dialog expense-detail-dialog glass-panel" role="dialog" aria-modal="true" aria-label={isSettlement ? detailText.settlementTitle : detailText.title}>
+      <section className="flow-dialog expense-detail-dialog glass-panel" role="dialog" aria-modal="true" aria-label={dialogTitle}>
         <button className="dialog-close" type="button" aria-label={text.cancel} onClick={onClose}>
           <X aria-hidden="true" size={18} />
         </button>
@@ -98,7 +122,9 @@ export function ExpenseDetailDialog({
         <div className="expense-detail-stat-grid">
           <div>
             <span>{text.amount}</span>
-            <strong>{formatTwd(expense.amountMinor)}</strong>
+            <strong className={isIncome ? "amount-income" : undefined}>
+              {isIncome ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
+            </strong>
           </div>
           <div>
             <span>{text.date}</span>
@@ -112,19 +138,63 @@ export function ExpenseDetailDialog({
           </p>
         ) : null}
 
-        {!isSettlement ? (
+        {isIncome ? (
+          <>
+            <div className="dialog-section-list">
+              <span className="dialog-list-title">{text.incomeCollector}</span>
+              <div className="member-dialog-row expense-detail-payer-row">
+                <span className="member-avatar">{initial(collector?.name)}</span>
+                <span>
+                  <strong>{collector?.name ?? ""}</strong>
+                </span>
+              </div>
+            </div>
+            <div className="dialog-section-list">
+              <span className="dialog-list-title">{text.incomeBeneficiaries}</span>
+              {payments.map((payment) => {
+                const member = members.find((candidate) => candidate.id === payment.payerId);
+                return (
+                  <div className="member-dialog-row" key={payment.payerId}>
+                    <span className="member-avatar">{initial(member?.name)}</span>
+                    <span>
+                      <strong>{member?.name ?? ""}</strong>
+                    </span>
+                    <b>{formatTwd(payment.amountMinor)}</b>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+
+        {!isSettlement && !isIncome ? (
           <div className="dialog-section-list">
             <span className="dialog-list-title">{text.payerLabel}</span>
-            <div className="member-dialog-row expense-detail-payer-row">
-              <span className="member-avatar">{initial(payer?.name)}</span>
-              <span>
-                <strong>{payer?.name ?? ""}</strong>
-              </span>
-            </div>
+            {payments.length > 1 ? (
+              payments.map((payment) => {
+                const member = members.find((candidate) => candidate.id === payment.payerId);
+                return (
+                  <div className="member-dialog-row" key={payment.payerId}>
+                    <span className="member-avatar">{initial(member?.name)}</span>
+                    <span>
+                      <strong>{member?.name ?? ""}</strong>
+                    </span>
+                    <b>{formatTwd(payment.amountMinor)}</b>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="member-dialog-row expense-detail-payer-row">
+                <span className="member-avatar">{initial(payer?.name)}</span>
+                <span>
+                  <strong>{payer?.name ?? ""}</strong>
+                </span>
+              </div>
+            )}
           </div>
         ) : null}
 
-        {!isSettlement ? (
+        {!isSettlement && !isIncome ? (
           <div className="dialog-section-list">
             <span className="dialog-list-title">{text.shareBreakdown}</span>
             {shareMembers.map((member) => (
@@ -133,7 +203,7 @@ export function ExpenseDetailDialog({
                 <span>
                   <strong>{member.name}</strong>
                 </span>
-                <b>{formatTwd(getMemberShareMinor(expense, member.id))}</b>
+                <b>{renderShareAmount(member.id)}</b>
               </div>
             ))}
           </div>
@@ -147,12 +217,10 @@ export function ExpenseDetailDialog({
         ) : null}
 
         <div className="dialog-action-row">
-          {!isSettlement ? (
-            <button className="secondary-action" type="button" onClick={() => onEdit(expense)}>
-              <Pencil aria-hidden="true" size={16} />
-              {text.editExpenseAction}
-            </button>
-          ) : null}
+          <button className="secondary-action" type="button" onClick={() => onEdit(expense)}>
+            <Pencil aria-hidden="true" size={16} />
+            {text.editExpenseAction}
+          </button>
           <button className="danger-action" type="button" onClick={handleDeleteClick}>
             <Trash2 aria-hidden="true" size={16} />
             {confirmingDelete ? text.confirmDelete : text.deleteExpense}

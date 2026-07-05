@@ -9,24 +9,32 @@ describe("COMPOSER_MODES", () => {
 
 describe("getComposerSubmitState", () => {
   test("allows expense submission only when the draft is valid", () => {
-    expect(getComposerSubmitState({ mode: "expense", canSubmitExpense: true })).toEqual({
+    expect(getComposerSubmitState({ mode: "expense", canSubmit: true })).toEqual({
       disabled: false,
       label: "新增支出",
       hint: "填寫金額並選擇分攤成員。",
     });
-    expect(getComposerSubmitState({ mode: "expense", canSubmitExpense: false }).disabled).toBe(true);
+    expect(getComposerSubmitState({ mode: "expense", canSubmit: false }).disabled).toBe(true);
   });
 
-  test("keeps income and transfer modes as non-submitting MVP previews", () => {
-    expect(getComposerSubmitState({ mode: "income", canSubmitExpense: true })).toEqual({
-      disabled: true,
-      label: "收入模式尚未開放",
-      hint: "MVP 先聚焦支出分攤，收入與轉帳會在後續版本補上。",
+  test("income and transfer modes are live with their own labels and hints", () => {
+    expect(getComposerSubmitState({ mode: "income", canSubmit: true })).toEqual({
+      disabled: false,
+      label: "新增收入",
+      hint: "填寫金額，選擇收款人與分配對象。",
     });
-    expect(getComposerSubmitState({ mode: "transfer", canSubmitExpense: true })).toEqual({
-      disabled: true,
-      label: "轉帳模式尚未開放",
-      hint: "MVP 先聚焦支出分攤，收入與轉帳會在後續版本補上。",
+    expect(getComposerSubmitState({ mode: "transfer", canSubmit: true })).toEqual({
+      disabled: false,
+      label: "新增轉帳",
+      hint: "填寫金額，選擇轉出與轉入成員。",
     });
+    expect(getComposerSubmitState({ mode: "income", canSubmit: false }).disabled).toBe(true);
+    expect(getComposerSubmitState({ mode: "transfer", canSubmit: false }).disabled).toBe(true);
+  });
+
+  test("editing keeps the 儲存變更 label for every mode", () => {
+    expect(getComposerSubmitState({ mode: "expense", canSubmit: true, isEditing: true }).label).toBe("儲存變更");
+    expect(getComposerSubmitState({ mode: "income", canSubmit: true, isEditing: true }).label).toBe("儲存變更");
+    expect(getComposerSubmitState({ mode: "transfer", canSubmit: true, isEditing: true }).label).toBe("儲存變更");
   });
 });

@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Copy,
+  HandCoins,
   History,
   House,
   Inbox,
@@ -259,7 +260,14 @@ export function App() {
       [groupId]: [activity, ...(current[groupId] ?? [])].slice(0, 8),
     }));
   }
-  const spendableExpenses = useMemo(() => expenses.filter((expense) => expense.kind !== "settlement"), [expenses]);
+  // Spend stats count real expenses only: settlements/transfers move money
+  // between members without spending it, and income entries are money
+  // received, not spent - both are excluded from 總計/個人消費/群組消費/
+  // 筆數/平均 and the date chips.
+  const spendableExpenses = useMemo(
+    () => expenses.filter((expense) => expense.kind !== "settlement" && expense.kind !== "income"),
+    [expenses],
+  );
   const totalExpenseMinor = spendableExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
   const averageExpenseMinor = spendableExpenses.length ? Math.round(totalExpenseMinor / spendableExpenses.length) : 0;
 
@@ -1167,6 +1175,8 @@ export function App() {
                       .filter((member): member is Member => Boolean(member))
                       .slice(0, 3);
                     const isSettlement = expense.kind === "settlement";
+                    const isIncome = expense.kind === "income";
+                    const extraPayerCount = (expense.payments?.length ?? 0) - 1;
                     return (
                       <button
                         className="expense-record-row pizo-expense-row"
@@ -1178,6 +1188,15 @@ export function App() {
                           <span className="member-avatar photo settlement-avatar">
                             <History aria-hidden="true" size={16} />
                           </span>
+                        ) : isIncome ? (
+                          <span className="member-avatar photo income-avatar">
+                            <HandCoins aria-hidden="true" size={16} />
+                          </span>
+                        ) : extraPayerCount > 0 ? (
+                          <span className="payer-avatar-stack">
+                            <span className="member-avatar photo">{initial(payer?.name)}</span>
+                            <i className="payer-count-badge" aria-hidden="true">{`+${extraPayerCount}`}</i>
+                          </span>
                         ) : (
                           <span className="member-avatar photo">{initial(payer?.name)}</span>
                         )}
@@ -1185,9 +1204,9 @@ export function App() {
                           <strong>{expense.title}</strong>
                           <small>{formatTime(expense.createdAt)}</small>
                         </span>
-                        <span className="expense-record-amount">
+                        <span className={isIncome ? "expense-record-amount amount-income" : "expense-record-amount"}>
                           <small>{expense.currency}</small>
-                          {formatTwd(expense.amountMinor)}
+                          {isIncome ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
                           <i className="mini-avatar-stack" aria-hidden="true">
                             {shareMembers.map((member) => (
                               <em key={member.id}>{initial(member.name)}</em>
@@ -1481,14 +1500,22 @@ export function App() {
                           </span>
                         ) : (
                           <span className="record-dialog-icon">
-                            {expense.kind === "settlement" ? <History aria-hidden="true" size={18} /> : <ReceiptText aria-hidden="true" size={18} />}
+                            {expense.kind === "settlement" ? (
+                              <History aria-hidden="true" size={18} />
+                            ) : expense.kind === "income" ? (
+                              <HandCoins aria-hidden="true" size={18} />
+                            ) : (
+                              <ReceiptText aria-hidden="true" size={18} />
+                            )}
                           </span>
                         )}
                         <span>
                           <strong>{expense.title}</strong>
                           <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
                         </span>
-                        <b>{formatTwd(expense.amountMinor)}</b>
+                        <b className={expense.kind === "income" ? "amount-income" : undefined}>
+                          {expense.kind === "income" ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
+                        </b>
                       </button>
                     ))
                   ) : (

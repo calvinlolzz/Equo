@@ -19,6 +19,17 @@ export type Member = {
   userId?: string | null;
 };
 
+/**
+ * kind mapping between the API's ExpenseKind ("expense" | "income" | "transfer")
+ * and this app-level union:
+ * - API "expense"  -> app "expense"
+ * - API "income"   -> app "income"
+ * - API "transfer" -> app "settlement" (a manual transfer IS a settlement with
+ *   a user-chosen amount/title/note - it reuses the existing settlement
+ *   records/stats treatment: excluded from spend totals, distinct row
+ *   styling, from/to display). See cloudAdapters.toExpense for the mapping
+ *   and toCreateExpenseRequest/toSettlementTransferRequest for the reverse.
+ */
 export type Expense = {
   id: string;
   title: string;
@@ -27,7 +38,7 @@ export type Expense = {
   createdAt: string;
   payerId: string;
   shareMemberIds: string[];
-  kind?: "expense" | "settlement";
+  kind?: "expense" | "income" | "settlement";
   category?: string;
   note?: string;
   imageUrl?: string;
@@ -35,6 +46,28 @@ export type Expense = {
   sourceAmountMinor?: number;
   exchangeRate?: number;
   shareAmountsMinor?: Record<string, number>;
+  /**
+   * Multiple payers for an expense, or the beneficiary payments for an
+   * income entry (see agreed sign semantics below). When present, this is
+   * authoritative for balance math and display; payerId still holds the
+   * first payment's payer for backward-compatible single-payer display.
+   */
+  payments?: Array<{ payerId: string; amountMinor: number }>;
+  /**
+   * Per-member share mode. "percent" means sharePercents (not
+   * shareAmountsMinor) is the source of truth for the user-entered split;
+   * shareAmountsMinor is still populated (derived via
+   * buildPercentShareAmounts) so existing balance/display code that only
+   * knows about shareAmountsMinor keeps working unmodified.
+   */
+  shareType?: "fixed" | "percent";
+  /** memberId -> percent (0-100), corresponds to API share_value under share_type "percent". */
+  sharePercents?: Record<string, number>;
+  /**
+   * Destination member for a "settlement" (transfer) expense. Falls back to
+   * shareMemberIds[0] in existing display code when absent (older data).
+   */
+  transferToMemberId?: string;
 };
 
 export type Activity = {

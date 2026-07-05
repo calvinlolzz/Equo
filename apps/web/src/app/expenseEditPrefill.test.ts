@@ -21,6 +21,7 @@ describe("buildExpenseEditPrefill", () => {
   test("maps a plain group-currency expense", () => {
     const expense = makeExpense({});
     expect(buildExpenseEditPrefill(expense, "TWD")).toEqual({
+      mode: "expense",
       title: "午餐",
       category: "food",
       currency: "TWD",
@@ -28,8 +29,11 @@ describe("buildExpenseEditPrefill", () => {
       exchangeRate: "1",
       payerId: "member_a",
       shareMemberIds: ["member_a", "member_b"],
-      isCustomSplit: false,
+      splitMode: "equal",
       shareAmounts: {},
+      sharePercents: {},
+      payments: [],
+      transferToMemberId: "",
       imageUrl: "",
       note: "",
       dateTimeIso: "2026-02-03T10:20:00.000Z",
@@ -56,7 +60,7 @@ describe("buildExpenseEditPrefill", () => {
       shareAmountsMinor: { member_a: 400, member_b: 600 },
     });
     const prefill = buildExpenseEditPrefill(expense, "TWD");
-    expect(prefill.isCustomSplit).toBe(true);
+    expect(prefill.splitMode).toBe("amount");
     expect(prefill.shareAmounts).toEqual({ member_a: "4", member_b: "6" });
   });
 
@@ -70,5 +74,92 @@ describe("buildExpenseEditPrefill", () => {
   test("defaults category to general when missing", () => {
     const expense = makeExpense({ category: undefined });
     expect(buildExpenseEditPrefill(expense, "TWD").category).toBe("general");
+  });
+
+  test("prefills the payer rows for a multi-payer expense", () => {
+    const expense = makeExpense({
+      amountMinor: 1000,
+      payerId: "member_a",
+      payments: [
+        { payerId: "member_a", amountMinor: 600 },
+        { payerId: "member_b", amountMinor: 400 },
+      ],
+      shareAmountsMinor: { member_a: 500, member_b: 500 },
+    });
+    const prefill = buildExpenseEditPrefill(expense, "TWD");
+    expect(prefill.mode).toBe("expense");
+    expect(prefill.payments).toEqual([
+      { payerId: "member_a", amount: "6" },
+      { payerId: "member_b", amount: "4" },
+    ]);
+  });
+
+  test("keeps the zero-effort single payer row when there is only one payment", () => {
+    const expense = makeExpense({
+      payments: [{ payerId: "member_a", amountMinor: 1000 }],
+    });
+    const prefill = buildExpenseEditPrefill(expense, "TWD");
+    expect(prefill.payments).toEqual([]);
+    expect(prefill.payerId).toBe("member_a");
+  });
+
+  test("reopens a percent split in percent mode with the original percents", () => {
+    const expense = makeExpense({
+      amountMinor: 1000,
+      shareType: "percent",
+      sharePercents: { member_a: 70, member_b: 30 },
+      shareAmountsMinor: { member_a: 700, member_b: 300 },
+    });
+    const prefill = buildExpenseEditPrefill(expense, "TWD");
+    expect(prefill.splitMode).toBe("percent");
+    expect(prefill.sharePercents).toEqual({ member_a: "70", member_b: "30" });
+    expect(prefill.shareAmounts).toEqual({ member_a: "7", member_b: "3" });
+  });
+
+  test("reopens an income with the collector and beneficiary portions", () => {
+    const income = makeExpense({
+      kind: "income",
+      title: "退款",
+      amountMinor: 900,
+      payerId: "member_b",
+      payments: [
+        { payerId: "member_b", amountMinor: 600 },
+        { payerId: "member_c", amountMinor: 300 },
+      ],
+      shareMemberIds: ["member_a"],
+      shareAmountsMinor: { member_a: 900 },
+    });
+    const prefill = buildExpenseEditPrefill(income, "TWD");
+    expect(prefill.mode).toBe("income");
+    expect(prefill.payerId).toBe("member_a");
+    expect(prefill.shareMemberIds).toEqual(["member_b", "member_c"]);
+    expect(prefill.splitMode).toBe("amount");
+    expect(prefill.shareAmounts).toEqual({ member_b: "6", member_c: "3" });
+  });
+
+  test("reopens a settlement as a transfer with from/to members", () => {
+    const settlement = makeExpense({
+      kind: "settlement",
+      title: "轉帳",
+      amountMinor: 500,
+      payerId: "member_a",
+      shareMemberIds: ["member_b"],
+      shareAmountsMinor: { member_b: 500 },
+      transferToMemberId: "member_b",
+    });
+    const prefill = buildExpenseEditPrefill(settlement, "TWD");
+    expect(prefill.mode).toBe("transfer");
+    expect(prefill.payerId).toBe("member_a");
+    expect(prefill.transferToMemberId).toBe("member_b");
+    expect(prefill.amount).toBe("5");
+  });
+
+  test("falls back to shareMemberIds[0] for older settlements without transferToMemberId", () => {
+    const settlement = makeExpense({
+      kind: "settlement",
+      payerId: "member_a",
+      shareMemberIds: ["member_b"],
+    });
+    expect(buildExpenseEditPrefill(settlement, "TWD").transferToMemberId).toBe("member_b");
   });
 });

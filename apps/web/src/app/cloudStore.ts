@@ -341,7 +341,7 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
   async function addExpense(groupId: string, draft: ExpenseDraft, groupCurrency: string) {
     try {
       const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
-      prependExpense(groupId, draftToExpense(draft, expense, "expense"));
+      prependExpense(groupId, draftToExpense(draft, expense));
     } catch (error) {
       resyncInBackground(groupId);
       handleError(error);
@@ -354,7 +354,7 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
       const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
       const current = state.groupDetails[groupId];
       if (current) {
-        const nextExpense = draftToExpense(draft, expense, "expense");
+        const nextExpense = draftToExpense(draft, expense);
         const index = current.expenses.findIndex((item) => item.id === expenseId);
         const expenses =
           index === -1
