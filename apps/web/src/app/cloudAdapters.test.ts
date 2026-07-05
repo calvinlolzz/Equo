@@ -58,8 +58,8 @@ describe("toMembers", () => {
     ]);
 
     expect(members).toEqual([
-      { id: "m1", name: "Alice", role: "owner", virtual: false },
-      { id: "m2", name: "Bob's Tab", role: "member", virtual: true },
+      { id: "m1", name: "Alice", role: "owner", virtual: false, userId: "u1" },
+      { id: "m2", name: "Bob's Tab", role: "member", virtual: true, userId: null },
     ]);
   });
 
@@ -69,7 +69,15 @@ describe("toMembers", () => {
       { id: "m2", group_id: "g1", user_id: "u2", display_name: "Removed", role: "member", status: "removed" },
     ]);
 
-    expect(members).toEqual([{ id: "m1", name: "Alice", role: "owner", virtual: false }]);
+    expect(members).toEqual([{ id: "m1", name: "Alice", role: "owner", virtual: false, userId: "u1" }]);
+  });
+
+  test("maps userId from user_id so App.tsx can resolve the current user among joined-group members", () => {
+    const members = toMembers([
+      { id: "m1", group_id: "g1", user_id: "u1", display_name: "Alice", role: "member", status: "active" },
+    ]);
+
+    expect(members[0].userId).toBe("u1");
   });
 });
 
@@ -216,7 +224,7 @@ describe("toGroupUiData", () => {
     const ui = toGroupUiData(detail);
 
     expect(ui.group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
-    expect(ui.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false }]);
+    expect(ui.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "u1" }]);
     expect(ui.expenses).toHaveLength(1);
     expect(ui.expenses[0].title).toBe("Dinner");
   });

@@ -144,25 +144,6 @@ export const UI_TEXT = {
     shopping: "購物",
     general: "一般",
   },
-  timePeriod: {
-    morning: "上午",
-    afternoon: "下午",
-  },
-  expenseRecords: {
-    version: "版本",
-  },
-  members: {
-    ownerFallback: "尚未設定",
-    createInvite: "產生邀請碼",
-    updateInvite: "更新邀請碼",
-  },
-  groupNavigation: {
-    home: "群組首頁",
-    currency: "幣別",
-    records: "支出記錄",
-    analysis: "分析",
-    members: "群組成員",
-  },
   settlement: {
     settled: "已結清",
     transferSuggestionSuffix: "筆清償轉帳",
@@ -174,7 +155,6 @@ export const UI_TEXT = {
   profile: {
     title: "個人資料",
     logout: "登出",
-    logoutToast: "尚未登入雲端帳號",
     accountTab: "帳號設定",
     otherTab: "其他設定",
     googleAccount: "Google 帳號",

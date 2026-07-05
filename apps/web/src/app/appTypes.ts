@@ -10,6 +10,13 @@ export type Member = {
   name: string;
   role?: "owner" | "member";
   virtual?: boolean;
+  /**
+   * The auth user id this member is linked to (Supabase session.user.id).
+   * Null/undefined for virtual (payer-only) members that have no login.
+   * Used to resolve "the current logged-in user" among a group's members -
+   * see resolveCurrentMember in App.tsx.
+   */
+  userId?: string | null;
 };
 
 export type Expense = {

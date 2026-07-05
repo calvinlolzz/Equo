@@ -62,7 +62,7 @@ describe("createCloudGroupsStore", () => {
     const data = await store.refreshGroupDetail("group_1");
 
     expect(data.group).toEqual({ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined });
-    expect(data.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false }]);
+    expect(data.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }]);
     expect(store.getState().groupDetails.group_1).toBe(data);
     expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
   });
@@ -82,7 +82,7 @@ describe("createCloudGroupsStore", () => {
     expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
     expect(store.getState().groupDetails.group_1).toEqual({
       group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
-      members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false }],
+      members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
       expenses: [],
     });
   });
@@ -129,8 +129,8 @@ describe("createCloudGroupsStore", () => {
     });
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
     expect(store.getState().groupDetails.group_1.members).toEqual([
-      { id: "member_1", name: "Alice", role: "owner", virtual: false },
-      { id: "member_2", name: "Bob", role: "member", virtual: true },
+      { id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" },
+      { id: "member_2", name: "Bob", role: "member", virtual: true, userId: null },
     ]);
   });
 

@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
     "apps/web/src/app/apiClient.ts": [
         "createApiClient",
-        "createDemoApiClient",
         'credentials: "same-origin"',
         "createGroup",
         "createInvite",

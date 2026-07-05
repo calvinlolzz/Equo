@@ -30,6 +30,7 @@ import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { ProfileDialog } from "./ProfileDialog";
+import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
@@ -261,7 +262,10 @@ export function App() {
 
   const balances = useMemo(() => computeMemberBalances(members, expenses), [expenses, members]);
 
-  const ownerMember = members.find((member) => member.role === "owner") ?? members[0];
+  // The logged-in user's own member row within the active group - NOT
+  // necessarily the group owner (joined-via-invite members are non-owners).
+  // See resolveCurrentMember.ts for the matching/fallback rules.
+  const currentMember = resolveCurrentMember(members, session?.user.id);
 
   const dateChips = useMemo(() => lastEightDays(), []);
   const selectedDayExpenses = useMemo(
@@ -270,9 +274,9 @@ export function App() {
   );
   const groupSpendMinor = selectedDayExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
   const personalSpendMinor = useMemo(() => {
-    if (!ownerMember) return 0;
-    return selectedDayExpenses.reduce((sum, expense) => sum + getMemberShareMinor(expense, ownerMember.id), 0);
-  }, [selectedDayExpenses, ownerMember]);
+    if (!currentMember) return 0;
+    return selectedDayExpenses.reduce((sum, expense) => sum + getMemberShareMinor(expense, currentMember.id), 0);
+  }, [selectedDayExpenses, currentMember]);
   const selectedDateChip = dateChips.find((chip) => chip.key === selectedDateKey);
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
