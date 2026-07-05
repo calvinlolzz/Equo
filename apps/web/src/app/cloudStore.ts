@@ -1,5 +1,6 @@
 import type { CreateGroupRequest } from "../contracts/schemas";
 import { createApiClient, type ArchivedGroupSummary, type EquoApiClient, type GroupDetail } from "./apiClient";
+import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
 import {
   draftToExpense,
   settlementTransferToDraft,
@@ -70,10 +71,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function initialState(): CloudGroupsState {
+function initialState(userId?: string, cacheStorage?: CacheStorage): CloudGroupsState {
+  const cached = userId ? loadCloudCache(userId, cacheStorage) : null;
   return {
-    groups: [],
-    groupDetails: {},
+    groups: cached?.groups ?? [],
+    groupDetails: cached?.groupDetails ?? {},
     loadingGroups: false,
     loadingGroupIds: {},
   };
@@ -82,6 +84,18 @@ function initialState(): CloudGroupsState {
 export type CreateCloudGroupsStoreOptions = {
   apiClient: ApiClientLike;
   onSessionExpired: () => void;
+  /**
+   * The logged-in user's id, used to key the localStorage display-seed cache
+   * (see cloudCache.ts). When provided, the store seeds its initial state
+   * from any cached snapshot for this user so the app can render instantly
+   * on reload, and persists every state change back to the cache (debounced)
+   * so the next reload has fresh data to seed from. Omit in tests that don't
+   * care about the cache - the store falls back to a blank initial state and
+   * skips persistence entirely.
+   */
+  userId?: string;
+  /** Injectable storage for tests; defaults to window.localStorage. */
+  cacheStorage?: CacheStorage;
 };
 
 /**
@@ -106,13 +120,27 @@ export type CreateCloudGroupsStoreOptions = {
  * fake api client (mirroring apiClient.test.ts) without any DOM/React
  * testing dependency. React components bind to it via subscribe().
  */
-export function createCloudGroupsStore({ apiClient, onSessionExpired }: CreateCloudGroupsStoreOptions) {
-  let state = initialState();
+export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, cacheStorage }: CreateCloudGroupsStoreOptions) {
+  let state = initialState(userId, cacheStorage);
   const listeners = new Set<() => void>();
+  let persistTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  /** Debounced (~300ms) write-through of {groups, groupDetails} to the cloud cache. */
+  function schedulePersist() {
+    if (!userId) return;
+    if (persistTimeout) clearTimeout(persistTimeout);
+    persistTimeout = setTimeout(() => {
+      persistTimeout = null;
+      saveCloudCache({ userId, groups: state.groups, groupDetails: state.groupDetails }, cacheStorage);
+    }, 300);
+  }
 
   function setState(patch: Partial<CloudGroupsState>) {
     state = { ...state, ...patch };
     listeners.forEach((listener) => listener());
+    if (patch.groups !== undefined || patch.groupDetails !== undefined) {
+      schedulePersist();
+    }
   }
 
   function getState() {

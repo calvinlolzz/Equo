@@ -120,6 +120,7 @@ async function invokeEveryGroupRepositoryMethod(client: SupabaseQueryClient) {
   await repo.listGroups(authContext);
   await repo.listArchivedGroups(authContext);
   await repo.listMembers("group_1");
+  await repo.getGroupDetail(authContext, "group_1");
   await repo.createGroup(authContext, { client_request_id: "req_1", name: "Trip", currency: "TWD" });
   await repo.updateGroup("group_1", { client_request_id: "req_2", name: "Trip 2" });
   await repo.archiveGroup("group_1");

@@ -23,6 +23,7 @@ import {
 import { createActionGuard } from "./actionGuard";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
+import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
@@ -213,6 +214,7 @@ export function App() {
 
   function handleSessionExpired() {
     clearSession();
+    clearCloudCache();
     setSession(null);
     showToast(text.sessionExpired);
   }
@@ -222,6 +224,7 @@ export function App() {
     return createCloudGroupsStore({
       apiClient: createApiClient({ authToken: session.token }),
       onSessionExpired: handleSessionExpired,
+      userId: session.user.id,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
@@ -593,6 +596,7 @@ export function App() {
 
   function logout() {
     clearSession();
+    clearCloudCache();
     setSession(null);
     setActiveGroupId("");
     setGroupRoute(null, "replace");

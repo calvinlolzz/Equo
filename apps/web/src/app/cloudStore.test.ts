@@ -1,7 +1,24 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ApiClientLike } from "./cloudStore";
 import { createCloudGroupsStore } from "./cloudStore";
+import { clearCloudCache, loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
+
+function memoryStorage(): CacheStorage {
+  const values = new Map<string, string>();
+
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    },
+  };
+}
 
 const group1 = { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_1" };
 const member1 = {
@@ -470,5 +487,150 @@ describe("createCloudGroupsStore", () => {
 
     expect(listener).toHaveBeenCalled();
     unsubscribe();
+  });
+
+  describe("stale-while-revalidate cloud cache", () => {
+    test("seeds initial state from a cached snapshot for the same user", () => {
+      const cacheStorage = memoryStorage();
+      saveCloudCache(
+        {
+          userId: "user_1",
+          groups: [{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }],
+          groupDetails: {
+            group_1: {
+              group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
+              members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
+              expenses: [],
+            },
+          },
+        },
+        cacheStorage,
+      );
+
+      const store = createCloudGroupsStore({
+        apiClient: makeFakeApiClient(),
+        onSessionExpired: vi.fn(),
+        userId: "user_1",
+        cacheStorage,
+      });
+
+      expect(store.getState().groups).toEqual([
+        { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
+      ]);
+      expect(store.getState().groupDetails.group_1.group).toEqual({
+        id: "group_1",
+        name: "Tokyo Trip",
+        currency: "TWD",
+        coverImageUrl: undefined,
+      });
+    });
+
+    test("does not seed from a cached snapshot that belongs to a different user", () => {
+      const cacheStorage = memoryStorage();
+      saveCloudCache(
+        {
+          userId: "user_other",
+          groups: [{ id: "group_9", name: "Someone Else's Trip", currency: "TWD", coverImageUrl: undefined }],
+          groupDetails: {},
+        },
+        cacheStorage,
+      );
+
+      const store = createCloudGroupsStore({
+        apiClient: makeFakeApiClient(),
+        onSessionExpired: vi.fn(),
+        userId: "user_1",
+        cacheStorage,
+      });
+
+      expect(store.getState().groups).toEqual([]);
+      expect(store.getState().groupDetails).toEqual({});
+    });
+
+    test("starts blank when the cached snapshot is corrupt JSON", () => {
+      const cacheStorage = memoryStorage();
+      cacheStorage.setItem("equo.clean.cloud_cache", "{not-json");
+
+      const store = createCloudGroupsStore({
+        apiClient: makeFakeApiClient(),
+        onSessionExpired: vi.fn(),
+        userId: "user_1",
+        cacheStorage,
+      });
+
+      expect(store.getState().groups).toEqual([]);
+      expect(store.getState().groupDetails).toEqual({});
+    });
+
+    test("persists groups and group details back to the cache after a state change", async () => {
+      vi.useFakeTimers();
+      try {
+        const cacheStorage = memoryStorage();
+        const apiClient = makeFakeApiClient();
+        const store = createCloudGroupsStore({
+          apiClient,
+          onSessionExpired: vi.fn(),
+          userId: "user_1",
+          cacheStorage,
+        });
+
+        await store.refreshGroups();
+        await store.refreshGroupDetail("group_1");
+        await vi.advanceTimersByTimeAsync(300);
+
+        const persisted = loadCloudCache("user_1", cacheStorage);
+        expect(persisted?.groups).toEqual([
+          { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
+        ]);
+        expect(persisted?.groupDetails.group_1.group).toEqual({
+          id: "group_1",
+          name: "Tokyo Trip",
+          currency: "TWD",
+          coverImageUrl: undefined,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("does not persist when no userId is provided", async () => {
+      vi.useFakeTimers();
+      try {
+        const cacheStorage = memoryStorage();
+        const apiClient = makeFakeApiClient();
+        const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn(), cacheStorage });
+
+        await store.refreshGroups();
+        await vi.advanceTimersByTimeAsync(300);
+
+        expect(cacheStorage.getItem("equo.clean.cloud_cache")).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("clearCloudCache removes a previously persisted snapshot", async () => {
+      vi.useFakeTimers();
+      try {
+        const cacheStorage = memoryStorage();
+        const apiClient = makeFakeApiClient();
+        const store = createCloudGroupsStore({
+          apiClient,
+          onSessionExpired: vi.fn(),
+          userId: "user_1",
+          cacheStorage,
+        });
+
+        await store.refreshGroups();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(cacheStorage.getItem("equo.clean.cloud_cache")).not.toBeNull();
+
+        clearCloudCache(cacheStorage);
+
+        expect(loadCloudCache("user_1", cacheStorage)).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

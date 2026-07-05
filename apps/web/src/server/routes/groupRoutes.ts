@@ -12,8 +12,6 @@ import {
   type SupabaseQueryClient,
   upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
-import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
-import { createSupabaseSettlementRepository } from "../repositories/supabaseSettlementRepository.js";
 import {
   handleAcceptInvite,
   handleArchiveGroup,
@@ -78,13 +76,7 @@ export async function getGroupDetailRoute(options: RouteOptions, groupId: string
     return { ok: false, status: 401, body: auth.error };
   }
 
-  return handleGetGroupDetail(
-    createSupabaseGroupRepository(options.client),
-    createSupabaseExpenseRepository(options.client),
-    createSupabaseSettlementRepository(options.client),
-    auth.context,
-    groupId,
-  );
+  return handleGetGroupDetail(createSupabaseGroupRepository(options.client), auth.context, groupId);
 }
 
 export async function updateGroupRoute(options: RouteOptions, groupId: string, request: UpdateGroupRequest) {

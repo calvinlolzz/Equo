@@ -454,4 +454,67 @@ describe("createSupabaseStorageClient", () => {
       storage.uploadImage({ groupId: "group_1", ext: "jpg", bytes: new Uint8Array(), contentType: "image/jpeg" }),
     ).rejects.toThrow("Supabase storage upload failed: 413");
   });
+
+  test("calls the get_group_detail RPC via the Postgres RPC endpoint and returns the jsonb value directly", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const rpcResult = {
+      group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_1", cover_image_url: null },
+      members: [
+        {
+          id: "member_1",
+          group_id: "group_1",
+          user_id: "user_1",
+          display_name: "Alice",
+          role: "owner",
+          status: "active",
+        },
+      ],
+      expenses: [],
+      balances: [],
+    };
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return {
+          ok: true,
+          async json() {
+            return rpcResult;
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.maybeOne(`select public.get_group_detail($1, $2) as detail`, ["group_1", "user_1"]),
+    ).resolves.toEqual(rpcResult);
+
+    expect(calls[0].url).toBe("https://example.supabase.co/rest/v1/rpc/get_group_detail");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.headers).toMatchObject({
+      apikey: "service-role-key",
+      Authorization: "Bearer service-role-key",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ p_group_id: "group_1", p_user_id: "user_1" });
+  });
+
+  test("returns null from get_group_detail when the caller is not an active member (or the group is missing)", async () => {
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async () =>
+        ({
+          ok: true,
+          async json() {
+            return null;
+          },
+        }) as Response,
+    });
+
+    await expect(
+      client.maybeOne(`select public.get_group_detail($1, $2) as detail`, ["group_1", "user_1"]),
+    ).resolves.toBeNull();
+  });
 });

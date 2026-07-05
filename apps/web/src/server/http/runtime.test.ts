@@ -108,7 +108,36 @@ function makeClient(): SupabaseQueryClient {
 
       throw new Error(sql);
     },
-    async maybeOne() {
+    async maybeOne(sql) {
+      if (sql.includes("get_group_detail")) {
+        return {
+          group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
+          members: [
+            {
+              id: "member_owner",
+              group_id: "group_1",
+              user_id: "user_alice",
+              display_name: "Alice",
+              role: "owner",
+              status: "active",
+            },
+          ],
+          expenses: [
+            {
+              id: "expense_1",
+              group_id: "group_1",
+              title: "Dinner",
+              kind: "expense",
+              amount_minor: 120000,
+              currency: "TWD",
+              version: 1,
+              client_request_id: "expense_req",
+            },
+          ],
+          balances: [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" } }],
+        } as never;
+      }
+
       return {
         id: "member_owner",
         group_id: "group_1",

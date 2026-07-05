@@ -7,9 +7,7 @@ import type {
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
-import type { ExpenseRepository } from "../repositories/expenseRepository.js";
 import type { GroupMemberRecord, GroupRepository } from "../repositories/groupRepository.js";
-import type { SettlementRepository } from "../repositories/settlementRepository.js";
 
 type HandlerResult<T> =
   | { ok: true; status: number; body: T }
@@ -165,39 +163,22 @@ export async function handleDeleteGroup(
 
 export async function handleGetGroupDetail(
   groupRepository: GroupRepository,
-  expenseRepository: ExpenseRepository,
-  settlementRepository: SettlementRepository,
   context: AuthenticatedContext,
   groupId: string,
 ) {
-  const member = await requireGroupMember(groupRepository, context, groupId);
+  const detail = await groupRepository.getGroupDetail(context, groupId);
 
-  if (!member) {
+  // The RPC returns null both when the caller isn't an active member and
+  // when the group is deleted/missing - collapse both into the same
+  // forbidden response the multi-query path used to return for either case.
+  if (!detail) {
     return forbidden("req_group_detail");
   }
-
-  const groups = await groupRepository.listGroups(context);
-  const group = groups.find((item) => item.id === groupId);
-
-  if (!group) {
-    return forbidden("req_group_detail");
-  }
-
-  const [members, expenses, balances] = await Promise.all([
-    groupRepository.listMembers(groupId),
-    expenseRepository.listExpenses(groupId),
-    settlementRepository.listBalances(groupId),
-  ]);
 
   return {
     ok: true,
     status: 200,
-    body: {
-      group,
-      members,
-      expenses,
-      balances,
-    },
+    body: detail,
   } satisfies HandlerResult<unknown>;
 }
 

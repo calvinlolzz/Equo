@@ -68,12 +68,16 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
   const fetcher = options.fetcher ?? fetch;
   const baseUrl = options.url.replace(/\/$/, "");
 
-  async function request<T>(request: RestRequest): Promise<T[]> {
-    const headers: Record<string, string> = {
+  function restHeaders(): Record<string, string> {
+    return {
       apikey: options.serviceRoleKey,
       Authorization: `Bearer ${options.serviceRoleKey}`,
       "Content-Type": "application/json",
     };
+  }
+
+  async function request<T>(request: RestRequest): Promise<T[]> {
+    const headers = restHeaders();
 
     if (request.prefer || request.returnRepresentation) {
       headers.Prefer = [request.prefer, request.returnRepresentation ? "return=representation" : undefined]
@@ -97,6 +101,26 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
     }
 
     return response.json() as Promise<T[]>;
+  }
+
+  /**
+   * Postgres RPC calls live at a different URL shape than table reads
+   * (/rest/v1/rpc/<fn> vs /rest/v1/<table>) and the response is the raw
+   * jsonb value the function returned - not an array of rows - so this is a
+   * sibling of `request` rather than a table-shaped call through it.
+   */
+  async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+    const response = await fetcher(`${baseUrl}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: restHeaders(),
+      body: JSON.stringify(args),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Supabase REST request failed: ${response.status}`);
+    }
+
+    return response.json() as Promise<T>;
   }
 
   async function execute<T>(mode: "one" | "maybeOne" | "exec", sql: string, params: unknown[]): Promise<T> {
@@ -134,6 +158,14 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         prefer: "resolution=merge-duplicates",
       });
       return undefined as T;
+    }
+
+    if (normalized.includes("select public.get_group_detail(")) {
+      const detail = await rpc<unknown>("get_group_detail", {
+        p_group_id: params[0],
+        p_user_id: params[1],
+      });
+      return (detail ?? null) as T;
     }
 
     if (normalized.includes("insert into public.groups")) {

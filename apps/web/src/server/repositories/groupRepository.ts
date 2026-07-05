@@ -5,6 +5,8 @@ import type {
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
+import type { ExpenseRecord } from "./expenseRepository.js";
+import type { MemberBalance } from "../../domain/settlement.js";
 
 export type GroupMemberRole = "owner" | "member";
 
@@ -44,10 +46,18 @@ export type InviteRecord = {
   expires_at?: string;
 };
 
+export type GroupDetailRecord = {
+  group: GroupRecord;
+  members: GroupMemberRecord[];
+  expenses: ExpenseRecord[];
+  balances: MemberBalance[];
+};
+
 export type GroupRepository = {
   listGroups(context: AuthenticatedContext): Promise<GroupRecord[]>;
   listArchivedGroups(context: AuthenticatedContext): Promise<ArchivedGroupRecord[]>;
   listMembers(groupId: string): Promise<GroupMemberRecord[]>;
+  getGroupDetail(context: AuthenticatedContext, groupId: string): Promise<GroupDetailRecord | null>;
   createGroup(context: AuthenticatedContext, request: CreateGroupRequest): Promise<{
     group: GroupRecord;
     ownerMember: GroupMemberRecord;

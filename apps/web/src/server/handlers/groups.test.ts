@@ -132,53 +132,45 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
         use_count: 0,
       };
     },
+    async getGroupDetail() {
+      return {
+        group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
+        members: [
+          {
+            id: "member_owner",
+            group_id: "group_1",
+            user_id: "user_alice",
+            display_name: "Alice",
+            role: "owner" as const,
+            status: "active" as const,
+          },
+        ],
+        expenses: [
+          {
+            id: "expense_1",
+            group_id: "group_1",
+            title: "Dinner",
+            kind: "expense",
+            amount_minor: 120000,
+            currency: "TWD",
+            note: "Split unevenly, Bob paid",
+            transfer_to_member_id: null,
+            version: 1,
+            client_request_id: "expense_req",
+            expense_payments: [{ payer_member_id: "member_bob", amount_minor: 120000, currency: "TWD" }],
+            expense_shares: [
+              { member_id: "member_owner", share_type: "fixed", amount_minor: 80000 },
+              { member_id: "member_carol", share_type: "fixed", amount_minor: 40000 },
+            ],
+          },
+        ],
+        balances: [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" as const } }],
+      };
+    },
     async recordClientRequest() {},
     ...overrides,
   };
 }
-
-const expenseRepository = {
-  async createExpense() {
-    throw new Error("not used");
-  },
-  async listExpenses() {
-    return [
-      {
-        id: "expense_1",
-        group_id: "group_1",
-        title: "Dinner",
-        kind: "expense",
-        amount_minor: 120000,
-        currency: "TWD",
-        note: "Split unevenly, Bob paid",
-        transfer_to_member_id: null,
-        version: 1,
-        client_request_id: "expense_req",
-        expense_payments: [{ payer_member_id: "member_bob", amount_minor: 120000, currency: "TWD" }],
-        expense_shares: [
-          { member_id: "member_owner", share_type: "fixed", amount_minor: 80000 },
-          { member_id: "member_carol", share_type: "fixed", amount_minor: 40000 },
-        ],
-      },
-    ];
-  },
-  async softDeleteExpense() {
-    throw new Error("not used");
-  },
-  async recordClientRequest() {},
-};
-
-const settlementRepository = {
-  async listBalances() {
-    return [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" as const } }];
-  },
-  async calculateCurrentSettlement() {
-    throw new Error("not used");
-  },
-  async confirmSettlement() {
-    throw new Error("not used");
-  },
-};
 
 describe("group handlers", () => {
   test("creates a group with an owner member", async () => {
@@ -213,14 +205,8 @@ describe("group handlers", () => {
     });
   });
 
-  test("returns group detail with members, expenses, and balances", async () => {
-    const result = await handleGetGroupDetail(
-      makeRepository(),
-      expenseRepository,
-      settlementRepository,
-      context,
-      "group_1",
-    );
+  test("returns group detail with members, expenses, and balances from the RPC", async () => {
+    const result = await handleGetGroupDetail(makeRepository(), context, "group_1");
 
     expect(result.status).toBe(200);
     expect(result.ok && result.body).toMatchObject({
@@ -244,6 +230,17 @@ describe("group handlers", () => {
     // The payer (member_bob) is excluded from expense_shares while still present in expense_payments.
     const expense = result.ok ? (result.body as { expenses: Array<{ expense_shares: Array<{ member_id: string }> }> }).expenses[0] : undefined;
     expect(expense?.expense_shares.some((share) => share.member_id === "member_bob")).toBe(false);
+  });
+
+  test("returns forbidden when the RPC returns null (not a member, or group deleted/missing)", async () => {
+    const result = await handleGetGroupDetail(
+      makeRepository({ getGroupDetail: async () => null }),
+      context,
+      "group_missing",
+    );
+
+    expect(result.status).toBe(403);
+    expect(!result.ok && result.body.error.code).toBe("FORBIDDEN");
   });
 
   test("updates a group after membership check", async () => {

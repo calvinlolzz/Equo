@@ -8,6 +8,7 @@ import type { GoogleIdentity } from "../auth/google.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
   ArchivedGroupRecord,
+  GroupDetailRecord,
   GroupMemberRecord,
   GroupRecord,
   GroupRepository,
@@ -109,6 +110,23 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
         `,
         [groupId],
       );
+    },
+
+    async getGroupDetail(context: AuthenticatedContext, groupId: string) {
+      const result = await client.maybeOne<GroupDetailRecord | null>(
+        `select public.get_group_detail($1, $2) as detail`,
+        [groupId, context.user.id],
+      );
+
+      if (!result || !Array.isArray(result.members)) return result ?? null;
+
+      // The RPC's members subquery has no status filter (unlike listMembers),
+      // so filter to active members here to keep this method's contract
+      // identical to the multi-query path it replaces.
+      return {
+        ...result,
+        members: result.members.filter((member) => member.status === "active"),
+      };
     },
 
     async createGroup(context: AuthenticatedContext, request: CreateGroupRequest) {
