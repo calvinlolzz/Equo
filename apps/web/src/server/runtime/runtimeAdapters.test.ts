@@ -348,6 +348,66 @@ describe("runtime adapters", () => {
       status: "active",
     });
   });
+
+  test("batch-fetches expense payments by expense ids through Supabase REST", async () => {
+    const calls: string[] = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url) => {
+        calls.push(String(url));
+        return {
+          ok: true,
+          async json() {
+            return [{ expense_id: "exp_1", payer_member_id: "m1", amount_minor: 100, currency: "TWD" }];
+          },
+        } as Response;
+      },
+    });
+
+    await client.one(
+      `
+        select expense_id, payer_member_id, amount_minor, currency
+        from public.expense_payments
+        where expense_id = any($1)
+      `,
+      [["exp_1", "exp_2"]],
+    );
+
+    expect(calls[0]).toContain("/rest/v1/expense_payments");
+    expect(calls[0]).toContain("select=expense_id,payer_member_id,amount_minor,currency");
+    expect(calls[0]).toContain("expense_id=in.(exp_1,exp_2)");
+  });
+
+  test("batch-fetches expense shares by expense ids through Supabase REST", async () => {
+    const calls: string[] = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url) => {
+        calls.push(String(url));
+        return {
+          ok: true,
+          async json() {
+            return [{ expense_id: "exp_1", member_id: "m1", share_type: "fixed", share_value: null, amount_minor: 50 }];
+          },
+        } as Response;
+      },
+    });
+
+    await client.one(
+      `
+        select expense_id, member_id, share_type, share_value, amount_minor
+        from public.expense_shares
+        where expense_id = any($1)
+      `,
+      [["exp_1"]],
+    );
+
+    expect(calls[0]).toContain("/rest/v1/expense_shares");
+    expect(calls[0]).toContain("select=expense_id,member_id,share_type,share_value,amount_minor");
+    expect(calls[0]).toContain("expense_id=in.(exp_1)");
+  });
 });
 
 describe("createSupabaseStorageClient", () => {

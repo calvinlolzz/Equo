@@ -409,6 +409,26 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return undefined as T;
     }
 
+    if (normalized.includes("from public.expense_payments") && normalized.includes("expense_id = any($1)")) {
+      const expenseIds = params[0] as string[];
+      return request<T>({
+        method: "GET",
+        table: "expense_payments",
+        query: `select=expense_id,payer_member_id,amount_minor,currency&expense_id=in.(${expenseIds.map(encodeFilter).join(",")})`,
+        returnRepresentation: true,
+      }) as T;
+    }
+
+    if (normalized.includes("from public.expense_shares") && normalized.includes("expense_id = any($1)")) {
+      const expenseIds = params[0] as string[];
+      return request<T>({
+        method: "GET",
+        table: "expense_shares",
+        query: `select=expense_id,member_id,share_type,share_value,amount_minor&expense_id=in.(${expenseIds.map(encodeFilter).join(",")})`,
+        returnRepresentation: true,
+      }) as T;
+    }
+
     if (normalized.includes("from public.expenses") && normalized.includes("order by expense_date")) {
       return request<T>({
         method: "GET",
