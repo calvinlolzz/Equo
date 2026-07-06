@@ -21,10 +21,21 @@ export function MemberAvatar({
   className?: string;
 }) {
   if (avatarUrl) {
-    return <img className={className} src={avatarUrl} alt="" />;
+    return <img className={className} src={upscaleGoogleAvatar(avatarUrl)} alt="" />;
   }
 
   return <span className={className}>{initial(name)}</span>;
+}
+
+/**
+ * Google profile picture URLs arrive with a =s96-c suffix (96px square).
+ * 96px looks soft on high-DPI screens, so request the 192px variant when
+ * the URL is a googleusercontent size-parameterized one; every other URL
+ * (our own storage uploads, data URLs) passes through untouched.
+ */
+export function upscaleGoogleAvatar(url: string): string {
+  if (!url.includes("googleusercontent.com")) return url;
+  return url.replace(/=s\d+-c$/, "=s192-c");
 }
 
 function initial(name: string | undefined) {

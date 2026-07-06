@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Contrast, FileText, Globe, Lock, LogOut, Pencil, X, Apple } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { upscaleGoogleAvatar } from "./MemberAvatar";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -120,7 +121,7 @@ export function ProfileDialog({
             aria-label={text.changeAvatar}
             onClick={() => fileInputRef.current?.click()}
           >
-            {avatarDataUrl ? <img src={avatarDataUrl} alt="" /> : <span>{initial(name)}</span>}
+            {avatarDataUrl ? <img src={upscaleGoogleAvatar(avatarDataUrl)} alt="" /> : <span>{initial(name)}</span>}
           </button>
           <input
             ref={fileInputRef}
