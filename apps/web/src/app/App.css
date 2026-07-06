@@ -2754,16 +2754,18 @@ label span {
 
 .profile-avatar-picker {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  /* Pizo shows the profile avatar as a rounded square with the full
+     image visible, unlike the circular member avatars elsewhere. */
+  border-radius: 14px;
   overflow: hidden;
   color: #07110f;
   background: #ffd67a;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
 }
 

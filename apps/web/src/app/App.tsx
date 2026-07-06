@@ -1038,7 +1038,7 @@ export function App() {
               openProfileDialog();
             }}
           >
-            {displayAvatarUrl ? <img src={displayAvatarUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
+            <UserRound aria-hidden="true" size={18} />
           </button>
         </div>
         <div className="side-group-card">
@@ -1153,7 +1153,7 @@ export function App() {
             </button>
           ) : (
             <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
-              {displayAvatarUrl ? <img src={displayAvatarUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
+              <UserRound aria-hidden="true" size={18} />
             </button>
           )}
         </div>
