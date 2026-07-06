@@ -2759,9 +2759,7 @@ label span {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  /* Pizo shows the profile avatar as a rounded square with the full
-     image visible, unlike the circular member avatars elsewhere. */
-  border-radius: 14px;
+  border-radius: 50%;
   overflow: hidden;
   color: #07110f;
   background: #ffd67a;
