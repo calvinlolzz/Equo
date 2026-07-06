@@ -1,0 +1,22 @@
+{
+  "name": "Equo",
+  "short_name": "Equo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07110f",
+  "theme_color": "#07110f",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "/icons/equo-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/equo-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

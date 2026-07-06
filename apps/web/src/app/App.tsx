@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createActionGuard } from "./actionGuard";
+import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
 import { clearCloudCache } from "./cloudCache";
@@ -347,6 +348,39 @@ export function App() {
       .catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId, session, cloudStore]);
+
+  // Near-realtime auto-sync: background focus/interval revalidation while
+  // logged in. Reads activeGroupId/cloudStore via refs (rather than as
+  // effect deps) so the interval/listeners aren't torn down and rebuilt on
+  // every group navigation - only when the cloudStore instance itself
+  // changes (login/logout). Background failures are silent by design (see
+  // autoSync.ts) - no toast spam for a revalidation that will just retry on
+  // the next tick.
+  const activeGroupIdRef = useRef(activeGroupId);
+  activeGroupIdRef.current = activeGroupId;
+
+  useEffect(() => {
+    if (!cloudStore) return;
+    const autoSync = createAutoSync({
+      callbacks: {
+        // Skip while a mutation is in flight (actionGuard.current is set) so
+        // a background refresh never lands in the middle of an
+        // optimistic-update mutation; it'll simply run on the next tick.
+        refreshActiveGroup: () => {
+          if (actionGuardRef.current.current) return Promise.resolve();
+          const groupId = activeGroupIdRef.current;
+          if (!groupId) return Promise.resolve();
+          return cloudStore.refreshGroupDetail(groupId);
+        },
+        refreshGroups: () => {
+          if (actionGuardRef.current.current) return Promise.resolve();
+          return cloudStore.refreshGroups();
+        },
+      },
+    });
+    autoSync.start();
+    return () => autoSync.stop();
+  }, [cloudStore]);
 
   useEffect(() => {
     return () => {
