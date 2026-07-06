@@ -2759,6 +2759,10 @@ label span {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
+  /* Buttons keep their UA default padding unless reset; without this the
+     avatar img's 100% sizing resolves against a 60x70 content box and
+     leaves a visible gap ring inside the circle. */
+  padding: 0;
   border-radius: 50%;
   overflow: hidden;
   color: #07110f;
