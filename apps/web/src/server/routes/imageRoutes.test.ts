@@ -1,0 +1,87 @@
+import { describe, expect, test } from "vitest";
+import { uploadGroupImageRoute } from "./imageRoutes.js";
+import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
+import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
+
+const tinyPngBase64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+const validRequest = {
+  client_request_id: "req_image",
+  kind: "expense" as const,
+  data_url: `data:image/png;base64,${tinyPngBase64}`,
+};
+
+function makeClient(member: { id: string } | null): SupabaseQueryClient {
+  return {
+    async one() {
+      throw new Error("Unexpected one query");
+    },
+    async maybeOne(sql) {
+      if (sql.includes("from public.group_members")) {
+        return member as never;
+      }
+      return null;
+    },
+    async exec() {},
+  };
+}
+
+function makeStorage(): SupabaseStorageClient {
+  return {
+    async uploadImage() {
+      return { url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg" };
+    },
+  };
+}
+
+const verifier = async (idToken: string) => ({
+  auth_user_id: idToken,
+  google_sub: idToken,
+  email: "alice@example.com",
+  display_name: "Alice",
+  // Marks the identity as already-resolved so requireAuthenticatedUser skips
+  // the upsertUserByGoogleIdentity DB round-trip (see sessionToken.ts's doc
+  // on resolved_user_id) - this fake client only needs to answer the
+  // group_members membership check the route itself performs.
+  resolved_user_id: idToken,
+});
+
+describe("uploadGroupImageRoute", () => {
+  test("uploads the image for an active group member", async () => {
+    const result = await uploadGroupImageRoute(
+      {
+        client: makeClient({ id: "member_alice" }),
+        storage: makeStorage(),
+        verifier,
+        idToken: "user_alice",
+      },
+      "group_1",
+      validRequest,
+    );
+
+    expect(result.status).toBe(201);
+    expect(result.ok && result.body).toMatchObject({
+      image: { url: expect.stringContaining("photo.jpg") },
+    });
+  });
+
+  test("rejects the upload with 403 FORBIDDEN when the caller is not an active member of the group", async () => {
+    const result = await uploadGroupImageRoute(
+      {
+        client: makeClient(null),
+        storage: makeStorage(),
+        verifier,
+        idToken: "user_mallory",
+      },
+      "group_1",
+      validRequest,
+    );
+
+    expect(result.status).toBe(403);
+    if (result.ok) {
+      throw new Error("expected uploadGroupImageRoute to reject a non-member with 403");
+    }
+    expect(result.body.error?.code).toBe("FORBIDDEN");
+  });
+});

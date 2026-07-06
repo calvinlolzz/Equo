@@ -271,6 +271,7 @@ describe("createCloudGroupsStore", () => {
             owner_member_id: "member_1",
             archived_at: "2026-01-01T00:00:00.000Z",
             cover_image_url: "https://cdn.equo.local/cover.jpg",
+            caller_member_id: "member_1",
           },
         ],
       })),
@@ -280,7 +281,14 @@ describe("createCloudGroupsStore", () => {
     const archived = await store.listArchivedGroups();
 
     expect(archived).toEqual([
-      { id: "group_2", name: "Old Trip", currency: "TWD", coverImageUrl: "https://cdn.equo.local/cover.jpg" },
+      {
+        id: "group_2",
+        name: "Old Trip",
+        currency: "TWD",
+        coverImageUrl: "https://cdn.equo.local/cover.jpg",
+        ownerMemberId: "member_1",
+        callerMemberId: "member_1",
+      },
     ]);
   });
 

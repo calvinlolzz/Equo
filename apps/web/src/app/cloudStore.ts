@@ -24,6 +24,8 @@ export type ArchivedGroupData = {
   name: string;
   currency: string;
   coverImageUrl?: string;
+  ownerMemberId: string;
+  callerMemberId: string;
 };
 
 export type CloudGroupsState = {
@@ -59,6 +61,8 @@ function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
     name: summary.name,
     currency: summary.currency,
     coverImageUrl: summary.cover_image_url ?? undefined,
+    ownerMemberId: summary.owner_member_id,
+    callerMemberId: summary.caller_member_id,
   };
 }
 

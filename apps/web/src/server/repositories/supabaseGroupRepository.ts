@@ -86,7 +86,7 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     async listArchivedGroups(context: AuthenticatedContext) {
       return client.one<ArchivedGroupRecord[]>(
         `
-          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url
+          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url, gm.id as caller_member_id
           from public.groups g
           join public.group_members gm on gm.group_id = g.id
           where gm.user_id = $1

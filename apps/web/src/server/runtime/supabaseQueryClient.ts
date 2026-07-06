@@ -52,6 +52,7 @@ function firstRow<T>(rows: T[]): T {
 }
 
 type MembershipGroupRow = {
+  id: string;
   group_id: string;
 };
 
@@ -187,21 +188,27 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const membershipRows = await request<MembershipGroupRow>({
         method: "GET",
         table: "group_members",
-        query: `select=group_id&user_id=eq.${encodeFilter(params[0])}&status=eq.active&limit=50`,
+        query: `select=id,group_id&user_id=eq.${encodeFilter(params[0])}&status=eq.active&limit=50`,
         returnRepresentation: true,
       });
+      const callerMemberIdByGroupId = new Map(membershipRows.map((row) => [row.group_id, row.id]));
       const groupIds = [...new Set(membershipRows.map((row) => row.group_id).filter(Boolean))];
 
       if (groupIds.length === 0) {
         return [] as T;
       }
 
-      return request<RestGroupRow>({
+      const groups = await request<RestGroupRow>({
         method: "GET",
         table: "groups",
         query: `select=id,name,currency,owner_member_id,archived_at,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=not.is.null&deleted_at=is.null`,
         returnRepresentation: true,
-      }) as T;
+      });
+
+      return groups.map((group) => ({
+        ...group,
+        caller_member_id: callerMemberIdByGroupId.get(group.id) ?? null,
+      })) as T;
     }
 
     if (normalized.includes("from public.groups g") && normalized.includes("join public.group_members gm")) {

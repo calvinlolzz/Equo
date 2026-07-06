@@ -152,13 +152,18 @@ async function invokeEveryExpenseRepositoryMethod(client: SupabaseQueryClient) {
     amount_minor: 1000,
     currency: "TWD" as const,
     expense_date: "2026-07-01",
-    expense_payments: [{ payer_member_id: "member_1", amount_minor: 1000, currency: "TWD" as const }],
-    expense_shares: [{ member_id: "member_1", share_type: "fixed" as const, amount_minor: 1000 }],
+    // The recording client's dummyRow.id ("row_1") is what both the
+    // caller's own membership lookup and the group's active-member-id-set
+    // lookup resolve to here - payer_member_id/member_id must match it so
+    // this call exercises the happy path instead of tripping the new
+    // cross-group member id validation (see supabaseExpenseRepository.ts).
+    expense_payments: [{ payer_member_id: "row_1", amount_minor: 1000, currency: "TWD" as const }],
+    expense_shares: [{ member_id: "row_1", share_type: "fixed" as const, amount_minor: 1000 }],
   };
 
   await repo.createExpense(authContext, "group_1", createRequest);
   await repo.listExpenses("group_1");
-  await repo.softDeleteExpense("group_1", "expense_1", "req_expense_2");
+  await repo.softDeleteExpense(authContext, "group_1", "expense_1", "req_expense_2");
   await repo.recordClientRequest("group_1", "req_expense_3", "resource_1");
 }
 

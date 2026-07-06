@@ -31,6 +31,7 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
             currency: "TWD",
             owner_member_id: "member_owner",
             archived_at: "2026-07-01T00:00:00.000Z",
+            caller_member_id: "member_owner",
           },
         ] as never;
       }
@@ -271,6 +272,7 @@ describe("createSupabaseGroupRepository", () => {
         currency: "TWD",
         owner_member_id: "member_owner",
         archived_at: "2026-07-01T00:00:00.000Z",
+        caller_member_id: "member_owner",
       },
     ]);
     expect(client.calls[0]).toMatchObject({
@@ -278,6 +280,7 @@ describe("createSupabaseGroupRepository", () => {
       params: ["user_alice"],
     });
     expect(client.calls[0].sql).toContain("archived_at is not null");
+    expect(client.calls[0].sql).toContain("caller_member_id");
   });
 
   test("unarchives a group", async () => {

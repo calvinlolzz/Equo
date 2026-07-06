@@ -1,6 +1,7 @@
 import type { ConfirmSettlementRequest } from "../../contracts/schemas.js";
 import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
 import { requireAuthenticatedUser } from "../auth/session.js";
+import { NOT_A_GROUP_MEMBER } from "../repositories/settlementRepository.js";
 import {
   type SupabaseQueryClient,
   upsertUserByGoogleIdentity,
@@ -12,6 +13,20 @@ type RouteOptions = {
   verifier: GoogleTokenVerifier;
   idToken: string;
 };
+
+function forbidden(request_id: string) {
+  return {
+    ok: false,
+    status: 403,
+    body: {
+      error: {
+        code: "FORBIDDEN" as const,
+        message: "You are not a member of this group.",
+        request_id,
+      },
+    },
+  };
+}
 
 async function buildSettlementRouteContext(options: RouteOptions) {
   const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
@@ -27,12 +42,20 @@ export async function calculateSettlementRoute(options: RouteOptions, groupId: s
     return { ok: false, status: 401, body: auth.error };
   }
 
-  const result = await createSupabaseSettlementRepository(options.client).calculateCurrentSettlement(
-    auth.context,
-    groupId,
-  );
+  try {
+    const result = await createSupabaseSettlementRepository(options.client).calculateCurrentSettlement(
+      auth.context,
+      groupId,
+    );
 
-  return { ok: true, status: 201, body: result };
+    return { ok: true, status: 201, body: result };
+  } catch (error) {
+    if (error instanceof Error && error.message === NOT_A_GROUP_MEMBER) {
+      return forbidden("req_calculate_settlement");
+    }
+
+    throw error;
+  }
 }
 
 export async function confirmSettlementRoute(
@@ -58,6 +81,10 @@ export async function confirmSettlementRoute(
 
     return { ok: true, status: 200, body: { settlement } };
   } catch (error) {
+    if (error instanceof Error && error.message === NOT_A_GROUP_MEMBER) {
+      return forbidden(request.client_request_id);
+    }
+
     if (error instanceof Error && error.message === "SETTLEMENT_VERSION_CONFLICT") {
       return {
         ok: false,

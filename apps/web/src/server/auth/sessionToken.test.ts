@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createSessionToken, verifySessionToken } from "./sessionToken.js";
+import { createSessionCookie, createSessionToken, verifySessionToken } from "./sessionToken.js";
 
 const identity = {
   auth_user_id: "user_1",
@@ -42,5 +42,14 @@ describe("sessionToken", () => {
     const token = createSessionToken(identity, "session-secret", 1_000);
 
     expect(verifySessionToken(token, "session-secret", 1_000 + 8 * 24 * 60 * 60 * 1_000)).toBeNull();
+  });
+
+  test("session cookie is HttpOnly, Secure, and SameSite=Lax", () => {
+    const cookie = createSessionCookie("equo1.payload.signature", 1_000);
+
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toMatch(/^equo_session=equo1\.payload\.signature;/);
   });
 });

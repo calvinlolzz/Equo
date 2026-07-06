@@ -249,7 +249,7 @@ describe("runtime adapters", () => {
           return {
             ok: true,
             async json() {
-              return [{ group_id: "group_1" }];
+              return [{ id: "member_1", group_id: "group_1" }];
             },
           } as Response;
         }
@@ -275,7 +275,7 @@ describe("runtime adapters", () => {
     await expect(
       client.one(
         `
-          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url
+          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url, gm.id as caller_member_id
           from public.groups g
           join public.group_members gm on gm.group_id = g.id
           where gm.user_id = $1
@@ -295,10 +295,11 @@ describe("runtime adapters", () => {
         owner_member_id: "member_1",
         archived_at: "2026-07-01T00:00:00.000Z",
         cover_image_url: null,
+        caller_member_id: "member_1",
       },
     ]);
 
-    expect(calls[0].url).toContain("/rest/v1/group_members?select=group_id");
+    expect(calls[0].url).toContain("/rest/v1/group_members?select=id,group_id");
     expect(calls[1].url).toContain(
       "/rest/v1/groups?select=id,name,currency,owner_member_id,archived_at,cover_image_url&id=in.(group_1)",
     );

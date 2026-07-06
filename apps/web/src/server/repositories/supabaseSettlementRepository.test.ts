@@ -62,12 +62,28 @@ function makeClient(settlementVersion = 3): SupabaseQueryClient & { calls: Array
 
       throw new Error(`Unexpected one query: ${sql}`);
     },
-    async maybeOne() {
+    async maybeOne(sql) {
+      if (sql.includes("from public.group_members")) {
+        return { id: "member_alice" } as never;
+      }
+
       return null;
     },
     async exec(sql, params) {
       calls.push({ method: "exec", sql, params });
     },
+  };
+}
+
+function makeNonMemberClient(): SupabaseQueryClient {
+  return {
+    async one() {
+      throw new Error("Unexpected one query for a non-member caller");
+    },
+    async maybeOne() {
+      return null;
+    },
+    async exec() {},
   };
 }
 
@@ -108,5 +124,24 @@ describe("createSupabaseSettlementRepository", () => {
         settlement_version: 3,
       }),
     ).rejects.toThrow("SETTLEMENT_VERSION_CONFLICT");
+  });
+
+  test("rejects calculateCurrentSettlement when the caller has no active membership", async () => {
+    const repository = createSupabaseSettlementRepository(makeNonMemberClient());
+
+    await expect(repository.calculateCurrentSettlement(context, "group_1")).rejects.toThrow(
+      "NOT_A_GROUP_MEMBER",
+    );
+  });
+
+  test("rejects confirmSettlement when the caller has no active membership", async () => {
+    const repository = createSupabaseSettlementRepository(makeNonMemberClient());
+
+    await expect(
+      repository.confirmSettlement(context, "group_1", "settlement_1", {
+        client_request_id: "req_settle",
+        settlement_version: 3,
+      }),
+    ).rejects.toThrow("NOT_A_GROUP_MEMBER");
   });
 });

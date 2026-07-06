@@ -25,6 +25,16 @@ export type ArchivedGroupRecord = {
   owner_member_id: string;
   archived_at: string;
   cover_image_url?: string | null;
+  /**
+   * The caller's own group_members.id for this archived group. Restoring
+   * (unarchiving) an archived group is owner-only, and unlike the active
+   * groups list this data doesn't flow through the per-group detail screen
+   * (with its own currentMember lookup) before the restore action is
+   * offered - so the archived list has to carry the caller's own member id
+   * alongside owner_member_id for the frontend to gate the restore button
+   * without an extra round trip per row.
+   */
+  caller_member_id: string;
 };
 
 export type GroupMemberRecord = {

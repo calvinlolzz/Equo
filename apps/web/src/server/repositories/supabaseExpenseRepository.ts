@@ -2,11 +2,13 @@ import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
-import type {
-  ExpensePaymentRecord,
-  ExpenseRecord,
-  ExpenseRepository,
-  ExpenseShareRecord,
+import {
+  InvalidMemberError,
+  NOT_A_GROUP_MEMBER,
+  type ExpensePaymentRecord,
+  type ExpenseRecord,
+  type ExpenseRepository,
+  type ExpenseShareRecord,
 } from "./expenseRepository.js";
 
 export function createSupabaseExpenseRepository(client: SupabaseQueryClient): ExpenseRepository {
@@ -18,7 +20,7 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
         throw new Error(validation.issues[0]?.code ?? "INVALID_EXPENSE");
       }
 
-      const member = await client.one<{ id: string }>(
+      const member = await client.maybeOne<{ id: string }>(
         `
           select id
           from public.group_members
@@ -27,6 +29,43 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
         `,
         [groupId, context.user.id],
       );
+
+      if (!member) {
+        throw new Error(NOT_A_GROUP_MEMBER);
+      }
+
+      // The FK on expense_payments/expense_shares/transfer_to_member_id only
+      // references group_members(id) globally - it does not guarantee the
+      // referenced member belongs to THIS group. Load the group's active
+      // member id set once and verify every id the request references
+      // against it before writing anything.
+      const activeMembers = await client.one<Array<{ id: string }>>(
+        `
+          select id
+          from public.group_members
+          where group_id = $1 and status = 'active'
+        `,
+        [groupId],
+      );
+      const activeMemberIds = new Set(activeMembers.map((row) => row.id));
+      activeMemberIds.add(member.id);
+
+      for (const payment of request.expense_payments) {
+        if (!activeMemberIds.has(payment.payer_member_id)) {
+          throw new InvalidMemberError(payment.payer_member_id);
+        }
+      }
+
+      for (const share of request.expense_shares) {
+        if (!activeMemberIds.has(share.member_id)) {
+          throw new InvalidMemberError(share.member_id);
+        }
+      }
+
+      if (request.transfer_to_member_id && !activeMemberIds.has(request.transfer_to_member_id)) {
+        throw new InvalidMemberError(request.transfer_to_member_id);
+      }
+
       const expense = await client.one<ExpenseRecord>(
         `
           insert into public.expenses (
@@ -156,7 +195,26 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
       }));
     },
 
-    async softDeleteExpense(groupId: string, expenseId: string, client_request_id: string) {
+    async softDeleteExpense(
+      context: AuthenticatedContext,
+      groupId: string,
+      expenseId: string,
+      client_request_id: string,
+    ) {
+      const member = await client.maybeOne<{ id: string }>(
+        `
+          select id
+          from public.group_members
+          where group_id = $1 and user_id = $2 and status = 'active'
+          limit 1
+        `,
+        [groupId, context.user.id],
+      );
+
+      if (!member) {
+        throw new Error(NOT_A_GROUP_MEMBER);
+      }
+
       const expense = await client.one<ExpenseRecord>(
         `
           update public.expenses

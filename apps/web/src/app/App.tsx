@@ -35,6 +35,7 @@ import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { ProfileDialog } from "./ProfileDialog";
+import { isGroupOwner } from "./isGroupOwner";
 import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
@@ -119,6 +120,22 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+/**
+ * Group rename/cover, archive, unarchive, and delete are owner-only on the
+ * backend (see server/handlers/groups.ts's requireGroupOwner). The frontend
+ * already hides the triggers for non-owners, but a stale UI state (e.g. a
+ * cached member list, or ownership changing in another tab) can still let a
+ * non-owner reach the action - map that 403 to a clear, specific toast
+ * instead of the generic "sync failed: <message>" wording.
+ */
+function describeCloudActionError(error: unknown): string {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "FORBIDDEN") {
+    return text.ownerOnlyAction;
+  }
+  return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
 }
 
 function getRouteGroupId() {
@@ -283,6 +300,7 @@ export function App() {
   // necessarily the group owner (joined-via-invite members are non-owners).
   // See resolveCurrentMember.ts for the matching/fallback rules.
   const currentMember = resolveCurrentMember(members, session?.user.id);
+  const isCurrentMemberOwner = isGroupOwner(currentMember);
 
   const dateChips = useMemo(() => lastEightDays(), []);
   const selectedDayExpenses = useMemo(
@@ -555,7 +573,7 @@ export function App() {
       setGroupCoverDataUrl("");
       showToast(`${text.editGroup}: ${name}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       setBusy(false);
       endAction();
@@ -578,13 +596,20 @@ export function App() {
 
   async function unarchiveGroup(group: ArchivedGroupData) {
     if (!cloudStore || unarchivingGroupId) return;
+    // Defense in depth: the restore button itself is only rendered for
+    // groups the caller owns (see the archivedList dialog below), but this
+    // guards the handler directly too in case that ever drifts.
+    if (group.callerMemberId !== group.ownerMemberId) {
+      showToast(text.ownerOnlyAction);
+      return;
+    }
     setUnarchivingGroupId(group.id);
     try {
       await cloudStore.unarchiveGroup(group.id);
       setArchivedGroups((current) => current.filter((item) => item.id !== group.id));
       showToast(`${text.restoredGroupPrefix}${group.name}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       setUnarchivingGroupId("");
     }
@@ -898,7 +923,7 @@ export function App() {
       setDialog(null);
       showToast(`${text.archiveGroup}: ${activeGroup.name}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     }
     setBusy(false);
     endAction();
@@ -915,7 +940,7 @@ export function App() {
       setDialog(null);
       showToast(`${text.deleteGroup}: ${activeGroup.name}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }
@@ -967,17 +992,19 @@ export function App() {
           <div className="side-group-name">
             <div className="side-group-title-row">
               <h2>{activeGroup.name}</h2>
-              <button
-                className="side-edit-group"
-                type="button"
-                aria-label={text.editGroup}
-                onClick={() => {
-                  closeDrawer();
-                  openEditGroup();
-                }}
-              >
-                <Pencil aria-hidden="true" size={15} />
-              </button>
+              {isCurrentMemberOwner ? (
+                <button
+                  className="side-edit-group"
+                  type="button"
+                  aria-label={text.editGroup}
+                  onClick={() => {
+                    closeDrawer();
+                    openEditGroup();
+                  }}
+                >
+                  <Pencil aria-hidden="true" size={15} />
+                </button>
+              ) : null}
             </div>
             <span>
               {members.length} {text.people}
@@ -1003,30 +1030,32 @@ export function App() {
             );
           })}
         </nav>
-        <div className="side-danger-actions">
-          <button
-            className="side-archive-action"
-            type="button"
-            onClick={() => {
-              closeDrawer();
-              setDialog("archive");
-            }}
-          >
-            <Archive aria-hidden="true" size={16} />
-            {text.archiveGroup}
-          </button>
-          <button
-            className="side-delete-action"
-            type="button"
-            onClick={() => {
-              closeDrawer();
-              setDialog("delete");
-            }}
-          >
-            <Trash2 aria-hidden="true" size={16} />
-            {text.deleteGroup}
-          </button>
-        </div>
+        {isCurrentMemberOwner ? (
+          <div className="side-danger-actions">
+            <button
+              className="side-archive-action"
+              type="button"
+              onClick={() => {
+                closeDrawer();
+                setDialog("archive");
+              }}
+            >
+              <Archive aria-hidden="true" size={16} />
+              {text.archiveGroup}
+            </button>
+            <button
+              className="side-delete-action"
+              type="button"
+              onClick={() => {
+                closeDrawer();
+                setDialog("delete");
+              }}
+            >
+              <Trash2 aria-hidden="true" size={16} />
+              {text.deleteGroup}
+            </button>
+          </div>
+        ) : null}
       </>
     );
   }
@@ -1992,14 +2021,16 @@ export function App() {
                           <strong>{group.name}</strong>
                           <small>{group.currency}</small>
                         </span>
-                        <button
-                          className="composer-mini-action"
-                          type="button"
-                          disabled={Boolean(unarchivingGroupId)}
-                          onClick={() => unarchiveGroup(group)}
-                        >
-                          {unarchivingGroupId === group.id ? text.restoringGroup : text.restoreGroup}
-                        </button>
+                        {group.callerMemberId === group.ownerMemberId ? (
+                          <button
+                            className="composer-mini-action"
+                            type="button"
+                            disabled={Boolean(unarchivingGroupId)}
+                            onClick={() => unarchiveGroup(group)}
+                          >
+                            {unarchivingGroupId === group.id ? text.restoringGroup : text.restoreGroup}
+                          </button>
+                        ) : null}
                       </div>
                     ))
                   ) : (

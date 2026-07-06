@@ -38,6 +38,7 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
           currency: "TWD",
           owner_member_id: "member_owner",
           archived_at: "2026-07-01T00:00:00.000Z",
+          caller_member_id: "member_owner",
         },
       ];
     },
@@ -290,6 +291,27 @@ describe("group handlers", () => {
     });
   });
 
+  test("rejects updateGroup when the caller is an active member but not the owner", async () => {
+    const result = await handleUpdateGroup(
+      makeRepository({
+        findActiveMember: async () => ({
+          id: "member_bob",
+          group_id: "group_1",
+          user_id: "user_bob",
+          display_name: "Bob",
+          role: "member",
+          status: "active",
+        }),
+      }),
+      context,
+      "group_1",
+      { client_request_id: "req_update_group", name: "Osaka Trip" },
+    );
+
+    expect(result.status).toBe(403);
+    expect(!result.ok && result.body.error.code).toBe("FORBIDDEN");
+  });
+
   test("creates a virtual member after membership check", async () => {
     const result = await handleCreateVirtualMember(makeRepository(), context, "group_1", {
       client_request_id: "req_virtual_member",
@@ -312,6 +334,26 @@ describe("group handlers", () => {
     expect(deleteResult.ok && deleteResult.body).toMatchObject({ group: { id: "group_1" } });
   });
 
+  test("rejects archive and delete when the caller is an active member but not the owner", async () => {
+    const nonOwnerRepository = makeRepository({
+      findActiveMember: async () => ({
+        id: "member_bob",
+        group_id: "group_1",
+        user_id: "user_bob",
+        display_name: "Bob",
+        role: "member",
+        status: "active",
+      }),
+    });
+    const archiveResult = await handleArchiveGroup(nonOwnerRepository, context, "group_1", "req_archive");
+    const deleteResult = await handleDeleteGroup(nonOwnerRepository, context, "group_1", "req_delete");
+
+    expect(archiveResult.status).toBe(403);
+    expect(!archiveResult.ok && archiveResult.body.error.code).toBe("FORBIDDEN");
+    expect(deleteResult.status).toBe(403);
+    expect(!deleteResult.ok && deleteResult.body.error.code).toBe("FORBIDDEN");
+  });
+
   test("unarchives a group after membership check", async () => {
     const result = await handleUnarchiveGroup(makeRepository(), context, "group_2", "req_unarchive");
 
@@ -322,6 +364,27 @@ describe("group handlers", () => {
   test("rejects unarchive when user is not a group member", async () => {
     const result = await handleUnarchiveGroup(
       makeRepository({ findActiveMember: async () => null }),
+      context,
+      "group_2",
+      "req_unarchive",
+    );
+
+    expect(result.status).toBe(403);
+    expect(!result.ok && result.body.error.code).toBe("FORBIDDEN");
+  });
+
+  test("rejects unarchive when the caller is an active member but not the owner", async () => {
+    const result = await handleUnarchiveGroup(
+      makeRepository({
+        findActiveMember: async () => ({
+          id: "member_bob",
+          group_id: "group_1",
+          user_id: "user_bob",
+          display_name: "Bob",
+          role: "member",
+          status: "active",
+        }),
+      }),
       context,
       "group_2",
       "req_unarchive",

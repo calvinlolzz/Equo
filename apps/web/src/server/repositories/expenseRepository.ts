@@ -1,6 +1,29 @@
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 
+/**
+ * Thrown by the Supabase expense repository when the caller (create) or the
+ * target group (delete) has no active membership row. Routes catch this by
+ * message and map it to a clean 403 FORBIDDEN instead of letting a "no rows"
+ * error from the underlying query surface as an unhandled 500.
+ */
+export const NOT_A_GROUP_MEMBER = "NOT_A_GROUP_MEMBER";
+
+/**
+ * Thrown when an expense_payments.payer_member_id, expense_shares.member_id,
+ * or transfer_to_member_id in a create-expense request does not belong to an
+ * active member of the target group. The FK on group_members(id) only
+ * guarantees the id exists somewhere - not that it belongs to THIS group -
+ * so this is the only thing standing between a malicious caller and mixing
+ * another group's members into this group's ledger.
+ */
+export class InvalidMemberError extends Error {
+  constructor(memberId: string) {
+    super(`INVALID_MEMBER: member ${memberId} is not an active member of this group`);
+    this.name = "InvalidMemberError";
+  }
+}
+
 export type ExpensePaymentRecord = {
   payer_member_id: string;
   amount_minor: number;
@@ -40,7 +63,12 @@ export type ExpenseRepository = {
     request: CreateExpenseRequest,
   ): Promise<ExpenseRecord>;
   listExpenses(groupId: string): Promise<ExpenseRecord[]>;
-  softDeleteExpense(groupId: string, expenseId: string, client_request_id: string): Promise<ExpenseRecord>;
+  softDeleteExpense(
+    context: AuthenticatedContext,
+    groupId: string,
+    expenseId: string,
+    client_request_id: string,
+  ): Promise<ExpenseRecord>;
   recordClientRequest(groupId: string, client_request_id: string, resourceId: string): Promise<void>;
 };
 

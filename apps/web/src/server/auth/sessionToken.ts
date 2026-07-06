@@ -103,7 +103,7 @@ export function verifySessionToken(token: string, secret: string, now = Date.now
 
 export function createSessionCookie(token: string, now = Date.now()): string {
   const maxAgeSeconds = Math.floor((now + SESSION_TTL_MS - now) / 1_000);
-  return `equo_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+  return `equo_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
 }
 
 export function sessionExpiresAt(now = Date.now()): string {

@@ -11,7 +11,12 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
       calls.push({ method: "one", sql, params });
 
       if (sql.includes("from public.group_members")) {
-        return { id: "member_alice" } as never;
+        // The active-member-id-set lookup used to validate payer/share/
+        // transfer member ids belong to this group.
+        return [
+          { id: "member_alice" },
+          { id: "member_bob" },
+        ] as never;
       }
 
       if (sql.includes("insert into public.expenses")) {
@@ -27,14 +32,44 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
         } as never;
       }
 
+      if (sql.includes("update public.expenses")) {
+        return {
+          id: params[1],
+          group_id: params[0],
+          title: "Dinner",
+          kind: "expense",
+          amount_minor: 1200,
+          currency: "TWD",
+          version: 2,
+          client_request_id: "req_expense",
+        } as never;
+      }
+
       throw new Error(`Unexpected one query: ${sql}`);
     },
-    async maybeOne() {
+    async maybeOne(sql) {
+      if (sql.includes("from public.group_members")) {
+        // The caller's own active-membership check (create and delete).
+        return { id: "member_alice" } as never;
+      }
+
       return null;
     },
     async exec(sql, params) {
       calls.push({ method: "exec", sql, params });
     },
+  };
+}
+
+function makeNonMemberClient(): SupabaseQueryClient {
+  return {
+    async one() {
+      throw new Error("Unexpected one query for a non-member caller");
+    },
+    async maybeOne() {
+      return null;
+    },
+    async exec() {},
   };
 }
 
@@ -112,6 +147,54 @@ describe("createSupabaseExpenseRepository", () => {
       expect.stringContaining("insert into public.expense_shares"),
       expect.stringContaining("insert into public.client_requests"),
     ]);
+  });
+
+  test("rejects create when the caller has no active membership in the group", async () => {
+    const repository = createSupabaseExpenseRepository(makeNonMemberClient());
+
+    await expect(repository.createExpense(context, "group_1", validRequest)).rejects.toThrow(
+      "NOT_A_GROUP_MEMBER",
+    );
+  });
+
+  test("rejects create when a payer_member_id belongs to a different group", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
+
+    await expect(
+      repository.createExpense(context, "group_1", {
+        ...validRequest,
+        expense_payments: [{ payer_member_id: "member_other_group", amount_minor: 1200, currency: "TWD" }],
+      }),
+    ).rejects.toThrow(/INVALID_MEMBER.*member_other_group/);
+  });
+
+  test("rejects create when a share member_id belongs to a different group", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
+
+    await expect(
+      repository.createExpense(context, "group_1", {
+        ...validRequest,
+        expense_shares: [
+          { member_id: "member_alice", share_type: "fixed" as const, amount_minor: 600 },
+          { member_id: "member_other_group", share_type: "fixed" as const, amount_minor: 600 },
+        ],
+      }),
+    ).rejects.toThrow(/INVALID_MEMBER.*member_other_group/);
+  });
+
+  test("rejects create when transfer_to_member_id belongs to a different group", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
+
+    await expect(
+      repository.createExpense(context, "group_1", {
+        ...validRequest,
+        kind: "transfer" as const,
+        transfer_to_member_id: "member_other_group",
+      }),
+    ).rejects.toThrow(/INVALID_MEMBER.*member_other_group/);
   });
 
   test("rejects invalid expense totals before writing", async () => {
@@ -254,5 +337,22 @@ describe("createSupabaseExpenseRepository", () => {
 
     expect(expenses).toEqual([]);
     expect(client.calls.map((call) => call.sql)).toEqual([expect.stringContaining("from public.expenses")]);
+  });
+
+  test("softDeleteExpense requires an active membership before deleting", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
+
+    const expense = await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
+
+    expect(expense.id).toBe("expense_1");
+  });
+
+  test("softDeleteExpense rejects a non-member with NOT_A_GROUP_MEMBER instead of deleting", async () => {
+    const repository = createSupabaseExpenseRepository(makeNonMemberClient());
+
+    await expect(
+      repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete"),
+    ).rejects.toThrow("NOT_A_GROUP_MEMBER");
   });
 });

@@ -2,7 +2,7 @@ import type { ConfirmSettlementRequest } from "../../contracts/schemas.js";
 import { calculateSettlement, type MemberBalance } from "../../domain/settlement.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
-import type { SettlementRecord, SettlementRepository } from "./settlementRepository.js";
+import { NOT_A_GROUP_MEMBER, type SettlementRecord, type SettlementRepository } from "./settlementRepository.js";
 
 export function createSupabaseSettlementRepository(client: SupabaseQueryClient): SettlementRepository {
   return {
@@ -21,7 +21,7 @@ export function createSupabaseSettlementRepository(client: SupabaseQueryClient):
     },
 
     async calculateCurrentSettlement(context: AuthenticatedContext, groupId: string) {
-      const member = await client.one<{ id: string }>(
+      const member = await client.maybeOne<{ id: string }>(
         `
           select id
           from public.group_members
@@ -30,6 +30,11 @@ export function createSupabaseSettlementRepository(client: SupabaseQueryClient):
         `,
         [groupId, context.user.id],
       );
+
+      if (!member) {
+        throw new Error(NOT_A_GROUP_MEMBER);
+      }
+
       const balances = await this.listBalances(groupId);
       const transfers = calculateSettlement(balances);
       const settlement = await client.one<SettlementRecord>(
@@ -73,11 +78,25 @@ export function createSupabaseSettlementRepository(client: SupabaseQueryClient):
     },
 
     async confirmSettlement(
-      _context: AuthenticatedContext,
+      context: AuthenticatedContext,
       groupId: string,
       settlementId: string,
       request: ConfirmSettlementRequest,
     ) {
+      const member = await client.maybeOne<{ id: string }>(
+        `
+          select id
+          from public.group_members
+          where group_id = $1 and user_id = $2 and status = 'active'
+          limit 1
+        `,
+        [groupId, context.user.id],
+      );
+
+      if (!member) {
+        throw new Error(NOT_A_GROUP_MEMBER);
+      }
+
       const current = await client.one<SettlementRecord>(
         `
           select id, group_id, settlement_version, calculated_version, status

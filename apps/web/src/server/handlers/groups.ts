@@ -92,6 +92,48 @@ export async function requireGroupMember(
   return repository.findActiveMember(groupId, context.user.id);
 }
 
+/**
+ * Group management (rename/cover, archive, unarchive, delete) is
+ * owner-only by product decision - every other group action (invites,
+ * member management, expenses, settlements) stays open to all active
+ * members. `findActiveMember`'s role field is the robust check here: it's
+ * already scoped to (groupId, this caller), so there's no risk of comparing
+ * ids from different id spaces the way group.owner_member_id vs a member id
+ * would require an extra query to bridge.
+ */
+function ownerForbidden(request_id: string): HandlerResult<never> {
+  return {
+    ok: false,
+    status: 403,
+    body: {
+      error: {
+        code: "FORBIDDEN",
+        message: "Only the group owner can perform this action.",
+        request_id,
+      },
+    },
+  };
+}
+
+async function requireGroupOwner(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  request_id: string,
+): Promise<{ ok: true; member: GroupMemberRecord } | { ok: false; error: HandlerResult<never> }> {
+  const member = await requireGroupMember(repository, context, groupId);
+
+  if (!member) {
+    return { ok: false, error: forbidden(request_id) };
+  }
+
+  if (member.role !== "owner") {
+    return { ok: false, error: ownerForbidden(request_id) };
+  }
+
+  return { ok: true, member };
+}
+
 export async function handleCreateGroup(
   repository: GroupRepository,
   context: AuthenticatedContext,
@@ -136,10 +178,10 @@ export async function handleUpdateGroup(
   groupId: string,
   request: UpdateGroupRequest,
 ) {
-  const member = await requireGroupMember(repository, context, groupId);
+  const owner = await requireGroupOwner(repository, context, groupId, request.client_request_id);
 
-  if (!member) {
-    return forbidden(request.client_request_id);
+  if (owner.ok === false) {
+    return owner.error;
   }
 
   const group = await repository.updateGroup(groupId, request);
@@ -158,10 +200,10 @@ export async function handleArchiveGroup(
   groupId: string,
   clientRequestId: string,
 ) {
-  const member = await requireGroupMember(repository, context, groupId);
+  const owner = await requireGroupOwner(repository, context, groupId, clientRequestId);
 
-  if (!member) {
-    return forbidden(clientRequestId);
+  if (owner.ok === false) {
+    return owner.error;
   }
 
   const group = await repository.archiveGroup(groupId);
@@ -180,10 +222,10 @@ export async function handleUnarchiveGroup(
   groupId: string,
   clientRequestId: string,
 ) {
-  const member = await requireGroupMember(repository, context, groupId);
+  const owner = await requireGroupOwner(repository, context, groupId, clientRequestId);
 
-  if (!member) {
-    return forbidden(clientRequestId);
+  if (owner.ok === false) {
+    return owner.error;
   }
 
   const group = await repository.unarchiveGroup(groupId);
@@ -202,10 +244,10 @@ export async function handleDeleteGroup(
   groupId: string,
   clientRequestId: string,
 ) {
-  const member = await requireGroupMember(repository, context, groupId);
+  const owner = await requireGroupOwner(repository, context, groupId, clientRequestId);
 
-  if (!member) {
-    return forbidden(clientRequestId);
+  if (owner.ok === false) {
+    return owner.error;
   }
 
   const group = await repository.deleteGroup(groupId);

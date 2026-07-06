@@ -123,6 +123,7 @@ export const UI_TEXT = {
     processing: "處理中…",
     joiningGroup: "加入中…",
     restoringGroup: "還原中…",
+    ownerOnlyAction: "只有群主可以進行此操作",
   },
   login: {
     tagline: "記帳分帳，輕鬆結清",

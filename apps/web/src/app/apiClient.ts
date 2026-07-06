@@ -27,6 +27,8 @@ export type GroupSummary = {
 
 export type ArchivedGroupSummary = GroupSummary & {
   archived_at: string;
+  /** The caller's own group_members.id for this archived group (see groupRepository.ts's ArchivedGroupRecord doc). */
+  caller_member_id: string;
 };
 
 export type GroupMemberSummary = {
