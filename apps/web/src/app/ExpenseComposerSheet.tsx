@@ -13,6 +13,7 @@ import {
   getPaymentsRemainderMinor,
   getPercentSplitRemainder,
 } from "./expenseShareSplit";
+import { MemberAvatar } from "./MemberAvatar";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -25,10 +26,6 @@ function toLocalDateTimeInputValue(value: string) {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function initial(name: string | undefined) {
-  return (name || "?").slice(0, 1).toUpperCase();
 }
 
 function formatTwd(amountMinor: number) {
@@ -386,7 +383,7 @@ export function ExpenseComposerSheet({
             key={member.id}
             onClick={() => onPick(member.id)}
           >
-            <span className="member-avatar">{initial(member.name)}</span>
+            <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
             <strong>{member.name}</strong>
           </button>
         ))}
@@ -400,7 +397,7 @@ export function ExpenseComposerSheet({
         <button className="composer-payer-summary" type="button" onClick={() => setComposerPayerExpanded((current) => !current)}>
           <span className="composer-section-head-label">{label}</span>
           <span className="composer-payer-summary-value">
-            <span className="member-avatar">{initial(composerPayer?.name)}</span>
+            <MemberAvatar className="member-avatar" name={composerPayer?.name} avatarUrl={composerPayer?.avatarUrl} />
             <strong>{composerPayer?.name ?? ""}</strong>
             <ChevronRight aria-hidden="true" size={16} className={composerPayerExpanded ? "chevron rotated" : "chevron"} />
           </span>
@@ -448,7 +445,7 @@ export function ExpenseComposerSheet({
             return (
               <div className="share-member-row composer-payer-row" key={row.key}>
                 <span className="composer-payer-row-member">
-                  <span className="member-avatar">{initial(rowMember?.name)}</span>
+                  <MemberAvatar className="member-avatar" name={rowMember?.name} avatarUrl={rowMember?.avatarUrl} />
                   <select
                     className="composer-payer-row-select"
                     value={row.payerId}
@@ -526,7 +523,7 @@ export function ExpenseComposerSheet({
             return (
               <div className={included ? "share-member-row" : "share-member-row dimmed"} key={member.id}>
                 <button className="share-member-toggle" type="button" onClick={() => toggleComposerShareMember(member.id)}>
-                  <span className="member-avatar">{initial(member.name)}</span>
+                  <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
                   <strong>{member.name}</strong>
                 </button>
                 {included && composerSplitMode === "amount" ? (
@@ -595,7 +592,7 @@ export function ExpenseComposerSheet({
           >
             <span className="composer-section-head-label">{text.transferOut}</span>
             <span className="composer-payer-summary-value">
-              <span className="member-avatar">{initial(composerPayer?.name)}</span>
+              <MemberAvatar className="member-avatar" name={composerPayer?.name} avatarUrl={composerPayer?.avatarUrl} />
               <strong>{composerPayer?.name ?? ""}</strong>
               <ChevronRight aria-hidden="true" size={16} className={composerPayerExpanded ? "chevron rotated" : "chevron"} />
             </span>
@@ -615,7 +612,7 @@ export function ExpenseComposerSheet({
           >
             <span className="composer-section-head-label">{text.transferIn}</span>
             <span className="composer-payer-summary-value">
-              <span className="member-avatar">{initial(composerTransferTo?.name)}</span>
+              <MemberAvatar className="member-avatar" name={composerTransferTo?.name} avatarUrl={composerTransferTo?.avatarUrl} />
               <strong>{composerTransferTo?.name ?? ""}</strong>
               <ChevronRight
                 aria-hidden="true"

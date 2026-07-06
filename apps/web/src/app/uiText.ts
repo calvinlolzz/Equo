@@ -191,6 +191,8 @@ export const UI_TEXT = {
     termsOfServiceBody: "官方文件準備中，我們會盡快提供完整的服務條款內容。",
     editName: "編輯名稱",
     changeAvatar: "更換頭像",
+    avatarUploadFailed: "頭像上傳失敗，請再試一次。",
+    avatarUpdated: "頭像已更新",
   },
   expenseDetail: {
     title: "支出詳情",

@@ -44,6 +44,7 @@ function GoogleLogo() {
 
 export function ProfileDialog({
   profile,
+  displayAvatarUrl,
   session,
   onClose,
   onSave,
@@ -51,17 +52,26 @@ export function ProfileDialog({
   onLogout,
 }: {
   profile: ProfileData;
+  /**
+   * The freshest avatar to seed the picker from (session.user.avatarUrl when
+   * present, else the local profileStore cache - see App.tsx's
+   * displayAvatarUrl). Falls back to profile.avatarDataUrl when omitted so
+   * this component still works standalone (e.g. in tests).
+   */
+  displayAvatarUrl?: string;
   session: StoredSession | null;
   onClose: () => void;
-  onSave: (profile: ProfileData) => void;
+  onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
   const [name, setName] = useState(profile.name);
-  const [avatarDataUrl, setAvatarDataUrl] = useState(profile.avatarDataUrl ?? "");
+  const initialAvatarDataUrl = displayAvatarUrl ?? profile.avatarDataUrl ?? "";
+  const [avatarDataUrl, setAvatarDataUrl] = useState(initialAvatarDataUrl);
   const [editingName, setEditingName] = useState(false);
   const [infoDialog, setInfoDialog] = useState<"privacy" | "terms" | null>(null);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
 
@@ -75,11 +85,16 @@ export function ProfileDialog({
     }
   }
 
-  function handleConfirm() {
-    onSave({ name: name.trim() || profile.name, avatarDataUrl: avatarDataUrl || undefined });
+  async function handleConfirm() {
+    setSaving(true);
+    try {
+      await onSave({ name: name.trim() || profile.name, avatarDataUrl: avatarDataUrl || undefined });
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const hasPendingChange = name.trim() !== profile.name || avatarDataUrl !== (profile.avatarDataUrl ?? "");
+  const hasPendingChange = name.trim() !== profile.name || avatarDataUrl !== initialAvatarDataUrl;
 
   return (
     <div
@@ -216,11 +231,11 @@ export function ProfileDialog({
 
         {hasPendingChange ? (
           <div className="dialog-action-row">
-            <button className="secondary-action" type="button" onClick={onClose}>
+            <button className="secondary-action" type="button" onClick={onClose} disabled={saving}>
               {appText.cancel}
             </button>
-            <button className="primary-action" type="button" onClick={handleConfirm}>
-              {appText.confirm}
+            <button className="primary-action" type="button" onClick={handleConfirm} disabled={saving}>
+              {saving ? appText.savingChanges : appText.confirm}
             </button>
           </div>
         ) : null}

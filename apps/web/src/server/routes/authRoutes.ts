@@ -30,7 +30,7 @@ type AuthGoogleRouteResult =
         session: {
           token: string;
           expires_at: string;
-          user: { id: string; google_sub: string; email: string; display_name: string };
+          user: { id: string; google_sub: string; email: string; display_name: string; avatar_url?: string | null };
         };
       };
     }

@@ -4,6 +4,14 @@ type StoredUser = {
   id: string;
   email: string;
   displayName: string;
+  /**
+   * The user's real avatar (Google profile picture by default, or a custom
+   * upload once set via updateMyAvatar). Optional/absent for sessions
+   * persisted before this field existed - isStoredUser only requires it when
+   * present, so an old stored session round-trips fine and simply has no
+   * avatar until the next login/upload.
+   */
+  avatarUrl?: string | null;
 };
 
 export type StoredSession = {
@@ -24,7 +32,8 @@ function isStoredUser(value: unknown): value is StoredUser {
   return (
     typeof candidate.id === "string" &&
     typeof candidate.email === "string" &&
-    typeof candidate.displayName === "string"
+    typeof candidate.displayName === "string" &&
+    (candidate.avatarUrl === undefined || candidate.avatarUrl === null || typeof candidate.avatarUrl === "string")
   );
 }
 

@@ -79,6 +79,32 @@ describe("toMembers", () => {
 
     expect(members[0].userId).toBe("u1");
   });
+
+  test("maps avatar_url to avatarUrl when present", () => {
+    const members = toMembers([
+      {
+        id: "m1",
+        group_id: "g1",
+        user_id: "u1",
+        display_name: "Alice",
+        role: "member",
+        status: "active",
+        avatar_url: "https://cdn.equo.local/avatars/u1/photo.jpg",
+      },
+    ]);
+
+    expect(members[0].avatarUrl).toBe("https://cdn.equo.local/avatars/u1/photo.jpg");
+  });
+
+  test("maps a missing or null avatar_url to undefined (virtual members, or a real member with no avatar set)", () => {
+    const members = toMembers([
+      { id: "m1", group_id: "g1", user_id: "u1", display_name: "Alice", role: "member", status: "active", avatar_url: null },
+      { id: "m2", group_id: "g1", user_id: null, display_name: "Bob's Tab", role: "member", status: "active" },
+    ]);
+
+    expect(members[0].avatarUrl).toBeUndefined();
+    expect(members[1].avatarUrl).toBeUndefined();
+  });
 });
 
 describe("toExpense", () => {

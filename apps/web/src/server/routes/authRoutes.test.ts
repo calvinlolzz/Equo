@@ -11,6 +11,7 @@ function makeClient(): SupabaseQueryClient {
         google_sub: "google_1",
         email: "alice@example.com",
         display_name: "Alice",
+        avatar_url: "https://cdn.equo.local/avatars/google_1/photo.jpg",
       } as never;
     },
     async maybeOne() {
@@ -44,6 +45,7 @@ describe("authGoogleRoute", () => {
 
     expect(result.headers["set-cookie"]).toContain("equo_session=");
     expect(result.body.session.user.email).toBe("alice@example.com");
+    expect(result.body.session.user.avatar_url).toBe("https://cdn.equo.local/avatars/google_1/photo.jpg");
     expect(verifySessionToken(result.body.session.token, "session-secret", 1_000)?.email).toBe(
       "alice@example.com",
     );

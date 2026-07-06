@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { AuthenticatedContext } from "../auth/session.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
-import { createSupabaseGroupRepository } from "../repositories/supabaseGroupRepository.js";
+import {
+  createSupabaseGroupRepository,
+  updateUserAvatar,
+} from "../repositories/supabaseGroupRepository.js";
 import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
 import { createSupabaseSettlementRepository } from "../repositories/supabaseSettlementRepository.js";
 import { createSupabaseRestQueryClient } from "./supabaseQueryClient.js";
@@ -139,6 +142,7 @@ async function invokeEveryGroupRepositoryMethod(client: SupabaseQueryClient) {
   await repo.hashInviteToken("EQO123456");
   await repo.findInviteByTokenHash("sha256:EQO123456");
   await repo.recordClientRequest("group_1", "req_5", "resource_1");
+  await updateUserAvatar(client, "user_1", "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_1/photo.jpg");
 }
 
 async function invokeEveryExpenseRepositoryMethod(client: SupabaseQueryClient) {

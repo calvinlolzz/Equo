@@ -34,6 +34,7 @@ import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
+import { MemberAvatar } from "./MemberAvatar";
 import { ProfileDialog } from "./ProfileDialog";
 import { isGroupOwner } from "./isGroupOwner";
 import { resolveCurrentMember } from "./resolveCurrentMember";
@@ -187,10 +188,6 @@ function formatActivityTime(value: string) {
   ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-function initial(name: string | undefined) {
-  return (name || "?").slice(0, 1).toUpperCase();
-}
-
 export function App() {
   const [activeGroupId, setActiveGroupId] = useState(() => getRouteGroupId());
   const [startMode, setStartMode] = useState<StartMode>("create");
@@ -220,6 +217,16 @@ export function App() {
   const [inviteInputError, setInviteInputError] = useState("");
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
   const [session, setSession] = useState<StoredSession | null>(() => loadSession(Date.now()));
+  /**
+   * The avatar shown on the profile dot/dialog: the freshest server-known
+   * avatar_url from session state takes priority (this is the custom
+   * uploaded avatar once the user has set one - see updateMyAvatar/
+   * saveProfile - or their Google picture as the login-seeded default),
+   * falling back to the local profileStore cache for the rare moment right
+   * after a fresh login before any avatar has ever round-tripped through
+   * the session, and finally to no avatar (icon fallback) if neither exists.
+   */
+  const displayAvatarUrl = session?.user.avatarUrl ?? profile.avatarDataUrl;
   const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [cloudInviteToken, setCloudInviteToken] = useState("");
@@ -441,6 +448,7 @@ export function App() {
             id: nextSession.user.id,
             email: nextSession.user.email,
             displayName: nextSession.user.display_name,
+            avatarUrl: nextSession.user.avatar_url ?? undefined,
           },
         };
         saveSession(stored);
@@ -682,8 +690,56 @@ export function App() {
     showToast(text.logoutSuccess);
   }
 
-  function saveProfile(nextProfile: ProfileData) {
+  /**
+   * Saves both the name (always local-only, per profileStore) and, when the
+   * user picked a new photo, the avatar - which now round-trips through the
+   * server (PATCH /me/avatar) instead of staying purely local, so it
+   * propagates to every device/member row instead of just this browser.
+   *
+   * Avatar upload flow on success:
+   * 1. sessionStore + session state get the new avatarUrl - this alone makes
+   *    the profile dot/dialog re-render with the new photo instantly, since
+   *    displayAvatarUrl reads session.user.avatarUrl first.
+   * 2. profileStore's cached copy is updated too, so the local cache/fallback
+   *    layer agrees (offline reads, pre-login flashes) and no longer holds a
+   *    stale avatar.
+   * 3. The active group's detail is refreshed in the background so this
+   *    user's OWN member row picks up the new avatar_url without waiting for
+   *    the next auto-sync tick. Other devices/members catch up via the
+   *    existing auto-sync polling - no realtime push needed here.
+   *
+   * If the upload fails, the name (if changed) still saves locally and the
+   * user sees an error toast instead of losing the whole edit.
+   */
+  async function saveProfile(nextProfile: ProfileData) {
     const normalized = normalizeProfile(nextProfile);
+    const avatarChanged = normalized.avatarDataUrl && normalized.avatarDataUrl !== session?.user.avatarUrl;
+
+    if (avatarChanged && session) {
+      try {
+        const apiClient = createApiClient({ authToken: session.token });
+        const { avatar_url } = await apiClient.updateMyAvatar({
+          client_request_id: crypto.randomUUID(),
+          data_url: normalized.avatarDataUrl!,
+        });
+        const nextSession: StoredSession = { ...session, user: { ...session.user, avatarUrl: avatar_url } };
+        saveSession(nextSession);
+        setSession(nextSession);
+        setProfile({ ...normalized, avatarDataUrl: avatar_url });
+        setDialog(null);
+        showToast(UI_TEXT.profile.avatarUpdated);
+        if (activeGroupId) {
+          cloudStore?.refreshGroupDetail(activeGroupId).catch(() => {});
+        }
+        return;
+      } catch {
+        showToast(UI_TEXT.profile.avatarUploadFailed);
+        setProfile((current) => normalizeProfile({ ...current, name: normalized.name }));
+        setDialog(null);
+        return;
+      }
+    }
+
     setProfile(normalized);
     setDialog(null);
     showToast(`${text.profile}: ${normalized.name}`);
@@ -982,7 +1038,7 @@ export function App() {
               openProfileDialog();
             }}
           >
-            {profile.avatarDataUrl ? <img src={profile.avatarDataUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
+            {displayAvatarUrl ? <img src={displayAvatarUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
           </button>
         </div>
         <div className="side-group-card">
@@ -1097,7 +1153,7 @@ export function App() {
             </button>
           ) : (
             <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
-              {profile.avatarDataUrl ? <img src={profile.avatarDataUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
+              {displayAvatarUrl ? <img src={displayAvatarUrl} alt="" /> : <UserRound aria-hidden="true" size={18} />}
             </button>
           )}
         </div>
@@ -1177,15 +1233,18 @@ export function App() {
                 <div className="hero-member-summary">
                   <div className="hero-avatar-stack" aria-label={text.members}>
                     {members.map((member) => (
-                      <span className="hero-avatar" key={member.id}>
-                        {initial(member.name)}
-                      </span>
+                      <MemberAvatar
+                        className="hero-avatar"
+                        key={member.id}
+                        name={member.name}
+                        avatarUrl={member.avatarUrl}
+                      />
                     ))}
                   </div>
                   <div className="hero-balance-list" aria-label={text.analysis}>
                     {members.slice(0, 2).map((member) => (
                       <div className="hero-balance-row" key={member.id}>
-                        <div className="member-avatar">{initial(member.name)}</div>
+                        <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
                         <span>
                           {member.name}
                           {member.role === "owner" ? <small>{text.owner}</small> : null}
@@ -1262,7 +1321,7 @@ export function App() {
                 {debt ? (
                   <>
                     <div className="pizo-debt-person">
-                      <span className="member-avatar lime">{initial(debt.from.name)}</span>
+                      <MemberAvatar className="member-avatar lime" name={debt.from.name} avatarUrl={debt.from.avatarUrl} />
                       <strong>{debt.from.name}</strong>
                     </div>
                     <div className="pizo-debt-center">
@@ -1271,7 +1330,7 @@ export function App() {
                       <strong>{formatTwd(debt.amountMinor)}</strong>
                     </div>
                     <div className="pizo-debt-person right">
-                      <span className="member-avatar photo">{initial(debt.to.name)}</span>
+                      <MemberAvatar className="member-avatar photo" name={debt.to.name} avatarUrl={debt.to.avatarUrl} />
                       <strong>{debt.to.name}</strong>
                     </div>
                   </>
@@ -1331,11 +1390,11 @@ export function App() {
                           </span>
                         ) : extraPayerCount > 0 ? (
                           <span className="payer-avatar-stack">
-                            <span className="member-avatar photo">{initial(payer?.name)}</span>
+                            <MemberAvatar className="member-avatar photo" name={payer?.name} avatarUrl={payer?.avatarUrl} />
                             <i className="payer-count-badge" aria-hidden="true">{`+${extraPayerCount}`}</i>
                           </span>
                         ) : (
-                          <span className="member-avatar photo">{initial(payer?.name)}</span>
+                          <MemberAvatar className="member-avatar photo" name={payer?.name} avatarUrl={payer?.avatarUrl} />
                         )}
                         <span className="expense-record-main">
                           <strong>{expense.title}</strong>
@@ -1346,7 +1405,9 @@ export function App() {
                           {isIncome ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
                           <i className="mini-avatar-stack" aria-hidden="true">
                             {shareMembers.map((member) => (
-                              <em key={member.id}>{initial(member.name)}</em>
+                              <em key={member.id}>
+                                <MemberAvatar name={member.name} avatarUrl={member.avatarUrl} />
+                              </em>
                             ))}
                           </i>
                         </span>
@@ -1464,6 +1525,7 @@ export function App() {
       {dialog === "profile" ? (
         <ProfileDialog
           profile={profile}
+          displayAvatarUrl={displayAvatarUrl ?? undefined}
           session={session}
           onClose={() => setDialog(null)}
           onSave={saveProfile}
@@ -1726,12 +1788,12 @@ export function App() {
                       return (
                         <div className="settlement-suggestion-row" key={`${transfer.fromMemberId}_${transfer.toMemberId}`}>
                           <div className="settlement-suggestion-person">
-                            <span className="member-avatar lime">{initial(from?.name)}</span>
+                            <MemberAvatar className="member-avatar lime" name={from?.name} avatarUrl={from?.avatarUrl} />
                             <strong>{from?.name ?? ""}</strong>
                           </div>
                           <b>{"\u2192"}</b>
                           <div className="settlement-suggestion-person">
-                            <span className="member-avatar photo">{initial(to?.name)}</span>
+                            <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
                             <strong>{to?.name ?? ""}</strong>
                           </div>
                           <span className="settlement-suggestion-amount">{formatTwd(transfer.amount.amount_minor)}</span>
@@ -1875,7 +1937,7 @@ export function App() {
                         className={manageable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
                         key={member.id}
                       >
-                        <span className="member-avatar">{initial(member.name)}</span>
+                        <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
                         {isRenaming ? (
                           <>
                             <input

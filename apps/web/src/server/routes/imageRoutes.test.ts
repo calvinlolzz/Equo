@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { uploadGroupImageRoute } from "./imageRoutes.js";
+import { updateMyAvatarRoute, uploadGroupImageRoute } from "./imageRoutes.js";
 import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
@@ -83,5 +83,85 @@ describe("uploadGroupImageRoute", () => {
       throw new Error("expected uploadGroupImageRoute to reject a non-member with 403");
     }
     expect(result.body.error?.code).toBe("FORBIDDEN");
+  });
+});
+
+function makeAvatarClient(): SupabaseQueryClient {
+  return {
+    async one(sql, params) {
+      if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
+        return { avatar_url: params[0] } as never;
+      }
+      throw new Error(`Unexpected one query: ${sql}`);
+    },
+    async maybeOne() {
+      return null;
+    },
+    async exec() {},
+  };
+}
+
+function makeAvatarStorage(): SupabaseStorageClient {
+  return {
+    async uploadImage({ pathPrefix, ext }) {
+      return {
+        url: `https://example.supabase.co/storage/v1/object/public/equo-images/${pathPrefix}/avatar.${ext}`,
+      };
+    },
+  };
+}
+
+describe("updateMyAvatarRoute", () => {
+  test("uploads the avatar and persists it on users.avatar_url for the authenticated caller", async () => {
+    const result = await updateMyAvatarRoute(
+      {
+        client: makeAvatarClient(),
+        storage: makeAvatarStorage(),
+        verifier,
+        idToken: "user_alice",
+      },
+      { client_request_id: "req_avatar", data_url: validRequest.data_url },
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({
+      avatar_url: expect.stringContaining("avatars/user_alice/"),
+    });
+  });
+
+  test("rejects an invalid image with 400 INVALID_IMAGE", async () => {
+    const result = await updateMyAvatarRoute(
+      {
+        client: makeAvatarClient(),
+        storage: makeAvatarStorage(),
+        verifier,
+        idToken: "user_alice",
+      },
+      { client_request_id: "req_avatar", data_url: "not-a-data-url" },
+    );
+
+    expect(result.status).toBe(400);
+    if (result.ok) {
+      throw new Error("expected updateMyAvatarRoute to reject an invalid image with 400");
+    }
+    expect(result.body.error?.code).toBe("INVALID_IMAGE");
+  });
+
+  test("rejects an unauthenticated caller with 401", async () => {
+    const result = await updateMyAvatarRoute(
+      {
+        client: makeAvatarClient(),
+        storage: makeAvatarStorage(),
+        verifier: async () => null,
+        idToken: "",
+      },
+      { client_request_id: "req_avatar", data_url: validRequest.data_url },
+    );
+
+    expect(result.status).toBe(401);
+    if (result.ok) {
+      throw new Error("expected updateMyAvatarRoute to reject an unauthenticated caller with 401");
+    }
+    expect(result.body.error?.code).toBe("UNAUTHENTICATED");
   });
 });

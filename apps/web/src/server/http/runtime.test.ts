@@ -5,8 +5,8 @@ import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js"
 
 function makeStorage(): SupabaseStorageClient {
   return {
-    async uploadImage({ groupId, ext }) {
-      return { url: `https://example.supabase.co/storage/v1/object/public/equo-images/${groupId}/uploaded.${ext}` };
+    async uploadImage({ pathPrefix, ext }) {
+      return { url: `https://example.supabase.co/storage/v1/object/public/equo-images/${pathPrefix}/uploaded.${ext}` };
     },
   };
 }

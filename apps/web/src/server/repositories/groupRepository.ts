@@ -44,6 +44,13 @@ export type GroupMemberRecord = {
   display_name: string;
   role: GroupMemberRole;
   status: "active" | "removed";
+  /**
+   * The linked user's profile photo (from public.users.avatar_url via
+   * get_group_detail's join), null for virtual members. Only populated on
+   * the get_group_detail RPC path today - listMembers/createVirtualMember/etc
+   * don't select it since nothing reads it off those paths yet.
+   */
+  avatar_url?: string | null;
 };
 
 export type InviteRecord = {

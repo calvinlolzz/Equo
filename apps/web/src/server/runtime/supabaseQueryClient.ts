@@ -131,7 +131,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "POST",
         table: "users",
-        query: "on_conflict=google_sub&select=id,google_sub,email,display_name",
+        query: "on_conflict=google_sub&select=id,google_sub,email,display_name,avatar_url",
         body: {
           id: params[0],
           google_sub: params[1],
@@ -157,6 +157,31 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
           default_currency: "TWD",
         },
         prefer: "resolution=merge-duplicates",
+      });
+      return undefined as T;
+    }
+
+    // Self-scoped avatar update (PATCH /api/v1/me/avatar): must be matched
+    // before the "insert into public.users" branch above's substring check
+    // would never collide (this is an UPDATE), but keep it grouped here
+    // since both touch the users table.
+    if (normalized.includes("update public.users") && normalized.includes("set avatar_url = $1")) {
+      const rows = await request<T>({
+        method: "PATCH",
+        table: "users",
+        query: `id=eq.${encodeFilter(params[1])}&select=avatar_url`,
+        body: { avatar_url: params[0] },
+        returnRepresentation: true,
+      });
+      return firstRow(rows);
+    }
+
+    if (normalized.includes("update public.profiles") && normalized.includes("set avatar_url = $1")) {
+      await request({
+        method: "PATCH",
+        table: "profiles",
+        query: `id=eq.${encodeFilter(params[1])}`,
+        body: { avatar_url: params[0] },
       });
       return undefined as T;
     }

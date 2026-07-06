@@ -70,6 +70,10 @@ export type UploadGroupImageRequest = IdempotentRequest & {
   data_url: string;
 };
 
+export type UpdateMyAvatarRequest = IdempotentRequest & {
+  data_url: string;
+};
+
 export type ConfirmSettlementRequest = IdempotentRequest & {
   settlement_version: number;
 };

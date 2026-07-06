@@ -8,7 +8,14 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 
 export type SupabaseStorageClient = {
   uploadImage(options: {
-    groupId: string;
+    /**
+     * The storage-object path prefix (everything before "<uuid>.<ext>"),
+     * e.g. a groupId for group images or "avatars/<userId>" for a user's
+     * avatar. Kept as a free-form prefix (rather than a groupId-only field)
+     * so every caller - group images and the self-scoped avatar upload
+     * alike - can share this one client.
+     */
+    pathPrefix: string;
     ext: string;
     bytes: Uint8Array;
     contentType: string;
@@ -28,8 +35,8 @@ export function createSupabaseStorageClient(options: SupabaseStorageOptions): Su
   const baseUrl = options.url.replace(/\/$/, "");
 
   return {
-    async uploadImage({ groupId, ext, bytes, contentType }) {
-      const objectPath = `${groupId}/${randomUUID()}.${ext}`;
+    async uploadImage({ pathPrefix, ext, bytes, contentType }) {
+      const objectPath = `${pathPrefix}/${randomUUID()}.${ext}`;
       const response = await fetcher(`${baseUrl}/storage/v1/object/${STORAGE_BUCKET}/${objectPath}`, {
         method: "POST",
         headers: {

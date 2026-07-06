@@ -2,14 +2,11 @@ import { useState } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
+import { MemberAvatar } from "./MemberAvatar";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
 const detailText = UI_TEXT.expenseDetail;
-
-function initial(name: string | undefined) {
-  return (name || "?").slice(0, 1).toUpperCase();
-}
 
 function formatTwd(amountMinor: number) {
   return `$${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
@@ -106,13 +103,13 @@ export function ExpenseDetailDialog({
         {isSettlement ? (
           <div className="expense-detail-settlement-row">
             <div className="expense-detail-person">
-              <span className="member-avatar lime">{initial(payer?.name)}</span>
+              <MemberAvatar className="member-avatar lime" name={payer?.name} avatarUrl={payer?.avatarUrl} />
               <strong>{payer?.name ?? ""}</strong>
               <small>{detailText.from}</small>
             </div>
             <b>{"→"}</b>
             <div className="expense-detail-person">
-              <span className="member-avatar photo">{initial(recipient?.name)}</span>
+              <MemberAvatar className="member-avatar photo" name={recipient?.name} avatarUrl={recipient?.avatarUrl} />
               <strong>{recipient?.name ?? ""}</strong>
               <small>{detailText.to}</small>
             </div>
@@ -143,7 +140,7 @@ export function ExpenseDetailDialog({
             <div className="dialog-section-list">
               <span className="dialog-list-title">{text.incomeCollector}</span>
               <div className="member-dialog-row expense-detail-payer-row">
-                <span className="member-avatar">{initial(collector?.name)}</span>
+                <MemberAvatar className="member-avatar" name={collector?.name} avatarUrl={collector?.avatarUrl} />
                 <span>
                   <strong>{collector?.name ?? ""}</strong>
                 </span>
@@ -155,7 +152,7 @@ export function ExpenseDetailDialog({
                 const member = members.find((candidate) => candidate.id === payment.payerId);
                 return (
                   <div className="member-dialog-row" key={payment.payerId}>
-                    <span className="member-avatar">{initial(member?.name)}</span>
+                    <MemberAvatar className="member-avatar" name={member?.name} avatarUrl={member?.avatarUrl} />
                     <span>
                       <strong>{member?.name ?? ""}</strong>
                     </span>
@@ -175,7 +172,7 @@ export function ExpenseDetailDialog({
                 const member = members.find((candidate) => candidate.id === payment.payerId);
                 return (
                   <div className="member-dialog-row" key={payment.payerId}>
-                    <span className="member-avatar">{initial(member?.name)}</span>
+                    <MemberAvatar className="member-avatar" name={member?.name} avatarUrl={member?.avatarUrl} />
                     <span>
                       <strong>{member?.name ?? ""}</strong>
                     </span>
@@ -185,7 +182,7 @@ export function ExpenseDetailDialog({
               })
             ) : (
               <div className="member-dialog-row expense-detail-payer-row">
-                <span className="member-avatar">{initial(payer?.name)}</span>
+                <MemberAvatar className="member-avatar" name={payer?.name} avatarUrl={payer?.avatarUrl} />
                 <span>
                   <strong>{payer?.name ?? ""}</strong>
                 </span>
@@ -199,7 +196,7 @@ export function ExpenseDetailDialog({
             <span className="dialog-list-title">{text.shareBreakdown}</span>
             {shareMembers.map((member) => (
               <div className="member-dialog-row" key={member.id}>
-                <span className="member-avatar">{initial(member.name)}</span>
+                <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
                 <span>
                   <strong>{member.name}</strong>
                 </span>

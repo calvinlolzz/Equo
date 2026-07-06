@@ -557,7 +557,7 @@ describe("createSupabaseStorageClient", () => {
 
     const bytes = new Uint8Array([1, 2, 3]);
     await expect(
-      storage.uploadImage({ groupId: "group_1", ext: "jpg", bytes, contentType: "image/jpeg" }),
+      storage.uploadImage({ pathPrefix: "group_1", ext: "jpg", bytes, contentType: "image/jpeg" }),
     ).resolves.toEqual({
       url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/fixed-uuid.jpg",
     });
@@ -583,7 +583,7 @@ describe("createSupabaseStorageClient", () => {
     });
 
     await expect(
-      storage.uploadImage({ groupId: "group_1", ext: "jpg", bytes: new Uint8Array(), contentType: "image/jpeg" }),
+      storage.uploadImage({ pathPrefix: "group_1", ext: "jpg", bytes: new Uint8Array(), contentType: "image/jpeg" }),
     ).rejects.toThrow("Supabase storage upload failed: 413");
   });
 

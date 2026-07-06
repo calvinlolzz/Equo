@@ -8,6 +8,7 @@ import type {
   RemoveGroupMemberRequest,
   RenameGroupMemberRequest,
   UpdateGroupRequest,
+  UpdateMyAvatarRequest,
   UploadGroupImageRequest,
 } from "../contracts/schemas";
 
@@ -38,6 +39,7 @@ export type GroupMemberSummary = {
   display_name: string;
   role: "owner" | "member";
   status: "active" | "removed";
+  avatar_url?: string | null;
 };
 
 export type ExpensePaymentSummary = {
@@ -139,7 +141,7 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         session: {
           token: string;
           expires_at: string;
-          user: { id: string; email: string; display_name: string };
+          user: { id: string; email: string; display_name: string; avatar_url?: string | null };
         };
       }>("/auth/google", {
         method: "POST",
@@ -151,7 +153,7 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         session: {
           token: string;
           expires_at: string;
-          user: { id: string; email: string; display_name: string };
+          user: { id: string; email: string; display_name: string; avatar_url?: string | null };
         };
       }>("/auth/supabase", {
         method: "POST",
@@ -254,6 +256,12 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
     uploadGroupImage(groupId: string, payload: UploadGroupImageRequest) {
       return request<{ image: { url: string } }>(`/groups/${groupId}/images`, {
         method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    updateMyAvatar(payload: UpdateMyAvatarRequest) {
+      return request<{ avatar_url: string }>("/me/avatar", {
+        method: "PATCH",
         body: JSON.stringify(payload),
       });
     },

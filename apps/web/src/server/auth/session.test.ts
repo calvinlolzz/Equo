@@ -42,6 +42,19 @@ describe("requireAuthenticatedUser", () => {
     });
   });
 
+  test("carries avatar_url through the session-token fast path", async () => {
+    const resolveUser = vi.fn();
+    const identityWithAvatar: GoogleIdentity = {
+      ...resolvedIdentity,
+      avatar_url: "https://cdn.equo.local/avatars/user_1/photo.jpg",
+    };
+
+    const result = await requireAuthenticatedUser(identityWithAvatar, resolveUser);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.context.user.avatar_url).toBe("https://cdn.equo.local/avatars/user_1/photo.jpg");
+  });
+
   test("still calls resolveUser (the upsert path) for a fresh Google/Supabase identity with no resolved_user_id", async () => {
     const resolveUser = vi.fn(async () => ({
       id: "db_user_1",

@@ -17,6 +17,14 @@ export type Member = {
    * see resolveCurrentMember in App.tsx.
    */
   userId?: string | null;
+  /**
+   * The linked user's real avatar (their Google profile picture by default,
+   * or a custom upload once they set one via ProfileDialog - see
+   * updateMyAvatar). Null/undefined for virtual members (no login, no
+   * avatar) or a real member whose users.avatar_url is unset - either way,
+   * MemberAvatar falls back to the initial-letter style.
+   */
+  avatarUrl?: string | null;
 };
 
 /**

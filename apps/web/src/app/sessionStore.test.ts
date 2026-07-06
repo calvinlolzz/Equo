@@ -85,4 +85,41 @@ describe("sessionStore", () => {
 
     expect(loadSession(Date.now(), storage)).toBeNull();
   });
+
+  test("round-trips a session that carries an avatarUrl", () => {
+    const storage = memoryStorage();
+    const session = makeSession({
+      user: { id: "user-1", email: "person@example.com", displayName: "小明", avatarUrl: "https://cdn.equo.local/avatars/user-1/photo.jpg" },
+    });
+
+    saveSession(session, storage);
+
+    expect(loadSession(Date.now(), storage)).toEqual(session);
+  });
+
+  test("loads a legacy session with no avatarUrl field at all (backward compat)", () => {
+    const storage = memoryStorage();
+    const legacySession = {
+      token: "session-token",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      user: { id: "user-1", email: "person@example.com", displayName: "小明" },
+    };
+    storage.setItem("equo.clean.session", JSON.stringify(legacySession));
+
+    expect(loadSession(Date.now(), storage)).toEqual(legacySession);
+  });
+
+  test("rejects a session whose avatarUrl is a non-string, non-null value", () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      "equo.clean.session",
+      JSON.stringify({
+        token: "session-token",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        user: { id: "user-1", email: "person@example.com", displayName: "小明", avatarUrl: 12345 },
+      }),
+    );
+
+    expect(loadSession(Date.now(), storage)).toBeNull();
+  });
 });

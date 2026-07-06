@@ -7,6 +7,7 @@ import type {
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
   UpdateGroupRequest,
+  UpdateMyAvatarRequest,
   UploadGroupImageRequest,
 } from "../../contracts/schemas.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
@@ -29,7 +30,7 @@ import {
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
 import { createExpenseRoute, deleteExpenseRoute } from "../routes/expenseRoutes.js";
-import { uploadGroupImageRoute } from "../routes/imageRoutes.js";
+import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
@@ -289,6 +290,15 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[1],
           body<UploadGroupImageRequest>(request),
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PATCH",
+      pattern: /^\/api\/v1\/me\/avatar$/,
+      label: "PATCH /api/v1/me/avatar",
+      async handle(request) {
+        const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
         return jsonResponse(result.status, result.body);
       },
     },

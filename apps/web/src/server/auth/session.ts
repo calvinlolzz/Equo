@@ -7,6 +7,7 @@ export type AuthenticatedContext = {
     google_sub: string;
     email: string;
     display_name: string;
+    avatar_url?: string | null;
   };
 };
 
@@ -51,6 +52,7 @@ export async function requireAuthenticatedUser(
           google_sub: identity.google_sub,
           email: identity.email,
           display_name: identity.display_name,
+          avatar_url: identity.avatar_url,
         },
       },
     };

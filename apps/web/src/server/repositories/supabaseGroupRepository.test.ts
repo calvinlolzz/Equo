@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
-import { createSupabaseGroupRepository, upsertUserByGoogleIdentity } from "./supabaseGroupRepository.js";
+import { createSupabaseGroupRepository, updateUserAvatar, upsertUserByGoogleIdentity } from "./supabaseGroupRepository.js";
 
 function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
   const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
@@ -105,6 +105,10 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
           role: "member",
           status: "removed",
         } as never;
+      }
+
+      if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
+        return { avatar_url: params[0] } as never;
       }
 
       throw new Error(`Unexpected one query: ${sql}`);
@@ -375,5 +379,29 @@ describe("createSupabaseGroupRepository", () => {
     };
 
     await expect(repository.getMemberBalanceMinor("group_1", "member_virtual")).resolves.toBe(0);
+  });
+
+  test("updateUserAvatar sets users.avatar_url and mirrors it onto profiles.avatar_url", async () => {
+    const client = makeClient();
+
+    const result = await updateUserAvatar(
+      client,
+      "user_alice",
+      "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg",
+    );
+
+    expect(result).toEqual({
+      avatar_url: "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg",
+    });
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      params: ["https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg", "user_alice"],
+    });
+    expect(client.calls[0].sql).toContain("update public.users");
+    expect(client.calls[1]).toMatchObject({
+      method: "exec",
+      params: ["https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg", "user_alice"],
+    });
+    expect(client.calls[1].sql).toContain("update public.profiles");
   });
 });

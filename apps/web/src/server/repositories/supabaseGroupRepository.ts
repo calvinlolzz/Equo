@@ -34,7 +34,7 @@ export async function upsertUserByGoogleIdentity(
         display_name = excluded.display_name,
         avatar_url = excluded.avatar_url,
         updated_at = now()
-      returning id, google_sub, email, display_name
+      returning id, google_sub, email, display_name, avatar_url
     `,
     [
       identity.auth_user_id,
@@ -55,6 +55,41 @@ export async function upsertUserByGoogleIdentity(
         updated_at = now()
     `,
     [user.id, identity.display_name, identity.avatar_url ?? null],
+  );
+
+  return user;
+}
+
+/**
+ * Self-scoped avatar update (PATCH /api/v1/me/avatar): sets users.avatar_url
+ * to a freshly-uploaded storage URL for the given userId. Also mirrors the
+ * value into profiles.avatar_url so the two tables (users - the auth
+ * identity row read by every session/group-detail query, and profiles - the
+ * legacy per-user settings row) never drift, matching how
+ * upsertUserByGoogleIdentity keeps both in sync on login.
+ */
+export async function updateUserAvatar(
+  client: SupabaseQueryClient,
+  userId: string,
+  avatarUrl: string,
+): Promise<{ avatar_url: string }> {
+  const user = await client.one<{ avatar_url: string }>(
+    `
+      update public.users
+      set avatar_url = $1, updated_at = now()
+      where id = $2
+      returning avatar_url
+    `,
+    [avatarUrl, userId],
+  );
+
+  await client.exec(
+    `
+      update public.profiles
+      set avatar_url = $1, updated_at = now()
+      where id = $2
+    `,
+    [avatarUrl, userId],
   );
 
   return user;
