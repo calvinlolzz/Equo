@@ -1750,6 +1750,68 @@ label span {
   text-align: right;
 }
 
+.member-dialog-row.has-member-actions {
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+}
+
+.member-dialog-row span.member-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.member-icon-action {
+  min-width: 30px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 0 8px;
+  color: rgba(247, 251, 248, 0.78);
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.member-icon-action:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.member-icon-action.confirm {
+  color: #07110f;
+  background: #ffd67a;
+}
+
+.member-icon-action.danger {
+  color: #ffb0b0;
+}
+
+.member-icon-action.danger.confirming {
+  color: #fff;
+  background: #e95353;
+  white-space: nowrap;
+}
+
+.member-icon-action:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.member-rename-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid rgba(255, 214, 122, 0.55);
+  border-radius: 10px;
+  padding: 0 10px;
+  color: #f7fbf8;
+  background: rgba(0, 0, 0, 0.24);
+  font-size: 14px;
+  font-weight: 760;
+}
+
 .dialog-empty {
   margin: 0;
   border-radius: 14px;

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Archive,
   ChartNoAxesColumn,
+  Check,
   ChevronRight,
   CircleDollarSign,
   Copy,
@@ -17,6 +18,7 @@ import {
   ReceiptText,
   Settings,
   Trash2,
+  UserMinus,
   UserRound,
   X,
   type LucideIcon,
@@ -177,6 +179,9 @@ export function App() {
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
   const [groupName, setGroupName] = useState<string>(text.tripName);
   const [virtualMemberName, setVirtualMemberName] = useState("");
+  const [renamingMemberId, setRenamingMemberId] = useState("");
+  const [renameMemberValue, setRenameMemberValue] = useState("");
+  const [confirmingRemoveMemberId, setConfirmingRemoveMemberId] = useState("");
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
@@ -580,10 +585,17 @@ export function App() {
     }
   }
 
+  function resetMemberManagement() {
+    setRenamingMemberId("");
+    setRenameMemberValue("");
+    setConfirmingRemoveMemberId("");
+  }
+
   function openMemberList() {
     if (!activeGroup) return;
     setGroupDrawerOpen(false);
     setSettingsDrawerOpen(false);
+    resetMemberManagement();
     setDialog("memberList");
   }
 
@@ -632,6 +644,7 @@ export function App() {
     setGroupDrawerOpen(false);
     setSettingsDrawerOpen(false);
     if (id === "members") {
+      resetMemberManagement();
       setDialog("memberList");
       return;
     }
@@ -663,6 +676,67 @@ export function App() {
       showToast(`${text.addVirtualMember}: ${name}`);
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
+    }
+  }
+
+  function startRenameMember(member: Member) {
+    setConfirmingRemoveMemberId("");
+    setRenamingMemberId(member.id);
+    setRenameMemberValue(member.name);
+  }
+
+  function cancelRenameMember() {
+    setRenamingMemberId("");
+    setRenameMemberValue("");
+  }
+
+  async function submitRenameMember(member: Member) {
+    if (!activeGroup || !cloudStore) return;
+    const name = renameMemberValue.trim();
+    if (!name) return;
+    if (name === member.name) {
+      cancelRenameMember();
+      return;
+    }
+    if (!beginAction(`renameMember:${member.id}`)) return;
+
+    try {
+      await cloudStore.renameMember(activeGroup.id, member.id, name);
+      recordCloudActivity(activeGroup.id, `${text.renameMember}: ${member.name} → ${name}`);
+      cancelRenameMember();
+      showToast(text.memberRenamed);
+    } catch (error) {
+      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
+    }
+  }
+
+  async function removeMember(member: Member) {
+    if (!activeGroup || !cloudStore) return;
+    if (confirmingRemoveMemberId !== member.id) {
+      setRenamingMemberId("");
+      setRenameMemberValue("");
+      setConfirmingRemoveMemberId(member.id);
+      return;
+    }
+    if (!beginAction(`removeMember:${member.id}`)) return;
+
+    try {
+      await cloudStore.removeMember(activeGroup.id, member.id);
+      recordCloudActivity(activeGroup.id, `${text.removeMember}: ${member.name}`);
+      setConfirmingRemoveMemberId("");
+      showToast(text.memberRemoved);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      setConfirmingRemoveMemberId("");
+      showToast(
+        code === "MEMBER_HAS_BALANCE"
+          ? text.memberHasBalance
+          : `${text.cloudSyncFailedPrefix}${(error as Error).message}`,
+      );
     } finally {
       endAction();
     }
@@ -1725,16 +1799,93 @@ export function App() {
                 </div>
                 <div className="dialog-section-list">
                   <span className="dialog-list-title">{text.members}</span>
-                  {members.map((member) => (
-                    <button className="member-dialog-row" type="button" key={member.id}>
-                      <span className="member-avatar">{initial(member.name)}</span>
-                      <span>
-                        <strong>{member.name}</strong>
-                        <small>{member.virtual ? text.virtualMember : member.role === "owner" ? text.owner : text.member}</small>
-                      </span>
-                      <b>{formatSigned(balances.get(member.id) ?? 0)}</b>
-                    </button>
-                  ))}
+                  {members.map((member) => {
+                    // Only VIRTUAL members can be renamed/removed - real users
+                    // own their names via their profile, and the owner is
+                    // protected. (A virtual member is never the owner.)
+                    const manageable = Boolean(member.virtual);
+                    const isRenaming = manageable && renamingMemberId === member.id;
+                    const renamePending = pendingAction === `renameMember:${member.id}`;
+                    const removePending = pendingAction === `removeMember:${member.id}`;
+                    return (
+                      <div
+                        className={manageable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
+                        key={member.id}
+                      >
+                        <span className="member-avatar">{initial(member.name)}</span>
+                        {isRenaming ? (
+                          <>
+                            <input
+                              className="member-rename-input"
+                              value={renameMemberValue}
+                              onChange={(event) => setRenameMemberValue(event.target.value)}
+                              maxLength={50}
+                              aria-label={text.renameMember}
+                              autoFocus
+                            />
+                            <span className="member-row-actions">
+                              <button
+                                className="member-icon-action confirm"
+                                type="button"
+                                aria-label={text.confirm}
+                                disabled={!renameMemberValue.trim() || renamePending}
+                                onClick={() => submitRenameMember(member)}
+                              >
+                                <Check aria-hidden="true" size={15} />
+                              </button>
+                              <button
+                                className="member-icon-action"
+                                type="button"
+                                aria-label={text.cancel}
+                                disabled={renamePending}
+                                onClick={cancelRenameMember}
+                              >
+                                <X aria-hidden="true" size={15} />
+                              </button>
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span>
+                              <strong>{member.name}</strong>
+                              <small>{member.virtual ? text.virtualMember : member.role === "owner" ? text.owner : text.member}</small>
+                            </span>
+                            {manageable ? (
+                              <span className="member-row-actions">
+                                <button
+                                  className="member-icon-action"
+                                  type="button"
+                                  aria-label={text.renameMember}
+                                  disabled={removePending}
+                                  onClick={() => startRenameMember(member)}
+                                >
+                                  <Pencil aria-hidden="true" size={14} />
+                                </button>
+                                <button
+                                  className={
+                                    confirmingRemoveMemberId === member.id
+                                      ? "member-icon-action danger confirming"
+                                      : "member-icon-action danger"
+                                  }
+                                  type="button"
+                                  aria-label={text.removeMember}
+                                  disabled={removePending}
+                                  onClick={() => removeMember(member)}
+                                >
+                                  {confirmingRemoveMemberId === member.id ? (
+                                    text.confirmRemoveMember
+                                  ) : (
+                                    <UserMinus aria-hidden="true" size={14} />
+                                  )}
+                                </button>
+                              </span>
+                            ) : null}
+                            <b>{formatSigned(balances.get(member.id) ?? 0)}</b>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="dialog-action-row">
                   <button className="secondary-action" type="button" onClick={openInviteMembers}>

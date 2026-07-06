@@ -4,6 +4,7 @@ import type {
   CreateGroupRequest,
   CreateInviteRequest,
   CreateVirtualMemberRequest,
+  RenameGroupMemberRequest,
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
@@ -25,6 +26,62 @@ function forbidden(request_id = "req_unknown"): HandlerResult<never> {
       },
     },
   };
+}
+
+function memberNotFound(request_id: string): HandlerResult<never> {
+  return {
+    ok: false,
+    status: 404,
+    body: {
+      error: {
+        code: "MEMBER_NOT_FOUND",
+        message: "Member not found in this group.",
+        request_id,
+      },
+    },
+  };
+}
+
+function invalidMember(message: string, request_id: string): HandlerResult<never> {
+  return {
+    ok: false,
+    status: 400,
+    body: {
+      error: {
+        code: "INVALID_MEMBER",
+        message,
+        request_id,
+      },
+    },
+  };
+}
+
+/**
+ * Shared target checks for the virtual-member management endpoints
+ * (rename/remove): the target must exist, still be active, be virtual
+ * (user_id null - real users own their names via their profile), and must
+ * not be the owner.
+ */
+async function requireVirtualMemberTarget(
+  repository: GroupRepository,
+  groupId: string,
+  memberId: string,
+  requestId: string,
+): Promise<{ ok: true; member: GroupMemberRecord } | { ok: false; error: HandlerResult<never> }> {
+  const target = await repository.findMemberById(groupId, memberId);
+
+  if (!target || target.status !== "active") {
+    return { ok: false, error: memberNotFound(requestId) };
+  }
+
+  if (target.user_id !== null || target.role === "owner") {
+    return {
+      ok: false,
+      error: invalidMember("Only virtual members (without a linked account) can be managed.", requestId),
+    };
+  }
+
+  return { ok: true, member: target };
 }
 
 export async function requireGroupMember(
@@ -201,6 +258,80 @@ export async function handleCreateVirtualMember(
     ok: true,
     status: 201,
     body: { member: virtualMember },
+  } satisfies HandlerResult<unknown>;
+}
+
+export async function handleRenameGroupMember(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  memberId: string,
+  request: RenameGroupMemberRequest,
+) {
+  const member = await requireGroupMember(repository, context, groupId);
+
+  if (!member) {
+    return forbidden(request.client_request_id);
+  }
+
+  const target = await requireVirtualMemberTarget(repository, groupId, memberId, request.client_request_id);
+
+  if (target.ok === false) {
+    return target.error;
+  }
+
+  const renamed = await repository.renameVirtualMember(groupId, memberId, request.display_name.trim());
+  await repository.recordClientRequest(groupId, request.client_request_id, renamed.id);
+
+  return {
+    ok: true,
+    status: 200,
+    body: { member: renamed },
+  } satisfies HandlerResult<unknown>;
+}
+
+export async function handleRemoveGroupMember(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  memberId: string,
+  clientRequestId: string,
+) {
+  const member = await requireGroupMember(repository, context, groupId);
+
+  if (!member) {
+    return forbidden(clientRequestId);
+  }
+
+  const target = await requireVirtualMemberTarget(repository, groupId, memberId, clientRequestId);
+
+  if (target.ok === false) {
+    return target.error;
+  }
+
+  const balanceMinor = await repository.getMemberBalanceMinor(groupId, memberId);
+
+  if (balanceMinor !== 0) {
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: {
+          code: "MEMBER_HAS_BALANCE",
+          message: "Member still has an unsettled balance and cannot be removed.",
+          request_id: clientRequestId,
+        },
+      },
+    } satisfies HandlerResult<never>;
+  }
+
+  const removed = await repository.removeVirtualMember(groupId, memberId);
+  await repository.recordClientRequest(groupId, clientRequestId, removed.id);
+
+  return {
+    ok: true,
+    status: 200,
+    body: { member: removed },
   } satisfies HandlerResult<unknown>;
 }
 

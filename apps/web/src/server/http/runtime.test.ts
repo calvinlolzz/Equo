@@ -106,6 +106,28 @@ function makeClient(): SupabaseQueryClient {
         return { id: params[1], name: "Tokyo Trip", currency: "TWD", owner_member_id: params[0] } as never;
       }
 
+      if (sql.includes("update public.group_members") && sql.includes("set display_name = $1")) {
+        return {
+          id: params[1],
+          group_id: params[2],
+          user_id: null,
+          display_name: params[0],
+          role: "member",
+          status: "active",
+        } as never;
+      }
+
+      if (sql.includes("update public.group_members") && sql.includes("set status = 'removed'")) {
+        return {
+          id: params[0],
+          group_id: params[1],
+          user_id: null,
+          display_name: "Bob",
+          role: "member",
+          status: "removed",
+        } as never;
+      }
+
       throw new Error(sql);
     },
     async maybeOne(sql) {
@@ -136,6 +158,22 @@ function makeClient(): SupabaseQueryClient {
           ],
           balances: [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" } }],
         } as never;
+      }
+
+      // Target lookup for member management (rename/remove): a VIRTUAL member.
+      if (sql.includes("where group_id = $1 and id = $2")) {
+        return {
+          id: "member_virtual",
+          group_id: "group_1",
+          user_id: null,
+          display_name: "Bob",
+          role: "member",
+          status: "active",
+        } as never;
+      }
+
+      if (sql.includes("from public.group_member_balances")) {
+        return { balance_minor: 0 } as never;
       }
 
       return {
@@ -395,6 +433,89 @@ describe("createHttpRuntime", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       group: { id: "group_2", name: "Osaka Trip" },
+    });
+  });
+
+  test("routes member rename requests without colliding with the member creation route", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    // POST .../members (creation, one path segment less) must still hit the
+    // creation handler...
+    const created = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/members",
+      headers: { authorization: "Bearer google-token" },
+      json: { client_request_id: "req_member", display_name: "Bob" },
+    });
+    expect(created.status).toBe(201);
+
+    // ...while PATCH .../members/:memberId hits the rename handler.
+    const renamed = await runtime.handle({
+      method: "PATCH",
+      path: "/api/v1/groups/group_1/members/member_virtual",
+      headers: { authorization: "Bearer google-token" },
+      json: { client_request_id: "req_rename", display_name: "Bobby" },
+    });
+
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({
+      member: { id: "member_virtual", display_name: "Bobby", user_id: null },
+    });
+  });
+
+  test("rejects member rename requests with an empty display name", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "PATCH",
+      path: "/api/v1/groups/group_1/members/member_virtual",
+      headers: { authorization: "Bearer google-token" },
+      json: { client_request_id: "req_rename", display_name: "   " },
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("routes member removal requests", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "DELETE",
+      path: "/api/v1/groups/group_1/members/member_virtual",
+      headers: { authorization: "Bearer google-token" },
+      json: { client_request_id: "req_remove" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      member: { id: "member_virtual", status: "removed" },
     });
   });
 

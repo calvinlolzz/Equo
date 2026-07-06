@@ -41,6 +41,8 @@ export type ApiClientLike = Pick<
   | "getGroupDetail"
   | "updateGroup"
   | "createVirtualMember"
+  | "renameGroupMember"
+  | "removeGroupMember"
   | "archiveGroup"
   | "unarchiveGroup"
   | "deleteGroup"
@@ -166,7 +168,14 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     if (isUnauthenticatedError(error)) {
       onSessionExpired();
     }
-    throw new Error(errorMessage(error));
+    // Preserve the API error code (e.g. MEMBER_HAS_BALANCE) so UI callers
+    // can map specific failures to friendlier uiText messages.
+    const rethrown: Error & { code?: string } = new Error(errorMessage(error));
+    const code = (error as { code?: string } | null)?.code;
+    if (code) {
+      rethrown.code = code;
+    }
+    throw rethrown;
   }
 
   /** Fire-and-forget re-sync used as a safety net after a mutation failure. */
@@ -288,6 +297,42 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
         if (mapped) {
           patchGroupDetail(groupId, { members: [...current.members, mapped] });
         }
+      }
+    } catch (error) {
+      resyncInBackground(groupId);
+      handleError(error);
+    }
+  }
+
+  async function renameMember(groupId: string, memberId: string, displayName: string) {
+    try {
+      const { member } = await apiClient.renameGroupMember(groupId, memberId, {
+        client_request_id: crypto.randomUUID(),
+        display_name: displayName,
+      });
+      const current = state.groupDetails[groupId];
+      if (current) {
+        const [mapped] = toMembers([member]);
+        if (mapped) {
+          patchGroupDetail(groupId, {
+            members: current.members.map((existing) => (existing.id === memberId ? mapped : existing)),
+          });
+        }
+      }
+    } catch (error) {
+      resyncInBackground(groupId);
+      handleError(error);
+    }
+  }
+
+  async function removeMember(groupId: string, memberId: string) {
+    try {
+      await apiClient.removeGroupMember(groupId, memberId, { client_request_id: crypto.randomUUID() });
+      const current = state.groupDetails[groupId];
+      if (current) {
+        patchGroupDetail(groupId, {
+          members: current.members.filter((existing) => existing.id !== memberId),
+        });
       }
     } catch (error) {
       resyncInBackground(groupId);
@@ -456,6 +501,8 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     createGroup,
     renameGroup,
     addVirtualMember,
+    renameMember,
+    removeMember,
     archiveGroup,
     listArchivedGroups,
     unarchiveGroup,

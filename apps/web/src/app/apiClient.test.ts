@@ -155,4 +155,93 @@ describe("createApiClient", () => {
     expect(calls[0].init.method).toBe("POST");
     expect(calls[0].init.body).toBe(JSON.stringify({ id_token: "google-id-token" }));
   });
+
+  test("renames a group member through PATCH /groups/:groupId/members/:memberId", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createApiClient({
+      authToken: "session-token",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return {
+          ok: true,
+          async json() {
+            return {
+              member: {
+                id: "member_2",
+                group_id: "group_1",
+                user_id: null,
+                display_name: "Bobby",
+                role: "member",
+                status: "active",
+              },
+            };
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.renameGroupMember("group_1", "member_2", { client_request_id: "rename_req", display_name: "Bobby" }),
+    ).resolves.toMatchObject({ member: { id: "member_2", display_name: "Bobby" } });
+
+    expect(calls[0].url).toBe("/api/v1/groups/group_1/members/member_2");
+    expect(calls[0].init.method).toBe("PATCH");
+    expect(calls[0].init.body).toBe(JSON.stringify({ client_request_id: "rename_req", display_name: "Bobby" }));
+  });
+
+  test("removes a group member through DELETE /groups/:groupId/members/:memberId", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createApiClient({
+      authToken: "session-token",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return {
+          ok: true,
+          async json() {
+            return {
+              member: {
+                id: "member_2",
+                group_id: "group_1",
+                user_id: null,
+                display_name: "Bob",
+                role: "member",
+                status: "removed",
+              },
+            };
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.removeGroupMember("group_1", "member_2", { client_request_id: "remove_req" }),
+    ).resolves.toMatchObject({ member: { id: "member_2", status: "removed" } });
+
+    expect(calls[0].url).toBe("/api/v1/groups/group_1/members/member_2");
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(calls[0].init.body).toBe(JSON.stringify({ client_request_id: "remove_req" }));
+  });
+
+  test("surfaces the API error code when member removal is balance-gated", async () => {
+    const client = createApiClient({
+      authToken: "session-token",
+      fetcher: async () =>
+        ({
+          ok: false,
+          async json() {
+            return {
+              error: {
+                code: "MEMBER_HAS_BALANCE",
+                message: "Member still has an unsettled balance and cannot be removed.",
+                request_id: "remove_req",
+              },
+            };
+          },
+        }) as Response,
+    });
+
+    await expect(
+      client.removeGroupMember("group_1", "member_2", { client_request_id: "remove_req" }),
+    ).rejects.toMatchObject({ code: "MEMBER_HAS_BALANCE" });
+  });
 });

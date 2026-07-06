@@ -5,6 +5,7 @@ import type {
   CreateGroupRequest,
   CreateInviteRequest,
   CreateVirtualMemberRequest,
+  RenameGroupMemberRequest,
   UpdateGroupRequest,
   UploadGroupImageRequest,
 } from "../../contracts/schemas.js";
@@ -22,6 +23,8 @@ import {
   listArchivedGroupsRoute,
   listGroupsRoute,
   getGroupDetailRoute,
+  removeGroupMemberRoute,
+  renameGroupMemberRoute,
   unarchiveGroupRoute,
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
@@ -174,6 +177,35 @@ export function createHttpRuntime(options: RuntimeOptions) {
           routeOptions(options, request),
           match[1],
           body<CreateVirtualMemberRequest>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PATCH",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/members\/([^/]+)$/,
+      label: "PATCH /api/v1/groups/:groupId/members/:memberId",
+      async handle(request, match) {
+        const result = await renameGroupMemberRoute(
+          routeOptions(options, request),
+          match[1],
+          match[2],
+          body<RenameGroupMemberRequest>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/members\/([^/]+)$/,
+      label: "DELETE /api/v1/groups/:groupId/members/:memberId",
+      async handle(request, match) {
+        const payload = body<{ client_request_id: string }>(request);
+        const result = await removeGroupMemberRoute(
+          routeOptions(options, request),
+          match[1],
+          match[2],
+          payload.client_request_id,
         );
         return jsonResponse(result.status, result.body);
       },

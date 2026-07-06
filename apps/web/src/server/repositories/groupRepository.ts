@@ -67,7 +67,12 @@ export type GroupRepository = {
   unarchiveGroup(groupId: string): Promise<GroupRecord>;
   deleteGroup(groupId: string): Promise<GroupRecord>;
   createVirtualMember(groupId: string, displayName: string): Promise<GroupMemberRecord>;
+  renameVirtualMember(groupId: string, memberId: string, displayName: string): Promise<GroupMemberRecord>;
+  removeVirtualMember(groupId: string, memberId: string): Promise<GroupMemberRecord>;
   findActiveMember(groupId: string, userId: string): Promise<GroupMemberRecord | null>;
+  findMemberById(groupId: string, memberId: string): Promise<GroupMemberRecord | null>;
+  /** The member's current balance in group_member_balances (0 when the view has no row). */
+  getMemberBalanceMinor(groupId: string, memberId: string): Promise<number>;
   createInvite(context: AuthenticatedContext, groupId: string, request: CreateInviteRequest): Promise<InviteRecord>;
   acceptInvite(context: AuthenticatedContext, token: string, request: AcceptInviteRequest): Promise<{
     group: GroupRecord;

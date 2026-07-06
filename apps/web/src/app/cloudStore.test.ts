@@ -40,6 +40,12 @@ function makeFakeApiClient(overrides: Partial<ApiClientLike> = {}): ApiClientLik
     createVirtualMember: vi.fn(async () => ({
       member: { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bob", role: "member" as const, status: "active" as const },
     })),
+    renameGroupMember: vi.fn(async () => ({
+      member: { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bobby", role: "member" as const, status: "active" as const },
+    })),
+    removeGroupMember: vi.fn(async () => ({
+      member: { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bob", role: "member" as const, status: "removed" as const },
+    })),
     archiveGroup: vi.fn(async () => ({ group: group1 })),
     unarchiveGroup: vi.fn(async () => ({ group: group1 })),
     deleteGroup: vi.fn(async () => ({ group: group1 })),
@@ -149,6 +155,87 @@ describe("createCloudGroupsStore", () => {
       { id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" },
       { id: "member_2", name: "Bob", role: "member", virtual: true, userId: null },
     ]);
+  });
+
+  test("renameMember patches the cached member in place, no refetch", async () => {
+    const virtualMember = {
+      id: "member_2",
+      group_id: "group_1",
+      user_id: null,
+      display_name: "Bob",
+      role: "member" as const,
+      status: "active" as const,
+    };
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () => ({ group: group1, members: [member1, virtualMember], expenses: [], balances: [] })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    await store.renameMember("group_1", "member_2", "Bobby");
+
+    expect(apiClient.renameGroupMember).toHaveBeenCalledWith("group_1", "member_2", {
+      client_request_id: expect.any(String),
+      display_name: "Bobby",
+    });
+    expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    expect(store.getState().groupDetails.group_1.members).toEqual([
+      { id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" },
+      { id: "member_2", name: "Bobby", role: "member", virtual: true, userId: null },
+    ]);
+  });
+
+  test("removeMember drops the member from the cached detail, no refetch", async () => {
+    const virtualMember = {
+      id: "member_2",
+      group_id: "group_1",
+      user_id: null,
+      display_name: "Bob",
+      role: "member" as const,
+      status: "active" as const,
+    };
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () => ({ group: group1, members: [member1, virtualMember], expenses: [], balances: [] })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    await store.removeMember("group_1", "member_2");
+
+    expect(apiClient.removeGroupMember).toHaveBeenCalledWith("group_1", "member_2", {
+      client_request_id: expect.any(String),
+    });
+    expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+    expect(store.getState().groupDetails.group_1.members).toEqual([
+      { id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" },
+    ]);
+  });
+
+  test("removeMember preserves the API error code and re-syncs in the background on failure", async () => {
+    const balanceError = Object.assign(new Error("Member still has an unsettled balance and cannot be removed."), {
+      code: "MEMBER_HAS_BALANCE",
+    });
+    const apiClient = makeFakeApiClient({
+      removeGroupMember: vi.fn(async () => {
+        throw balanceError;
+      }),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+    (apiClient.getGroupDetail as ReturnType<typeof vi.fn>).mockClear();
+
+    await expect(store.removeMember("group_1", "member_2")).rejects.toMatchObject({
+      message: "Member still has an unsettled balance and cannot be removed.",
+      code: "MEMBER_HAS_BALANCE",
+    });
+
+    // Cached members stay untouched and a background resync fires.
+    expect(store.getState().groupDetails.group_1.members).toEqual([
+      { id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiClient.listGroups).toHaveBeenCalledTimes(1);
+    expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
   });
 
   test("archiveGroup and deleteGroup remove the group from state with no refetch", async () => {

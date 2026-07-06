@@ -3,8 +3,10 @@ import type {
   CreateInviteRequest,
   AcceptInviteRequest,
   CreateVirtualMemberRequest,
+  RenameGroupMemberRequest,
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
+import { validateRenameGroupMemberRequest } from "../../contracts/validation.js";
 import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
 import { requireAuthenticatedUser } from "../auth/session.js";
 import {
@@ -22,6 +24,8 @@ import {
   handleGetGroupDetail,
   handleListArchivedGroups,
   handleListGroups,
+  handleRemoveGroupMember,
+  handleRenameGroupMember,
   handleUnarchiveGroup,
   handleUpdateGroup,
 } from "../handlers/groups.js";
@@ -101,6 +105,48 @@ export async function createVirtualMemberRoute(
   }
 
   return handleCreateVirtualMember(createSupabaseGroupRepository(options.client), auth.context, groupId, request);
+}
+
+export async function renameGroupMemberRoute(
+  options: RouteOptions,
+  groupId: string,
+  memberId: string,
+  request: RenameGroupMemberRequest,
+) {
+  const validation = validateRenameGroupMemberRequest(request);
+
+  if (!validation.ok) {
+    return { ok: false, status: 400, body: { issues: validation.issues } };
+  }
+
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleRenameGroupMember(createSupabaseGroupRepository(options.client), auth.context, groupId, memberId, request);
+}
+
+export async function removeGroupMemberRoute(
+  options: RouteOptions,
+  groupId: string,
+  memberId: string,
+  clientRequestId: string,
+) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleRemoveGroupMember(
+    createSupabaseGroupRepository(options.client),
+    auth.context,
+    groupId,
+    memberId,
+    clientRequestId,
+  );
 }
 
 export async function archiveGroupRoute(options: RouteOptions, groupId: string, clientRequestId: string) {

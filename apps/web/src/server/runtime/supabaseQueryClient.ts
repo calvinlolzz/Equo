@@ -318,6 +318,16 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       }) as T;
     }
 
+    if (normalized.includes("from public.group_members") && normalized.includes("where group_id = $1 and id = $2")) {
+      const rows = await request<T>({
+        method: "GET",
+        table: "group_members",
+        query: `select=id,group_id,user_id,display_name,role,status&group_id=eq.${encodeFilter(params[0])}&id=eq.${encodeFilter(params[1])}&limit=1`,
+        returnRepresentation: true,
+      });
+      return (mode === "maybeOne" ? (rows[0] ?? null) : firstRow(rows)) as T;
+    }
+
     if (normalized.includes("insert into public.invites")) {
       const rows = await request<T>({
         method: "POST",
@@ -351,6 +361,33 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "GET",
         table: "groups",
         query: `select=id,name,currency,owner_member_id,cover_image_url&id=eq.${encodeFilter(params[0])}&deleted_at=is.null&limit=1`,
+        returnRepresentation: true,
+      });
+      return firstRow(rows);
+    }
+
+    // Rename a virtual member: must be matched before the generic
+    // "update public.group_members" claim branch below, which would
+    // otherwise swallow this SQL with the wrong body/filters.
+    if (normalized.includes("update public.group_members") && normalized.includes("set display_name = $1")) {
+      const rows = await request<T>({
+        method: "PATCH",
+        table: "group_members",
+        query: `id=eq.${encodeFilter(params[1])}&group_id=eq.${encodeFilter(params[2])}&user_id=is.null&status=eq.active&select=id,group_id,user_id,display_name,role,status`,
+        body: { display_name: params[0] },
+        returnRepresentation: true,
+      });
+      return firstRow(rows);
+    }
+
+    // Soft-remove a virtual member: same ordering constraint as the rename
+    // branch above.
+    if (normalized.includes("update public.group_members") && normalized.includes("set status = 'removed'")) {
+      const rows = await request<T>({
+        method: "PATCH",
+        table: "group_members",
+        query: `id=eq.${encodeFilter(params[0])}&group_id=eq.${encodeFilter(params[1])}&user_id=is.null&status=eq.active&select=id,group_id,user_id,display_name,role,status`,
+        body: { status: "removed" },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -479,6 +516,19 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         returnRepresentation: true,
       });
       return firstRow(rows);
+    }
+
+    // Single-member balance lookup (member-removal gate): must be matched
+    // before the whole-group balances branch below, whose check only looks
+    // at the table name.
+    if (normalized.includes("from public.group_member_balances") && normalized.includes("member_id = $2")) {
+      const rows = await request<T>({
+        method: "GET",
+        table: "group_member_balances",
+        query: `select=balance_minor&group_id=eq.${encodeFilter(params[0])}&member_id=eq.${encodeFilter(params[1])}&limit=1`,
+        returnRepresentation: true,
+      });
+      return (mode === "maybeOne" ? (rows[0] ?? null) : firstRow(rows)) as T;
     }
 
     if (normalized.includes("from public.group_member_balances")) {

@@ -4,6 +4,7 @@ import {
   decodedBase64Size,
   imageExtensionFromDataUrl,
   validateCreateExpenseRequest,
+  validateRenameGroupMemberRequest,
   validateUploadGroupImageRequest,
 } from "./validation.js";
 
@@ -54,6 +55,52 @@ describe("validateCreateExpenseRequest", () => {
     const result = validateCreateExpenseRequest(balancedExpense);
 
     expect(result).toEqual({ ok: true, issues: [] });
+  });
+});
+
+describe("validateRenameGroupMemberRequest", () => {
+  test("accepts a trimmed non-empty display name", () => {
+    const result = validateRenameGroupMemberRequest({
+      client_request_id: "req_rename",
+      display_name: "Bobby",
+    });
+
+    expect(result).toEqual({ ok: true, issues: [] });
+  });
+
+  test("rejects a missing client_request_id", () => {
+    const result = validateRenameGroupMemberRequest({
+      client_request_id: " ",
+      display_name: "Bobby",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("IDEMPOTENCY_CONFLICT");
+  });
+
+  test("rejects an empty or whitespace-only display name", () => {
+    const empty = validateRenameGroupMemberRequest({ client_request_id: "req_rename", display_name: "" });
+    const blank = validateRenameGroupMemberRequest({ client_request_id: "req_rename", display_name: "   " });
+
+    expect(empty.ok).toBe(false);
+    expect(empty.issues.map((issue) => issue.code)).toContain("INVALID_MEMBER");
+    expect(blank.ok).toBe(false);
+    expect(blank.issues.map((issue) => issue.code)).toContain("INVALID_MEMBER");
+  });
+
+  test("rejects a display name over 50 characters, counting the trimmed length", () => {
+    const tooLong = validateRenameGroupMemberRequest({
+      client_request_id: "req_rename",
+      display_name: "x".repeat(51),
+    });
+    const paddedButOk = validateRenameGroupMemberRequest({
+      client_request_id: "req_rename",
+      display_name: `  ${"x".repeat(50)}  `,
+    });
+
+    expect(tooLong.ok).toBe(false);
+    expect(tooLong.issues.map((issue) => issue.code)).toContain("INVALID_MEMBER");
+    expect(paddedButOk).toEqual({ ok: true, issues: [] });
   });
 });
 

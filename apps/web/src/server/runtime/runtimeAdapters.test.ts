@@ -349,6 +349,137 @@ describe("runtime adapters", () => {
     });
   });
 
+  test("renames virtual members through a PATCH restricted to unclaimed active rows", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return {
+          ok: true,
+          async json() {
+            return [
+              {
+                id: "member_2",
+                group_id: "group_1",
+                user_id: null,
+                display_name: "Bobby",
+                role: "member",
+                status: "active",
+              },
+            ];
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.one(
+        `
+          update public.group_members
+          set display_name = $1, updated_at = now()
+          where id = $2 and group_id = $3 and user_id is null and status = 'active'
+          returning id, group_id, user_id, display_name, role, status
+        `,
+        ["Bobby", "member_2", "group_1"],
+      ),
+    ).resolves.toMatchObject({ id: "member_2", display_name: "Bobby" });
+
+    expect(calls[0].url).toContain(
+      "/rest/v1/group_members?id=eq.member_2&group_id=eq.group_1&user_id=is.null&status=eq.active",
+    );
+    expect(calls[0].init.method).toBe("PATCH");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ display_name: "Bobby" });
+  });
+
+  test("removes virtual members by PATCHing status to removed, not the claim payload", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return {
+          ok: true,
+          async json() {
+            return [
+              {
+                id: "member_2",
+                group_id: "group_1",
+                user_id: null,
+                display_name: "Bob",
+                role: "member",
+                status: "removed",
+              },
+            ];
+          },
+        } as Response;
+      },
+    });
+
+    await expect(
+      client.one(
+        `
+          update public.group_members
+          set status = 'removed', updated_at = now()
+          where id = $1 and group_id = $2 and user_id is null and status = 'active'
+          returning id, group_id, user_id, display_name, role, status
+        `,
+        ["member_2", "group_1"],
+      ),
+    ).resolves.toMatchObject({ id: "member_2", status: "removed" });
+
+    expect(calls[0].url).toContain(
+      "/rest/v1/group_members?id=eq.member_2&group_id=eq.group_1&user_id=is.null&status=eq.active",
+    );
+    expect(calls[0].init.method).toBe("PATCH");
+    // Must not fall through to the accept-invite claim branch, whose body
+    // would set user_id/claimed_at instead.
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ status: "removed" });
+  });
+
+  test("looks up a member by id and a single member balance through Supabase REST", async () => {
+    const calls: string[] = [];
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async (url) => {
+        calls.push(String(url));
+        return {
+          ok: true,
+          async json() {
+            return [{ id: "member_2", balance_minor: 0 }];
+          },
+        } as Response;
+      },
+    });
+
+    await client.maybeOne(
+      `
+        select id, group_id, user_id, display_name, role, status
+        from public.group_members
+        where group_id = $1 and id = $2
+        limit 1
+      `,
+      ["group_1", "member_2"],
+    );
+    await client.maybeOne(
+      `
+        select balance_minor
+        from public.group_member_balances
+        where group_id = $1 and member_id = $2
+        limit 1
+      `,
+      ["group_1", "member_2"],
+    );
+
+    expect(calls[0]).toContain("/rest/v1/group_members?select=id,group_id,user_id,display_name,role,status");
+    expect(calls[0]).toContain("group_id=eq.group_1&id=eq.member_2&limit=1");
+    expect(calls[1]).toContain("/rest/v1/group_member_balances?select=balance_minor");
+    expect(calls[1]).toContain("group_id=eq.group_1&member_id=eq.member_2&limit=1");
+  });
+
   test("batch-fetches expense payments by expense ids through Supabase REST", async () => {
     const calls: string[] = [];
     const client = createSupabaseRestQueryClient({

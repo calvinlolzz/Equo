@@ -127,7 +127,11 @@ async function invokeEveryGroupRepositoryMethod(client: SupabaseQueryClient) {
   await repo.unarchiveGroup("group_1");
   await repo.deleteGroup("group_1");
   await repo.createVirtualMember("group_1", "Bob");
+  await repo.renameVirtualMember("group_1", "member_2", "Bobby");
+  await repo.removeVirtualMember("group_1", "member_2");
   await repo.findActiveMember("group_1", "user_1");
+  await repo.findMemberById("group_1", "member_2");
+  await repo.getMemberBalanceMinor("group_1", "member_2");
   await repo.createInvite(authContext, "group_1", { client_request_id: "req_3", max_uses: 5 });
   await repo
     .acceptInvite(authContext, "EQO123456", { client_request_id: "req_4", display_name: "Guest" })

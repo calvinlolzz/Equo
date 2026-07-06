@@ -5,6 +5,8 @@ import type {
   CreateExpenseRequest,
   CreateGroupRequest,
   CreateInviteRequest,
+  RemoveGroupMemberRequest,
+  RenameGroupMemberRequest,
   UpdateGroupRequest,
   UploadGroupImageRequest,
 } from "../contracts/schemas";
@@ -184,6 +186,18 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
     createVirtualMember(groupId: string, payload: CreateVirtualMemberRequest) {
       return request<{ member: GroupMemberSummary }>(`/groups/${groupId}/members`, {
         method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    renameGroupMember(groupId: string, memberId: string, payload: RenameGroupMemberRequest) {
+      return request<{ member: GroupMemberSummary }>(`/groups/${groupId}/members/${memberId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    },
+    removeGroupMember(groupId: string, memberId: string, payload: RemoveGroupMemberRequest) {
+      return request<{ member: GroupMemberSummary }>(`/groups/${groupId}/members/${memberId}`, {
+        method: "DELETE",
         body: JSON.stringify(payload),
       });
     },

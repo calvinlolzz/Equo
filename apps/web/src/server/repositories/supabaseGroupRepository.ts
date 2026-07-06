@@ -218,6 +218,30 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
       );
     },
 
+    async renameVirtualMember(groupId: string, memberId: string, displayName: string) {
+      return client.one<GroupMemberRecord>(
+        `
+          update public.group_members
+          set display_name = $1, updated_at = now()
+          where id = $2 and group_id = $3 and user_id is null and status = 'active'
+          returning id, group_id, user_id, display_name, role, status
+        `,
+        [displayName, memberId, groupId],
+      );
+    },
+
+    async removeVirtualMember(groupId: string, memberId: string) {
+      return client.one<GroupMemberRecord>(
+        `
+          update public.group_members
+          set status = 'removed', updated_at = now()
+          where id = $1 and group_id = $2 and user_id is null and status = 'active'
+          returning id, group_id, user_id, display_name, role, status
+        `,
+        [memberId, groupId],
+      );
+    },
+
     async findActiveMember(groupId: string, userId: string) {
       return client.maybeOne<GroupMemberRecord>(
         `
@@ -228,6 +252,32 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
         `,
         [groupId, userId],
       );
+    },
+
+    async findMemberById(groupId: string, memberId: string) {
+      return client.maybeOne<GroupMemberRecord>(
+        `
+          select id, group_id, user_id, display_name, role, status
+          from public.group_members
+          where group_id = $1 and id = $2
+          limit 1
+        `,
+        [groupId, memberId],
+      );
+    },
+
+    async getMemberBalanceMinor(groupId: string, memberId: string) {
+      const row = await client.maybeOne<{ balance_minor: number } | null>(
+        `
+          select balance_minor
+          from public.group_member_balances
+          where group_id = $1 and member_id = $2
+          limit 1
+        `,
+        [groupId, memberId],
+      );
+
+      return row?.balance_minor ?? 0;
     },
 
     async createInvite(context: AuthenticatedContext, groupId: string, request: CreateInviteRequest) {

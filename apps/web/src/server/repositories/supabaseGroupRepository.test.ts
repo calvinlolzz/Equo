@@ -84,6 +84,28 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
         } as never;
       }
 
+      if (sql.includes("update public.group_members") && sql.includes("set display_name = $1")) {
+        return {
+          id: params[1],
+          group_id: params[2],
+          user_id: null,
+          display_name: params[0],
+          role: "member",
+          status: "active",
+        } as never;
+      }
+
+      if (sql.includes("update public.group_members") && sql.includes("set status = 'removed'")) {
+        return {
+          id: params[0],
+          group_id: params[1],
+          user_id: null,
+          display_name: "Bob",
+          role: "member",
+          status: "removed",
+        } as never;
+      }
+
       throw new Error(`Unexpected one query: ${sql}`);
     },
     async maybeOne(sql, params) {
@@ -275,5 +297,80 @@ describe("createSupabaseGroupRepository", () => {
       params: ["group_2"],
     });
     expect(client.calls[0].sql).toContain("set archived_at = null");
+  });
+
+  test("renames a virtual member with virtual-only and active-only filters", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const member = await repository.renameVirtualMember("group_1", "member_virtual", "Bobby");
+
+    expect(member).toEqual({
+      id: "member_virtual",
+      group_id: "group_1",
+      user_id: null,
+      display_name: "Bobby",
+      role: "member",
+      status: "active",
+    });
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      params: ["Bobby", "member_virtual", "group_1"],
+    });
+    expect(client.calls[0].sql).toContain("set display_name = $1");
+    expect(client.calls[0].sql).toContain("user_id is null");
+    expect(client.calls[0].sql).toContain("status = 'active'");
+  });
+
+  test("soft-removes a virtual member by flipping status to removed", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    const member = await repository.removeVirtualMember("group_1", "member_virtual");
+
+    expect(member).toMatchObject({ id: "member_virtual", status: "removed" });
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      params: ["member_virtual", "group_1"],
+    });
+    expect(client.calls[0].sql).toContain("set status = 'removed'");
+    expect(client.calls[0].sql).toContain("user_id is null");
+    expect(client.calls[0].sql).toContain("status = 'active'");
+  });
+
+  test("finds a member by id within a group", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+
+    await repository.findMemberById("group_1", "member_virtual");
+
+    expect(client.calls[0]).toMatchObject({
+      method: "maybeOne",
+      params: ["group_1", "member_virtual"],
+    });
+    expect(client.calls[0].sql).toContain("where group_id = $1 and id = $2");
+  });
+
+  test("reads a member's balance and falls back to zero when the view has no row", async () => {
+    const client = makeClient();
+    const repository = createSupabaseGroupRepository(client);
+    client.maybeOne = async (sql, params) => {
+      client.calls.push({ method: "maybeOne", sql, params });
+      return { balance_minor: 1200 } as never;
+    };
+
+    const balance = await repository.getMemberBalanceMinor("group_1", "member_virtual");
+
+    expect(balance).toBe(1200);
+    expect(client.calls[0].sql).toContain("from public.group_member_balances");
+    expect(client.calls[0].sql).toContain("member_id = $2");
+    expect(client.calls[0].params).toEqual(["group_1", "member_virtual"]);
+
+    client.maybeOne = async (sql, params) => {
+      client.calls.push({ method: "maybeOne", sql, params });
+      return null as never;
+    };
+
+    await expect(repository.getMemberBalanceMinor("group_1", "member_virtual")).resolves.toBe(0);
   });
 });

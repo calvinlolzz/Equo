@@ -19,6 +19,12 @@ export type CreateVirtualMemberRequest = IdempotentRequest & {
   display_name: string;
 };
 
+export type RenameGroupMemberRequest = IdempotentRequest & {
+  display_name: string;
+};
+
+export type RemoveGroupMemberRequest = IdempotentRequest;
+
 export type CreateInviteRequest = IdempotentRequest & {
   max_uses: number;
   expires_at?: string;

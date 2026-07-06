@@ -1,5 +1,5 @@
 import type { ErrorCode } from "./errors.js";
-import type { CreateExpenseRequest, UploadGroupImageRequest } from "./schemas.js";
+import type { CreateExpenseRequest, RenameGroupMemberRequest, UploadGroupImageRequest } from "./schemas.js";
 
 export type ValidationIssue = {
   code: ErrorCode;
@@ -70,6 +70,37 @@ export function validateCreateExpenseRequest(request: CreateExpenseRequest): Val
     if (!Number.isInteger(share.amount_minor) || share.amount_minor < 0) {
       issues.push(issue("INVALID_AMOUNT", "expense_shares amount_minor must be a non-negative integer"));
     }
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+/**
+ * Same effective rule the virtual-member creation flow enforces (the UI
+ * requires a non-empty trimmed name; group_members.display_name is text with
+ * no schema cap) plus an explicit length ceiling so a rename can't smuggle in
+ * an absurdly long name.
+ */
+const MAX_MEMBER_DISPLAY_NAME_LENGTH = 50;
+
+export function validateRenameGroupMemberRequest(request: RenameGroupMemberRequest): ValidationResult {
+  const issues: ValidationIssue[] = [];
+
+  if (!request.client_request_id?.trim()) {
+    issues.push(issue("IDEMPOTENCY_CONFLICT", "client_request_id is required"));
+  }
+
+  const displayName = request.display_name?.trim() ?? "";
+
+  if (!displayName) {
+    issues.push(issue("INVALID_MEMBER", "display_name is required"));
+  } else if (displayName.length > MAX_MEMBER_DISPLAY_NAME_LENGTH) {
+    issues.push(
+      issue("INVALID_MEMBER", `display_name must be ${MAX_MEMBER_DISPLAY_NAME_LENGTH} characters or fewer`),
+    );
   }
 
   return {
