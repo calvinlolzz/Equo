@@ -1946,30 +1946,6 @@ label span {
   font-weight: 900;
 }
 
-.profile-tab {
-  position: relative;
-  min-height: 52px;
-  color: rgba(247, 251, 248, 0.46);
-  background: transparent;
-  font-weight: 880;
-}
-
-.profile-tab.active {
-  color: #f7fbf8;
-}
-
-.profile-tab.active::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -1px;
-  width: 42px;
-  height: 3px;
-  border-radius: 999px;
-  background: #ffd67a;
-  transform: translateX(-50%);
-}
-
 .currency-list {
   max-height: 320px;
   display: grid;
@@ -2840,17 +2816,9 @@ label span {
   padding-bottom: 10px;
 }
 
-.profile-tab-indicator {
-  position: absolute;
-  left: 0;
-  bottom: -1px;
-  width: 50%;
-  height: 2px;
-  background: #ffd67a;
-  transition: transform 200ms ease;
-}
-
 .profile-tab {
+  position: relative;
+  min-height: 44px;
   padding: 0 0 4px;
   color: rgba(247, 251, 248, 0.5);
   background: transparent;
@@ -2860,6 +2828,19 @@ label span {
 
 .profile-tab.active {
   color: #f7fbf8;
+}
+
+/* Single underline spanning the active tab's text, sitting exactly on the
+   bar's full-width separator line (bar padding-bottom 10px + 1px border). */
+.profile-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -11px;
+  height: 3px;
+  border-radius: 999px;
+  background: #ffd67a;
 }
 
 .profile-account-list,

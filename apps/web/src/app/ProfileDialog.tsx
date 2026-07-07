@@ -163,11 +163,6 @@ export function ProfileDialog({
         </div>
 
         <div className="profile-tab-bar" role="tablist" aria-label={text.title}>
-          <span
-            className="profile-tab-indicator"
-            style={{ transform: `translateX(${TABS.findIndex((item) => item.id === tab) * 100}%)` }}
-            aria-hidden="true"
-          />
           {TABS.map((item) => (
             <button
               key={item.id}
