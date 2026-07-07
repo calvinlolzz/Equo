@@ -1,21 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Equo 算好">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Equo">
   <defs>
-    <linearGradient id="bg" x1="94" y1="66" x2="428" y2="446" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0A84FF"/>
-      <stop offset=".55" stop-color="#30D158"/>
-      <stop offset="1" stop-color="#BF5AF2"/>
+    <linearGradient id="tile" x1="80" y1="40" x2="440" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12201d"/>
+      <stop offset=".5" stop-color="#0c1613"/>
+      <stop offset="1" stop-color="#080f13"/>
     </linearGradient>
-    <linearGradient id="shine" x1="130" y1="110" x2="364" y2="384" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff" stop-opacity=".92"/>
-      <stop offset="1" stop-color="#fff" stop-opacity=".38"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#11213D" flood-opacity=".24"/>
-    </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="#F7FBFF"/>
-  <rect x="56" y="56" width="400" height="400" rx="96" fill="url(#bg)" filter="url(#shadow)"/>
-  <path d="M155 196c0-38 31-69 69-69h74c38 0 69 31 69 69v12h-56v-12c0-7-6-13-13-13h-74c-7 0-13 6-13 13v120c0 7 6 13 13 13h74c7 0 13-6 13-13v-12h56v12c0 38-31 69-69 69h-74c-38 0-69-31-69-69V196Z" fill="url(#shine)"/>
-  <path d="M220 256h145" stroke="#fff" stroke-width="52" stroke-linecap="round" opacity=".9"/>
-  <circle cx="380" cy="256" r="34" fill="#fff" opacity=".92"/>
+  <rect width="512" height="512" rx="116" fill="url(#tile)"/>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="114.5" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="3"/>
+  <path d="M233 365 A111 111 0 0 1 233 147" fill="none" stroke="#6de2b8" stroke-width="54" stroke-linecap="round"/>
+  <path d="M279 147 A111 111 0 0 1 279 365" fill="none" stroke="#ffd67a" stroke-width="54" stroke-linecap="round"/>
 </svg>
