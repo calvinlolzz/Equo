@@ -26,6 +26,8 @@ function makeSnapshot(overrides: Partial<CloudCacheSnapshot> = {}): CloudCacheSn
         group: { id: "group_1", name: "Tokyo Trip", currency: "TWD" },
         members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
         expenses: [],
+        balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+        aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] },
       },
     },
     ...overrides,

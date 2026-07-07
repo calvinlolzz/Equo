@@ -12,7 +12,7 @@ import {
   updateUserAvatar,
   upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
-import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
+import { urlToStoragePath, type SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
   client: SupabaseQueryClient;
@@ -139,6 +139,19 @@ export async function updateMyAvatarRoute(options: RouteOptions, request: Update
   });
 
   const updated = await updateUserAvatar(options.client, auth.context.user.id, image.url);
+
+  // Clean up the previous avatar once it's actually been replaced by a
+  // different one - fire-and-forget, never blocks the response. Only
+  // deletes URLs that resolve to a path in our bucket (a Google profile
+  // picture or another foreign URL is left alone).
+  if (updated.previousAvatarUrl && updated.previousAvatarUrl !== image.url) {
+    const path = urlToStoragePath(updated.previousAvatarUrl);
+    if (path) {
+      options.storage.deleteImage(path).catch((error) => {
+        console.warn(`Failed to delete orphaned storage object ${path}:`, error);
+      });
+    }
+  }
 
   return { ok: true, status: 200, body: { avatar_url: updated.avatar_url } };
 }

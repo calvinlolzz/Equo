@@ -56,6 +56,22 @@ export type ExpenseRecord = {
   expense_shares?: ExpenseShareRecord[];
 };
 
+/**
+ * softDeleteExpense's return shape needs the just-deleted row's image_url
+ * so the caller can clean up an orphaned storage object (see
+ * supabaseExpenseRepository.ts's softDeleteExpense and
+ * supabaseStorageClient.ts's urlToStoragePath/deleteImage) - a plain
+ * ExpenseRecord's image_url is optional and not guaranteed to be selected
+ * by every query, so this narrows it to "definitely present on this
+ * response" for that one call site.
+ */
+export type DeletedExpenseRecord = ExpenseRecord & { image_url: string | null };
+
+export type ExpensePageCursor = {
+  beforeDate: string;
+  beforeCreatedAt: string;
+};
+
 export type ExpenseRepository = {
   createExpense(
     context: AuthenticatedContext,
@@ -63,12 +79,23 @@ export type ExpenseRepository = {
     request: CreateExpenseRequest,
   ): Promise<ExpenseRecord>;
   listExpenses(groupId: string): Promise<ExpenseRecord[]>;
+  /**
+   * Older-than-cursor page of a group's non-deleted expenses, ordered
+   * expense_date desc/created_at desc (same ordering as get_group_detail's
+   * capped window), enriched with payments/shares via the same batch-fetch
+   * pattern listExpenses uses (no N+1). Used by the records-panel "load
+   * more" flow once the client has exhausted the initial RPC window.
+   */
+  listExpensesPage(
+    groupId: string,
+    options: { limit: number; cursor?: ExpensePageCursor },
+  ): Promise<ExpenseRecord[]>;
   softDeleteExpense(
     context: AuthenticatedContext,
     groupId: string,
     expenseId: string,
     client_request_id: string,
-  ): Promise<ExpenseRecord>;
+  ): Promise<DeletedExpenseRecord>;
   recordClientRequest(groupId: string, client_request_id: string, resourceId: string): Promise<void>;
 };
 

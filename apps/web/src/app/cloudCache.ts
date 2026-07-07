@@ -32,7 +32,15 @@ function isCloudGroupData(value: unknown): value is CloudGroupData {
   return (
     isGroup(candidate.group) &&
     Array.isArray(candidate.members) &&
-    Array.isArray(candidate.expenses)
+    Array.isArray(candidate.expenses) &&
+    // balances/aggregates were added alongside the get_group_detail v3
+    // aggregates (see detailAggregates.ts) - reject an older-shaped cache
+    // entry outright rather than silently seeding the store with holes
+    // (e.g. current.balances being undefined) that would only surface as a
+    // crash on the first mutation after a stale reload.
+    Array.isArray(candidate.balances) &&
+    Boolean(candidate.aggregates) &&
+    typeof candidate.aggregates === "object"
   );
 }
 

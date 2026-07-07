@@ -1,17 +1,101 @@
 import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
+import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
+import { urlToStoragePath } from "../runtime/supabaseStorageClient.js";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
 import {
   InvalidMemberError,
   NOT_A_GROUP_MEMBER,
+  type DeletedExpenseRecord,
+  type ExpensePageCursor,
   type ExpensePaymentRecord,
   type ExpenseRecord,
   type ExpenseRepository,
   type ExpenseShareRecord,
 } from "./expenseRepository.js";
 
-export function createSupabaseExpenseRepository(client: SupabaseQueryClient): ExpenseRepository {
+/**
+ * Fire-and-forget storage cleanup for an image URL that's about to become
+ * unreferenced (a deleted expense's photo, a group's previous cover, a
+ * user's previous avatar). Never awaited by the caller's main flow - a
+ * failed delete just leaves an orphaned object in the bucket, which is a
+ * storage-cost problem, not a correctness problem, so it must never fail or
+ * delay the primary mutation (deleting the expense/updating the group/
+ * updating the avatar). Only deletes URLs that resolve to a path in OUR
+ * bucket (urlToStoragePath returns null for foreign URLs like Google
+ * profile pictures or data: URIs).
+ */
+function cleanupOrphanedImage(storage: SupabaseStorageClient, imageUrl: string | null | undefined): void {
+  const path = urlToStoragePath(imageUrl);
+  if (!path) return;
+  storage.deleteImage(path).catch((error) => {
+    console.warn(`Failed to delete orphaned storage object ${path}:`, error);
+  });
+}
+
+/**
+ * Batch-fetches expense_payments/expense_shares for a set of expenses (one
+ * round trip per table, regardless of how many expenses) and stitches them
+ * onto each expense row. Shared by listExpenses and listExpensesPage so
+ * paging never re-introduces the N+1 the original listExpenses avoided.
+ */
+async function enrichExpensesWithPaymentsAndShares(
+  client: SupabaseQueryClient,
+  expenses: ExpenseRecord[],
+): Promise<ExpenseRecord[]> {
+  if (expenses.length === 0) {
+    return expenses;
+  }
+
+  const expenseIds = expenses.map((expense) => expense.id);
+
+  const [payments, shares] = await Promise.all([
+    client.one<Array<ExpensePaymentRecord & { expense_id: string }>>(
+      `
+        select expense_id, payer_member_id, amount_minor, currency
+        from public.expense_payments
+        where expense_id = any($1)
+      `,
+      [expenseIds],
+    ),
+    client.one<Array<ExpenseShareRecord & { expense_id: string }>>(
+      `
+        select expense_id, member_id, share_type, share_value, amount_minor
+        from public.expense_shares
+        where expense_id = any($1)
+      `,
+      [expenseIds],
+    ),
+  ]);
+
+  const paymentsByExpenseId = new Map<string, ExpensePaymentRecord[]>();
+  for (const payment of payments) {
+    const { expense_id, ...rest } = payment;
+    const list = paymentsByExpenseId.get(expense_id) ?? [];
+    list.push(rest);
+    paymentsByExpenseId.set(expense_id, list);
+  }
+
+  const sharesByExpenseId = new Map<string, ExpenseShareRecord[]>();
+  for (const share of shares) {
+    const { expense_id, ...rest } = share;
+    const list = sharesByExpenseId.get(expense_id) ?? [];
+    list.push(rest);
+    sharesByExpenseId.set(expense_id, list);
+  }
+
+  return expenses.map((expense) => ({
+    ...expense,
+    expense_payments: paymentsByExpenseId.get(expense.id) ?? [],
+    expense_shares: sharesByExpenseId.get(expense.id) ?? [],
+  }));
+}
+
+export function createSupabaseExpenseRepository(
+  client: SupabaseQueryClient,
+  storage?: SupabaseStorageClient,
+): ExpenseRepository {
   return {
     async createExpense(context: AuthenticatedContext, groupId: string, request: CreateExpenseRequest) {
       const validation = validateCreateExpenseRequest(request);
@@ -147,52 +231,36 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
         [groupId],
       );
 
-      if (expenses.length === 0) {
-        return expenses;
-      }
+      return enrichExpensesWithPaymentsAndShares(client, expenses);
+    },
 
-      const expenseIds = expenses.map((expense) => expense.id);
+    async listExpensesPage(groupId: string, options: { limit: number; cursor?: ExpensePageCursor }) {
+      const limit = Math.max(1, Math.min(options.limit, 100));
 
-      const [payments, shares] = await Promise.all([
-        client.one<Array<ExpensePaymentRecord & { expense_id: string }>>(
-          `
-            select expense_id, payer_member_id, amount_minor, currency
-            from public.expense_payments
-            where expense_id = any($1)
-          `,
-          [expenseIds],
-        ),
-        client.one<Array<ExpenseShareRecord & { expense_id: string }>>(
-          `
-            select expense_id, member_id, share_type, share_value, amount_minor
-            from public.expense_shares
-            where expense_id = any($1)
-          `,
-          [expenseIds],
-        ),
-      ]);
+      const expenses = options.cursor
+        ? await client.one<ExpenseRecord[]>(
+            `
+              select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id, image_url
+              from public.expenses
+              where group_id = $1 and deleted_at is null
+                and (expense_date, created_at) < ($2, $3)
+              order by expense_date desc, created_at desc
+              limit $4
+            `,
+            [groupId, options.cursor.beforeDate, options.cursor.beforeCreatedAt, limit],
+          )
+        : await client.one<ExpenseRecord[]>(
+            `
+              select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id, image_url
+              from public.expenses
+              where group_id = $1 and deleted_at is null
+              order by expense_date desc, created_at desc
+              limit $2
+            `,
+            [groupId, limit],
+          );
 
-      const paymentsByExpenseId = new Map<string, ExpensePaymentRecord[]>();
-      for (const payment of payments) {
-        const { expense_id, ...rest } = payment;
-        const list = paymentsByExpenseId.get(expense_id) ?? [];
-        list.push(rest);
-        paymentsByExpenseId.set(expense_id, list);
-      }
-
-      const sharesByExpenseId = new Map<string, ExpenseShareRecord[]>();
-      for (const share of shares) {
-        const { expense_id, ...rest } = share;
-        const list = sharesByExpenseId.get(expense_id) ?? [];
-        list.push(rest);
-        sharesByExpenseId.set(expense_id, list);
-      }
-
-      return expenses.map((expense) => ({
-        ...expense,
-        expense_payments: paymentsByExpenseId.get(expense.id) ?? [],
-        expense_shares: sharesByExpenseId.get(expense.id) ?? [],
-      }));
+      return enrichExpensesWithPaymentsAndShares(client, expenses);
     },
 
     async softDeleteExpense(
@@ -215,16 +283,19 @@ export function createSupabaseExpenseRepository(client: SupabaseQueryClient): Ex
         throw new Error(NOT_A_GROUP_MEMBER);
       }
 
-      const expense = await client.one<ExpenseRecord>(
+      const expense = await client.one<DeletedExpenseRecord>(
         `
           update public.expenses
           set deleted_at = now(), version = version + 1, updated_at = now()
           where group_id = $1 and id = $2 and deleted_at is null
-          returning id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id
+          returning id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id, image_url
         `,
         [groupId, expenseId],
       );
       await this.recordClientRequest(groupId, client_request_id, expense.id);
+      if (storage) {
+        cleanupOrphanedImage(storage, expense.image_url);
+      }
       return expense;
     },
 

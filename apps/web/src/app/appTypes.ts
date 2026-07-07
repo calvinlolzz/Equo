@@ -44,6 +44,17 @@ export type Expense = {
   amountMinor: number;
   currency: string;
   createdAt: string;
+  /**
+   * The server's raw expense_date (a plain YYYY-MM-DD date, not a
+   * timestamp) - kept alongside createdAt (which prefers the full
+   * created_at timestamp) so the records-panel "load more" pagination
+   * cursor can match get_group_detail/listExpensesPage's exact
+   * (expense_date, created_at) ordering key instead of re-deriving a
+   * possibly-off-by-one-day value from createdAt's UTC timestamp. Absent
+   * for locally-built expenses that haven't round-tripped through the
+   * server yet (draftToExpense's optimistic echo).
+   */
+  expenseDate?: string;
   payerId: string;
   shareMemberIds: string[];
   kind?: "expense" | "income" | "settlement";

@@ -68,7 +68,10 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
       };
     },
     async updateGroup(groupId, request) {
-      return { id: groupId, name: request.name, currency: "TWD", owner_member_id: "member_owner" };
+      return {
+        group: { id: groupId, name: request.name, currency: "TWD", owner_member_id: "member_owner" },
+        previousCoverImageUrl: null,
+      };
     },
     async archiveGroup(groupId) {
       return { id: groupId, name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" };
@@ -201,6 +204,10 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
           },
         ],
         balances: [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" as const } }],
+        expense_count: 1,
+        spend_total_minor: 120000,
+        spend_by_day: [],
+        member_day_shares: [],
       };
     },
     async recordClientRequest() {},
@@ -288,6 +295,116 @@ describe("group handlers", () => {
     expect(result.status).toBe(200);
     expect(result.ok && result.body).toMatchObject({
       group: { id: "group_1", name: "Osaka Trip" },
+    });
+  });
+
+  describe("handleUpdateGroup cover image cleanup", () => {
+    function makeFakeStorage() {
+      const deletedPaths: string[] = [];
+      return {
+        deletedPaths,
+        client: {
+          async uploadImage() {
+            throw new Error("uploadImage should not be called by handleUpdateGroup");
+          },
+          async deleteImage(path: string) {
+            deletedPaths.push(path);
+          },
+        },
+      };
+    }
+
+    test("deletes the previous cover when the request replaces it with a different one", async () => {
+      const repository = makeRepository({
+        async updateGroup(groupId, request) {
+          return {
+            group: { id: groupId, name: request.name, currency: "TWD", owner_member_id: "member_owner" },
+            previousCoverImageUrl: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/old-cover.jpg",
+          };
+        },
+      });
+      const storage = makeFakeStorage();
+
+      await handleUpdateGroup(
+        repository,
+        context,
+        "group_1",
+        {
+          client_request_id: "req_update_cover",
+          name: "Osaka Trip",
+          cover_image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/new-cover.jpg",
+        },
+        storage.client,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(storage.deletedPaths).toEqual(["group_1/old-cover.jpg"]);
+    });
+
+    test("does not delete when the request omits cover_image_url (unchanged)", async () => {
+      const repository = makeRepository({
+        async updateGroup(groupId, request) {
+          return {
+            group: { id: groupId, name: request.name, currency: "TWD", owner_member_id: "member_owner" },
+            previousCoverImageUrl: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/old-cover.jpg",
+          };
+        },
+      });
+      const storage = makeFakeStorage();
+
+      await handleUpdateGroup(
+        repository,
+        context,
+        "group_1",
+        { client_request_id: "req_update_name_only", name: "Osaka Trip" },
+        storage.client,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(storage.deletedPaths).toEqual([]);
+    });
+
+    test("does not delete when the new cover is the same URL as the previous one", async () => {
+      const sameUrl = "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/cover.jpg";
+      const repository = makeRepository({
+        async updateGroup(groupId, request) {
+          return {
+            group: { id: groupId, name: request.name, currency: "TWD", owner_member_id: "member_owner" },
+            previousCoverImageUrl: sameUrl,
+          };
+        },
+      });
+      const storage = makeFakeStorage();
+
+      await handleUpdateGroup(
+        repository,
+        context,
+        "group_1",
+        { client_request_id: "req_resubmit_cover", name: "Osaka Trip", cover_image_url: sameUrl },
+        storage.client,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(storage.deletedPaths).toEqual([]);
+    });
+
+    test("does nothing when no storage client is provided", async () => {
+      const repository = makeRepository({
+        async updateGroup(groupId, request) {
+          return {
+            group: { id: groupId, name: request.name, currency: "TWD", owner_member_id: "member_owner" },
+            previousCoverImageUrl: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/old-cover.jpg",
+          };
+        },
+      });
+
+      const result = await handleUpdateGroup(repository, context, "group_1", {
+        client_request_id: "req_no_storage",
+        name: "Osaka Trip",
+        cover_image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/new-cover.jpg",
+      });
+
+      expect(result.status).toBe(200);
     });
   });
 

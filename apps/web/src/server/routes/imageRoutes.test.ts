@@ -32,6 +32,7 @@ function makeStorage(): SupabaseStorageClient {
     async uploadImage() {
       return { url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg" };
     },
+    async deleteImage() {},
   };
 }
 
@@ -89,6 +90,9 @@ describe("uploadGroupImageRoute", () => {
 function makeAvatarClient(): SupabaseQueryClient {
   return {
     async one(sql, params) {
+      if (sql.includes("select id, avatar_url") && sql.includes("from public.users")) {
+        return { avatar_url: "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/old.jpg" } as never;
+      }
       if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
         return { avatar_url: params[0] } as never;
       }
@@ -108,6 +112,7 @@ function makeAvatarStorage(): SupabaseStorageClient {
         url: `https://example.supabase.co/storage/v1/object/public/equo-images/${pathPrefix}/avatar.${ext}`,
       };
     },
+    async deleteImage() {},
   };
 }
 
@@ -163,5 +168,71 @@ describe("updateMyAvatarRoute", () => {
       throw new Error("expected updateMyAvatarRoute to reject an unauthenticated caller with 401");
     }
     expect(result.body.error?.code).toBe("UNAUTHENTICATED");
+  });
+
+  describe("orphaned-avatar cleanup", () => {
+    function makeFakeAvatarStorage() {
+      const deletedPaths: string[] = [];
+      return {
+        deletedPaths,
+        client: {
+          async uploadImage({ pathPrefix, ext }: { pathPrefix: string; ext: string }) {
+            return {
+              url: `https://example.supabase.co/storage/v1/object/public/equo-images/${pathPrefix}/avatar.${ext}`,
+            };
+          },
+          async deleteImage(path: string) {
+            deletedPaths.push(path);
+          },
+        },
+      };
+    }
+
+    test("deletes the previous avatar once it's replaced by a different one", async () => {
+      const storage = makeFakeAvatarStorage();
+
+      await updateMyAvatarRoute(
+        {
+          client: makeAvatarClient(),
+          storage: storage.client,
+          verifier,
+          idToken: "user_alice",
+        },
+        { client_request_id: "req_avatar", data_url: validRequest.data_url },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // makeAvatarClient's "select id, avatar_url" branch always returns
+      // avatars/user_alice/old.jpg as the previous value (see the fixture
+      // above) - the new upload is a different path, so it should be cleaned up.
+      expect(storage.deletedPaths).toEqual(["avatars/user_alice/old.jpg"]);
+    });
+
+    test("does not delete a foreign previous avatar URL (e.g. a Google profile picture)", async () => {
+      const client: SupabaseQueryClient = {
+        async one(sql, params) {
+          if (sql.includes("select id, avatar_url") && sql.includes("from public.users")) {
+            return { avatar_url: "https://lh3.googleusercontent.com/a/some-photo" } as never;
+          }
+          if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
+            return { avatar_url: params[0] } as never;
+          }
+          throw new Error(`Unexpected one query: ${sql}`);
+        },
+        async maybeOne() {
+          return null;
+        },
+        async exec() {},
+      };
+      const storage = makeFakeAvatarStorage();
+
+      await updateMyAvatarRoute(
+        { client, storage: storage.client, verifier, idToken: "user_alice" },
+        { client_request_id: "req_avatar", data_url: validRequest.data_url },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(storage.deletedPaths).toEqual([]);
+    });
   });
 });

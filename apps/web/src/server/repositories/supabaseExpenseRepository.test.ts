@@ -42,6 +42,7 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
           currency: "TWD",
           version: 2,
           client_request_id: "req_expense",
+          image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
         } as never;
       }
 
@@ -354,5 +355,73 @@ describe("createSupabaseExpenseRepository", () => {
     await expect(
       repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete"),
     ).rejects.toThrow("NOT_A_GROUP_MEMBER");
+  });
+
+  describe("softDeleteExpense orphaned-image cleanup", () => {
+    function makeFakeStorage() {
+      const deletedPaths: string[] = [];
+      return {
+        deletedPaths,
+        client: {
+          async uploadImage() {
+            throw new Error("uploadImage should not be called by softDeleteExpense");
+          },
+          async deleteImage(path: string) {
+            deletedPaths.push(path);
+          },
+        },
+      };
+    }
+
+    test("deletes the deleted expense's image from storage via the bucket-relative path", async () => {
+      const client = makeClient();
+      const storage = makeFakeStorage();
+      const repository = createSupabaseExpenseRepository(client, storage.client);
+
+      await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
+      // deleteImage is fire-and-forget (see cleanupOrphanedImage) - flush microtasks.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(storage.deletedPaths).toEqual(["group_1/photo.jpg"]);
+    });
+
+    test("does nothing when the deleted expense has no image_url", async () => {
+      const client = makeClient();
+      (client as unknown as { one: unknown }).one = async (sql: string, params: unknown[]) => {
+        if (sql.includes("from public.group_members")) {
+          return [{ id: "member_alice" }, { id: "member_bob" }] as never;
+        }
+        if (sql.includes("update public.expenses")) {
+          return {
+            id: params[1],
+            group_id: params[0],
+            title: "Dinner",
+            kind: "expense",
+            amount_minor: 1200,
+            currency: "TWD",
+            version: 2,
+            client_request_id: "req_expense",
+            image_url: null,
+          } as never;
+        }
+        throw new Error(`Unexpected one query: ${sql}`);
+      };
+      const storage = makeFakeStorage();
+      const repository = createSupabaseExpenseRepository(client, storage.client);
+
+      await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(storage.deletedPaths).toEqual([]);
+    });
+
+    test("does nothing when no storage client is provided (optional param)", async () => {
+      const client = makeClient();
+      const repository = createSupabaseExpenseRepository(client);
+
+      await expect(
+        repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete"),
+      ).resolves.toMatchObject({ id: "expense_1" });
+    });
   });
 });

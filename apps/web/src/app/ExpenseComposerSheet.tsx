@@ -6,6 +6,7 @@ import { convertToGroupAmountMinor } from "./expenseCurrency";
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
 import { buildExpenseEditPrefill, type ComposerSplitMode } from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { formatAmount } from "./formatAmount";
 import {
   buildEqualShareAmountsMinor,
   buildPercentShareAmounts,
@@ -26,10 +27,6 @@ function toLocalDateTimeInputValue(value: string) {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-function formatTwd(amountMinor: number) {
-  return `$${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
 }
 
 function amountMinorToInputString(amountMinor: number) {
@@ -480,7 +477,7 @@ export function ExpenseComposerSheet({
         </div>
         <div className="composer-split-footer">
           <span>
-            {text.remainingAmount} {formatTwd(composerPaymentsRemainderMinor)}
+            {text.remainingAmount} {formatAmount(composerPaymentsRemainderMinor, groupCurrency)}
           </span>
         </div>
       </div>
@@ -538,7 +535,7 @@ export function ExpenseComposerSheet({
                   />
                 ) : included && composerSplitMode === "percent" ? (
                   <span className="share-percent-cell">
-                    <small>{formatTwd(composerPercentPreviewAmountsMinor[member.id] ?? 0)}</small>
+                    <small>{formatAmount(composerPercentPreviewAmountsMinor[member.id] ?? 0, groupCurrency)}</small>
                     <input
                       className="share-member-amount-input share-percent-input"
                       value={composerSharePercents[member.id] ?? ""}
@@ -551,7 +548,7 @@ export function ExpenseComposerSheet({
                     <small>%</small>
                   </span>
                 ) : (
-                  <span className="share-member-amount">{formatTwd(displayAmountMinor)}</span>
+                  <span className="share-member-amount">{formatAmount(displayAmountMinor, groupCurrency)}</span>
                 )}
               </div>
             );
@@ -560,7 +557,7 @@ export function ExpenseComposerSheet({
         {composerSplitMode === "amount" ? (
           <div className="composer-split-footer">
             <span>
-              {text.remainingAmount} {formatTwd(composerRemainderMinor)}
+              {text.remainingAmount} {formatAmount(composerRemainderMinor, groupCurrency)}
             </span>
             <button className="composer-mini-action" type="button" onClick={seedShareAmountsEvenly}>
               {text.splitEvenly}

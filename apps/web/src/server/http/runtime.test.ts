@@ -8,6 +8,7 @@ function makeStorage(): SupabaseStorageClient {
     async uploadImage({ pathPrefix, ext }) {
       return { url: `https://example.supabase.co/storage/v1/object/public/equo-images/${pathPrefix}/uploaded.${ext}` };
     },
+    async deleteImage() {},
   };
 }
 

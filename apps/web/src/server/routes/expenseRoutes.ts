@@ -2,17 +2,27 @@ import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
 import { requireAuthenticatedUser } from "../auth/session.js";
+import type { ExpensePageCursor } from "../repositories/expenseRepository.js";
 import { InvalidMemberError, NOT_A_GROUP_MEMBER } from "../repositories/expenseRepository.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
 import {
+  createSupabaseGroupRepository,
   type SupabaseQueryClient,
   upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
+import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
   client: SupabaseQueryClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
+  /**
+   * Optional so this type stays compatible with call sites/tests that don't
+   * care about storage cleanup; deleteExpenseRoute passes it through to
+   * softDeleteExpense's orphaned-image cleanup hook when present (see
+   * supabaseExpenseRepository.ts's cleanupOrphanedImage).
+   */
+  storage?: SupabaseStorageClient;
 };
 
 function forbidden(request_id: string) {
@@ -97,7 +107,7 @@ export async function deleteExpenseRoute(
   }
 
   try {
-    const expense = await createSupabaseExpenseRepository(options.client).softDeleteExpense(
+    const expense = await createSupabaseExpenseRepository(options.client, options.storage).softDeleteExpense(
       auth.context,
       groupId,
       expenseId,
@@ -112,4 +122,47 @@ export async function deleteExpenseRoute(
 
     throw error;
   }
+}
+
+export type ListExpensesPageQuery = {
+  limit?: number;
+  before_date?: string;
+  before_created_at?: string;
+};
+
+/**
+ * GET /api/v1/groups/:groupId/expenses - the records-panel "load more" page,
+ * membership-gated like every other per-group read (get_group_detail's RPC
+ * does this check inline; a plain paged SELECT has no such built-in check,
+ * so it's done explicitly here before touching the expense repository).
+ */
+export async function listExpensesPageRoute(
+  options: RouteOptions,
+  groupId: string,
+  query: ListExpensesPageQuery,
+) {
+  const auth = await buildExpenseRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  const member = await createSupabaseGroupRepository(options.client).findActiveMember(groupId, auth.context.user.id);
+
+  if (!member) {
+    return forbidden("req_expenses_page");
+  }
+
+  const limit = Math.max(1, Math.min(query.limit ?? 50, 100));
+  const cursor: ExpensePageCursor | undefined =
+    query.before_date && query.before_created_at
+      ? { beforeDate: query.before_date, beforeCreatedAt: query.before_created_at }
+      : undefined;
+
+  const expenses = await createSupabaseExpenseRepository(options.client).listExpensesPage(groupId, {
+    limit,
+    cursor,
+  });
+
+  return { ok: true, status: 200, body: { expenses } };
 }

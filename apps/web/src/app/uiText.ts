@@ -47,6 +47,7 @@ export const UI_TEXT = {
     viewAll: "查看全部",
     recentActivity: "近期活動",
     noRecords: "沒有任何記錄",
+    loadMoreRecords: "載入更多",
     noActivity: "暫無近期活動",
     expense: "支出",
     addExpense: "新增支出",

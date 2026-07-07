@@ -41,8 +41,7 @@ import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
-import { getMemberShareMinor } from "./expenseShareSplit";
-import { computeMemberBalances } from "./groupBalances";
+import { formatAmount, formatSigned } from "./formatAmount";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -166,16 +165,6 @@ function clearInviteTokenFromUrl() {
   window.history.replaceState(null, document.title, `${url.pathname}${url.search}${url.hash}`);
 }
 
-function formatTwd(amountMinor: number) {
-  return `$${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
-}
-
-function formatSigned(amountMinor: number) {
-  if (amountMinor > 0) return `+${formatTwd(amountMinor)}`;
-  if (amountMinor < 0) return `-${formatTwd(Math.abs(amountMinor))}`;
-  return "$0";
-}
-
 function formatTime(value: string) {
   const date = new Date(value);
   return date.toLocaleTimeString("zh-TW", { hour: "numeric", minute: "2-digit", second: "2-digit" });
@@ -282,6 +271,7 @@ export function App() {
   const members = cloudActiveDetail?.members ?? [];
   const expenses = cloudActiveDetail?.expenses ?? [];
   const activities = cloudActivities[activeGroupId] ?? [];
+  const loadingMoreExpenses = activeGroupId ? Boolean(cloudState?.loadingMoreExpenseIds[activeGroupId]) : false;
 
   function recordCloudActivity(groupId: string, activityText: string) {
     const activity: Activity = { id: crypto.randomUUID(), text: activityText, createdAt: new Date().toISOString() };
@@ -290,18 +280,33 @@ export function App() {
       [groupId]: [activity, ...(current[groupId] ?? [])].slice(0, 8),
     }));
   }
-  // Spend stats count real expenses only: settlements/transfers move money
-  // between members without spending it, and income entries are money
-  // received, not spent - both are excluded from 總計/個人消費/群組消費/
-  // 筆數/平均 and the date chips.
-  const spendableExpenses = useMemo(
-    () => expenses.filter((expense) => expense.kind !== "settlement" && expense.kind !== "income"),
-    [expenses],
-  );
-  const totalExpenseMinor = spendableExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
-  const averageExpenseMinor = spendableExpenses.length ? Math.round(totalExpenseMinor / spendableExpenses.length) : 0;
 
-  const balances = useMemo(() => computeMemberBalances(members, expenses), [expenses, members]);
+  // Server-authoritative aggregates (get_group_detail v3 - see
+  // detailAggregates.ts). expenseCount counts every non-deleted entry
+  // regardless of kind; spendTotalMinor/spendByDay/memberDayShares only
+  // ever accumulate kind==="expense" entries (settlements/transfers move
+  // money between members without spending it, and income entries are
+  // money received, not spent - both excluded), matching detailAggregates'
+  // isSpendableExpense rule exactly. The 平均 (average) tile that used to
+  // sit next to 總支出 has been removed: it can't be derived server-side
+  // once the expenses array is truncated to a window, and re-deriving it
+  // from only the loaded page would silently understate the true average
+  // for any group with more history than the window.
+  const aggregates = cloudActiveDetail?.aggregates ?? { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] };
+  const totalExpenseMinor = aggregates.spendTotalMinor;
+
+  // Group-level balances come straight from the server (get_group_detail's
+  // balances array), NOT a client-side recompute - the loaded expenses are
+  // only a capped window, so computeMemberBalances over them would silently
+  // under/overstate balances for any group with more history than the
+  // window. computeMemberBalances/groupBalances.ts remain in use for the
+  // composer's per-expense split preview only (see ExpenseComposerSheet),
+  // which is unrelated to group-level state.
+  const serverBalances = cloudActiveDetail?.balances ?? [];
+  const balances = useMemo(
+    () => new Map(serverBalances.map((entry) => [entry.memberId, entry.balance.amount_minor])),
+    [serverBalances],
+  );
 
   // The logged-in user's own member row within the active group - NOT
   // necessarily the group owner (joined-via-invite members are non-owners).
@@ -310,22 +315,25 @@ export function App() {
   const isCurrentMemberOwner = isGroupOwner(currentMember);
 
   const dateChips = useMemo(() => lastEightDays(), []);
-  const selectedDayExpenses = useMemo(
-    () => spendableExpenses.filter((expense) => dateKey(expense.createdAt) === selectedDateKey),
-    [spendableExpenses, selectedDateKey],
+  // 群組消費 for the selected day = that day's spendByDay total; 個人消費 =
+  // the current member's memberDayShares entry for that day. Both come
+  // straight from the server aggregates (see detailAggregates.ts's day-key
+  // format, which matches dateKey() here).
+  const groupSpendMinor = useMemo(
+    () => aggregates.spendByDay.find((entry) => entry.day === selectedDateKey)?.totalMinor ?? 0,
+    [aggregates.spendByDay, selectedDateKey],
   );
-  const groupSpendMinor = selectedDayExpenses.reduce((sum, expense) => sum + expense.amountMinor, 0);
   const personalSpendMinor = useMemo(() => {
     if (!currentMember) return 0;
-    return selectedDayExpenses.reduce((sum, expense) => sum + getMemberShareMinor(expense, currentMember.id), 0);
-  }, [selectedDayExpenses, currentMember]);
+    return (
+      aggregates.memberDayShares.find((entry) => entry.day === selectedDateKey && entry.memberId === currentMember.id)
+        ?.shareMinor ?? 0
+    );
+  }, [aggregates.memberDayShares, selectedDateKey, currentMember]);
   const selectedDateChip = dateChips.find((chip) => chip.key === selectedDateKey);
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
-  const settlementTransfers = useMemo(
-    () => (activeGroup ? buildSettlementTransfers(members, expenses, activeGroup.currency) : []),
-    [members, expenses, activeGroup],
-  );
+  const settlementTransfers = useMemo(() => buildSettlementTransfers(serverBalances), [serverBalances]);
   const firstTransfer = settlementTransfers[0] ?? null;
   const debt = useMemo(() => {
     if (!firstTransfer) return null;
@@ -337,6 +345,19 @@ export function App() {
   const extraTransferCount = Math.max(0, settlementTransfers.length - 1);
   const maxBalanceMinor = Math.max(1, ...members.map((member) => Math.abs(balances.get(member.id) ?? 0)));
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
+  const canLoadMoreExpenses = expenses.length < aggregates.expenseCount;
+
+  async function handleLoadMoreExpenses() {
+    if (!activeGroup || !cloudStore) return;
+    if (!beginAction("loadMoreExpenses")) return;
+    try {
+      await cloudStore.loadMoreExpenses(activeGroup.id);
+    } catch (error) {
+      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
+    }
+  }
 
   useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
   useEffect(() => writeJson(CLOUD_ACTIVITIES_KEY, cloudActivities), [cloudActivities]);
@@ -885,7 +906,7 @@ export function App() {
         activeGroup.id,
         editingId
           ? `${text.editExpense}: ${draft.title}`
-          : `${text.addExpense}: ${draft.title} (${formatTwd(draft.amountMinor)})`,
+          : `${text.addExpense}: ${draft.title} (${formatAmount(draft.amountMinor, activeGroup.currency)})`,
       );
       setExpenseComposerOpen(false);
       setEditingExpense(null);
@@ -952,7 +973,7 @@ export function App() {
       await cloudStore.settleTransfer(activeGroup.id, fromId, toId, amountMinor, activeGroup.currency);
       recordCloudActivity(
         activeGroup.id,
-        `${text.clearDebt}: ${fromMember.name} → ${toMember.name} ${formatTwd(amountMinor)}`,
+        `${text.clearDebt}: ${fromMember.name} → ${toMember.name} ${formatAmount(amountMinor, activeGroup.currency)}`,
       );
       showToast(`${text.clearDebt}: ${fromMember.name} → ${toMember.name}`);
     } catch (error) {
@@ -1224,7 +1245,7 @@ export function App() {
                 <div>
                   <h2>{activeGroup.name}</h2>
                   <p>
-                    {text.members} <strong>{members.length}</strong> {text.total} <strong>{formatTwd(totalExpenseMinor)}</strong>
+                    {text.members} <strong>{members.length}</strong> {text.total} <strong>{formatAmount(totalExpenseMinor, activeGroup.currency)}</strong>
                   </p>
                 </div>
               </div>
@@ -1249,7 +1270,7 @@ export function App() {
                           {member.name}
                           {member.role === "owner" ? <small>{text.owner}</small> : null}
                         </span>
-                        <strong>{formatSigned(balances.get(member.id) ?? 0)}</strong>
+                        <strong>{formatSigned(balances.get(member.id) ?? 0, activeGroup.currency)}</strong>
                       </div>
                     ))}
                   </div>
@@ -1258,7 +1279,7 @@ export function App() {
                   <div className="hero-donut-ring">
                     <div>
                       <span>{debt?.to.name ?? text.settled}</span>
-                      <strong>{debt ? formatTwd(debt.amountMinor) : "$0"}</strong>
+                      <strong>{debt ? formatAmount(debt.amountMinor, activeGroup.currency) : formatAmount(0, activeGroup.currency)}</strong>
                     </div>
                   </div>
                 </div>
@@ -1293,7 +1314,7 @@ export function App() {
               <div className="spending-date-row">
                 <div>
                   <span>{selectedDateChip ? `${selectedDateChip.month}月${selectedDateChip.day}日` : `${new Date().getMonth() + 1}月${new Date().getDate()}日`}</span>
-                  <strong>{formatTwd(spendDisplayAmountMinor)}</strong>
+                  <strong>{formatAmount(spendDisplayAmountMinor, activeGroup.currency)}</strong>
                 </div>
                 <div className="date-chip-row" aria-label="\u65e5\u671f">
                   {dateChips.map((chip) => (
@@ -1327,7 +1348,7 @@ export function App() {
                     <div className="pizo-debt-center">
                       <span>{text.needPay}</span>
                       <b>{"\u2192"}</b>
-                      <strong>{formatTwd(debt.amountMinor)}</strong>
+                      <strong>{formatAmount(debt.amountMinor, activeGroup.currency)}</strong>
                     </div>
                     <div className="pizo-debt-person right">
                       <MemberAvatar className="member-avatar photo" name={debt.to.name} avatarUrl={debt.to.avatarUrl} />
@@ -1402,7 +1423,7 @@ export function App() {
                         </span>
                         <span className={isIncome ? "expense-record-amount amount-income" : "expense-record-amount"}>
                           <small>{expense.currency}</small>
-                          {isIncome ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
+                          {isIncome ? `+${formatAmount(expense.amountMinor, expense.currency)}` : formatAmount(expense.amountMinor, expense.currency)}
                           <i className="mini-avatar-stack" aria-hidden="true">
                             {shareMembers.map((member) => (
                               <em key={member.id}>
@@ -1672,15 +1693,11 @@ export function App() {
                 <div className="panel-stat-grid">
                   <div>
                     <span>{"\u7b46\u6578"}</span>
-                    <strong>{spendableExpenses.length}</strong>
+                    <strong>{aggregates.expenseCount}</strong>
                   </div>
                   <div>
                     <span>{"\u7e3d\u652f\u51fa"}</span>
-                    <strong>{formatTwd(totalExpenseMinor)}</strong>
-                  </div>
-                  <div>
-                    <span>{"\u5e73\u5747"}</span>
-                    <strong>{formatTwd(averageExpenseMinor)}</strong>
+                    <strong>{formatAmount(totalExpenseMinor, activeGroup?.currency ?? "TWD")}</strong>
                   </div>
                 </div>
                 <div className="dialog-section-list">
@@ -1713,13 +1730,25 @@ export function App() {
                           <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
                         </span>
                         <b className={expense.kind === "income" ? "amount-income" : undefined}>
-                          {expense.kind === "income" ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
+                          {expense.kind === "income"
+                            ? `+${formatAmount(expense.amountMinor, expense.currency)}`
+                            : formatAmount(expense.amountMinor, expense.currency)}
                         </b>
                       </button>
                     ))
                   ) : (
                     <p className="dialog-empty">{text.noRecords}</p>
                   )}
+                  {canLoadMoreExpenses ? (
+                    <button
+                      className="text-action records-load-more"
+                      type="button"
+                      disabled={pendingAction === "loadMoreExpenses" || loadingMoreExpenses}
+                      onClick={handleLoadMoreExpenses}
+                    >
+                      {pendingAction === "loadMoreExpenses" || loadingMoreExpenses ? text.processing : text.loadMoreRecords}
+                    </button>
+                  ) : null}
                 </div>
                 <div className="dialog-section-list">
                   <span className="dialog-list-title">{text.recentActivity}</span>
@@ -1752,7 +1781,7 @@ export function App() {
                 <div className="panel-stat-grid">
                   <div>
                     <span>{"\u7e3d\u91d1\u984d"}</span>
-                    <strong>{formatTwd(totalExpenseMinor)}</strong>
+                    <strong>{formatAmount(totalExpenseMinor, activeGroup?.currency ?? "TWD")}</strong>
                   </div>
                   <div>
                     <span>{text.members}</span>
@@ -1760,7 +1789,7 @@ export function App() {
                   </div>
                   <div>
                     <span>{text.debt}</span>
-                    <strong>{debt ? formatTwd(debt.amountMinor) : "$0"}</strong>
+                    <strong>{debt ? formatAmount(debt.amountMinor, activeGroup?.currency ?? "TWD") : formatAmount(0, activeGroup?.currency ?? "TWD")}</strong>
                   </div>
                 </div>
                 <div className="dialog-section-list">
@@ -1774,7 +1803,7 @@ export function App() {
                         <div className="analysis-bar-track">
                           <i style={{ width }} />
                         </div>
-                        <strong>{formatSigned(balance)}</strong>
+                        <strong>{formatSigned(balance, activeGroup?.currency ?? "TWD")}</strong>
                       </div>
                     );
                   })}
@@ -1796,7 +1825,7 @@ export function App() {
                             <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
                             <strong>{to?.name ?? ""}</strong>
                           </div>
-                          <span className="settlement-suggestion-amount">{formatTwd(transfer.amount.amount_minor)}</span>
+                          <span className="settlement-suggestion-amount">{formatAmount(transfer.amount.amount_minor, transfer.amount.currency)}</span>
                           <button
                             className="composer-mini-action"
                             type="button"
@@ -2005,7 +2034,7 @@ export function App() {
                                 </button>
                               </span>
                             ) : null}
-                            <b>{formatSigned(balances.get(member.id) ?? 0)}</b>
+                            <b>{formatSigned(balances.get(member.id) ?? 0, activeGroup?.currency ?? "TWD")}</b>
                           </>
                         )}
                       </div>

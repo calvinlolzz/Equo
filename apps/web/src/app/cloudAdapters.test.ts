@@ -135,6 +135,7 @@ describe("toExpense", () => {
       amountMinor: 1000,
       currency: "TWD",
       createdAt: "2026-06-30T12:00:00.000Z",
+      expenseDate: "2026-06-30",
       payerId: "member_1",
       payments: [{ payerId: "member_1", amountMinor: 1000 }],
       shareMemberIds: ["member_1", "member_2"],
@@ -323,7 +324,11 @@ describe("toGroupUiData", () => {
           expense_shares: [{ member_id: "member_1", share_type: "fixed", amount_minor: 1000 }],
         },
       ],
-      balances: [],
+      balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+      expense_count: 1,
+      spend_total_minor: 1000,
+      spend_by_day: [{ day: "2026-06-30", total_minor: 1000 }],
+      member_day_shares: [{ day: "2026-06-30", member_id: "member_1", share_minor: 1000 }],
     };
 
     const ui = toGroupUiData(detail);
@@ -332,6 +337,13 @@ describe("toGroupUiData", () => {
     expect(ui.members).toEqual([{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "u1" }]);
     expect(ui.expenses).toHaveLength(1);
     expect(ui.expenses[0].title).toBe("Dinner");
+    expect(ui.balances).toEqual([{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }]);
+    expect(ui.aggregates).toEqual({
+      expenseCount: 1,
+      spendTotalMinor: 1000,
+      spendByDay: [{ day: "2026-06-30", totalMinor: 1000 }],
+      memberDayShares: [{ day: "2026-06-30", memberId: "member_1", shareMinor: 1000 }],
+    });
   });
 });
 

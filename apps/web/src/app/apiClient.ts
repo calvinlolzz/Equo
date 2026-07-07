@@ -91,11 +91,35 @@ export type SettlementTransferSummary = {
   };
 };
 
+export type SpendByDaySummary = {
+  day: string;
+  total_minor: number;
+};
+
+export type MemberDaySharesSummary = {
+  day: string;
+  member_id: string;
+  share_minor: number;
+};
+
 export type GroupDetail = {
   group: GroupSummary;
   members: GroupMemberSummary[];
+  /** Capped to the server's expense window (newest first) - see expense_count for the true total. */
   expenses: ExpenseSummary[];
   balances: BalanceSummary[];
+  /** All non-deleted entries in the group (not just kind="expense") - drives the "load more" paging UI. */
+  expense_count: number;
+  /** Sum of kind="expense" amount_minor only (excludes income/transfer). Server-authoritative 總支出. */
+  spend_total_minor: number;
+  /** Last 8 days of kind="expense" totals, keyed by expense_date. */
+  spend_by_day: SpendByDaySummary[];
+  /** Last 8 days of per-member kind="expense" shares, keyed by expense_date. */
+  member_day_shares: MemberDaySharesSummary[];
+};
+
+export type ExpensesPageResponse = {
+  expenses: ExpenseSummary[];
 };
 
 export type EquoApiClient = ReturnType<typeof createApiClient>;
@@ -251,6 +275,26 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
       return request<{ expense: { id: string } }>(`/groups/${groupId}/expenses/${expenseId}`, {
         method: "DELETE",
         body: JSON.stringify(payload),
+      });
+    },
+    /**
+     * The records-panel "load more" page: older-than-cursor expenses once the
+     * client has exhausted the initial get_group_detail window. Omitting
+     * cursor fetches the first page (mainly useful for tests/tools - the app
+     * always has a loaded expense to derive a cursor from before this is
+     * ever called for real).
+     */
+    listExpensesPage(
+      groupId: string,
+      options: { limit?: number; beforeDate?: string; beforeCreatedAt?: string } = {},
+    ) {
+      const params = new URLSearchParams();
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      if (options.beforeDate) params.set("before_date", options.beforeDate);
+      if (options.beforeCreatedAt) params.set("before_created_at", options.beforeCreatedAt);
+      const query = params.toString();
+      return request<ExpensesPageResponse>(`/groups/${groupId}/expenses${query ? `?${query}` : ""}`, {
+        method: "GET",
       });
     },
     uploadGroupImage(groupId: string, payload: UploadGroupImageRequest) {

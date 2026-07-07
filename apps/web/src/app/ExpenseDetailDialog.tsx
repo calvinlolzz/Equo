@@ -2,15 +2,12 @@ import { useState } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
+import { formatAmount } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
 const detailText = UI_TEXT.expenseDetail;
-
-function formatTwd(amountMinor: number) {
-  return `$${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
-}
 
 /** Trim float noise so 33.330000000000005 renders as 33.33%. */
 function formatPercentValue(value: number) {
@@ -71,9 +68,9 @@ export function ExpenseDetailDialog({
     const shareMinor = getMemberShareMinor(expense, memberId);
     const percent = expense.shareType === "percent" ? expense.sharePercents?.[memberId] : undefined;
     if (typeof percent === "number") {
-      return `${formatPercentValue(percent)}（${formatTwd(shareMinor)}）`;
+      return `${formatPercentValue(percent)}（${formatAmount(shareMinor, expense.currency)}）`;
     }
-    return formatTwd(shareMinor);
+    return formatAmount(shareMinor, expense.currency);
   }
 
   return (
@@ -120,7 +117,7 @@ export function ExpenseDetailDialog({
           <div>
             <span>{text.amount}</span>
             <strong className={isIncome ? "amount-income" : undefined}>
-              {isIncome ? `+${formatTwd(expense.amountMinor)}` : formatTwd(expense.amountMinor)}
+              {isIncome ? `+${formatAmount(expense.amountMinor, expense.currency)}` : formatAmount(expense.amountMinor, expense.currency)}
             </strong>
           </div>
           <div>
@@ -156,7 +153,7 @@ export function ExpenseDetailDialog({
                     <span>
                       <strong>{member?.name ?? ""}</strong>
                     </span>
-                    <b>{formatTwd(payment.amountMinor)}</b>
+                    <b>{formatAmount(payment.amountMinor, expense.currency)}</b>
                   </div>
                 );
               })}
@@ -176,7 +173,7 @@ export function ExpenseDetailDialog({
                     <span>
                       <strong>{member?.name ?? ""}</strong>
                     </span>
-                    <b>{formatTwd(payment.amountMinor)}</b>
+                    <b>{formatAmount(payment.amountMinor, expense.currency)}</b>
                   </div>
                 );
               })

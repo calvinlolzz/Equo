@@ -29,11 +29,14 @@ import {
   handleUnarchiveGroup,
   handleUpdateGroup,
 } from "../handlers/groups.js";
+import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
   client: SupabaseQueryClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
+  /** Optional so this type stays compatible with call sites that don't need storage cleanup; updateGroupRoute passes it through to handleUpdateGroup's previous-cover cleanup hook when present. */
+  storage?: SupabaseStorageClient;
 };
 
 async function buildRouteContext(options: RouteOptions) {
@@ -90,7 +93,7 @@ export async function updateGroupRoute(options: RouteOptions, groupId: string, r
     return { ok: false, status: 401, body: auth.error };
   }
 
-  return handleUpdateGroup(createSupabaseGroupRepository(options.client), auth.context, groupId, request);
+  return handleUpdateGroup(createSupabaseGroupRepository(options.client), auth.context, groupId, request, options.storage);
 }
 
 export async function createVirtualMemberRoute(

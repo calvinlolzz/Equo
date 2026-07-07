@@ -1,6 +1,7 @@
 import type { CreateExpenseRequest, ExpensePaymentInput, ExpenseShareInput } from "../contracts/schemas";
-import type { GroupDetail, GroupMemberSummary, GroupSummary, ExpenseSummary } from "./apiClient";
+import type { BalanceSummary, GroupDetail, GroupMemberSummary, GroupSummary, ExpenseSummary } from "./apiClient";
 import type { Expense, Group, Member } from "./appTypes";
+import type { GroupDetailAggregates } from "./detailAggregates";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
 import { buildEqualShareAmountsMinor, buildPercentShareAmounts } from "./expenseShareSplit";
 import { UI_TEXT } from "./uiText";
@@ -154,6 +155,7 @@ export function toExpense(summary: ExpenseSummary): Expense {
     amountMinor: summary.amount_minor,
     currency: summary.currency,
     createdAt: summary.created_at ?? summary.expense_date ?? new Date().toISOString(),
+    expenseDate: summary.expense_date,
     payerId: payments[0]?.payer_member_id ?? "",
     shareMemberIds,
     kind: apiKindToExpenseKind(summary.kind),
@@ -184,11 +186,24 @@ export function toGroupUiData(detail: GroupDetail): {
   group: Group;
   members: Member[];
   expenses: Expense[];
+  balances: BalanceSummary[];
+  aggregates: GroupDetailAggregates;
 } {
   return {
     group: toGroup(detail.group),
     members: toMembers(detail.members),
     expenses: detail.expenses.map(toExpense),
+    balances: detail.balances,
+    aggregates: {
+      expenseCount: detail.expense_count,
+      spendTotalMinor: detail.spend_total_minor,
+      spendByDay: detail.spend_by_day.map((entry) => ({ day: entry.day, totalMinor: entry.total_minor })),
+      memberDayShares: detail.member_day_shares.map((entry) => ({
+        day: entry.day,
+        memberId: entry.member_id,
+        shareMinor: entry.share_minor,
+      })),
+    },
   };
 }
 

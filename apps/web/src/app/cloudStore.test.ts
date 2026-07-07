@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type { BalanceSummary, ExpenseSummary, GroupDetail, GroupMemberSummary } from "./apiClient";
 import type { ApiClientLike } from "./cloudStore";
 import { createCloudGroupsStore } from "./cloudStore";
 import { clearCloudCache, loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
@@ -30,12 +31,36 @@ const member1 = {
   status: "active" as const,
 };
 
+/** Fills in the get_group_detail v3 aggregate fields (expense_count/spend_total_minor/spend_by_day/member_day_shares) so fixtures only need to spell out what they actually vary. */
+function makeGroupDetail(overrides: {
+  group?: typeof group1;
+  members?: GroupMemberSummary[];
+  expenses?: ExpenseSummary[];
+  balances?: BalanceSummary[];
+  expense_count?: number;
+  spend_total_minor?: number;
+  spend_by_day?: GroupDetail["spend_by_day"];
+  member_day_shares?: GroupDetail["member_day_shares"];
+}): GroupDetail {
+  return {
+    group: overrides.group ?? group1,
+    members: overrides.members ?? [member1],
+    expenses: overrides.expenses ?? [],
+    balances: overrides.balances ?? [],
+    expense_count: overrides.expense_count ?? (overrides.expenses?.length ?? 0),
+    spend_total_minor: overrides.spend_total_minor ?? 0,
+    spend_by_day: overrides.spend_by_day ?? [],
+    member_day_shares: overrides.member_day_shares ?? [],
+  };
+}
+
 function makeFakeApiClient(overrides: Partial<ApiClientLike> = {}): ApiClientLike {
   return {
     createGroup: vi.fn(async () => ({ group: group1, owner_member: member1 })),
     listGroups: vi.fn(async () => ({ groups: [group1] })),
     listArchivedGroups: vi.fn(async () => ({ groups: [] })),
-    getGroupDetail: vi.fn(async () => ({ group: group1, members: [member1], expenses: [], balances: [] })),
+    getGroupDetail: vi.fn(async () => makeGroupDetail({ members: [member1] })),
+    listExpensesPage: vi.fn(async () => ({ expenses: [] })),
     updateGroup: vi.fn(async () => ({ group: group1 })),
     createVirtualMember: vi.fn(async () => ({
       member: { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bob", role: "member" as const, status: "active" as const },
@@ -107,6 +132,8 @@ describe("createCloudGroupsStore", () => {
       group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
       members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
       expenses: [],
+      balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+      aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] },
     });
   });
 
@@ -167,7 +194,7 @@ describe("createCloudGroupsStore", () => {
       status: "active" as const,
     };
     const apiClient = makeFakeApiClient({
-      getGroupDetail: vi.fn(async () => ({ group: group1, members: [member1, virtualMember], expenses: [], balances: [] })),
+      getGroupDetail: vi.fn(async () => makeGroupDetail({ members: [member1, virtualMember] })),
     });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
     await store.refreshGroupDetail("group_1");
@@ -195,7 +222,7 @@ describe("createCloudGroupsStore", () => {
       status: "active" as const,
     };
     const apiClient = makeFakeApiClient({
-      getGroupDetail: vi.fn(async () => ({ group: group1, members: [member1, virtualMember], expenses: [], balances: [] })),
+      getGroupDetail: vi.fn(async () => makeGroupDetail({ members: [member1, virtualMember] })),
     });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
     await store.refreshGroupDetail("group_1");
@@ -367,23 +394,24 @@ describe("createCloudGroupsStore", () => {
 
   test("addExpense prepends the new expense ahead of existing ones", async () => {
     const apiClient = makeFakeApiClient({
-      getGroupDetail: vi.fn(async () => ({
-        group: group1,
-        members: [member1],
-        expenses: [
-          {
-            id: "expense_0",
-            group_id: "group_1",
-            title: "Older",
-            kind: "expense",
-            amount_minor: 500,
-            currency: "TWD",
-            version: 1,
-            client_request_id: "req_0",
-          },
-        ],
-        balances: [],
-      })),
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          expenses: [
+            {
+              id: "expense_0",
+              group_id: "group_1",
+              title: "Older",
+              kind: "expense",
+              amount_minor: 500,
+              currency: "TWD",
+              expense_date: "2026-07-01",
+              version: 1,
+              client_request_id: "req_0",
+            },
+          ],
+          balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+        }),
+      ),
     });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
     await store.refreshGroupDetail("group_1");
@@ -394,25 +422,66 @@ describe("createCloudGroupsStore", () => {
     expect(expenses.map((expense) => expense.id)).toEqual(["expense_1", "expense_0"]);
   });
 
+  test("addExpense patches balances and aggregates for the new expense", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          members: [member1, { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bob", role: "member" as const, status: "active" as const }],
+          balances: [
+            { memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } },
+            { memberId: "member_2", balance: { amount_minor: 0, currency: "TWD" } },
+          ],
+        }),
+      ),
+      createExpense: vi.fn(async () => ({ expense: { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" } })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    const draft: ExpenseDraft = {
+      title: "Lunch",
+      amountMinor: 1000,
+      createdAt: "2026-07-04T10:00:00.000Z",
+      payerId: "member_1",
+      shareMemberIds: ["member_1", "member_2"],
+      category: "food",
+    };
+    await store.addExpense("group_1", draft, "TWD");
+
+    const detail = store.getState().groupDetails.group_1;
+    expect(detail.balances).toEqual(
+      expect.arrayContaining([
+        { memberId: "member_1", balance: { amount_minor: 500, currency: "TWD" } },
+        { memberId: "member_2", balance: { amount_minor: -500, currency: "TWD" } },
+      ]),
+    );
+    expect(detail.aggregates.expenseCount).toBe(1);
+    expect(detail.aggregates.spendTotalMinor).toBe(1000);
+  });
+
   test("editExpense soft-deletes the old expense, creates the replacement, and replaces it in place locally", async () => {
     const apiClient = makeFakeApiClient({
-      getGroupDetail: vi.fn(async () => ({
-        group: group1,
-        members: [member1],
-        expenses: [
-          {
-            id: "expense_1",
-            group_id: "group_1",
-            title: "Lunch (old)",
-            kind: "expense",
-            amount_minor: 800,
-            currency: "TWD",
-            version: 1,
-            client_request_id: "req_orig",
-          },
-        ],
-        balances: [],
-      })),
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          expenses: [
+            {
+              id: "expense_1",
+              group_id: "group_1",
+              title: "Lunch (old)",
+              kind: "expense",
+              amount_minor: 800,
+              currency: "TWD",
+              expense_date: "2026-07-01",
+              version: 1,
+              client_request_id: "req_orig",
+              expense_payments: [{ payer_member_id: "member_1", amount_minor: 800, currency: "TWD" }],
+              expense_shares: [{ member_id: "member_1", share_type: "fixed", amount_minor: 800 }],
+            },
+          ],
+          balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+          spend_total_minor: 800,
+        }),
+      ),
     });
     const calls: string[] = [];
     (apiClient.deleteExpense as any).mockImplementation(async () => {
@@ -433,31 +502,42 @@ describe("createCloudGroupsStore", () => {
       client_request_id: expect.any(String),
     });
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
-    const expenses = store.getState().groupDetails.group_1.expenses;
-    expect(expenses).toHaveLength(1);
-    expect(expenses[0].id).toBe("expense_2");
-    expect(expenses[0].title).toBe("Lunch");
+    const detail = store.getState().groupDetails.group_1;
+    expect(detail.expenses).toHaveLength(1);
+    expect(detail.expenses[0].id).toBe("expense_2");
+    expect(detail.expenses[0].title).toBe("Lunch");
+    // The old 800-minor expense's balance/aggregate contribution is removed
+    // and the new 1000-minor one applied - net effect is the new expense's
+    // own contribution (member_1 is the sole payer and share member here).
+    expect(detail.balances).toEqual([{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }]);
+    expect(detail.aggregates.expenseCount).toBe(1);
+    expect(detail.aggregates.spendTotalMinor).toBe(1000);
   });
 
-  test("deleteExpense removes the expense from the cached detail, no refetch", async () => {
+  test("deleteExpense removes the expense from the cached detail and reverses its balance/aggregate contribution, no refetch", async () => {
     const apiClient = makeFakeApiClient({
-      getGroupDetail: vi.fn(async () => ({
-        group: group1,
-        members: [member1],
-        expenses: [
-          {
-            id: "expense_1",
-            group_id: "group_1",
-            title: "Lunch",
-            kind: "expense",
-            amount_minor: 1000,
-            currency: "TWD",
-            version: 1,
-            client_request_id: "req_1",
-          },
-        ],
-        balances: [],
-      })),
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          expenses: [
+            {
+              id: "expense_1",
+              group_id: "group_1",
+              title: "Lunch",
+              kind: "expense",
+              amount_minor: 1000,
+              currency: "TWD",
+              expense_date: "2026-07-01",
+              version: 1,
+              client_request_id: "req_1",
+              expense_payments: [{ payer_member_id: "member_1", amount_minor: 1000, currency: "TWD" }],
+              expense_shares: [{ member_id: "member_1", share_type: "fixed", amount_minor: 1000 }],
+            },
+          ],
+          balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+          expense_count: 1,
+          spend_total_minor: 1000,
+        }),
+      ),
     });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
     await store.refreshGroupDetail("group_1");
@@ -468,11 +548,25 @@ describe("createCloudGroupsStore", () => {
       client_request_id: expect.any(String),
     });
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
-    expect(store.getState().groupDetails.group_1.expenses).toEqual([]);
+    const detail = store.getState().groupDetails.group_1;
+    expect(detail.expenses).toEqual([]);
+    expect(detail.balances).toEqual([{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }]);
+    expect(detail.aggregates.expenseCount).toBe(0);
+    expect(detail.aggregates.spendTotalMinor).toBe(0);
   });
 
   test("settleTransfer creates a transfer-kind expense and prepends the settlement locally, no refetch", async () => {
+    const member2 = { id: "member_2", group_id: "group_1", user_id: "user_2", display_name: "Bob", role: "member" as const, status: "active" as const };
     const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          members: [member1, member2],
+          balances: [
+            { memberId: "member_1", balance: { amount_minor: -500, currency: "TWD" } },
+            { memberId: "member_2", balance: { amount_minor: 500, currency: "TWD" } },
+          ],
+        }),
+      ),
       createExpense: vi.fn(async () => ({ expense: { id: "expense_settle_1", title: "Settle up", amount_minor: 500, currency: "TWD" } })),
     });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
@@ -485,15 +579,125 @@ describe("createCloudGroupsStore", () => {
       expect.objectContaining({ kind: "transfer", transfer_to_member_id: "member_2", amount_minor: 500 }),
     );
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
-    const expenses = store.getState().groupDetails.group_1.expenses;
-    expect(expenses).toHaveLength(1);
-    expect(expenses[0]).toMatchObject({
+    const detail = store.getState().groupDetails.group_1;
+    expect(detail.expenses).toHaveLength(1);
+    expect(detail.expenses[0]).toMatchObject({
       id: "expense_settle_1",
       kind: "settlement",
       payerId: "member_1",
       shareMemberIds: ["member_2"],
       amountMinor: 500,
     });
+    // A settlement transfer zeroes out the existing debt: member_1 (-500)
+    // pays member_2 (+500), netting both to 0. expenseCount increments
+    // (settlements count toward it) but spendTotalMinor stays untouched
+    // (settlements are excluded from spend aggregates).
+    expect(detail.balances).toEqual(
+      expect.arrayContaining([
+        { memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } },
+        { memberId: "member_2", balance: { amount_minor: 0, currency: "TWD" } },
+      ]),
+    );
+    expect(detail.aggregates.expenseCount).toBe(1);
+    expect(detail.aggregates.spendTotalMinor).toBe(0);
+  });
+
+  test("loadMoreExpenses appends an older page using the oldest loaded expense as the cursor, deduped by id", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          expenses: [
+            {
+              id: "expense_2",
+              group_id: "group_1",
+              title: "Newer",
+              kind: "expense",
+              amount_minor: 500,
+              currency: "TWD",
+              expense_date: "2026-07-05",
+              created_at: "2026-07-05T00:00:00.000Z",
+              version: 1,
+              client_request_id: "req_2",
+            },
+          ],
+          expense_count: 2,
+        }),
+      ),
+      listExpensesPage: vi.fn(async () => ({
+        expenses: [
+          {
+            id: "expense_1",
+            group_id: "group_1",
+            title: "Older",
+            kind: "expense",
+            amount_minor: 300,
+            currency: "TWD",
+            expense_date: "2026-07-01",
+            created_at: "2026-07-01T00:00:00.000Z",
+            version: 1,
+            client_request_id: "req_1",
+          },
+        ],
+      })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    await store.loadMoreExpenses("group_1");
+
+    expect(apiClient.listExpensesPage).toHaveBeenCalledWith("group_1", {
+      beforeDate: "2026-07-05",
+      beforeCreatedAt: "2026-07-05T00:00:00.000Z",
+    });
+    const expenses = store.getState().groupDetails.group_1.expenses;
+    expect(expenses.map((expense) => expense.id)).toEqual(["expense_2", "expense_1"]);
+  });
+
+  test("loadMoreExpenses dedupes pages that overlap with already-loaded expenses", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          expenses: [
+            {
+              id: "expense_1",
+              group_id: "group_1",
+              title: "Loaded",
+              kind: "expense",
+              amount_minor: 500,
+              currency: "TWD",
+              expense_date: "2026-07-05",
+              created_at: "2026-07-05T00:00:00.000Z",
+              version: 1,
+              client_request_id: "req_1",
+            },
+          ],
+          expense_count: 2,
+        }),
+      ),
+      listExpensesPage: vi.fn(async () => ({
+        expenses: [
+          {
+            id: "expense_1",
+            group_id: "group_1",
+            title: "Loaded",
+            kind: "expense",
+            amount_minor: 500,
+            currency: "TWD",
+            expense_date: "2026-07-05",
+            created_at: "2026-07-05T00:00:00.000Z",
+            version: 1,
+            client_request_id: "req_1",
+          },
+        ],
+      })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    await store.loadMoreExpenses("group_1");
+
+    const expenses = store.getState().groupDetails.group_1.expenses;
+    expect(expenses.map((expense) => expense.id)).toEqual(["expense_1"]);
   });
 
   test("createInvite returns the real token from the api", async () => {
@@ -596,6 +800,8 @@ describe("createCloudGroupsStore", () => {
               group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
               members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
               expenses: [],
+              balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+              aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] },
             },
           },
         },

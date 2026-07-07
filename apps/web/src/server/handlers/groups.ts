@@ -9,6 +9,7 @@ import type {
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type { GroupMemberRecord, GroupRepository } from "../repositories/groupRepository.js";
+import { urlToStoragePath, type SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type HandlerResult<T> =
   | { ok: true; status: number; body: T }
@@ -177,6 +178,7 @@ export async function handleUpdateGroup(
   context: AuthenticatedContext,
   groupId: string,
   request: UpdateGroupRequest,
+  storage?: SupabaseStorageClient,
 ) {
   const owner = await requireGroupOwner(repository, context, groupId, request.client_request_id);
 
@@ -184,8 +186,23 @@ export async function handleUpdateGroup(
     return owner.error;
   }
 
-  const group = await repository.updateGroup(groupId, request);
+  const { group, previousCoverImageUrl } = await repository.updateGroup(groupId, request);
   await repository.recordClientRequest(groupId, request.client_request_id, group.id);
+
+  // Clean up the previous cover once it's actually been replaced by a
+  // different one - fire-and-forget, never blocks the response (see
+  // supabaseStorageClient.ts's urlToStoragePath/deleteImage doc). Skipped
+  // entirely when the new value is the same as the old one (request omitted
+  // cover_image_url, or resubmitted the same URL) so a same-cover edit never
+  // deletes the cover it's still using.
+  if (storage && request.cover_image_url && previousCoverImageUrl && previousCoverImageUrl !== request.cover_image_url) {
+    const path = urlToStoragePath(previousCoverImageUrl);
+    if (path) {
+      storage.deleteImage(path).catch((error) => {
+        console.warn(`Failed to delete orphaned storage object ${path}:`, error);
+      });
+    }
+  }
 
   return {
     ok: true,

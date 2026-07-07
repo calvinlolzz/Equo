@@ -29,7 +29,7 @@ import {
   unarchiveGroupRoute,
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
-import { createExpenseRoute, deleteExpenseRoute } from "../routes/expenseRoutes.js";
+import { createExpenseRoute, deleteExpenseRoute, listExpensesPageRoute } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -76,6 +76,11 @@ function routeOptions(options: RuntimeOptions, request: HttpRuntimeRequest) {
 
 function body<T>(request: HttpRuntimeRequest): T {
   return request.json as T;
+}
+
+function queryParam(request: HttpRuntimeRequest, name: string): string | undefined {
+  const value = request.query?.[name];
+  return Array.isArray(value) ? value[0] : value;
 }
 
 export function createHttpRuntime(options: RuntimeOptions) {
@@ -277,6 +282,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[1],
           body<CreateExpenseRequest>(request),
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses$/,
+      label: "GET /api/v1/groups/:groupId/expenses",
+      async handle(request, match) {
+        const limitParam = queryParam(request, "limit");
+        const result = await listExpensesPageRoute(routeOptions(options, request), match[1], {
+          limit: limitParam ? Number(limitParam) : undefined,
+          before_date: queryParam(request, "before_date"),
+          before_created_at: queryParam(request, "before_created_at"),
+        });
         return jsonResponse(result.status, result.body);
       },
     },

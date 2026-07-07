@@ -1,22 +1,38 @@
 import type { CreateGroupRequest } from "../contracts/schemas";
-import { createApiClient, type ArchivedGroupSummary, type EquoApiClient, type GroupDetail } from "./apiClient";
+import { createApiClient, type ArchivedGroupSummary, type BalanceSummary, type EquoApiClient, type GroupDetail } from "./apiClient";
 import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
 import {
   draftToExpense,
   settlementTransferToDraft,
   toCreateExpenseRequest,
+  toExpense,
   toGroup,
   toGroupUiData,
   toMembers,
   toSettlementTransferRequest,
 } from "./cloudAdapters";
 import type { Expense, Group, Member } from "./appTypes";
+import {
+  applyExpenseToAggregates,
+  applyExpenseToBalances,
+  removeExpenseFromAggregates,
+  removeExpenseFromBalances,
+  type GroupDetailAggregates,
+} from "./detailAggregates";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
+
+function emptyAggregates(): GroupDetailAggregates {
+  return { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] };
+}
 
 export type CloudGroupData = {
   group: Group;
   members: Member[];
   expenses: Expense[];
+  /** Server-computed per-member balances (get_group_detail's balances array) - the group-level source of truth, patched optimistically on every mutation via detailAggregates. */
+  balances: BalanceSummary[];
+  /** Server-authoritative aggregates (expenseCount/spendTotalMinor/spendByDay/memberDayShares) - see detailAggregates.ts. */
+  aggregates: GroupDetailAggregates;
 };
 
 export type ArchivedGroupData = {
@@ -33,6 +49,8 @@ export type CloudGroupsState = {
   groupDetails: Record<string, CloudGroupData>;
   loadingGroups: boolean;
   loadingGroupIds: Record<string, boolean>;
+  /** Busy flags for loadMoreExpenses, keyed by groupId - see the records panel's 載入更多 button. */
+  loadingMoreExpenseIds: Record<string, boolean>;
 };
 
 export type ApiClientLike = Pick<
@@ -53,6 +71,7 @@ export type ApiClientLike = Pick<
   | "createExpense"
   | "deleteExpense"
   | "uploadGroupImage"
+  | "listExpensesPage"
 >;
 
 function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
@@ -84,6 +103,7 @@ function initialState(userId?: string, cacheStorage?: CacheStorage): CloudGroups
     groupDetails: cached?.groupDetails ?? {},
     loadingGroups: false,
     loadingGroupIds: {},
+    loadingMoreExpenseIds: {},
   };
 }
 
@@ -168,6 +188,16 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     setState({ loadingGroupIds });
   }
 
+  function setLoadingMoreExpenses(groupId: string, loading: boolean) {
+    const loadingMoreExpenseIds = { ...state.loadingMoreExpenseIds };
+    if (loading) {
+      loadingMoreExpenseIds[groupId] = true;
+    } else {
+      delete loadingMoreExpenseIds[groupId];
+    }
+    setState({ loadingMoreExpenseIds });
+  }
+
   function handleError(error: unknown): never {
     if (isUnauthenticatedError(error)) {
       onSessionExpired();
@@ -224,10 +254,22 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     setState({ groupDetails });
   }
 
-  function prependExpense(groupId: string, expense: Expense) {
+  /**
+   * Applies a newly-added expense to the cached detail: prepends it to the
+   * loaded expenses window, and patches balances/aggregates via
+   * detailAggregates so the group-level numbers (总计/债务/date chips) stay
+   * correct without waiting for a background refresh. See editExpense/
+   * deleteExpense for the remove/re-apply variants.
+   */
+  function applyNewExpense(groupId: string, expense: Expense) {
     const current = state.groupDetails[groupId];
     if (!current) return;
-    patchGroupDetail(groupId, { expenses: [expense, ...current.expenses] });
+    const memberIds = current.members.map((member) => member.id);
+    patchGroupDetail(groupId, {
+      expenses: [expense, ...current.expenses],
+      balances: applyExpenseToBalances(current.balances, expense, memberIds, current.group.currency),
+      aggregates: applyExpenseToAggregates(current.aggregates, expense, memberIds),
+    });
   }
 
   async function refreshGroups() {
@@ -263,11 +305,21 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
         ...payload,
       });
       const localGroup = toGroup(group);
+      const ownerMembers = toMembers([owner_member]);
       upsertGroupAtHead(localGroup);
       setState({
         groupDetails: {
           ...state.groupDetails,
-          [localGroup.id]: { group: localGroup, members: toMembers([owner_member]), expenses: [] },
+          [localGroup.id]: {
+            group: localGroup,
+            members: ownerMembers,
+            expenses: [],
+            balances: ownerMembers.map((member) => ({
+              memberId: member.id,
+              balance: { amount_minor: 0, currency: localGroup.currency },
+            })),
+            aggregates: emptyAggregates(),
+          },
         },
       });
       return localGroup;
@@ -390,13 +442,21 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
   async function addExpense(groupId: string, draft: ExpenseDraft, groupCurrency: string) {
     try {
       const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
-      prependExpense(groupId, draftToExpense(draft, expense));
+      applyNewExpense(groupId, draftToExpense(draft, expense));
     } catch (error) {
       resyncInBackground(groupId);
       handleError(error);
     }
   }
 
+  /**
+   * Edit = delete the old expense then create the new one (the API has no
+   * in-place expense update). The local patch mirrors that exactly: remove
+   * the old expense's balance/aggregate contribution, then apply the new
+   * one's - so a percent-split-to-fixed-split edit, a kind change, or a
+   * date change (moving an entry in/out of the 8-day window) all net out
+   * correctly without a refetch.
+   */
   async function editExpense(groupId: string, expenseId: string, draft: ExpenseDraft, groupCurrency: string) {
     try {
       await apiClient.deleteExpense(groupId, expenseId, { client_request_id: crypto.randomUUID() });
@@ -405,11 +465,23 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
       if (current) {
         const nextExpense = draftToExpense(draft, expense);
         const index = current.expenses.findIndex((item) => item.id === expenseId);
+        const previousExpense = current.expenses[index];
         const expenses =
           index === -1
             ? [nextExpense, ...current.expenses]
             : [...current.expenses.slice(0, index), nextExpense, ...current.expenses.slice(index + 1)];
-        patchGroupDetail(groupId, { expenses });
+        const memberIds = current.members.map((member) => member.id);
+        const balancesAfterRemove = previousExpense
+          ? removeExpenseFromBalances(current.balances, previousExpense, memberIds, current.group.currency)
+          : current.balances;
+        const aggregatesAfterRemove = previousExpense
+          ? removeExpenseFromAggregates(current.aggregates, previousExpense, memberIds)
+          : current.aggregates;
+        patchGroupDetail(groupId, {
+          expenses,
+          balances: applyExpenseToBalances(balancesAfterRemove, nextExpense, memberIds, current.group.currency),
+          aggregates: applyExpenseToAggregates(aggregatesAfterRemove, nextExpense, memberIds),
+        });
       }
     } catch (error) {
       resyncInBackground(groupId);
@@ -422,7 +494,17 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
       await apiClient.deleteExpense(groupId, expenseId, { client_request_id: crypto.randomUUID() });
       const current = state.groupDetails[groupId];
       if (current) {
-        patchGroupDetail(groupId, { expenses: current.expenses.filter((expense) => expense.id !== expenseId) });
+        const removedExpense = current.expenses.find((expense) => expense.id === expenseId);
+        const memberIds = current.members.map((member) => member.id);
+        patchGroupDetail(groupId, {
+          expenses: current.expenses.filter((expense) => expense.id !== expenseId),
+          balances: removedExpense
+            ? removeExpenseFromBalances(current.balances, removedExpense, memberIds, current.group.currency)
+            : current.balances,
+          aggregates: removedExpense
+            ? removeExpenseFromAggregates(current.aggregates, removedExpense, memberIds)
+            : current.aggregates,
+        });
       }
     } catch (error) {
       resyncInBackground(groupId);
@@ -434,10 +516,44 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     try {
       const { expense } = await apiClient.createExpense(groupId, toSettlementTransferRequest(fromId, toId, amountMinor, currency));
       const draft = settlementTransferToDraft(fromId, toId, amountMinor);
-      prependExpense(groupId, draftToExpense(draft, expense, "settlement"));
+      applyNewExpense(groupId, draftToExpense(draft, expense, "settlement"));
     } catch (error) {
       resyncInBackground(groupId);
       handleError(error);
+    }
+  }
+
+  /**
+   * Records-panel "load more": fetches the next page of older expenses
+   * (cursor = the oldest currently-loaded expense's date/created_at) and
+   * appends them, deduped by id. Does NOT touch balances/aggregates - those
+   * are already server-authoritative in the cached detail and every loaded
+   * expense (old or new) already contributed to them via the RPC, so
+   * appending older rows here would double-count if it also re-applied
+   * their balance/aggregate effect.
+   */
+  async function loadMoreExpenses(groupId: string) {
+    const current = state.groupDetails[groupId];
+    if (!current || current.expenses.length === 0) return;
+
+    const oldest = current.expenses[current.expenses.length - 1];
+    const beforeDate = oldest.expenseDate ?? oldest.createdAt.slice(0, 10);
+    const beforeCreatedAt = oldest.createdAt;
+
+    setLoadingMoreExpenses(groupId, true);
+    try {
+      const { expenses } = await apiClient.listExpensesPage(groupId, {
+        beforeDate,
+        beforeCreatedAt,
+      });
+      const existingIds = new Set(current.expenses.map((expense) => expense.id));
+      const nextExpenses = expenses.map(toExpense).filter((expense) => !existingIds.has(expense.id));
+      if (nextExpenses.length === 0) return;
+      patchGroupDetail(groupId, { expenses: [...current.expenses, ...nextExpenses] });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLoadingMoreExpenses(groupId, false);
     }
   }
 
@@ -514,6 +630,7 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     addExpense,
     editExpense,
     deleteExpense,
+    loadMoreExpenses,
     settleTransfer,
     createInvite,
     acceptInvite,

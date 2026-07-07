@@ -107,6 +107,10 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
         } as never;
       }
 
+      if (sql.includes("select id, avatar_url") && sql.includes("from public.users")) {
+        return { avatar_url: "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_1/old.jpg" } as never;
+      }
+
       if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
         return { avatar_url: params[0] } as never;
       }
@@ -392,16 +396,21 @@ describe("createSupabaseGroupRepository", () => {
 
     expect(result).toEqual({
       avatar_url: "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg",
+      previousAvatarUrl: "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_1/old.jpg",
     });
-    expect(client.calls[0]).toMatchObject({
+    // Reads the current avatar_url first (so the caller can clean up the old
+    // one from storage) before writing the new value.
+    expect(client.calls[0]).toMatchObject({ method: "one", params: ["user_alice"] });
+    expect(client.calls[0].sql).toContain("select id, avatar_url");
+    expect(client.calls[1]).toMatchObject({
       method: "one",
       params: ["https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg", "user_alice"],
     });
-    expect(client.calls[0].sql).toContain("update public.users");
-    expect(client.calls[1]).toMatchObject({
+    expect(client.calls[1].sql).toContain("update public.users");
+    expect(client.calls[2]).toMatchObject({
       method: "exec",
       params: ["https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/photo.jpg", "user_alice"],
     });
-    expect(client.calls[1].sql).toContain("update public.profiles");
+    expect(client.calls[2].sql).toContain("update public.profiles");
   });
 });

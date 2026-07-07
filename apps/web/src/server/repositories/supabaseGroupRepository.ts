@@ -21,6 +21,14 @@ export type SupabaseQueryClient = {
   exec(sql: string, params: unknown[]): Promise<void>;
 };
 
+/**
+ * get_group_detail's p_expense_limit (v3): the expenses array is capped to
+ * this many newest entries (expense_date desc, created_at desc). The
+ * client's records panel pages past this window via listExpensesPage/GET
+ * /groups/:groupId/expenses once expense_count exceeds what's loaded.
+ */
+export const EXPENSE_WINDOW_LIMIT = 100;
+
 export async function upsertUserByGoogleIdentity(
   client: SupabaseQueryClient,
   identity: GoogleIdentity,
@@ -67,12 +75,28 @@ export async function upsertUserByGoogleIdentity(
  * identity row read by every session/group-detail query, and profiles - the
  * legacy per-user settings row) never drift, matching how
  * upsertUserByGoogleIdentity keeps both in sync on login.
+ *
+ * Returns the PREVIOUS avatar_url alongside the new one so the caller can
+ * clean up an orphaned storage object (see updateMyAvatarRoute) - read
+ * fresh right before the write rather than trusting the caller's session
+ * context, since upsertUserByGoogleIdentity overwrites users.avatar_url with
+ * the Google identity's picture on every login, so a stale in-memory value
+ * from earlier in the request could be wrong by the time this runs.
  */
 export async function updateUserAvatar(
   client: SupabaseQueryClient,
   userId: string,
   avatarUrl: string,
-): Promise<{ avatar_url: string }> {
+): Promise<{ avatar_url: string; previousAvatarUrl: string | null }> {
+  const current = await client.one<{ avatar_url: string | null }>(
+    `
+      select id, avatar_url
+      from public.users
+      where id = $1
+    `,
+    [userId],
+  );
+
   const user = await client.one<{ avatar_url: string }>(
     `
       update public.users
@@ -92,7 +116,7 @@ export async function updateUserAvatar(
     [avatarUrl, userId],
   );
 
-  return user;
+  return { avatar_url: user.avatar_url, previousAvatarUrl: current.avatar_url ?? null };
 }
 
 function createTokenHash(token: string): string {
@@ -149,8 +173,8 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
 
     async getGroupDetail(context: AuthenticatedContext, groupId: string) {
       const result = await client.maybeOne<GroupDetailRecord | null>(
-        `select public.get_group_detail($1, $2) as detail`,
-        [groupId, context.user.id],
+        `select public.get_group_detail($1, $2, $3) as detail`,
+        [groupId, context.user.id, EXPENSE_WINDOW_LIMIT],
       );
 
       if (!result || !Array.isArray(result.members)) return result ?? null;
@@ -195,7 +219,21 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     },
 
     async updateGroup(groupId: string, request: UpdateGroupRequest) {
-      return client.one<GroupRecord>(
+      // Read the current cover_image_url before overwriting it - the UPDATE
+      // below only returns the NEW row, and coalesce() means a request that
+      // omits cover_image_url leaves the column untouched, so this is the
+      // only way the caller can know what the old value was (needed to
+      // clean it up from storage - see handleUpdateGroup).
+      const current = await client.one<{ cover_image_url: string | null }>(
+        `
+          select id, name, currency, owner_member_id, cover_image_url
+          from public.groups
+          where id = $1 and deleted_at is null
+        `,
+        [groupId],
+      );
+
+      const group = await client.one<GroupRecord>(
         `
           update public.groups
           set name = $1, cover_image_url = coalesce($2, cover_image_url), updated_at = now()
@@ -204,6 +242,8 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
         `,
         [request.name, request.cover_image_url ?? null, groupId],
       );
+
+      return { group, previousCoverImageUrl: current.cover_image_url ?? null };
     },
 
     async archiveGroup(groupId: string) {

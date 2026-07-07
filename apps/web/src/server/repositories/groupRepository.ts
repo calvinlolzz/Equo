@@ -63,11 +63,35 @@ export type InviteRecord = {
   expires_at?: string;
 };
 
+export type SpendByDayRecord = {
+  day: string;
+  total_minor: number;
+};
+
+export type MemberDaySharesRecord = {
+  day: string;
+  member_id: string;
+  share_minor: number;
+};
+
 export type GroupDetailRecord = {
   group: GroupRecord;
   members: GroupMemberRecord[];
+  /**
+   * Capped to the p_expense_limit newest entries (expense_date desc,
+   * created_at desc) - NOT the full history. See expense_count for the true
+   * total and the paged GET /expenses endpoint for loading older entries.
+   */
   expenses: ExpenseRecord[];
   balances: MemberBalance[];
+  /** All non-deleted entries in the group (not just kind='expense') - drives the "load more" paging UI. */
+  expense_count: number;
+  /** Sum of kind='expense' amount_minor only (excludes income/transfer). Server-authoritative 總支出. */
+  spend_total_minor: number;
+  /** Last 8 days of kind='expense' totals, keyed by expense_date. */
+  spend_by_day: SpendByDayRecord[];
+  /** Last 8 days of per-member kind='expense' shares, keyed by expense_date. */
+  member_day_shares: MemberDaySharesRecord[];
 };
 
 export type GroupRepository = {
@@ -79,7 +103,20 @@ export type GroupRepository = {
     group: GroupRecord;
     ownerMember: GroupMemberRecord;
   }>;
-  updateGroup(groupId: string, request: UpdateGroupRequest): Promise<GroupRecord>;
+  /**
+   * previousCoverImageUrl is the group's cover_image_url BEFORE this update
+   * (null if it had none), read alongside the write so the caller can clean
+   * up the old cover from storage when the request replaces it - see
+   * handlers/groups.ts's handleUpdateGroup and
+   * supabaseStorageClient.ts's urlToStoragePath/deleteImage. Populated
+   * unconditionally (even when the request omits cover_image_url and the
+   * column is left unchanged) since it's cheap to read and callers only act
+   * on it when the value is actually about to change.
+   */
+  updateGroup(groupId: string, request: UpdateGroupRequest): Promise<{
+    group: GroupRecord;
+    previousCoverImageUrl: string | null;
+  }>;
   archiveGroup(groupId: string): Promise<GroupRecord>;
   unarchiveGroup(groupId: string): Promise<GroupRecord>;
   deleteGroup(groupId: string): Promise<GroupRecord>;

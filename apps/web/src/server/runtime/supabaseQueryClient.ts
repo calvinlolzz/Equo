@@ -161,6 +161,19 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return undefined as T;
     }
 
+    // Read-before-write lookup of the current avatar_url (updateUserAvatar,
+    // PATCH /api/v1/me/avatar) - needed to know what to clean up from
+    // storage once it's overwritten by the new upload.
+    if (normalized.includes("select id, avatar_url") && normalized.includes("from public.users")) {
+      const rows = await request<T>({
+        method: "GET",
+        table: "users",
+        query: `select=id,avatar_url&id=eq.${encodeFilter(params[0])}&limit=1`,
+        returnRepresentation: true,
+      });
+      return firstRow(rows);
+    }
+
     // Self-scoped avatar update (PATCH /api/v1/me/avatar): must be matched
     // before the "insert into public.users" branch above's substring check
     // would never collide (this is an UPDATE), but keep it grouped here
@@ -190,6 +203,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const detail = await rpc<unknown>("get_group_detail", {
         p_group_id: params[0],
         p_user_id: params[1],
+        p_expense_limit: params[2],
       });
       return (detail ?? null) as T;
     }
@@ -530,11 +544,31 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       }) as T;
     }
 
-    if (normalized.includes("from public.expenses") && normalized.includes("order by expense_date")) {
+    // Cursor page (listExpensesPage with a cursor): must be matched before
+    // the plain "list all expenses" branch below, since both share the
+    // "from public.expenses" + "order by expense_date" substrings - the
+    // cursor comparison is the only distinguishing marker.
+    if (normalized.includes("from public.expenses") && normalized.includes("(expense_date, created_at) < ($2, $3)")) {
+      const [groupId, beforeDate, beforeCreatedAt, limit] = params as [string, string, string, number];
       return request<T>({
         method: "GET",
         table: "expenses",
-        query: `select=id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url&group_id=eq.${encodeFilter(params[0])}&deleted_at=is.null&order=expense_date.desc,created_at.desc`,
+        query: `select=id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url&group_id=eq.${encodeFilter(groupId)}&deleted_at=is.null&or=(expense_date.lt.${encodeFilter(beforeDate)},and(expense_date.eq.${encodeFilter(beforeDate)},created_at.lt.${encodeFilter(beforeCreatedAt)}))&order=expense_date.desc,created_at.desc&limit=${encodeFilter(limit)}`,
+        returnRepresentation: true,
+      }) as T;
+    }
+
+    // Un-cursored page (listExpensesPage's first page, limit only) and the
+    // plain "list all expenses" query (listExpenses) share this shape aside
+    // from the limit clause; both are satisfied by the same GET with an
+    // optional limit param.
+    if (normalized.includes("from public.expenses") && normalized.includes("order by expense_date")) {
+      const hasLimit = normalized.includes("limit $2");
+      const limitQuery = hasLimit ? `&limit=${encodeFilter(params[1] as number)}` : "";
+      return request<T>({
+        method: "GET",
+        table: "expenses",
+        query: `select=id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url&group_id=eq.${encodeFilter(params[0])}&deleted_at=is.null&order=expense_date.desc,created_at.desc${limitQuery}`,
         returnRepresentation: true,
       }) as T;
     }
@@ -543,7 +577,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "PATCH",
         table: "expenses",
-        query: `group_id=eq.${encodeFilter(params[0])}&id=eq.${encodeFilter(params[1])}&deleted_at=is.null&select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id`,
+        query: `group_id=eq.${encodeFilter(params[0])}&id=eq.${encodeFilter(params[1])}&deleted_at=is.null&select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id,image_url`,
         body: { deleted_at: new Date().toISOString() },
         returnRepresentation: true,
       });
