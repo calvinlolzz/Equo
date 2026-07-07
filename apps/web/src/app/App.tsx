@@ -39,6 +39,7 @@ import { ProfileDialog } from "./ProfileDialog";
 import { isGroupOwner } from "./isGroupOwner";
 import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
+import { resolveRootLanding } from "./resolveRootLanding";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
@@ -366,7 +367,19 @@ export function App() {
     if (!session) return;
     if (!cloudState || cloudState.loadingGroups) return;
     const routeId = getRouteGroupId();
-    if (!routeId) return;
+    if (!routeId) {
+      // Root URL: land the user on their most-recent group instead of the
+      // create-first-group start flow. Groups are loaded here (the guard
+      // above cleared loadingGroups); a null landing means zero groups, so
+      // fall through to the StartFlow empty state. Once forwarded, the route
+      // is no longer empty, so this branch won't re-fire (no redirect loop).
+      const landingId = resolveRootLanding(cloudGroups);
+      if (landingId) {
+        setActiveGroupId(landingId);
+        setGroupRoute(landingId, "replace");
+      }
+      return;
+    }
     const routeGroupExists = cloudGroups.some((group) => group.id === routeId);
     if (routeId === activeGroupId) {
       if (!routeGroupExists) {
@@ -1024,8 +1037,17 @@ export function App() {
   }
 
   function openHome() {
-    setActiveGroupId("");
-    setGroupRoute(null);
+    // The Equo brand mark goes to the user's primary (newest) group, or the
+    // create-first-group start flow when they have none - never a bare root
+    // that would flash the start flow before the routing effect forwards.
+    const landingId = resolveRootLanding(cloudGroups);
+    if (landingId) {
+      setActiveGroupId(landingId);
+      setGroupRoute(landingId, "replace");
+    } else {
+      setActiveGroupId("");
+      setGroupRoute(null);
+    }
   }
 
   const selectedTemplateLabel = templates.find((template) => template.id === selectedTemplate)?.label ?? text.createGroup;
@@ -1187,7 +1209,13 @@ export function App() {
         </div>
       ) : null}
 
-      {!activeGroup ? (
+      {!activeGroup && (!cloudState || cloudState.loadingGroups) ? (
+        <section className="workspace-grid">
+          <div className="group-home-card glass-panel cloud-loading-skeleton" aria-busy="true">
+            <span className="pulse-dot active" />
+          </div>
+        </section>
+      ) : !activeGroup ? (
         <StartFlow
           groups={displayGroups}
           groupName={groupName}
