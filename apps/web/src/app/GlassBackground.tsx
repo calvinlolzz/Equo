@@ -19,11 +19,18 @@ const TAU = Math.PI * 2;
 // deep violet -> dark pink; the warm orange/amber end is deliberately excluded.
 // The cool end (violet/pink) is darkened in the shader so it reads as a moody
 // accent rather than a neon glare, keeping mint the bright hero.
-//   0.34 green   0.44 mint (#6de2b8)   0.50 teal   0.78 violet   0.92 dark pink
+//   0.34 green   0.44 mint (#6de2b8)   0.50 teal   0.78 violet   0.94 dark pink
 const HUE_BASE = 0.34;
-const HUE_SPAN = 0.6;
+const HUE_SPAN = 0.62;
 // Dark Equo base colour the blobs melt into (matches the body backdrop).
 const BG_COLOR: [number, number, number] = [0x07 / 255, 0x13 / 255, 0x0f / 255];
+
+// Default inward-curl vortex: a spiral warp centred on the screen that is always
+// on, so at rest the whole field reads as colours rolling inward (like the
+// reference site). Strength decays from the centre; the spiral turns slowly.
+const CURL_STRENGTH = 2.3; // peak rotation (radians) at the centre
+const CURL_FALLOFF = 1.5; // how fast the curl fades toward the edges
+const CURL_SPIN = 0.05; // slow continuous roll of the whole spiral
 
 const VERT_SRC = `
 attribute vec2 position;
@@ -70,6 +77,14 @@ void main() {
   float cs = cos(swirl), sn = sin(swirl);
   sp = u_mouse + mat2(cs, -sn, sn, cs) * (sp - u_mouse);
 
+  // Persistent inward curl around the centre: the default vortex where all
+  // colours roll inward, independent of the pointer. Points nearer the centre
+  // rotate more (a spiral), and the whole spiral turns slowly over time.
+  float dC = length(sp);
+  float curl = ${CURL_STRENGTH.toFixed(2)} * exp(-dC * ${CURL_FALLOFF.toFixed(2)}) + u_time * ${CURL_SPIN.toFixed(3)};
+  float cc = cos(curl), sc = sin(curl);
+  sp = mat2(cc, -sc, sc, cc) * sp;
+
   // Weighted colour mixing across orbiting blobs; nearest hue dominates each
   // region and all hues rotate together, so the band never collapses to one tone.
   vec3 acc = vec3(0.0);
@@ -87,9 +102,10 @@ void main() {
     // hue-wheel jump (the band's two ends aren't adjacent colours).
     float t = fract(u_blobHue[i] + u_hueShift);
     t = 1.0 - abs(1.0 - 2.0 * t);
+    t = pow(t, 0.72); // weight the cycle toward the violet/pink end -> more of it
     float hue = ${HUE_BASE.toFixed(3)} + ${HUE_SPAN.toFixed(3)} * t;
-    float cool = smoothstep(0.52, 0.80, hue); // 0 = green side, 1 = violet/pink
-    acc += hsv2rgb(vec3(hue, 0.60 + 0.14 * cool, 0.92 - 0.30 * cool)) * f;
+    float cool = smoothstep(0.48, 0.78, hue); // 0 = green side, 1 = violet/pink
+    acc += hsv2rgb(vec3(hue, 0.62 + 0.16 * cool, 0.93 - 0.32 * cool)) * f;
     wsum += f;
   }
   vec3 blobCol = wsum > 0.0001 ? acc / wsum : u_bg;
@@ -278,13 +294,13 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     const ax = 0.32 * Math.sin(clock * 0.7);
     const ay = 0.26 * Math.cos(clock * 0.55);
 
-    // Pick a single target for the swirl centre: the ambient drift when idle or
-    // on touch, else the cursor. Crucially, mouseX/Y is eased *continuously*
-    // toward it — the target may switch abruptly but the value never jumps, so
-    // there's no sudden brightness flash when you start or stop moving.
-    const idle = opts.autoMouse || now - lastActive > 1100;
-    const desiredX = idle ? ax : targetX;
-    const desiredY = idle ? ay : targetY;
+    // Blend from cursor-follow to the ambient orbit *gradually* once the pointer
+    // goes still (idleT ramps 0->1 over ~2.2s), so re-engaging the drift never
+    // steps the target and mouseX never lurches — no bounce, no brightness flash.
+    const idleRaw = opts.autoMouse ? 1 : Math.min(Math.max((now - lastActive - 500) / 2200, 0), 1);
+    const idleT = idleRaw * idleRaw * (3 - 2 * idleRaw); // smoothstep: zero onset kick
+    const desiredX = targetX + (ax - targetX) * idleT;
+    const desiredY = targetY + (ay - targetY) * idleT;
     mouseX += (desiredX - mouseX) * 0.05;
     mouseY += (desiredY - mouseY) * 0.05;
 
