@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
@@ -148,6 +148,60 @@ export function ExpenseComposerSheet({
   // the first click's setState commits. This ref is set/checked in the same
   // tick the click handler runs, closing that race.
   const composerSubmittingRef = useRef(false);
+
+  // Drag-to-dismiss state for the mobile bottom sheet.
+  const [composerDragY, setComposerDragY] = useState(0);
+  const [composerClosing, setComposerClosing] = useState(false);
+  const composerDragStart = useRef<number | null>(null);
+  const sheetRef = useRef<HTMLElement | null>(null);
+
+  // Animate the sheet down before the parent unmounts it.
+  function requestClose() {
+    if (composerClosing) return;
+    composerDragStart.current = null;
+    setComposerDragY(0);
+    setComposerClosing(true);
+    window.setTimeout(onClose, 260);
+  }
+
+  function handleSheetTouchStart(event: ReactTouchEvent<HTMLElement>) {
+    if (composerClosing) return;
+    // Only start a dismiss drag from the top of the scroll area so content
+    // scrolling is never hijacked.
+    if (event.currentTarget.scrollTop > 0) return;
+    composerDragStart.current = event.touches[0].clientY;
+  }
+
+  function handleSheetTouchMove(event: ReactTouchEvent<HTMLElement>) {
+    if (composerDragStart.current === null) return;
+    const delta = event.touches[0].clientY - composerDragStart.current;
+    setComposerDragY(delta > 0 ? delta : 0);
+  }
+
+  function handleSheetTouchEnd() {
+    if (composerDragStart.current === null) return;
+    composerDragStart.current = null;
+    if (composerDragY > 120) {
+      requestClose();
+    } else {
+      setComposerDragY(0);
+    }
+  }
+
+  // React attaches touch listeners as passive, so a passive handler cannot stop
+  // iOS/Android from rubber-band scrolling instead of moving the sheet. Attach
+  // a non-passive touchmove that calls preventDefault only while dragging down.
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const onNativeMove = (nativeEvent: TouchEvent) => {
+      if (composerDragStart.current === null) return;
+      const delta = nativeEvent.touches[0].clientY - composerDragStart.current;
+      if (delta > 0) nativeEvent.preventDefault();
+    };
+    el.addEventListener("touchmove", onNativeMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onNativeMove);
+  }, []);
 
   const composerNeedsExchangeRate = composerCurrency !== groupCurrency;
   const composerTotalAmountMinor = composerNeedsExchangeRate
@@ -631,16 +685,29 @@ export function ExpenseComposerSheet({
 
   return (
     <div
-      className="composer-backdrop"
+      className={composerClosing ? "composer-backdrop closing" : "composer-backdrop"}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
-      <section className="expense-composer expense-sheet glass-panel" role="dialog" aria-modal="true" aria-label={text.addExpense}>
+      <section
+        ref={sheetRef}
+        className={composerClosing ? "expense-composer expense-sheet glass-panel closing" : "expense-composer expense-sheet glass-panel"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={text.addExpense}
+        style={{
+          transform: composerDragY > 0 ? `translateY(${composerDragY}px)` : undefined,
+          transition: composerDragStart.current !== null ? "none" : undefined,
+        }}
+        onTouchStart={handleSheetTouchStart}
+        onTouchMove={handleSheetTouchMove}
+        onTouchEnd={handleSheetTouchEnd}
+        onTouchCancel={handleSheetTouchEnd}
+      >
         <div className="sheet-drag-handle" aria-hidden="true" />
         <div className="composer-header">
-          <p className="eyebrow">Expense</p>
           <h2>{initialExpense ? text.editExpense : text.addExpense}</h2>
         </div>
 

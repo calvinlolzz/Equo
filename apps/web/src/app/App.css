@@ -303,15 +303,6 @@ label span {
   font-weight: 900;
 }
 
-.eyebrow {
-  margin-bottom: 8px;
-  color: #6de2b8;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
 .workspace-grid {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(420px, 1fr) minmax(220px, 260px);
@@ -1462,6 +1453,11 @@ label span {
   background: rgba(0, 0, 0, 0.44);
   backdrop-filter: blur(10px);
   animation: backdrop-fade-in 220ms ease-out;
+  transition: opacity 240ms ease;
+}
+
+.composer-backdrop.closing {
+  opacity: 0;
 }
 
 .modal-backdrop {
@@ -2008,6 +2004,13 @@ label span {
   position: relative;
   border-radius: 22px 22px 0 0;
   animation: sheet-rise 260ms ease-out;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  overscroll-behavior: contain;
+  will-change: transform;
+}
+
+.expense-sheet.closing {
+  transform: translateY(110%);
 }
 
 .sheet-drag-handle {

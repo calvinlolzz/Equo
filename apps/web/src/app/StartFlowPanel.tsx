@@ -31,7 +31,6 @@ export function StartFlow({ groups, groupName, isCreatingGroup = false, selected
     <section className="create-flow-shell">
       <div className="start-flow-card glass-panel">
         <div className="start-copy">
-          <p className="eyebrow">Equo</p>
           <h1>{"\u5efa\u7acb\u6216\u52a0\u5165\u4e00\u500b\u7fa4\u7d44"}</h1>
           <p>{"\u5148\u9078\u64c7\u8981\u505a\u7684\u4e8b\uff0c\u518d\u9032\u5165\u7fa4\u7d44\u5167\u8655\u7406\u6210\u54e1\u3001\u652f\u51fa\u8207\u6e05\u511f\u3002"}</p>
         </div>
@@ -52,7 +51,6 @@ export function StartFlow({ groups, groupName, isCreatingGroup = false, selected
           <section className="start-panel" aria-label={text.createGroup}>
             <div className="panel-title-row">
               <h2>{text.createGroup}</h2>
-              <span>Create</span>
             </div>
             <div className="template-grid" aria-label="Templates">
               {templates.map((template) => (
@@ -81,7 +79,6 @@ export function StartFlow({ groups, groupName, isCreatingGroup = false, selected
           <section className="start-panel" aria-label={text.joinGroup}>
             <div className="panel-title-row">
               <h2>{text.joinGroup}</h2>
-              <span>Invite</span>
             </div>
             <label>
               <span>{text.inviteCode}</span>
