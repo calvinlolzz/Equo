@@ -19,8 +19,7 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
     <aside className="group-rail glass-panel" aria-label={text.members}>
       <div className="rail-heading">
         <div>
-          <p className="eyebrow">Groups</p>
-          <h1>{text.members}</h1>
+          <h1>群組</h1>
         </div>
         <div className="rail-heading-actions">
           <button className="rail-icon-action" type="button" aria-label="重新整理" onClick={onRefresh}>
