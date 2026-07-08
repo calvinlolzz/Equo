@@ -25,6 +25,17 @@ const HUE_SPAN = 0.62;
 // Dark Equo base colour the blobs melt into (matches the body backdrop).
 const BG_COLOR: [number, number, number] = [0x07 / 255, 0x13 / 255, 0x0f / 255];
 
+// Two soft accent colours from the reference gradient, injected as fixed-colour
+// blobs so they always appear amongst the cycling green/violet/pink: a warm
+// peach/cream and a dusty rose. RGB in 0..1.
+const ACCENT_PEACH: [number, number, number] = [0.93, 0.82, 0.7];
+const ACCENT_ROSE: [number, number, number] = [0.8, 0.55, 0.65];
+// Blob indices that render a fixed accent colour instead of cycling the band.
+const FIXED_ACCENTS: Record<number, [number, number, number]> = {
+  4: ACCENT_PEACH,
+  5: ACCENT_ROSE,
+};
+
 // Default inward-curl vortex: a spiral warp centred on the screen that is always
 // on, so at rest the whole field reads as colours rolling inward (like the
 // reference site). Strength decays from the centre; the spiral turns slowly.
@@ -50,6 +61,8 @@ uniform float u_hueShift;
 uniform vec3 u_bg;
 uniform vec4 u_blobs[${BLOB_COUNT}];
 uniform float u_blobHue[${BLOB_COUNT}];
+uniform vec3 u_blobRGB[${BLOB_COUNT}];   // fixed accent colour per blob
+uniform float u_blobFixed[${BLOB_COUNT}]; // 1 = use u_blobRGB, 0 = cycle the band
 uniform int u_blobCount;
 varying vec2 vUv;
 
@@ -105,7 +118,10 @@ void main() {
     t = pow(t, 0.72); // weight the cycle toward the violet/pink end -> more of it
     float hue = ${HUE_BASE.toFixed(3)} + ${HUE_SPAN.toFixed(3)} * t;
     float cool = smoothstep(0.48, 0.78, hue); // 0 = green side, 1 = violet/pink
-    acc += hsv2rgb(vec3(hue, 0.62 + 0.16 * cool, 0.93 - 0.32 * cool)) * f;
+    vec3 cyc = hsv2rgb(vec3(hue, 0.62 + 0.16 * cool, 0.93 - 0.32 * cool));
+    // Blobs flagged fixed render a soft accent colour (peach / dusty rose) instead.
+    vec3 bcol = mix(cyc, u_blobRGB[i], u_blobFixed[i]);
+    acc += bcol * f;
     wsum += f;
   }
   vec3 blobCol = wsum > 0.0001 ? acc / wsum : u_bg;
@@ -197,11 +213,29 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     bg: gl.getUniformLocation(program, "u_bg"),
     blobs: gl.getUniformLocation(program, "u_blobs"),
     blobHue: gl.getUniformLocation(program, "u_blobHue"),
+    blobRGB: gl.getUniformLocation(program, "u_blobRGB"),
+    blobFixed: gl.getUniformLocation(program, "u_blobFixed"),
     blobCount: gl.getUniformLocation(program, "u_blobCount"),
   };
 
   gl.uniform3fv(u.bg, BG_COLOR);
   gl.uniform1i(u.blobCount, BLOB_COUNT);
+
+  // Fixed accent colours (peach / dusty rose) for the flagged blobs; the rest
+  // cycle the band. These never change, so set them once.
+  const blobRGB = new Float32Array(BLOB_COUNT * 3);
+  const blobFixed = new Float32Array(BLOB_COUNT);
+  for (let i = 0; i < BLOB_COUNT; i++) {
+    const accent = FIXED_ACCENTS[i];
+    if (accent) {
+      blobRGB[i * 3 + 0] = accent[0];
+      blobRGB[i * 3 + 1] = accent[1];
+      blobRGB[i * 3 + 2] = accent[2];
+      blobFixed[i] = 1;
+    }
+  }
+  gl.uniform3fv(u.blobRGB, blobRGB);
+  gl.uniform1fv(u.blobFixed, blobFixed);
 
   // One-time random layout, jittered from an even ring so blobs never clump.
   const seeds: BlobSeed[] = Array.from({ length: BLOB_COUNT }, (_, i) => {
