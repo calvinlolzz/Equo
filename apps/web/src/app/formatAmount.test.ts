@@ -1,5 +1,25 @@
 import { describe, expect, test } from "vitest";
-import { formatAmount, formatSigned } from "./formatAmount";
+import { formatAmount, formatAmountInputDisplay, formatSigned, stripAmountInput } from "./formatAmount";
+
+describe("amount input formatting", () => {
+  test("groups the integer part with commas", () => {
+    expect(formatAmountInputDisplay("111111111")).toBe("111,111,111");
+    expect(formatAmountInputDisplay("1234")).toBe("1,234");
+    expect(formatAmountInputDisplay("999")).toBe("999");
+  });
+
+  test("preserves a trailing dot and decimals while typing", () => {
+    expect(formatAmountInputDisplay("1234.")).toBe("1,234.");
+    expect(formatAmountInputDisplay("1234.5")).toBe("1,234.5");
+    expect(formatAmountInputDisplay("")).toBe("");
+  });
+
+  test("strips commas and non-numeric input, keeping one dot", () => {
+    expect(stripAmountInput("1,234,567")).toBe("1234567");
+    expect(stripAmountInput("12a3.4.5")).toBe("123.45");
+    expect(stripAmountInput("$1,000")).toBe("1000");
+  });
+});
 
 describe("formatAmount", () => {
   test("formats TWD with a $ prefix, whole-unit rounding, and thousands separators", () => {

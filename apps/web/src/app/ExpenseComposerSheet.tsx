@@ -6,7 +6,7 @@ import { convertToGroupAmountMinor } from "./expenseCurrency";
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
 import { buildExpenseEditPrefill, type ComposerSplitMode } from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
-import { formatAmount } from "./formatAmount";
+import { formatAmount, formatAmountInputDisplay, stripAmountInput } from "./formatAmount";
 import {
   buildEqualShareAmountsMinor,
   buildPercentShareAmounts,
@@ -702,8 +702,8 @@ export function ExpenseComposerSheet({
             ))}
           </select>
           <input
-            value={composerAmount}
-            onChange={(event) => setComposerAmount(event.target.value)}
+            value={formatAmountInputDisplay(composerAmount)}
+            onChange={(event) => setComposerAmount(stripAmountInput(event.target.value))}
             inputMode="decimal"
             placeholder="0"
             aria-label={text.amount}

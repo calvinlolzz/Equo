@@ -1344,7 +1344,7 @@ export function App() {
                   <span>{selectedDateChip ? `${selectedDateChip.month}月${selectedDateChip.day}日` : `${new Date().getMonth() + 1}月${new Date().getDate()}日`}</span>
                   <strong>{formatAmount(spendDisplayAmountMinor, activeGroup.currency)}</strong>
                 </div>
-                <div className="date-chip-row" aria-label="\u65e5\u671f">
+                <div className="date-chip-row" aria-label="日期">
                   {dateChips.map((chip) => (
                     <button
                       className={chip.key === selectedDateKey ? "date-chip active" : "date-chip"}
@@ -1824,7 +1824,7 @@ export function App() {
                   <span className="dialog-list-title">{"\u6210\u54e1\u9918\u984d"}</span>
                   {members.map((member) => {
                     const balance = balances.get(member.id) ?? 0;
-                    const width = `${Math.max(8, Math.round((Math.abs(balance) / maxBalanceMinor) * 100))}%`;
+                    const width = balance === 0 ? "0%" : `${Math.max(8, Math.round((Math.abs(balance) / maxBalanceMinor) * 100))}%`;
                     return (
                       <div className="analysis-balance-row" key={member.id}>
                         <span>{member.name}</span>
@@ -1892,7 +1892,7 @@ export function App() {
                     <UserRound aria-hidden="true" size={20} />
                     <span>
                       <strong>{text.addVirtualMember}</strong>
-                      <small>{"\u9069\u5408\u5148\u505a Demo \u6216\u5e6b\u4ed6\u4eba\u4ee3\u8a18\u652f\u51fa\u3002"}</small>
+                      <small>{"適合幫沒有帳號的人代記支出。"}</small>
                     </span>
                   </button>
                 </div>
@@ -2093,7 +2093,7 @@ export function App() {
                   <input
                     value={virtualMemberName}
                     onChange={(event) => setVirtualMemberName(event.target.value)}
-                    placeholder="\u8f38\u5165\u6210\u54e1\u540d\u7a31"
+                    placeholder="輸入成員名稱"
                     aria-label={text.virtualMemberName}
                   />
                 </label>
@@ -2164,7 +2164,7 @@ export function App() {
                 <div className="dialog-header centered">
                   <AlertTriangle aria-hidden="true" size={28} />
                   <h3>{dialog === "archive" ? text.archiveGroup : text.deleteGroup}</h3>
-                  <p>{dialog === "archive" ? "\u5c01\u5b58\u5f8c\u53ef\u5f9e\u5de6\u5074\u4e0a\u65b9\u7684\u5c01\u5b58\u5165\u53e3\u67e5\u770b\u3002" : "\u522a\u9664\u5f8c\u9019\u500b Demo \u7fa4\u7d44\u5c07\u5f9e\u672c\u6a5f\u79fb\u9664\u3002"}</p>
+                  <p>{dialog === "archive" ? "\u5c01\u5b58\u5f8c\u53ef\u5f9e\u5de6\u5074\u4e0a\u65b9\u7684\u5c01\u5b58\u5165\u53e3\u67e5\u770b\u3002" : "刪除後這個群組與所有記錄將永久移除，無法復原。"}</p>
                 </div>
                 <div className="dialog-action-row">
                   <button className="secondary-action" type="button" onClick={() => setDialog(null)}>

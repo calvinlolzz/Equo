@@ -67,7 +67,7 @@ export const UI_TEXT = {
     loginFailed: "登入失敗，請再試一次。",
     logoutSuccess: "已登出",
     settlementTransfer: "清償轉帳",
-    groupNotFound: "找不到這個群組，它可能只存在原本建立它的裝置上。",
+    groupNotFound: "找不到這個群組，可能已被刪除或你沒有存取權限。",
     payer: "付款人",
     amount: "金額",
     groupManage: "群組管理",

@@ -35,3 +35,30 @@ export function formatSigned(amountMinor: number, currency: string): string {
   if (amountMinor < 0) return `-${formatAmount(Math.abs(amountMinor), currency)}`;
   return formatAmount(0, currency);
 }
+
+/**
+ * Sanitizes raw amount-input keystrokes to a clean numeric string (digits
+ * and at most one decimal point) that Number() can parse. Commas and any
+ * other characters the display grouping adds are stripped here, so the
+ * stored composer amount is always comma-free.
+ */
+export function stripAmountInput(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+}
+
+/**
+ * Groups the integer part of a clean amount string with thousands
+ * separators for display in the amount input, preserving a trailing "."
+ * and any decimals exactly as typed so the caret behaviour stays sane.
+ */
+export function formatAmountInputDisplay(value: string): string {
+  if (value === "") return "";
+  const dot = value.indexOf(".");
+  const intPart = dot === -1 ? value : value.slice(0, dot);
+  const fraction = dot === -1 ? "" : value.slice(dot + 1);
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return dot === -1 ? grouped : `${grouped}.${fraction}`;
+}

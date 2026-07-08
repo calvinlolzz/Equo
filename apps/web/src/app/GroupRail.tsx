@@ -23,7 +23,7 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
           <h1>{text.members}</h1>
         </div>
         <div className="rail-heading-actions">
-          <button className="rail-icon-action" type="button" aria-label="\u91cd\u65b0\u6574\u7406" onClick={onRefresh}>
+          <button className="rail-icon-action" type="button" aria-label="重新整理" onClick={onRefresh}>
             <RefreshCw aria-hidden="true" size={20} />
           </button>
           <button className="rail-icon-action" type="button" aria-label={text.archivedGroups} onClick={onOpenArchivedGroups}>
