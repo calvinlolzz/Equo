@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./app/App.css";
 import { App } from "./app/App";
+import { GlassBackground } from "./app/GlassBackground";
 
 const root = document.getElementById("root");
 
@@ -11,6 +12,7 @@ if (!root) {
 
 createRoot(root).render(
   <React.StrictMode>
+    <GlassBackground />
     <App />
   </React.StrictMode>,
 );
