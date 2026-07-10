@@ -11,6 +11,7 @@ type Template = {
 type StartFlowProps = {
   groups: Group[];
   groupName: string;
+  groupNamePlaceholder: string;
   isCreatingGroup?: boolean;
   selectedTemplate: string;
   selectedTemplateLabel: string;
@@ -26,7 +27,7 @@ type StartFlowProps = {
 
 const text = UI_TEXT.app;
 
-export function StartFlow({ groups, groupName, isCreatingGroup = false, selectedTemplate, selectedTemplateLabel, startMode, templates, onCreateGroup, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onOpenInviteInput }: StartFlowProps) {
+export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingGroup = false, selectedTemplate, selectedTemplateLabel, startMode, templates, onCreateGroup, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onOpenInviteInput }: StartFlowProps) {
   return (
     <section className="create-flow-shell">
       <div className="start-flow-card glass-panel">
@@ -66,9 +67,9 @@ export function StartFlow({ groups, groupName, isCreatingGroup = false, selected
             </div>
             <label className="create-name-field">
               <span>{text.groupName}</span>
-              <input value={groupName} onChange={(event) => onGroupNameChange(event.target.value)} aria-label={text.groupName} />
+              <input value={groupName} onChange={(event) => onGroupNameChange(event.target.value)} placeholder={groupNamePlaceholder} aria-label={text.groupName} />
             </label>
-            <button className="create-submit" type="button" disabled={isCreatingGroup} onClick={onCreateGroup}>
+            <button className="create-submit" type="button" disabled={isCreatingGroup || !groupName.trim()} onClick={onCreateGroup}>
               <Plus aria-hidden="true" size={18} />
               {isCreatingGroup ? text.creatingGroup : `${text.createGroup}${selectedTemplateLabel}`}
             </button>

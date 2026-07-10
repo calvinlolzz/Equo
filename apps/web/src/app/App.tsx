@@ -32,6 +32,7 @@ import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore }
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { expenseToDraft } from "./expenseUndo";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { MemberAvatar } from "./MemberAvatar";
@@ -182,14 +183,18 @@ export function App() {
   const [activeGroupId, setActiveGroupId] = useState(() => getRouteGroupId());
   const [startMode, setStartMode] = useState<StartMode>("create");
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
-  const [groupName, setGroupName] = useState<string>(text.tripName);
+  const [groupName, setGroupName] = useState<string>("");
   const [virtualMemberName, setVirtualMemberName] = useState("");
   const [renamingMemberId, setRenamingMemberId] = useState("");
   const [renameMemberValue, setRenameMemberValue] = useState("");
   const [confirmingRemoveMemberId, setConfirmingRemoveMemberId] = useState("");
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
-  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const [toast, setToast] = useState<{
+    id: number;
+    text: string;
+    action?: { label: string; onAction: () => void };
+  } | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
   const [busy, setBusy] = useState(false);
   // pendingAction gates every mutation control's disabled/busy label. The
@@ -203,6 +208,12 @@ export function App() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  // Tracks the responsive breakpoint independently of CSS so the desktop
+  // rails and the mobile tab bar can be made inert/aria-hidden when hidden -
+  // a display:none in CSS alone still leaves the buttons in the a11y tree.
+  const [isMobileLayout, setIsMobileLayout] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 960px)").matches,
+  );
   const [inviteInputValue, setInviteInputValue] = useState("");
   const [inviteInputError, setInviteInputError] = useState("");
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
@@ -447,6 +458,14 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 960px)");
+    const update = () => setIsMobileLayout(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
   // Stash any ?invite=TOKEN before the OAuth redirect (or immediately, if
   // already logged in) so it survives the round-trip and query-param loss.
   useEffect(() => {
@@ -512,13 +531,15 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  function showToast(message: string) {
+  function showToast(message: string, action?: { label: string; onAction: () => void }) {
     if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
     const id = Date.now();
-    setToast({ id, text: message });
+    setToast({ id, text: message, action });
+    // Actionable toasts (e.g. an undo) linger longer so the user has time to
+    // reach the button before it auto-dismisses.
     toastTimeoutRef.current = window.setTimeout(() => {
       setToast((current) => (current?.id === id ? null : current));
-    }, 2600);
+    }, action ? 6000 : 2600);
   }
 
   /**
@@ -546,12 +567,15 @@ export function App() {
 
   async function createGroup() {
     if (!cloudStore) return;
+    // Require a typed, non-empty name - the template no longer supplies a
+    // fallback, so an empty field must not silently create a group named
+    // after the template placeholder.
+    const name = groupName.trim();
+    if (!name) return;
     // Synchronous guard checked before anything else, including the
     // cloudStore null-check above having already run: two fast clicks both
     // enter this function, but only the first passes beginAction.
     if (!beginAction("createGroup")) return;
-    const template = templates.find((item) => item.id === selectedTemplate) ?? templates[0];
-    const name = groupName.trim() || template.defaultName;
     const pickedCover = groupCoverDataUrl;
 
     try {
@@ -559,6 +583,7 @@ export function App() {
       setActiveGroupId(group.id);
       setGroupRoute(group.id, "replace");
       setDialog(null);
+      setGroupName("");
       setGroupCoverDataUrl("");
       setGroupCoverUrl("");
       showToast(`${text.createGroup}: ${name}`);
@@ -576,6 +601,15 @@ export function App() {
     } finally {
       endAction();
     }
+  }
+
+  function openCreateGroupDialog() {
+    // Start from a clean slate so a name left over from a prior edit (or a
+    // previous create) never leaks into the create form.
+    setGroupName("");
+    setGroupCoverDataUrl("");
+    setGroupCoverUrl("");
+    setDialog("createGroup");
   }
 
   function openEditGroup() {
@@ -943,15 +977,40 @@ export function App() {
 
   async function deleteExpense(expense: Expense) {
     if (!activeGroup || !cloudStore) return;
+    // Capture the target group up front so undo re-creates the expense in the
+    // right group even if the user navigates away before tapping 復原.
+    const groupId = activeGroup.id;
+    const groupCurrency = activeGroup.currency;
 
     try {
-      await cloudStore.deleteExpense(activeGroup.id, expense.id);
-      recordCloudActivity(activeGroup.id, `${text.deleteExpense}: ${expense.title}`);
+      await cloudStore.deleteExpense(groupId, expense.id);
+      recordCloudActivity(groupId, `${text.deleteExpense}: ${expense.title}`);
       setDialog(null);
       setSelectedExpenseId("");
-      showToast(`${text.deleteExpense}: ${expense.title}`);
+      showToast(`${text.deleteExpense}: ${expense.title}`, {
+        label: text.undo,
+        onAction: () => restoreExpense(groupId, groupCurrency, expense),
+      });
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    }
+  }
+
+  // Re-create a just-deleted expense from its captured snapshot. The recreated
+  // expense gets a new id (a delete is not reversible server-side) - that is
+  // acceptable; the split, payers, note, image and timestamp are preserved.
+  async function restoreExpense(groupId: string, groupCurrency: string, expense: Expense) {
+    if (!cloudStore) return;
+    if (!beginAction("undoDeleteExpense")) return;
+
+    try {
+      await cloudStore.addExpense(groupId, expenseToDraft(expense), groupCurrency);
+      recordCloudActivity(groupId, `${text.undoRestored}: ${expense.title}`);
+      showToast(text.undoRestored);
+    } catch (error) {
+      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
     }
   }
 
@@ -1051,6 +1110,7 @@ export function App() {
   }
 
   const selectedTemplateLabel = templates.find((template) => template.id === selectedTemplate)?.label ?? text.createGroup;
+  const selectedTemplateName = templates.find((template) => template.id === selectedTemplate)?.defaultName ?? "";
   const inviteCode = cloudInviteToken;
   const inviteLink =
     activeGroup && inviteCode && typeof window !== "undefined"
@@ -1166,6 +1226,11 @@ export function App() {
           <div className="toast-dock" role="status" aria-live="polite">
             <span className={busy ? "pulse-dot active" : "pulse-dot"} />
             <p>{toast.text}</p>
+            {toast.action ? (
+              <button className="toast-action" type="button" onClick={toast.action.onAction}>
+                {toast.action.label}
+              </button>
+            ) : null}
           </div>
         ) : null}
         <LoginScreen
@@ -1182,7 +1247,7 @@ export function App() {
     <main className="app-shell">
       <header className="top-bar">
         {activeGroup ? (
-          <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.members} onClick={() => setGroupDrawerOpen(true)}>
+          <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupList} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setGroupDrawerOpen(true)}>
             <Menu aria-hidden="true" size={22} />
           </button>
         ) : null}
@@ -1191,7 +1256,7 @@ export function App() {
         </button>
         <div className="top-actions">
           {activeGroup ? (
-            <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} onClick={() => setSettingsDrawerOpen(true)}>
+            <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setSettingsDrawerOpen(true)}>
               <Settings aria-hidden="true" size={22} />
             </button>
           ) : (
@@ -1206,6 +1271,11 @@ export function App() {
         <div className="toast-dock" role="status" aria-live="polite">
           <span className={busy ? "pulse-dot active" : "pulse-dot"} />
           <p>{toast.text}</p>
+          {toast.action ? (
+            <button className="toast-action" type="button" onClick={toast.action.onAction}>
+              {toast.action.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -1219,6 +1289,7 @@ export function App() {
         <StartFlow
           groups={displayGroups}
           groupName={groupName}
+          groupNamePlaceholder={selectedTemplateName}
           isCreatingGroup={pendingAction === "createGroup"}
           selectedTemplate={selectedTemplate}
           selectedTemplateLabel={selectedTemplateLabel}
@@ -1228,8 +1299,9 @@ export function App() {
           onGroupNameChange={setGroupName}
           onSelectGroup={selectGroup}
           onSelectTemplate={(template) => {
+            // Only switch the selected template - the name field stays whatever
+            // the user typed, with the template name shown as a placeholder.
             setSelectedTemplate(template.id);
-            setGroupName(template.defaultName);
           }}
           onSetStartMode={setStartMode}
           onOpenInviteInput={() => setDialog("inviteInput")}
@@ -1239,7 +1311,8 @@ export function App() {
           <GroupRail
             activeGroup={activeGroup}
             groups={displayGroups}
-            onCreateGroup={() => setDialog("createGroup")}
+            inert={isMobileLayout}
+            onCreateGroup={openCreateGroupDialog}
             onOpenArchivedGroups={openArchivedGroups}
             onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
             onSelectGroup={selectGroup}
@@ -1248,11 +1321,11 @@ export function App() {
 
           {groupDrawerOpen ? (
             <div className="side-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGroupDrawerOpen(false); }}>
-              <div className="side-drawer side-drawer-left" role="dialog" aria-modal="true" aria-label={text.members}>
+              <div className="side-drawer side-drawer-left" role="dialog" aria-modal="true" aria-label={text.groupList}>
                 <GroupRail
                   activeGroup={activeGroup}
                   groups={displayGroups}
-                  onCreateGroup={() => { setGroupDrawerOpen(false); setDialog("createGroup"); }}
+                  onCreateGroup={() => { setGroupDrawerOpen(false); openCreateGroupDialog(); }}
                   onOpenArchivedGroups={() => { setGroupDrawerOpen(false); openArchivedGroups(); }}
                   onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
                   onSelectGroup={selectGroup}
@@ -1492,7 +1565,7 @@ export function App() {
 
           </section>
 
-          <aside className="group-side-nav glass-panel" aria-label={text.groupHome}>
+          <aside className="group-side-nav glass-panel" aria-label={text.groupHome} inert={isMobileLayout} aria-hidden={isMobileLayout || undefined}>
             {renderGroupSideNavContent()}
           </aside>
 
@@ -1508,6 +1581,8 @@ export function App() {
             className="floating-action"
             type="button"
             aria-label={text.addExpense}
+            inert={isMobileLayout}
+            aria-hidden={isMobileLayout || undefined}
             onClick={() => {
               setEditingExpense(null);
               setExpenseComposerOpen(true);
@@ -1516,10 +1591,11 @@ export function App() {
             <Plus aria-hidden="true" size={34} />
           </button>
 
-          <nav className="mobile-tab-bar" aria-label={text.groupHome}>
+          <nav className="mobile-tab-bar" aria-label={text.groupHome} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined}>
             <button
               className="mobile-tab-item"
               type="button"
+              aria-label={text.navHome}
               onClick={() => {
                 setDialog(null);
                 setExpenseComposerOpen(false);
@@ -1529,7 +1605,7 @@ export function App() {
               <House aria-hidden="true" size={20} />
               <span>{text.navHome}</span>
             </button>
-            <button className="mobile-tab-item" type="button" onClick={() => setDialog("recordsPanel")}>
+            <button className="mobile-tab-item" type="button" aria-label={text.navRecords} onClick={() => setDialog("recordsPanel")}>
               <History aria-hidden="true" size={20} />
               <span>{text.navRecords}</span>
             </button>
@@ -1544,11 +1620,11 @@ export function App() {
             >
               <Plus aria-hidden="true" size={26} />
             </button>
-            <button className="mobile-tab-item" type="button" onClick={() => setDialog("analysisPanel")}>
+            <button className="mobile-tab-item" type="button" aria-label={text.navAnalysis} onClick={() => setDialog("analysisPanel")}>
               <ChartNoAxesColumn aria-hidden="true" size={20} />
               <span>{text.navAnalysis}</span>
             </button>
-            <button className="mobile-tab-item" type="button" onClick={openMemberList}>
+            <button className="mobile-tab-item" type="button" aria-label={text.navMembers} onClick={openMemberList}>
               <UserRound aria-hidden="true" size={20} />
               <span>{text.navMembers}</span>
             </button>
@@ -1631,7 +1707,7 @@ export function App() {
                 </label>
                 <label>
                   <span>{text.name}</span>
-                  <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
+                  <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={selectedTemplateName} aria-label={text.groupName} />
                 </label>
                 <div className="dialog-action-row">
                   <button
@@ -1644,7 +1720,7 @@ export function App() {
                   >
                     {text.cancel}
                   </button>
-                  <button className="primary-action" type="button" disabled={pendingAction === "createGroup"} onClick={createGroup}>
+                  <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "createGroup"} onClick={createGroup}>
                     {pendingAction === "createGroup" ? text.creatingGroup : text.createGroup}
                   </button>
                 </div>

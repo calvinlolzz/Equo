@@ -10,19 +10,22 @@ type GroupRailProps = {
   onRefresh: () => void;
   onSelectGroup: (group: Group) => void;
   onShowInviteCode: () => void;
+  // When the desktop rail is hidden by the responsive layout, the caller
+  // marks it inert so its buttons stay out of the tab order / a11y tree.
+  inert?: boolean;
 };
 
 const text = UI_TEXT.app;
 
-export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGroups, onRefresh, onSelectGroup, onShowInviteCode }: GroupRailProps) {
+export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGroups, onRefresh, onSelectGroup, onShowInviteCode, inert }: GroupRailProps) {
   return (
-    <aside className="group-rail glass-panel" aria-label={text.members}>
+    <aside className="group-rail glass-panel" aria-label={text.groupList} inert={inert} aria-hidden={inert || undefined}>
       <div className="rail-heading">
         <div>
           <h1>群組</h1>
         </div>
         <div className="rail-heading-actions">
-          <button className="rail-icon-action" type="button" aria-label="重新整理" onClick={onRefresh}>
+          <button className="rail-icon-action" type="button" aria-label={text.refresh} onClick={onRefresh}>
             <RefreshCw aria-hidden="true" size={20} />
           </button>
           <button className="rail-icon-action" type="button" aria-label={text.archivedGroups} onClick={onOpenArchivedGroups}>
