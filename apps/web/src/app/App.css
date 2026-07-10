@@ -1477,6 +1477,7 @@ label span {
 
 .composer-backdrop.closing {
   opacity: 0;
+  pointer-events: none;
 }
 
 .modal-backdrop {
@@ -1531,6 +1532,11 @@ label span {
   border-radius: 50%;
   color: rgba(247, 251, 248, 0.78);
   background: rgba(255, 255, 255, 0.09);
+}
+
+/* Drag-to-dismiss affordance for dialog bottom sheets; mobile only (see media query). */
+.dialog-drag-handle {
+  display: none;
 }
 
 .dialog-header {
@@ -2700,6 +2706,12 @@ label span {
   .modal-backdrop {
     align-items: end;
     padding: 10px;
+    transition: opacity 240ms ease;
+  }
+
+  .modal-backdrop.closing {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .flow-dialog {
@@ -2712,6 +2724,27 @@ label span {
   .panel-dialog {
     width: 100%;
     max-height: calc(100dvh - 40px);
+  }
+
+  .flow-dialog,
+  .panel-dialog {
+    overscroll-behavior: contain;
+    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+
+  .flow-dialog.closing,
+  .panel-dialog.closing {
+    transform: translateY(110%);
+  }
+
+  .dialog-drag-handle {
+    display: block;
+    width: 44px;
+    height: 5px;
+    margin: 2px auto 6px;
+    border-radius: 999px;
+    background: rgba(247, 251, 248, 0.28);
   }
 
   .expense-composer {

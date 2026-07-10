@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Contrast, FileText, Globe, Lock, LogOut, Pencil, X, Apple } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
+import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -75,6 +76,7 @@ export function ProfileDialog({
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
+  const swipe = useSwipeToDismiss(onClose);
 
   async function handleAvatarPick(file: File | null) {
     if (!file) return;
@@ -99,13 +101,20 @@ export function ProfileDialog({
 
   return (
     <div
-      className="modal-backdrop"
+      className={swipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="flow-dialog profile-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.title}>
+      <section
+        className={swipe.closing ? "flow-dialog profile-dialog glass-panel closing" : "flow-dialog profile-dialog glass-panel"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={text.title}
+        {...swipe.dragProps}
+      >
+        <div className="dialog-drag-handle" aria-hidden="true" />
         <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={onClose}>
           <X aria-hidden="true" size={18} />
         </button>

@@ -40,6 +40,7 @@ import { ProfileDialog } from "./ProfileDialog";
 import { isGroupOwner } from "./isGroupOwner";
 import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
+import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { resolveRootLanding } from "./resolveRootLanding";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
@@ -189,6 +190,9 @@ export function App() {
   const [renameMemberValue, setRenameMemberValue] = useState("");
   const [confirmingRemoveMemberId, setConfirmingRemoveMemberId] = useState("");
   const [dialog, setDialog] = useState<DialogMode>(null);
+  // Swipe-to-dismiss for the shared bottom-sheet dialog shell (records /
+  // analysis / members / etc.). Kept mounted across open/close cycles.
+  const dialogSwipe = useSwipeToDismiss(() => setDialog(null));
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
   const [toast, setToast] = useState<{
     id: number;
@@ -1674,13 +1678,20 @@ export function App() {
 
       {dialog && dialog !== "profile" && dialog !== "expenseDetail" ? (
         <div
-          className="modal-backdrop"
+          className={dialogSwipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setDialog(null);
           }}
         >
-          <section className={panelDialogOpen ? "flow-dialog panel-dialog glass-panel" : "flow-dialog glass-panel"} role="dialog" aria-modal="true" aria-label={text.groupHome}>
+          <section
+            className={`${panelDialogOpen ? "flow-dialog panel-dialog glass-panel" : "flow-dialog glass-panel"}${dialogSwipe.closing ? " closing" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={text.groupHome}
+            {...dialogSwipe.dragProps}
+          >
+            <div className="dialog-drag-handle" aria-hidden="true" />
             <button className="dialog-close" type="button" aria-label={text.cancel} onClick={() => setDialog(null)}>
               <X aria-hidden="true" size={18} />
             </button>
