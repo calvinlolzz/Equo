@@ -26,7 +26,10 @@ import {
 import { createActionGuard } from "./actionGuard";
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
-import { createApiClient } from "./apiClient";
+import { createApiClient, type ExpenseSummary } from "./apiClient";
+import { buildExpenseCsv, csvFileName } from "./expenseCsv";
+import { listSettlementRecords } from "./settlementHistory";
+import { SpendBarChart } from "./SpendBarChart";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -324,6 +327,10 @@ export function App() {
     [serverBalances],
   );
 
+  // 清償紀錄 for the analysis panel - settlement-kind entries from the loaded
+  // expense window (older history pages in via the records panel's load-more).
+  const settlementRecords = useMemo(() => listSettlementRecords(expenses), [expenses]);
+
   // The logged-in user's own member row within the active group - NOT
   // necessarily the group owner (joined-via-invite members are non-owners).
   // See resolveCurrentMember.ts for the matching/fallback rules.
@@ -370,6 +377,44 @@ export function App() {
       await cloudStore.loadMoreExpenses(activeGroup.id);
     } catch (error) {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+    } finally {
+      endAction();
+    }
+  }
+
+  async function handleExportCsv() {
+    if (!activeGroup || !session) return;
+    if (!beginAction("exportCsv")) return;
+    try {
+      // The loaded window may be paginated - walk listExpensesPage until a
+      // short page so the export always covers the group's full history.
+      const client = createApiClient({ authToken: session.token });
+      const pageLimit = 100;
+      const all: ExpenseSummary[] = [];
+      let cursor: { beforeDate?: string; beforeCreatedAt?: string } = {};
+
+      for (;;) {
+        const page = await client.listExpensesPage(activeGroup.id, { limit: pageLimit, ...cursor });
+        all.push(...page.expenses);
+        if (page.expenses.length < pageLimit) break;
+        const last = page.expenses[page.expenses.length - 1];
+        if (!last.expense_date || !last.created_at) break;
+        cursor = { beforeDate: last.expense_date, beforeCreatedAt: last.created_at };
+      }
+
+      const memberName = (memberId: string | null | undefined) =>
+        members.find((member) => member.id === memberId)?.name ?? "";
+      const csv = buildExpenseCsv(all, memberName);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = csvFileName(activeGroup.name, dateKey(new Date().toISOString()));
+      anchor.click();
+      URL.revokeObjectURL(url);
+      showToast(text.exportCsvDone);
+    } catch {
+      showToast(text.exportCsvFailed);
     } finally {
       endAction();
     }
@@ -1815,6 +1860,14 @@ export function App() {
                     <strong>{formatAmount(totalExpenseMinor, activeGroup?.currency ?? "TWD")}</strong>
                   </div>
                 </div>
+                <button
+                  className="text-action records-export"
+                  type="button"
+                  disabled={pendingAction === "exportCsv"}
+                  onClick={handleExportCsv}
+                >
+                  {pendingAction === "exportCsv" ? text.processing : text.exportCsv}
+                </button>
                 <div className="dialog-section-list">
                   <span className="dialog-list-title">{text.expense}</span>
                   {expenses.length ? (
@@ -1908,6 +1961,17 @@ export function App() {
                   </div>
                 </div>
                 <div className="dialog-section-list">
+                  <span className="dialog-list-title">{text.spendChartTitle}</span>
+                  <SpendBarChart
+                    days={dateChips}
+                    spendByDay={aggregates.spendByDay}
+                    currency={activeGroup?.currency ?? "TWD"}
+                    selectedKey={selectedDateKey}
+                    onSelect={setSelectedDateKey}
+                    emptyText={text.spendChartEmpty}
+                  />
+                </div>
+                <div className="dialog-section-list">
                   <span className="dialog-list-title">{"\u6210\u54e1\u9918\u984d"}</span>
                   {members.map((member) => {
                     const balance = balances.get(member.id) ?? 0;
@@ -1956,6 +2020,32 @@ export function App() {
                     })
                   ) : (
                     <p className="dialog-empty">{UI_TEXT.settlement.settled}</p>
+                  )}
+                </div>
+                <div className="dialog-section-list">
+                  <span className="dialog-list-title">{text.settlementHistoryTitle}</span>
+                  {settlementRecords.length ? (
+                    settlementRecords.map((record) => {
+                      const from = members.find((member) => member.id === record.fromMemberId);
+                      const to = members.find((member) => member.id === record.toMemberId);
+                      return (
+                        <div className="settlement-suggestion-row" key={record.id}>
+                          <div className="settlement-suggestion-person">
+                            <MemberAvatar className="member-avatar lime" name={from?.name} avatarUrl={from?.avatarUrl} />
+                            <strong>{from?.name ?? ""}</strong>
+                          </div>
+                          <b>{"→"}</b>
+                          <div className="settlement-suggestion-person">
+                            <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
+                            <strong>{to?.name ?? ""}</strong>
+                          </div>
+                          <span className="settlement-suggestion-amount">{formatAmount(record.amountMinor, record.currency)}</span>
+                          <small className="settlement-history-time">{formatActivityTime(record.createdAt)}</small>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="dialog-empty">{text.noSettlementHistory}</p>
                   )}
                 </div>
               </>

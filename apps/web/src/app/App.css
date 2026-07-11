@@ -3214,3 +3214,14 @@ label span {
   color: rgba(247, 251, 248, 0.72);
   font-size: 14px;
 }
+
+.records-export {
+  align-self: flex-start;
+  margin: 2px 0 10px;
+}
+
+.settlement-history-time {
+  color: rgba(247, 251, 248, 0.55);
+  font-size: 11px;
+  white-space: nowrap;
+}
