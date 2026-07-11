@@ -15,7 +15,9 @@ export type AuthResult =
   | { ok: true; context: AuthenticatedContext }
   | { ok: false; error: ApiError };
 
-export type UserResolver = (identity: GoogleIdentity) => Promise<AuthenticatedContext["user"] | null>;
+export type UserResolver = (
+  identity: GoogleIdentity,
+) => Promise<(AuthenticatedContext["user"] & { deleted_at?: string | null }) | null>;
 
 export async function requireAuthenticatedUser(
   identity: GoogleIdentity | null,
@@ -73,5 +75,22 @@ export async function requireAuthenticatedUser(
     };
   }
 
-  return { ok: true, context: { user } };
+  // Admin-disabled account (users.deleted_at set). Only fresh-token requests
+  // pass through here; a pre-existing session token rides the fast path above
+  // until it expires, so disabling takes effect on next login at the latest.
+  if (user.deleted_at) {
+    return {
+      ok: false,
+      error: {
+        error: {
+          code: "ACCOUNT_DISABLED",
+          message: "此帳號已被停用。",
+          request_id,
+        },
+      },
+    };
+  }
+
+  const { deleted_at: _deletedAt, ...sessionUser } = user;
+  return { ok: true, context: { user: sessionUser } };
 }

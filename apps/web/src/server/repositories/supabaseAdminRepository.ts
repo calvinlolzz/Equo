@@ -1,8 +1,10 @@
 import type {
   AdminGroupListRecord,
+  AdminGroupStateResult,
   AdminOverviewRecord,
   AdminRepository,
   AdminUserDetailRecord,
+  AdminUserDisabledResult,
   AdminUserListRecord,
 } from "./adminRepository.js";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
@@ -43,10 +45,31 @@ export function createSupabaseAdminRepository(client: SupabaseQueryClient): Admi
       );
     },
 
-    async listGroups(search, limit, offset) {
+    async listGroups(search, limit, offset, filter) {
       return client.one<AdminGroupListRecord>(
-        `select public.admin_console_groups($1, $2, $3)`,
-        [search, limit, offset],
+        `select public.admin_console_groups($1, $2, $3, $4)`,
+        [search, limit, offset, filter],
+      );
+    },
+
+    async setUserDisabled(actor, userId, disabled) {
+      return client.maybeOne<AdminUserDisabledResult>(
+        `select public.admin_console_set_user_disabled($1, $2, $3, $4)`,
+        [actor.id, actor.email, userId, disabled],
+      );
+    },
+
+    async setGroupArchived(actor, groupId, archived) {
+      return client.maybeOne<AdminGroupStateResult>(
+        `select public.admin_console_set_group_archived($1, $2, $3, $4)`,
+        [actor.id, actor.email, groupId, archived],
+      );
+    },
+
+    async setGroupDeleted(actor, groupId, deleted) {
+      return client.maybeOne<AdminGroupStateResult>(
+        `select public.admin_console_set_group_deleted($1, $2, $3, $4)`,
+        [actor.id, actor.email, groupId, deleted],
       );
     },
   };

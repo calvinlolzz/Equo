@@ -174,12 +174,16 @@ async function invokeEveryExpenseRepositoryMethod(client: SupabaseQueryClient) {
 
 async function invokeEveryAdminRepositoryMethod(client: SupabaseQueryClient) {
   const repo = createSupabaseAdminRepository(client);
+  const actor = { id: "user_1", email: "alice@example.com" };
 
   await repo.findAdminRole("user_1");
   await repo.getOverview();
   await repo.listUsers("alice", 20, 0);
   await repo.getUserDetail("user_1");
-  await repo.listGroups("trip", 20, 0);
+  await repo.listGroups("trip", 20, 0, "all");
+  await repo.setUserDisabled(actor, "user_2", true);
+  await repo.setGroupArchived(actor, "group_1", true);
+  await repo.setGroupDeleted(actor, "group_1", true);
 }
 
 async function invokeEverySettlementRepositoryMethod(client: SupabaseQueryClient) {

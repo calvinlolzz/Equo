@@ -131,7 +131,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const rows = await request<T>({
         method: "POST",
         table: "users",
-        query: "on_conflict=google_sub&select=id,google_sub,email,display_name,avatar_url",
+        query: "on_conflict=google_sub&select=id,google_sub,email,display_name,avatar_url,deleted_at",
         body: {
           id: params[0],
           google_sub: params[1],
@@ -229,7 +229,38 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         p_search: params[0],
         p_limit: params[1],
         p_offset: params[2],
+        p_filter: params[3],
       })) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_set_user_disabled(")) {
+      const result = await rpc<unknown>("admin_console_set_user_disabled", {
+        p_actor: params[0],
+        p_actor_email: params[1],
+        p_user_id: params[2],
+        p_disabled: params[3],
+      });
+      return (result ?? null) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_set_group_archived(")) {
+      const result = await rpc<unknown>("admin_console_set_group_archived", {
+        p_actor: params[0],
+        p_actor_email: params[1],
+        p_group_id: params[2],
+        p_archived: params[3],
+      });
+      return (result ?? null) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_set_group_deleted(")) {
+      const result = await rpc<unknown>("admin_console_set_group_deleted", {
+        p_actor: params[0],
+        p_actor_email: params[1],
+        p_group_id: params[2],
+        p_deleted: params[3],
+      });
+      return (result ?? null) as T;
     }
 
     if (normalized.includes("select public.get_group_detail(")) {

@@ -1,10 +1,13 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
+  AdminGroupFilter,
   AdminGroupListRecord,
+  AdminGroupStateResult,
   AdminOverviewRecord,
   AdminRepository,
   AdminUserDetailRecord,
+  AdminUserDisabledResult,
   AdminUserListRecord,
 } from "../repositories/adminRepository.js";
 
@@ -20,6 +23,17 @@ export type AdminListQuery = {
   limit?: number;
   offset?: number;
 };
+
+export type AdminGroupListQuery = AdminListQuery & {
+  filter?: string;
+};
+
+const GROUP_FILTERS: readonly AdminGroupFilter[] = ["all", "archived", "empty", "deleted"];
+
+/** Unknown/absent filter strings fall back to 'all' rather than erroring. */
+export function normalizeGroupFilter(filter: string | undefined): AdminGroupFilter {
+  return (GROUP_FILTERS as readonly string[]).includes(filter ?? "") ? (filter as AdminGroupFilter) : "all";
+}
 
 function adminForbidden(request_id = "req_admin"): HandlerResult<never> {
   return {
@@ -160,7 +174,7 @@ export async function handleAdminUserDetail(
 export async function handleAdminListGroups(
   repository: AdminRepository,
   context: AuthenticatedContext,
-  query: AdminListQuery = {},
+  query: AdminGroupListQuery = {},
 ): Promise<HandlerResult<AdminGroupListRecord>> {
   const role = await repository.findAdminRole(context.user.id);
 
@@ -169,6 +183,81 @@ export async function handleAdminListGroups(
   }
 
   const { search, limit, offset } = normalizeAdminListQuery(query);
-  const page = await repository.listGroups(search, limit, offset);
+  const page = await repository.listGroups(search, limit, offset, normalizeGroupFilter(query.filter));
   return { ok: true, status: 200, body: page };
+}
+
+export async function handleAdminSetUserDisabled(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  userId: string,
+  disabled: boolean,
+): Promise<HandlerResult<AdminUserDisabledResult>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const result = await repository.setUserDisabled(
+    { id: context.user.id, email: context.user.email },
+    userId,
+    disabled,
+  );
+
+  if (!result) {
+    return adminNotFound("User not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminSetGroupArchived(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  archived: boolean,
+): Promise<HandlerResult<AdminGroupStateResult>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const result = await repository.setGroupArchived(
+    { id: context.user.id, email: context.user.email },
+    groupId,
+    archived,
+  );
+
+  if (!result) {
+    return adminNotFound("Group not found or deleted.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminSetGroupDeleted(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  deleted: boolean,
+): Promise<HandlerResult<AdminGroupStateResult>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const result = await repository.setGroupDeleted(
+    { id: context.user.id, email: context.user.email },
+    groupId,
+    deleted,
+  );
+
+  if (!result) {
+    return adminNotFound("Group not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
 }

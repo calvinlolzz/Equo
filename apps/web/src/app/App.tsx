@@ -516,8 +516,8 @@ export function App() {
         });
         showToast(`${text.loginSuccessPrefix}${stored.user.displayName}`);
       })
-      .catch(() => {
-        setAuthError(text.loginFailed);
+      .catch((error: { code?: string }) => {
+        setAuthError(error?.code === "ACCOUNT_DISABLED" ? text.accountDisabled : text.loginFailed);
       })
       .finally(() => {
         setAuthLoading(false);

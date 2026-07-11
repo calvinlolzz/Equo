@@ -10,7 +10,11 @@ import {
   handleAdminListUsers,
   handleAdminMe,
   handleAdminOverview,
+  handleAdminSetGroupArchived,
+  handleAdminSetGroupDeleted,
+  handleAdminSetUserDisabled,
   handleAdminUserDetail,
+  type AdminGroupListQuery,
   type AdminListQuery,
 } from "../handlers/admin.js";
 
@@ -67,7 +71,7 @@ export async function adminUserDetailRoute(options: RouteOptions, userId: string
   return handleAdminUserDetail(createSupabaseAdminRepository(options.client), auth.context, userId);
 }
 
-export async function adminListGroupsRoute(options: RouteOptions, query: AdminListQuery) {
+export async function adminListGroupsRoute(options: RouteOptions, query: AdminGroupListQuery) {
   const auth = await buildRouteContext(options);
 
   if (auth.ok === false) {
@@ -75,4 +79,34 @@ export async function adminListGroupsRoute(options: RouteOptions, query: AdminLi
   }
 
   return handleAdminListGroups(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminSetUserDisabledRoute(options: RouteOptions, userId: string, disabled: boolean) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetUserDisabled(createSupabaseAdminRepository(options.client), auth.context, userId, disabled);
+}
+
+export async function adminSetGroupArchivedRoute(options: RouteOptions, groupId: string, archived: boolean) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetGroupArchived(createSupabaseAdminRepository(options.client), auth.context, groupId, archived);
+}
+
+export async function adminSetGroupDeletedRoute(options: RouteOptions, groupId: string, deleted: boolean) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetGroupDeleted(createSupabaseAdminRepository(options.client), auth.context, groupId, deleted);
 }

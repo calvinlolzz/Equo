@@ -76,13 +76,48 @@ describe("supabase admin repository", () => {
     expect(client.calls[0].params).toEqual(["user_missing"]);
   });
 
-  test("listGroups forwards search, limit, offset positionally", async () => {
+  test("listGroups forwards search, limit, offset, filter positionally", async () => {
     const client = makeClient({ total: 0, groups: [] });
     const repository = createSupabaseAdminRepository(client);
 
-    await repository.listGroups("trip", 10, 0);
+    await repository.listGroups("trip", 10, 0, "deleted");
 
     expect(client.calls[0].sql).toContain("admin_console_groups");
-    expect(client.calls[0].params).toEqual(["trip", 10, 0]);
+    expect(client.calls[0].params).toEqual(["trip", 10, 0, "deleted"]);
+  });
+
+  const actor = { id: "user_admin", email: "admin@example.com" };
+
+  test("setUserDisabled forwards actor identity and the disabled flag", async () => {
+    const client = makeClient({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
+    const repository = createSupabaseAdminRepository(client);
+
+    const result = await repository.setUserDisabled(actor, "user_alice", true);
+
+    expect(result).toEqual({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
+    expect(client.calls[0].mode).toBe("maybeOne");
+    expect(client.calls[0].sql).toContain("admin_console_set_user_disabled");
+    expect(client.calls[0].params).toEqual(["user_admin", "admin@example.com", "user_alice", true]);
+  });
+
+  test("setGroupArchived and setGroupDeleted forward actor and flags", async () => {
+    const client = makeClient({ id: "group_1", archived_at: null, deleted_at: null });
+    const repository = createSupabaseAdminRepository(client);
+
+    await repository.setGroupArchived(actor, "group_1", true);
+    await repository.setGroupDeleted(actor, "group_1", false);
+
+    expect(client.calls[0].sql).toContain("admin_console_set_group_archived");
+    expect(client.calls[0].params).toEqual(["user_admin", "admin@example.com", "group_1", true]);
+    expect(client.calls[1].sql).toContain("admin_console_set_group_deleted");
+    expect(client.calls[1].params).toEqual(["user_admin", "admin@example.com", "group_1", false]);
+  });
+
+  test("group write operations pass null through for missing groups", async () => {
+    const repository = createSupabaseAdminRepository(makeClient(null));
+
+    await expect(repository.setGroupArchived(actor, "group_missing", true)).resolves.toBeNull();
+    await expect(repository.setGroupDeleted(actor, "group_missing", true)).resolves.toBeNull();
+    await expect(repository.setUserDisabled(actor, "user_missing", true)).resolves.toBeNull();
   });
 });

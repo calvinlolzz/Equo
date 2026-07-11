@@ -34,6 +34,9 @@ import {
   adminListUsersRoute,
   adminMeRoute,
   adminOverviewRoute,
+  adminSetGroupArchivedRoute,
+  adminSetGroupDeletedRoute,
+  adminSetUserDisabledRoute,
   adminUserDetailRoute,
 } from "../routes/adminRoutes.js";
 import { createExpenseRoute, deleteExpenseRoute, listExpensesPageRoute } from "../routes/expenseRoutes.js";
@@ -396,7 +399,35 @@ export function createHttpRuntime(options: RuntimeOptions) {
           search: queryParam(request, "search"),
           limit: limitParam ? Number(limitParam) : undefined,
           offset: offsetParam ? Number(offsetParam) : undefined,
+          filter: queryParam(request, "filter"),
         });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/users\/([^/]+)\/(disable|enable)$/,
+      label: "POST /api/v1/admin/users/:userId/(disable|enable)",
+      async handle(request, match) {
+        const result = await adminSetUserDisabledRoute(routeOptions(options, request), match[1], match[2] === "disable");
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)\/(archive|unarchive)$/,
+      label: "POST /api/v1/admin/groups/:groupId/(archive|unarchive)",
+      async handle(request, match) {
+        const result = await adminSetGroupArchivedRoute(routeOptions(options, request), match[1], match[2] === "archive");
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)\/(delete|restore)$/,
+      label: "POST /api/v1/admin/groups/:groupId/(delete|restore)",
+      async handle(request, match) {
+        const result = await adminSetGroupDeletedRoute(routeOptions(options, request), match[1], match[2] === "delete");
         return jsonResponse(result.status, result.body);
       },
     },

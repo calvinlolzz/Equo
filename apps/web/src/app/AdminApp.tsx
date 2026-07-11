@@ -3,6 +3,7 @@ import { LayoutDashboard, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
+  type AdminGroupFilterOption,
   type AdminGroupListPage,
   type AdminMeSummary,
   type AdminOverviewSummary,
@@ -240,6 +241,7 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
                   <th className="admin-table__num">支出筆數</th>
                   <th>最後活躍</th>
                   <th>加入時間</th>
+                  <th>狀態</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,11 +253,12 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
                     <td className="admin-table__num">{user.expense_count}</td>
                     <td>{describeLastSeen(user.last_seen_at, now)}</td>
                     <td>{formatDate(user.created_at)}</td>
+                    <td>{user.disabled_at ? <span className="admin-badge admin-badge--danger">已停用</span> : "使用中"}</td>
                   </tr>
                 ))}
                 {state.page.users.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="admin-table__empty">
+                    <td colSpan={7} className="admin-table__empty">
                       沒有符合的使用者
                     </td>
                   </tr>
@@ -288,6 +291,7 @@ function UserDetailPanel({
 }) {
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [error, setError] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -303,6 +307,28 @@ function UserDetailPanel({
       cancelled = true;
     };
   }, [client, userId]);
+
+  async function toggleDisabled() {
+    if (!detail) return;
+    const disabling = !detail.user.disabled_at;
+    const label = detail.user.display_name || detail.user.email;
+    const confirmed = window.confirm(
+      disabling
+        ? `確定要停用「${label}」嗎？停用後該帳號無法登入，群組內的歷史帳目會保留。`
+        : `確定要恢復「${label}」的帳號嗎？恢復後即可重新登入。`,
+    );
+    if (!confirmed) return;
+
+    setActionBusy(true);
+    try {
+      const result = await client.adminSetUserDisabled(detail.user.id, disabling);
+      setDetail({ ...detail, user: { ...detail.user, disabled_at: result.disabled_at } });
+    } catch {
+      setError(disabling ? "停用失敗，請稍後再試。" : "恢復失敗，請稍後再試。");
+    } finally {
+      setActionBusy(false);
+    }
+  }
 
   return (
     <section aria-label="使用者詳情">
@@ -323,14 +349,25 @@ function UserDetailPanel({
                 {(detail.user.display_name || detail.user.email).slice(0, 1).toUpperCase()}
               </div>
             )}
-            <div>
-              <h2 className="admin-user-card__name">{detail.user.display_name || "—"}</h2>
+            <div className="admin-user-card__body">
+              <h2 className="admin-user-card__name">
+                {detail.user.display_name || "—"}
+                {detail.user.disabled_at && <span className="admin-badge admin-badge--danger">已停用</span>}
+              </h2>
               <p className="admin-user-card__email">{detail.user.email}</p>
               <p className="admin-user-card__meta">
                 加入 {formatDate(detail.user.created_at)}・最後活躍 {describeLastSeen(detail.user.last_seen_at, Date.now())}
                 ・{detail.user.group_count} 個群組・{detail.user.expense_count} 筆支出
               </p>
             </div>
+            <button
+              type="button"
+              className={detail.user.disabled_at ? "admin-action" : "admin-action admin-action--danger"}
+              disabled={actionBusy}
+              onClick={toggleDisabled}
+            >
+              {actionBusy ? "處理中…" : detail.user.disabled_at ? "恢復帳號" : "停用帳號"}
+            </button>
           </article>
 
           <h3 className="admin-subheading">所屬群組</h3>
@@ -375,17 +412,33 @@ function UserDetailPanel({
   );
 }
 
+const GROUP_FILTER_CHIPS: Array<{ key: AdminGroupFilterOption; label: string }> = [
+  { key: "all", label: "全部" },
+  { key: "archived", label: "已封存" },
+  { key: "empty", label: "空群組" },
+  { key: "deleted", label: "已刪除" },
+];
+
+function groupStatusLabel(group: { archived_at: string | null; deleted_at: string | null }): string {
+  if (group.deleted_at) return "已刪除";
+  if (group.archived_at) return "已封存";
+  return "使用中";
+}
+
 function GroupsPanel({ client }: { client: EquoApiClient }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<AdminGroupFilterOption>("all");
   const [offset, setOffset] = useState(0);
   const [state, setState] = useState<ListState<AdminGroupListPage>>({ page: null, loading: true, error: "" });
+  const [busyGroupId, setBusyGroupId] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setState((current) => ({ ...current, loading: true, error: "" }));
     client
-      .adminListGroups({ search, limit: PAGE_SIZE, offset })
+      .adminListGroups({ search, limit: PAGE_SIZE, offset, filter })
       .then((page) => {
         if (!cancelled) setState({ page, loading: false, error: "" });
       })
@@ -395,7 +448,31 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
     return () => {
       cancelled = true;
     };
-  }, [client, search, offset]);
+  }, [client, search, offset, filter, reloadKey]);
+
+  async function runGroupAction(groupId: string, name: string, action: "archive" | "unarchive" | "delete" | "restore") {
+    const confirmText: Record<typeof action, string> = {
+      archive: `確定要封存「${name}」嗎？成員將無法再記帳，但資料保留。`,
+      unarchive: `確定要解除封存「${name}」嗎？`,
+      delete: `確定要刪除「${name}」嗎？群組會從所有成員的列表消失，之後可在「已刪除」檢視復原。`,
+      restore: `確定要復原「${name}」嗎？群組會重新出現在成員的列表。`,
+    };
+    if (!window.confirm(confirmText[action])) return;
+
+    setBusyGroupId(groupId);
+    try {
+      if (action === "archive" || action === "unarchive") {
+        await client.adminSetGroupArchived(groupId, action === "archive");
+      } else {
+        await client.adminSetGroupDeleted(groupId, action === "delete");
+      }
+      setReloadKey((key) => key + 1);
+    } catch {
+      setState((current) => ({ ...current, error: "操作失敗，請稍後再試。" }));
+    } finally {
+      setBusyGroupId("");
+    }
+  }
 
   const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.groups.length) : null;
 
@@ -419,6 +496,22 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
         <button type="submit">搜尋</button>
       </form>
 
+      <div className="admin-chips" role="group" aria-label="群組篩選">
+        {GROUP_FILTER_CHIPS.map((chip) => (
+          <button
+            key={chip.key}
+            type="button"
+            className={filter === chip.key ? "admin-chip admin-chip--active" : "admin-chip"}
+            onClick={() => {
+              setOffset(0);
+              setFilter(chip.key);
+            }}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
       {state.error && <p className="admin-error">{state.error}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
@@ -436,24 +529,67 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
                   <th>最後記帳</th>
                   <th>建立時間</th>
                   <th>狀態</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {state.page.groups.map((group) => (
-                  <tr key={group.id}>
-                    <td>{group.name}</td>
-                    <td>{group.owner_display_name ?? "—"}</td>
-                    <td className="admin-table__num">{group.member_count}</td>
-                    <td className="admin-table__num">{group.expense_count}</td>
-                    <td className="admin-table__num">{formatAmount(group.spend_total_minor, group.currency)}</td>
-                    <td>{group.last_expense_at ? formatDate(group.last_expense_at) : "—"}</td>
-                    <td>{formatDate(group.created_at)}</td>
-                    <td>{group.archived_at ? "已封存" : "使用中"}</td>
-                  </tr>
-                ))}
+                {state.page.groups.map((group) => {
+                  const busy = busyGroupId === group.id;
+                  return (
+                    <tr key={group.id}>
+                      <td>{group.name}</td>
+                      <td>{group.owner_display_name ?? "—"}</td>
+                      <td className="admin-table__num">{group.member_count}</td>
+                      <td className="admin-table__num">{group.expense_count}</td>
+                      <td className="admin-table__num">{formatAmount(group.spend_total_minor, group.currency)}</td>
+                      <td>{group.last_expense_at ? formatDate(group.last_expense_at) : "—"}</td>
+                      <td>{formatDate(group.created_at)}</td>
+                      <td>
+                        {group.deleted_at ? (
+                          <span className="admin-badge admin-badge--danger">已刪除</span>
+                        ) : (
+                          groupStatusLabel(group)
+                        )}
+                      </td>
+                      <td className="admin-table__actions">
+                        {group.deleted_at ? (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={() => runGroupAction(group.id, group.name, "restore")}
+                          >
+                            復原
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="admin-action"
+                              disabled={busy}
+                              onClick={() =>
+                                runGroupAction(group.id, group.name, group.archived_at ? "unarchive" : "archive")
+                              }
+                            >
+                              {group.archived_at ? "解封存" : "封存"}
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-action admin-action--danger"
+                              disabled={busy}
+                              onClick={() => runGroupAction(group.id, group.name, "delete")}
+                            >
+                              刪除
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {state.page.groups.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="admin-table__empty">
+                    <td colSpan={9} className="admin-table__empty">
                       沒有符合的群組
                     </td>
                   </tr>

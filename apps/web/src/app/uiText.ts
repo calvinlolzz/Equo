@@ -67,6 +67,7 @@ export const UI_TEXT = {
     profile: "個人資料",
     loginSuccessPrefix: "已登入：",
     loginFailed: "登入失敗，請再試一次。",
+    accountDisabled: "此帳號已被停用，如有疑問請聯絡管理員。",
     logoutSuccess: "已登出",
     settlementTransfer: "清償轉帳",
     groupNotFound: "找不到這個群組，可能已被刪除或你沒有存取權限。",

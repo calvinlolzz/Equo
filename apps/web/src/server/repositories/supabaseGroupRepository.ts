@@ -33,7 +33,10 @@ export async function upsertUserByGoogleIdentity(
   client: SupabaseQueryClient,
   identity: GoogleIdentity,
 ) {
-  const user = await client.one<AuthenticatedContext["user"]>(
+  // deleted_at rides along so callers (authRoutes, requireAuthenticatedUser)
+  // can refuse admin-disabled accounts - the upsert itself must NOT clear it,
+  // or a disabled user could re-enable themselves by logging in.
+  const user = await client.one<AuthenticatedContext["user"] & { deleted_at?: string | null }>(
     `
       insert into public.users (id, google_sub, email, display_name, avatar_url, updated_at)
       values ($1, $2, $3, $4, $5, now())
@@ -42,7 +45,7 @@ export async function upsertUserByGoogleIdentity(
         display_name = excluded.display_name,
         avatar_url = excluded.avatar_url,
         updated_at = now()
-      returning id, google_sub, email, display_name, avatar_url
+      returning id, google_sub, email, display_name, avatar_url, deleted_at
     `,
     [
       identity.auth_user_id,

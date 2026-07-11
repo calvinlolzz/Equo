@@ -36,16 +36,36 @@ type AuthGoogleRouteResult =
     }
   | {
       ok: false;
-      status: 401;
+      status: 401 | 403;
       headers: Record<string, string>;
       body: {
         error: {
-          code: "UNAUTHENTICATED";
+          code: "UNAUTHENTICATED" | "ACCOUNT_DISABLED";
           message: string;
           request_id: string;
         };
       };
     };
+
+/**
+ * Shared refusal for admin-disabled accounts (users.deleted_at set): no
+ * session token is issued, so the block takes effect at the next login even
+ * though the upsert has already refreshed the profile fields.
+ */
+function accountDisabledResult(request_id: string): AuthGoogleRouteResult {
+  return {
+    ok: false,
+    status: 403,
+    headers: {},
+    body: {
+      error: {
+        code: "ACCOUNT_DISABLED",
+        message: "此帳號已被停用。",
+        request_id,
+      },
+    },
+  };
+}
 
 export async function authGoogleRoute(
   options: AuthRouteOptions,
@@ -68,7 +88,12 @@ export async function authGoogleRoute(
     };
   }
 
-  const user = await upsertUserByGoogleIdentity(options.client, identity);
+  const { deleted_at, ...user } = await upsertUserByGoogleIdentity(options.client, identity);
+
+  if (deleted_at) {
+    return accountDisabledResult("req_auth_google");
+  }
+
   const sessionIdentity = {
     auth_user_id: user.id,
     google_sub: user.google_sub,
@@ -116,7 +141,12 @@ export async function authSupabaseRoute(
     };
   }
 
-  const user = await upsertUserByGoogleIdentity(options.client, identity);
+  const { deleted_at, ...user } = await upsertUserByGoogleIdentity(options.client, identity);
+
+  if (deleted_at) {
+    return accountDisabledResult("req_auth_supabase");
+  }
+
   const sessionIdentity = {
     auth_user_id: user.id,
     google_sub: user.google_sub,

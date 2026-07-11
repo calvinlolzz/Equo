@@ -7,8 +7,12 @@ import {
   handleAdminListUsers,
   handleAdminMe,
   handleAdminOverview,
+  handleAdminSetGroupArchived,
+  handleAdminSetGroupDeleted,
+  handleAdminSetUserDisabled,
   handleAdminUserDetail,
   normalizeAdminListQuery,
+  normalizeGroupFilter,
 } from "./admin.js";
 
 const context = {
@@ -37,6 +41,7 @@ const userSummary = {
   avatar_url: null,
   created_at: "2026-07-01T00:00:00.000Z",
   last_seen_at: "2026-07-10T00:00:00.000Z",
+  disabled_at: null,
   group_count: 2,
   expense_count: 9,
 };
@@ -58,6 +63,15 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async listGroups() {
       return { total: 0, groups: [] };
     },
+    async setUserDisabled(_actor, userId, disabled) {
+      return { id: userId, disabled_at: disabled ? "2026-07-11T00:00:00.000Z" : null };
+    },
+    async setGroupArchived(_actor, groupId, archived) {
+      return { id: groupId, archived_at: archived ? "2026-07-11T00:00:00.000Z" : null, deleted_at: null };
+    },
+    async setGroupDeleted(_actor, groupId, deleted) {
+      return { id: groupId, archived_at: null, deleted_at: deleted ? "2026-07-11T00:00:00.000Z" : null };
+    },
     ...overrides,
   };
 }
@@ -76,6 +90,9 @@ describe("admin handlers", () => {
       handleAdminListUsers(repository, context),
       handleAdminUserDetail(repository, context, "user_alice"),
       handleAdminListGroups(repository, context),
+      handleAdminSetUserDisabled(repository, context, "user_alice", true),
+      handleAdminSetGroupArchived(repository, context, "group_1", true),
+      handleAdminSetGroupDeleted(repository, context, "group_1", true),
     ]);
 
     for (const result of results) {
@@ -141,11 +158,66 @@ describe("admin handlers", () => {
     expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
   });
 
-  test("list groups succeeds for admins", async () => {
-    const result = await handleAdminListGroups(makeRepository(), context, { search: "trip" });
+  test("list groups forwards the normalized filter to the repository", async () => {
+    let received: string | null = null;
+    const repository = makeRepository({
+      async listGroups(_search, _limit, _offset, filter) {
+        received = filter;
+        return { total: 0, groups: [] };
+      },
+    });
+
+    await handleAdminListGroups(repository, context, { filter: "deleted" });
+    expect(received).toBe("deleted");
+
+    await handleAdminListGroups(repository, context, { filter: "nonsense" });
+    expect(received).toBe("all");
+  });
+
+  test("disable user passes the acting admin and returns the new state", async () => {
+    let actorEmail = "";
+    const repository = makeRepository({
+      async setUserDisabled(actor, userId, disabled) {
+        actorEmail = actor.email;
+        return { id: userId, disabled_at: disabled ? "2026-07-11T00:00:00.000Z" : null };
+      },
+    });
+
+    const result = await handleAdminSetUserDisabled(repository, context, "user_alice", true);
 
     expect(result.ok).toBe(true);
-    expect(result.body).toEqual({ total: 0, groups: [] });
+    expect(result.body).toEqual({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
+    expect(actorEmail).toBe("admin@example.com");
+  });
+
+  test("group operations return 404 ADMIN_NOT_FOUND for unknown groups", async () => {
+    const repository = makeRepository({
+      async setGroupArchived() {
+        return null;
+      },
+      async setGroupDeleted() {
+        return null;
+      },
+    });
+
+    const archived = await handleAdminSetGroupArchived(repository, context, "group_missing", true);
+    const deleted = await handleAdminSetGroupDeleted(repository, context, "group_missing", true);
+
+    for (const result of [archived, deleted]) {
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(404);
+      expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
+    }
+  });
+});
+
+describe("normalizeGroupFilter", () => {
+  test("accepts known filters and falls back to all", () => {
+    expect(normalizeGroupFilter("deleted")).toBe("deleted");
+    expect(normalizeGroupFilter("empty")).toBe("empty");
+    expect(normalizeGroupFilter("archived")).toBe("archived");
+    expect(normalizeGroupFilter(undefined)).toBe("all");
+    expect(normalizeGroupFilter("bogus")).toBe("all");
   });
 });
 

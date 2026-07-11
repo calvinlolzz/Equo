@@ -370,6 +370,87 @@
   font-size: 15px;
 }
 
+.admin-user-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.admin-badge--danger {
+  background: #fde8e6;
+  color: #b3261e;
+}
+
+.admin-action {
+  padding: 5px 12px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-action:hover:not(:disabled) {
+  background: #eef0f3;
+}
+
+.admin-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.admin-action--danger {
+  border-color: #e5b3af;
+  color: #b3261e;
+}
+
+.admin-action--danger:hover:not(:disabled) {
+  background: #fde8e6;
+}
+
+.admin-table__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.admin-chips {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.admin-chip {
+  padding: 5px 14px;
+  border: 1px solid #d5d9de;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5b6069;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-chip:hover {
+  background: #eef0f3;
+}
+
+.admin-chip--active,
+.admin-chip--active:hover {
+  background: #1c1f23;
+  border-color: #1c1f23;
+  color: #ffffff;
+}
+
 /* ---- Narrow screens: sidebar becomes a stacked top bar ---- */
 
 @media (max-width: 760px) {
@@ -515,6 +596,47 @@
 
   .admin-error {
     color: #ef8a84;
+  }
+
+  .admin-badge--danger {
+    background: #4a2320;
+    color: #ef8a84;
+  }
+
+  .admin-action {
+    background: #1e2126;
+    border-color: #2c3037;
+    color: #e6e8eb;
+  }
+
+  .admin-action:hover:not(:disabled) {
+    background: #262a30;
+  }
+
+  .admin-action--danger {
+    border-color: #6b3531;
+    color: #ef8a84;
+  }
+
+  .admin-action--danger:hover:not(:disabled) {
+    background: #4a2320;
+  }
+
+  .admin-chip {
+    background: #1e2126;
+    border-color: #2c3037;
+    color: #a2a7b0;
+  }
+
+  .admin-chip:hover {
+    background: #262a30;
+  }
+
+  .admin-chip--active,
+  .admin-chip--active:hover {
+    background: #e6e8eb;
+    border-color: #e6e8eb;
+    color: #16181c;
   }
 
   @media (max-width: 760px) {

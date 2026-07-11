@@ -339,8 +339,26 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
     adminUserDetail(userId: string) {
       return request<AdminUserDetail>(`/admin/users/${userId}`, { method: "GET" });
     },
-    adminListGroups(options: AdminListOptions = {}) {
+    adminListGroups(options: AdminGroupListOptions = {}) {
       return request<AdminGroupListPage>(`/admin/groups${adminListQuery(options)}`, { method: "GET" });
+    },
+    adminSetUserDisabled(userId: string, disabled: boolean) {
+      return request<{ id: string; disabled_at: string | null }>(
+        `/admin/users/${userId}/${disabled ? "disable" : "enable"}`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+    },
+    adminSetGroupArchived(groupId: string, archived: boolean) {
+      return request<AdminGroupStateResponse>(`/admin/groups/${groupId}/${archived ? "archive" : "unarchive"}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    },
+    adminSetGroupDeleted(groupId: string, deleted: boolean) {
+      return request<AdminGroupStateResponse>(`/admin/groups/${groupId}/${deleted ? "delete" : "restore"}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
     },
   };
 }
@@ -351,11 +369,24 @@ export type AdminListOptions = {
   offset?: number;
 };
 
-function adminListQuery(options: AdminListOptions): string {
+export type AdminGroupFilterOption = "all" | "archived" | "empty" | "deleted";
+
+export type AdminGroupListOptions = AdminListOptions & {
+  filter?: AdminGroupFilterOption;
+};
+
+export type AdminGroupStateResponse = {
+  id: string;
+  archived_at: string | null;
+  deleted_at: string | null;
+};
+
+function adminListQuery(options: AdminGroupListOptions): string {
   const params = new URLSearchParams();
   if (options.search) params.set("search", options.search);
   if (options.limit !== undefined) params.set("limit", String(options.limit));
   if (options.offset !== undefined) params.set("offset", String(options.offset));
+  if (options.filter && options.filter !== "all") params.set("filter", options.filter);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -382,6 +413,7 @@ export type AdminUserRow = {
   avatar_url: string | null;
   created_at: string;
   last_seen_at: string;
+  disabled_at: string | null;
   group_count: number;
   expense_count: number;
 };
@@ -416,6 +448,7 @@ export type AdminGroupRow = {
   currency: string;
   created_at: string;
   archived_at: string | null;
+  deleted_at: string | null;
   member_count: number;
   expense_count: number;
   spend_total_minor: number;
