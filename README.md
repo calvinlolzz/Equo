@@ -1,97 +1,65 @@
 # Equo 算好
 
-Equo 是一個分帳 App 正式站專案，前台提供手機優先的分帳體驗，後台提供營運與資料檢查入口。專案目前以靜態前端、Vercel 部署與 Supabase 雲端資料庫為核心。
+Equo 是一個手機優先的分帳 Web App：建立群組、記錄支出、多種分攤方式、自動計算餘額與最少轉帳的結算建議。
 
-## 目前功能
+正式站：<https://equo-mu.vercel.app>
 
-- Email 登入與雲端同步入口
-- 群組、成員、支出、分攤與結算
-- 邀請連結與成員角色
-- 手機版底部導覽與新增支出流程
-- 夜間模式與液態毛玻璃視覺
-- CSV / HTML 匯出
-- 付款紀錄、固定帳單與提醒
-- 後台管理入口 `/admin`
-- Supabase RLS 資料保護
-- 前台 / 後台錯誤紀錄
-- 用戶問題與建議回饋入口
+## 功能
 
-## 預覽
-
-本機前台：
-
-```bash
-python -m http.server 4173 --bind 127.0.0.1
-```
-
-```text
-http://127.0.0.1:4173/index.html
-```
-
-本機後台頁面：
-
-```text
-http://127.0.0.1:4173/admin.html
-```
-
-正式站後台路徑：
-
-```text
-/admin
-```
+- Google 登入牆（Supabase OAuth redirect，無訪客模式）
+- 群組建立、邀請連結加入、成員管理與頭像
+- 支出記錄：均分、指定金額、比例、份數等分攤方式
+- 群組餘額與最少轉帳結算建議
+- 支出分頁載入與伺服器端彙總
+- 群組封面與圖片上傳（Supabase Storage）
+- 行動版底部導覽、bottom sheet 操作、液態毛玻璃視覺
 
 ## 技術棧
 
-- Frontend：單檔 HTML / CSS / JavaScript
-- Hosting：Vercel
-- Auth：Supabase Auth
-- Database：Supabase PostgreSQL
-- Security：Row Level Security
-- PWA：Service Worker 與 manifest
+- 前端：React 19 + TypeScript + Vite（`apps/web`）
+- API：單一 Vercel Function `api/v1/[...path].ts` → `vercel-api/v1Handler.ts` → `apps/web/src/server`（routes → handlers → repositories）
+- 資料庫：Supabase Postgres（server 端以 service role 經 REST 存取，RLS 與 RPC 面已強化）
+- 認證：Supabase OAuth（Google）換發 Equo 自簽 session cookie（`equo_session`）
+- 測試：Vitest（node 環境、純函式單元測試）
 
-詳細內容請看 [docs/TECH_STACK.md](docs/TECH_STACK.md)。
+## 開發
 
-## Supabase
-
-正式資料表與後台管理員設定請看 [docs/SUPABASE.md](docs/SUPABASE.md)。
-
-必要環境變數：
-
-```text
-SUPABASE_URL=你的 Project URL
-SUPABASE_ANON_KEY=你的 anon public key
+```bash
+npm install
+npm run dev      # 本機開發伺服器
+npm test         # 全部測試
+npm run build    # tsc -b && vite build
 ```
 
-後台管理員需要先建立 Supabase Auth 帳號，再加入 `app_admins`。
+發佈前完整驗證：
 
-## 部署
+```bash
+npm run verify:release
+```
 
-1. GitHub 儲存專案。
-2. Vercel 連接 GitHub repo。
-3. Vercel 設定 Supabase 環境變數。
-4. Supabase SQL Editor 執行 `supabase/schema.sql`。
-5. 將管理員帳號加入 `app_admins`。
+正式站煙霧測試（需 `EQUO_BASE_URL`）：
 
-部署說明請看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+```bash
+npm run smoke:production:all
+```
 
-## 測試
+## 專案結構
 
-測試重點：
+```
+api/                  Vercel Function 進入點
+vercel-api/           v1 API handler（轉接到 apps/web/src/server）
+apps/web/src/app/     前端 SPA（App.tsx 為主畫面）
+apps/web/src/server/  API routes、handlers、repositories、auth
+apps/web/src/domain/  金額與結算領域邏輯
+supabase/migrations/  資料庫 migration（正式環境歷史以 Supabase 端為準）
+scripts/              release 驗證與煙霧測試腳本
+docs/                 部署、OAuth、Supabase、測試等文件
+```
 
-- 前台登入、登出與資料同步
-- 建立群組、成員、支出與結算
-- 邀請連結加入群組
-- 手機版新增支出流程
-- 夜間模式與底部導覽可讀性
-- 後台 `/admin` 權限保護
-- 後台總覽資料是否來自 Supabase
-- 後台系統頁是否能看到最近錯誤紀錄
-- 後台紀錄頁是否能看到用戶回饋
+## 相關文件
 
-詳細測試請看 [docs/TESTING.md](docs/TESTING.md)。
-
-## 產品文件
-
-- [docs/SDD.md](docs/SDD.md)
-- [docs/equo_sdd_v2.html](docs/equo_sdd_v2.html)
-- [docs/Equo 算好設計優化建議書.md](docs/Equo%20算好設計優化建議書.md)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — 部署流程與環境變數
+- [docs/OAUTH.md](docs/OAUTH.md) — Google / Supabase OAuth 設定
+- [docs/SUPABASE.md](docs/SUPABASE.md) — 資料庫說明
+- [docs/TESTING.md](docs/TESTING.md) — 測試流程
+- [docs/claude_continuation_handoff.md](docs/claude_continuation_handoff.md) — 重要產品決策記錄（登入牆等）

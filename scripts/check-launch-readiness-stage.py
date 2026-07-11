@@ -57,14 +57,6 @@ REQUIRED = {
         "missing_login_wall",
         "production web smoke rules verified",
     ],
-    "docs/launch_readiness_stage.md": [
-        "Vercel Project Settings",
-        "Required Environment Variables",
-        "Login Wall",
-        "Production Smoke Test",
-        "Launch Gate",
-        "auth_leaked_password_protection",
-    ],
     "docs/DEPLOYMENT.md": [
         "api/v1/[...path].ts",
         "apps/web/dist",

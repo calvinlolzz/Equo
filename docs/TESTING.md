@@ -1,45 +1,56 @@
 # Equo 算好 測試流程
 
-## 1. Email 登入測試
+## 1. 自動化測試
 
-1. 開啟正式站：`https://equo-mu.vercel.app`
-2. 輸入 Email 與至少 6 碼密碼。
-3. 點選「建立帳號」。
-4. 若 Supabase 要求信箱確認，先完成信箱確認後再回到網站登入。
-5. 登入成功後，到「我的」頁確認雲端同步顯示為 Supabase 已登入。
-6. 點選「登出」，確認會回到登入畫面。
+```bash
+npm test             # Vitest 全套單元測試
+npm run build        # 型別檢查 + 產出 bundle
+npm run verify:release   # test + build + 打包內容檢查 + 編碼檢查 + launch readiness
+```
 
-## 2. 資料同步測試
+`verify:release` 是發佈前的必跑關卡，任何一項失敗都不應部署。
 
-1. 使用 Email 登入。
-2. 新增一個群組。
-3. 新增一筆支出。
-4. 到「我的」頁點選「同步到雲端」。
-5. 點選「檢查雲端」，確認雲端備份有顯示群組與支出數量。
-6. 換另一個瀏覽器或無痕視窗登入同一帳號。
-7. 點選「從雲端還原」。
-8. 確認群組與支出資料一致。
+## 2. 手動驗收（正式站或 preview）
 
-## 3. 手機畫面測試
+### 登入
 
-檢查尺寸：
+1. 開啟 <https://equo-mu.vercel.app>，未登入時只會看到登入牆（置中 Logo、「使用 Google 登入」按鈕）。
+2. 點「使用 Google 登入」，完成 Google 授權後應自動回到 App 並進入群組畫面。
+3. 重新整理頁面，session 應保持登入狀態。
 
-- iPhone SE：寬 375px
-- iPhone 14/15：寬 390px
-- iPhone Pro Max：寬 430px
+### 群組與成員
 
-檢查項目：
+1. 建立新群組，輸入群組名稱與成員。
+2. 產生邀請連結，用另一個帳號開啟連結加入群組。
+3. 確認成員列表顯示正確、頭像正常。
 
-- 登入表單不溢出。
-- 底部導覽 icon 清楚可見。
-- 夜間模式文字與 icon 清楚可見。
-- 新增支出、群組設定、資料同步底部彈窗可完整操作。
-- 三個同步按鈕在小螢幕會自動改成直向排列。
+### 支出與分攤
 
-## 4. 交付前檢查
+1. 新增一筆均分支出，確認每人分攤金額正確。
+2. 新增指定金額 / 比例 / 份數的支出，確認分攤結果。
+3. 編輯與刪除支出，確認餘額即時更新。
 
-- GitHub `main` 已推送最新版本。
-- Vercel 正式站可開啟。
-- `/api/config` 顯示 Supabase configured 為 true。
-- README、部署文件與 Supabase 文件保持同步。
-- 目前限制已明確標註：Apple/Google OAuth 需在 Supabase Provider 內另外設定。
+### 餘額與結算
+
+1. 開啟餘額頁，確認每位成員的應收 / 應付正確。
+2. 查看結算建議，確認轉帳筆數最少且金額吻合。
+
+### 行動版
+
+1. 以手機寬度（375 / 390 / 430px）檢查：登入牆、底部導覽、新增支出 bottom sheet。
+2. 確認 bottom sheet 可下滑關閉、深色模式下文字清楚。
+
+### 登出
+
+1. 登出後應回到登入牆，重新整理仍維持未登入狀態。
+
+## 3. 正式站煙霧測試（腳本）
+
+```bash
+# 需先設定 EQUO_BASE_URL，例如 https://equo-mu.vercel.app
+npm run smoke:production:web    # 首頁 shell、登入牆與路由規則
+npm run smoke:production        # API 基本行為（未帶認證時的回應）
+npm run smoke:production:all    # 以上全部
+```
+
+帶認證的 API 煙霧測試需要 `EQUO_GOOGLE_ID_TOKEN`（見 `scripts/smoke-production-api.py`）。
