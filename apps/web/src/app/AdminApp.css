@@ -1,0 +1,389 @@
+/* Admin console styles - deliberately plain and information-dense, separate
+   from App.css so the user-facing liquid-glass theme never leaks in. */
+
+.admin-shell {
+  min-height: 100vh;
+  background: #f4f5f7;
+  color: #1c1f23;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.admin-shell--gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.admin-gate {
+  max-width: 360px;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.admin-gate__brand {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.admin-gate__link {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: #1c1f23;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e3e6ea;
+  flex-wrap: wrap;
+}
+
+.admin-header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.admin-header__logo {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.admin-header__title {
+  color: #5b6069;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.admin-tab {
+  border: none;
+  background: transparent;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #5b6069;
+  cursor: pointer;
+}
+
+.admin-tab:hover {
+  background: #eef0f3;
+}
+
+.admin-tab--active {
+  background: #1c1f23;
+  color: #ffffff;
+}
+
+.admin-tab--active:hover {
+  background: #1c1f23;
+}
+
+.admin-header__user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #5b6069;
+}
+
+.admin-header__user a {
+  color: #1c1f23;
+}
+
+.admin-main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.admin-loading,
+.admin-error {
+  padding: 24px 0;
+  color: #5b6069;
+}
+
+.admin-error {
+  color: #b3261e;
+}
+
+.admin-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.admin-tile {
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.admin-tile__label {
+  margin: 0;
+  color: #5b6069;
+}
+
+.admin-tile__value {
+  margin: 4px 0 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.admin-tile__hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.admin-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.admin-search input {
+  flex: 1;
+  max-width: 320px;
+  padding: 8px 12px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  color: inherit;
+}
+
+.admin-search button,
+.admin-pagination button,
+.admin-back {
+  padding: 8px 16px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.admin-search button:hover,
+.admin-pagination button:hover:not(:disabled),
+.admin-back:hover {
+  background: #eef0f3;
+}
+
+.admin-pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.admin-back {
+  margin-bottom: 16px;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef0f3;
+  white-space: nowrap;
+}
+
+.admin-table thead th {
+  color: #5b6069;
+  font-weight: 500;
+  background: #fafbfc;
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table__num {
+  text-align: right;
+}
+
+.admin-table__row {
+  cursor: pointer;
+}
+
+.admin-table__row:hover {
+  background: #f6f8fa;
+}
+
+.admin-table__empty {
+  text-align: center;
+  color: #8a8f98;
+  padding: 32px 14px;
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: #5b6069;
+  flex-wrap: wrap;
+}
+
+.admin-pagination__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-user-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.admin-user-card__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.admin-user-card__avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1f23;
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.admin-user-card__name {
+  margin: 0;
+  font-size: 18px;
+}
+
+.admin-user-card__email {
+  margin: 2px 0 0;
+  color: #5b6069;
+}
+
+.admin-user-card__meta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.admin-subheading {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-shell {
+    background: #16181c;
+    color: #e6e8eb;
+  }
+
+  .admin-gate,
+  .admin-tile,
+  .admin-user-card,
+  .admin-table-wrap,
+  .admin-header {
+    background: #1e2126;
+    border-color: #2c3037;
+  }
+
+  .admin-gate__link,
+  .admin-tab--active {
+    background: #e6e8eb;
+    color: #16181c;
+  }
+
+  .admin-tab--active:hover {
+    background: #e6e8eb;
+  }
+
+  .admin-tab:hover {
+    background: #262a30;
+  }
+
+  .admin-header__title,
+  .admin-header__user,
+  .admin-tile__label,
+  .admin-loading,
+  .admin-pagination,
+  .admin-user-card__email {
+    color: #a2a7b0;
+  }
+
+  .admin-header__user a {
+    color: #e6e8eb;
+  }
+
+  .admin-search input,
+  .admin-search button,
+  .admin-pagination button,
+  .admin-back {
+    background: #1e2126;
+    border-color: #2c3037;
+    color: #e6e8eb;
+  }
+
+  .admin-search button:hover,
+  .admin-pagination button:hover:not(:disabled),
+  .admin-back:hover {
+    background: #262a30;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    border-bottom-color: #262a30;
+  }
+
+  .admin-table thead th {
+    background: #1a1d21;
+    color: #a2a7b0;
+  }
+
+  .admin-table__row:hover {
+    background: #23262c;
+  }
+
+  .admin-error {
+    color: #ef8a84;
+  }
+}

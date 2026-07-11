@@ -29,6 +29,13 @@ import {
   unarchiveGroupRoute,
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
+import {
+  adminListGroupsRoute,
+  adminListUsersRoute,
+  adminMeRoute,
+  adminOverviewRoute,
+  adminUserDetailRoute,
+} from "../routes/adminRoutes.js";
 import { createExpenseRoute, deleteExpenseRoute, listExpensesPageRoute } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
@@ -333,6 +340,63 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[2],
           payload.client_request_id,
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/me$/,
+      label: "GET /api/v1/admin/me",
+      async handle(request) {
+        const result = await adminMeRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/overview$/,
+      label: "GET /api/v1/admin/overview",
+      async handle(request) {
+        const result = await adminOverviewRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/users$/,
+      label: "GET /api/v1/admin/users",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListUsersRoute(routeOptions(options, request), {
+          search: queryParam(request, "search"),
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/users\/([^/]+)$/,
+      label: "GET /api/v1/admin/users/:userId",
+      async handle(request, match) {
+        const result = await adminUserDetailRoute(routeOptions(options, request), match[1]);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/groups$/,
+      label: "GET /api/v1/admin/groups",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListGroupsRoute(routeOptions(options, request), {
+          search: queryParam(request, "search"),
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+        });
         return jsonResponse(result.status, result.body);
       },
     },

@@ -15,6 +15,8 @@ export const errorCodes = [
   "INVITE_REVOKED",
   "RUNTIME_ENV_MISSING",
   "INVALID_IMAGE",
+  "ADMIN_FORBIDDEN",
+  "ADMIN_NOT_FOUND",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./app/App.css";
 import { App } from "./app/App";
@@ -10,10 +10,24 @@ if (!root) {
   throw new Error("MVP App Shell root element is missing");
 }
 
+// /admin serves the operator console as a lazy chunk of the same SPA bundle:
+// regular users never download it, and the admin page skips the WebGL
+// backdrop entirely.
+const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+const AdminApp = React.lazy(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
+
 createRoot(root).render(
   <React.StrictMode>
-    <GlassBackground />
-    <App />
+    {isAdminPath ? (
+      <Suspense fallback={null}>
+        <AdminApp />
+      </Suspense>
+    ) : (
+      <>
+        <GlassBackground />
+        <App />
+      </>
+    )}
   </React.StrictMode>,
 );
 

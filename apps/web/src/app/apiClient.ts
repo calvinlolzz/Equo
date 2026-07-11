@@ -327,5 +327,103 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         },
       );
     },
+    adminMe() {
+      return request<AdminMeSummary>("/admin/me", { method: "GET" });
+    },
+    adminOverview() {
+      return request<AdminOverviewSummary>("/admin/overview", { method: "GET" });
+    },
+    adminListUsers(options: AdminListOptions = {}) {
+      return request<AdminUserListPage>(`/admin/users${adminListQuery(options)}`, { method: "GET" });
+    },
+    adminUserDetail(userId: string) {
+      return request<AdminUserDetail>(`/admin/users/${userId}`, { method: "GET" });
+    },
+    adminListGroups(options: AdminListOptions = {}) {
+      return request<AdminGroupListPage>(`/admin/groups${adminListQuery(options)}`, { method: "GET" });
+    },
   };
 }
+
+export type AdminListOptions = {
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function adminListQuery(options: AdminListOptions): string {
+  const params = new URLSearchParams();
+  if (options.search) params.set("search", options.search);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export type AdminMeSummary = {
+  user: { id: string; email: string; display_name: string; avatar_url?: string | null };
+  role: string;
+};
+
+export type AdminOverviewSummary = {
+  user_count: number;
+  active_users_7d: number;
+  new_users_7d: number;
+  group_count: number;
+  active_groups_7d: number;
+  expense_count: number;
+  expenses_7d: number;
+};
+
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string;
+  last_seen_at: string;
+  group_count: number;
+  expense_count: number;
+};
+
+export type AdminUserListPage = {
+  total: number;
+  users: AdminUserRow[];
+};
+
+export type AdminUserGroupRow = {
+  id: string;
+  name: string;
+  currency: string;
+  role: string;
+  member_status: string;
+  joined_at: string;
+  archived_at: string | null;
+  member_count: number;
+  expense_count: number;
+  spend_total_minor: number;
+  last_expense_at: string | null;
+};
+
+export type AdminUserDetail = {
+  user: AdminUserRow;
+  groups: AdminUserGroupRow[];
+};
+
+export type AdminGroupRow = {
+  id: string;
+  name: string;
+  currency: string;
+  created_at: string;
+  archived_at: string | null;
+  member_count: number;
+  expense_count: number;
+  spend_total_minor: number;
+  last_expense_at: string | null;
+  owner_display_name: string | null;
+};
+
+export type AdminGroupListPage = {
+  total: number;
+  groups: AdminGroupRow[];
+};

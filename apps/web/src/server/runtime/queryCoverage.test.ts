@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { AuthenticatedContext } from "../auth/session.js";
+import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
 import {
   createSupabaseGroupRepository,
@@ -171,6 +172,16 @@ async function invokeEveryExpenseRepositoryMethod(client: SupabaseQueryClient) {
   await repo.recordClientRequest("group_1", "req_expense_3", "resource_1");
 }
 
+async function invokeEveryAdminRepositoryMethod(client: SupabaseQueryClient) {
+  const repo = createSupabaseAdminRepository(client);
+
+  await repo.findAdminRole("user_1");
+  await repo.getOverview();
+  await repo.listUsers("alice", 20, 0);
+  await repo.getUserDetail("user_1");
+  await repo.listGroups("trip", 20, 0);
+}
+
 async function invokeEverySettlementRepositoryMethod(client: SupabaseQueryClient) {
   const repo = createSupabaseSettlementRepository(client);
 
@@ -188,6 +199,7 @@ describe("Supabase REST query translator coverage", () => {
     await invokeEveryGroupRepositoryMethod(recordingClient);
     await invokeEveryExpenseRepositoryMethod(recordingClient);
     await invokeEverySettlementRepositoryMethod(recordingClient);
+    await invokeEveryAdminRepositoryMethod(recordingClient);
 
     expect(recordingClient.calls.length).toBeGreaterThan(0);
 

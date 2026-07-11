@@ -199,6 +199,39 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return undefined as T;
     }
 
+    // Admin console reporting RPCs (see supabaseAdminRepository.ts). The
+    // raw jsonb the function returns IS the repository's record shape, so
+    // each branch forwards params positionally and returns the value as-is.
+    if (normalized.includes("select public.admin_console_role(")) {
+      const role = await rpc<unknown>("admin_console_role", { p_user_id: params[0] });
+      return (role ?? null) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_overview(")) {
+      return (await rpc<unknown>("admin_console_overview", {})) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_users(")) {
+      return (await rpc<unknown>("admin_console_users", {
+        p_search: params[0],
+        p_limit: params[1],
+        p_offset: params[2],
+      })) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_user_detail(")) {
+      const detail = await rpc<unknown>("admin_console_user_detail", { p_user_id: params[0] });
+      return (detail ?? null) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_groups(")) {
+      return (await rpc<unknown>("admin_console_groups", {
+        p_search: params[0],
+        p_limit: params[1],
+        p_offset: params[2],
+      })) as T;
+    }
+
     if (normalized.includes("select public.get_group_detail(")) {
       const detail = await rpc<unknown>("get_group_detail", {
         p_group_id: params[0],
