@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LayoutDashboard, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
@@ -77,41 +78,50 @@ export function AdminApp() {
     );
   }
 
+  const navItems: Array<{ key: AdminTab; label: string; icon: typeof LayoutDashboard }> = [
+    { key: "overview", label: "總覽", icon: LayoutDashboard },
+    { key: "users", label: "使用者", icon: UsersRound },
+    { key: "groups", label: "群組", icon: WalletCards },
+  ];
+
   return (
     <div className="admin-shell">
-      <header className="admin-header">
-        <div className="admin-header__brand">
-          <span className="admin-header__logo">Equo</span>
-          <span className="admin-header__title">管理後台</span>
+      <aside className="admin-sidebar">
+        <div className="admin-sidebar__brand">
+          <span className="admin-sidebar__logo" aria-hidden="true">
+            E
+          </span>
+          <span className="admin-sidebar__brand-text">
+            <strong>Equo</strong>
+            <span>管理後台</span>
+          </span>
         </div>
-        <nav className="admin-tabs" aria-label="後台功能">
-          <button
-            type="button"
-            className={tab === "overview" ? "admin-tab admin-tab--active" : "admin-tab"}
-            onClick={() => setTab("overview")}
-          >
-            總覽
-          </button>
-          <button
-            type="button"
-            className={tab === "users" ? "admin-tab admin-tab--active" : "admin-tab"}
-            onClick={() => setTab("users")}
-          >
-            使用者
-          </button>
-          <button
-            type="button"
-            className={tab === "groups" ? "admin-tab admin-tab--active" : "admin-tab"}
-            onClick={() => setTab("groups")}
-          >
-            群組
-          </button>
+
+        <nav className="admin-nav" aria-label="後台功能">
+          <p className="admin-nav__section">平台</p>
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={tab === item.key ? "admin-nav__item admin-nav__item--active" : "admin-nav__item"}
+                onClick={() => setTab(item.key)}
+              >
+                <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
-        <div className="admin-header__user">
-          <span>{me?.user.email}</span>
+
+        <div className="admin-sidebar__footer">
+          <span className="admin-sidebar__email" title={me?.user.email}>
+            {me?.user.email}
+          </span>
           <a href="/">回主站</a>
         </div>
-      </header>
+      </aside>
 
       <main className="admin-main">
         {tab === "overview" && <OverviewPanel client={client} />}

@@ -1,7 +1,10 @@
 /* Admin console styles - deliberately plain and information-dense, separate
-   from App.css so the user-facing liquid-glass theme never leaks in. */
+   from App.css so the user-facing liquid-glass theme never leaks in. Layout
+   is a fixed left sidebar (brand / nav / session footer) + fluid main pane,
+   collapsing to a stacked top bar on narrow screens. */
 
 .admin-shell {
+  display: flex;
   min-height: 100vh;
   background: #f4f5f7;
   color: #1c1f23;
@@ -11,7 +14,6 @@
 }
 
 .admin-shell--gate {
-  display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -43,75 +45,131 @@
   text-decoration: none;
 }
 
-.admin-header {
+/* ---- Sidebar ---- */
+
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 224px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e3e6ea;
+  padding: 20px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.admin-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 12px 24px;
-  background: #ffffff;
-  border-bottom: 1px solid #e3e6ea;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 8px 18px;
 }
 
-.admin-header__brand {
+.admin-sidebar__logo {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.admin-header__logo {
-  font-size: 18px;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #1c1f23;
+  color: #ffffff;
   font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
-.admin-header__title {
-  color: #5b6069;
-}
-
-.admin-tabs {
+.admin-sidebar__brand-text {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  line-height: 1.2;
 }
 
-.admin-tab {
+.admin-sidebar__brand-text strong {
+  font-size: 15px;
+}
+
+.admin-sidebar__brand-text span:last-child {
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-nav__section {
+  margin: 6px 0 4px;
+  padding: 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #8a8f98;
+}
+
+.admin-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
   border: none;
   background: transparent;
-  padding: 8px 14px;
+  padding: 9px 10px;
   border-radius: 8px;
   font-size: 14px;
   color: #5b6069;
   cursor: pointer;
+  text-align: left;
 }
 
-.admin-tab:hover {
+.admin-nav__item svg {
+  flex-shrink: 0;
+}
+
+.admin-nav__item:hover {
   background: #eef0f3;
+  color: #1c1f23;
 }
 
-.admin-tab--active {
+.admin-nav__item--active,
+.admin-nav__item--active:hover {
   background: #1c1f23;
   color: #ffffff;
 }
 
-.admin-tab--active:hover {
-  background: #1c1f23;
-}
-
-.admin-header__user {
-  margin-left: auto;
+.admin-sidebar__footer {
+  margin-top: auto;
+  padding: 12px 10px 0;
+  border-top: 1px solid #eef0f3;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  color: #5b6069;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
 }
 
-.admin-header__user a {
+.admin-sidebar__email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-sidebar__footer a {
   color: #1c1f23;
 }
 
+/* ---- Main pane ---- */
+
 .admin-main {
+  flex: 1;
+  min-width: 0;
   max-width: 1080px;
-  margin: 0 auto;
-  padding: 24px;
+  padding: 28px 32px;
+  box-sizing: border-box;
 }
 
 .admin-loading,
@@ -312,6 +370,73 @@
   font-size: 15px;
 }
 
+/* ---- Narrow screens: sidebar becomes a stacked top bar ---- */
+
+@media (max-width: 760px) {
+  .admin-shell {
+    flex-direction: column;
+  }
+
+  .admin-shell--gate {
+    flex-direction: row;
+  }
+
+  .admin-sidebar {
+    width: 100%;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-right: none;
+    border-bottom: 1px solid #e3e6ea;
+  }
+
+  .admin-sidebar__brand {
+    padding: 0;
+  }
+
+  .admin-sidebar__brand-text span:last-child {
+    display: none;
+  }
+
+  .admin-nav {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .admin-nav__section {
+    display: none;
+  }
+
+  .admin-nav__item {
+    width: auto;
+    padding: 8px 12px;
+  }
+
+  .admin-nav__item span {
+    display: none;
+  }
+
+  .admin-sidebar__footer {
+    margin: 0 0 0 auto;
+    padding: 0;
+    border-top: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .admin-sidebar__email {
+    max-width: 140px;
+  }
+
+  .admin-main {
+    padding: 20px 16px;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   .admin-shell {
     background: #16181c;
@@ -322,36 +447,41 @@
   .admin-tile,
   .admin-user-card,
   .admin-table-wrap,
-  .admin-header {
+  .admin-sidebar {
     background: #1e2126;
     border-color: #2c3037;
   }
 
   .admin-gate__link,
-  .admin-tab--active {
+  .admin-sidebar__logo,
+  .admin-nav__item--active,
+  .admin-nav__item--active:hover {
     background: #e6e8eb;
     color: #16181c;
   }
 
-  .admin-tab--active:hover {
-    background: #e6e8eb;
+  .admin-nav__item {
+    color: #a2a7b0;
   }
 
-  .admin-tab:hover {
+  .admin-nav__item:hover {
     background: #262a30;
+    color: #e6e8eb;
   }
 
-  .admin-header__title,
-  .admin-header__user,
+  .admin-sidebar__footer {
+    border-top-color: #262a30;
+  }
+
+  .admin-sidebar__footer a {
+    color: #e6e8eb;
+  }
+
   .admin-tile__label,
   .admin-loading,
   .admin-pagination,
   .admin-user-card__email {
     color: #a2a7b0;
-  }
-
-  .admin-header__user a {
-    color: #e6e8eb;
   }
 
   .admin-search input,
@@ -385,5 +515,11 @@
 
   .admin-error {
     color: #ef8a84;
+  }
+
+  @media (max-width: 760px) {
+    .admin-sidebar {
+      border-bottom-color: #2c3037;
+    }
   }
 }
