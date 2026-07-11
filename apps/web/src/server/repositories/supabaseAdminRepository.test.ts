@@ -113,6 +113,16 @@ describe("supabase admin repository", () => {
     expect(client.calls[1].params).toEqual(["user_admin", "admin@example.com", "group_1", false]);
   });
 
+  test("listAuditLogs forwards limit and offset positionally", async () => {
+    const client = makeClient({ total: 0, logs: [] });
+    const repository = createSupabaseAdminRepository(client);
+
+    await repository.listAuditLogs(20, 40);
+
+    expect(client.calls[0].sql).toContain("admin_console_audit_logs");
+    expect(client.calls[0].params).toEqual([20, 40]);
+  });
+
   test("group write operations pass null through for missing groups", async () => {
     const repository = createSupabaseAdminRepository(makeClient(null));
 

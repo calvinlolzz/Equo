@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, UsersRound, WalletCards } from "lucide-react";
+import { LayoutDashboard, ScrollText, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
+  type AdminAuditLogPage,
   type AdminGroupFilterOption,
   type AdminGroupListPage,
   type AdminMeSummary,
@@ -12,14 +13,22 @@ import {
   type ApiClientError,
   type EquoApiClient,
 } from "./apiClient";
-import { describeLastSeen, formatDate, overviewTiles, pageInfo } from "./adminDashboard";
+import {
+  auditActionLabel,
+  auditTargetText,
+  describeLastSeen,
+  formatDate,
+  formatDateTime,
+  overviewTiles,
+  pageInfo,
+} from "./adminDashboard";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
 
 const PAGE_SIZE = 20;
 
 type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
-type AdminTab = "overview" | "users" | "groups";
+type AdminTab = "overview" | "users" | "groups" | "audit";
 
 export function AdminApp() {
   const [session] = useState(() => loadSession());
@@ -83,6 +92,7 @@ export function AdminApp() {
     { key: "overview", label: "總覽", icon: LayoutDashboard },
     { key: "users", label: "使用者", icon: UsersRound },
     { key: "groups", label: "群組", icon: WalletCards },
+    { key: "audit", label: "稽核", icon: ScrollText },
   ];
 
   return (
@@ -128,6 +138,7 @@ export function AdminApp() {
         {tab === "overview" && <OverviewPanel client={client} />}
         {tab === "users" && <UsersPanel client={client} />}
         {tab === "groups" && <GroupsPanel client={client} />}
+        {tab === "audit" && <AuditPanel client={client} />}
       </main>
     </div>
   );
@@ -591,6 +602,78 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
                   <tr>
                     <td colSpan={9} className="admin-table__empty">
                       沒有符合的群組
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {info && (
+            <Pagination
+              info={info}
+              total={state.page.total}
+              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
+              onNext={() => setOffset(offset + PAGE_SIZE)}
+            />
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function AuditPanel({ client }: { client: EquoApiClient }) {
+  const [offset, setOffset] = useState(0);
+  const [state, setState] = useState<ListState<AdminAuditLogPage>>({ page: null, loading: true, error: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    client
+      .adminListAuditLogs({ limit: PAGE_SIZE, offset })
+      .then((page) => {
+        if (!cancelled) setState({ page, loading: false, error: "" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ page: null, loading: false, error: "稽核記錄載入失敗。" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, offset]);
+
+  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.logs.length) : null;
+
+  return (
+    <section aria-label="稽核記錄">
+      {state.error && <p className="admin-error">{state.error}</p>}
+      {state.loading && <p className="admin-loading">載入中…</p>}
+
+      {state.page && !state.loading && (
+        <>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>操作者</th>
+                  <th>動作</th>
+                  <th>對象</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.page.logs.map((log) => (
+                  <tr key={log.id}>
+                    <td>{formatDateTime(log.created_at)}</td>
+                    <td>{log.admin_email ?? "—"}</td>
+                    <td>{auditActionLabel(log.action)}</td>
+                    <td>{auditTargetText(log.metadata)}</td>
+                  </tr>
+                ))}
+                {state.page.logs.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="admin-table__empty">
+                      尚無稽核記錄
                     </td>
                   </tr>
                 )}

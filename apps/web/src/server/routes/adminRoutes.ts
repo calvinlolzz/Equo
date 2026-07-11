@@ -6,6 +6,7 @@ import {
   type SupabaseQueryClient,
 } from "../repositories/supabaseGroupRepository.js";
 import {
+  handleAdminListAuditLogs,
   handleAdminListGroups,
   handleAdminListUsers,
   handleAdminMe,
@@ -79,6 +80,16 @@ export async function adminListGroupsRoute(options: RouteOptions, query: AdminGr
   }
 
   return handleAdminListGroups(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminListAuditLogsRoute(options: RouteOptions, query: AdminListQuery) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListAuditLogs(createSupabaseAdminRepository(options.client), auth.context, query);
 }
 
 export async function adminSetUserDisabledRoute(options: RouteOptions, userId: string, disabled: boolean) {

@@ -184,6 +184,7 @@ async function invokeEveryAdminRepositoryMethod(client: SupabaseQueryClient) {
   await repo.setUserDisabled(actor, "user_2", true);
   await repo.setGroupArchived(actor, "group_1", true);
   await repo.setGroupDeleted(actor, "group_1", true);
+  await repo.listAuditLogs(20, 0);
 }
 
 async function invokeEverySettlementRepositoryMethod(client: SupabaseQueryClient) {

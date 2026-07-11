@@ -342,6 +342,9 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
     adminListGroups(options: AdminGroupListOptions = {}) {
       return request<AdminGroupListPage>(`/admin/groups${adminListQuery(options)}`, { method: "GET" });
     },
+    adminListAuditLogs(options: AdminListOptions = {}) {
+      return request<AdminAuditLogPage>(`/admin/audit${adminListQuery(options)}`, { method: "GET" });
+    },
     adminSetUserDisabled(userId: string, disabled: boolean) {
       return request<{ id: string; disabled_at: string | null }>(
         `/admin/users/${userId}/${disabled ? "disable" : "enable"}`,
@@ -459,4 +462,17 @@ export type AdminGroupRow = {
 export type AdminGroupListPage = {
   total: number;
   groups: AdminGroupRow[];
+};
+
+export type AdminAuditLogRow = {
+  id: string;
+  admin_email: string | null;
+  action: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AdminAuditLogPage = {
+  total: number;
+  logs: AdminAuditLogRow[];
 };

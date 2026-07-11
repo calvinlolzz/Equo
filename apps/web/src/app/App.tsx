@@ -15,7 +15,6 @@ import {
   Menu,
   Pencil,
   Plus,
-  ReceiptText,
   Settings,
   Trash2,
   UserMinus,
@@ -27,9 +26,11 @@ import { createActionGuard } from "./actionGuard";
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient, type ExpenseSummary } from "./apiClient";
+import { dateKey, formatActivityTime, lastEightDays } from "./appDates";
+import { AnalysisPanel } from "./AnalysisPanel";
+import { RecordsPanel } from "./RecordsPanel";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { listSettlementRecords } from "./settlementHistory";
-import { SpendBarChart } from "./SpendBarChart";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -97,23 +98,7 @@ const currencyOptions = [
   { code: "EUR", label: UI_TEXT.currencies.eur },
 ];
 
-function dateKey(value: string) {
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
-function lastEightDays() {
-  const days: { key: string; day: number; month: number }[] = [];
-  for (let offset = 7; offset >= 0; offset -= 1) {
-    const date = new Date();
-    date.setDate(date.getDate() - offset);
-    days.push({ key: dateKey(date.toISOString()), day: date.getDate(), month: date.getMonth() + 1 });
-  }
-  return days;
-}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -176,12 +161,6 @@ function formatTime(value: string) {
   return date.toLocaleTimeString("zh-TW", { hour: "numeric", minute: "2-digit", second: "2-digit" });
 }
 
-function formatActivityTime(value: string) {
-  const date = new Date(value);
-  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")} ${String(
-    date.getHours(),
-  ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
 
 export function App() {
   const [activeGroupId, setActiveGroupId] = useState(() => getRouteGroupId());
@@ -1845,210 +1824,38 @@ export function App() {
             ) : null}
 
             {dialog === "recordsPanel" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.records}</h3>
-                  <p>{"\u67e5\u770b\u7fa4\u7d44\u7684\u652f\u51fa\u8207\u8fd1\u671f\u6d3b\u52d5\u3002"}</p>
-                </div>
-                <div className="panel-stat-grid">
-                  <div>
-                    <span>{"\u7b46\u6578"}</span>
-                    <strong>{aggregates.expenseCount}</strong>
-                  </div>
-                  <div>
-                    <span>{"\u7e3d\u652f\u51fa"}</span>
-                    <strong>{formatAmount(totalExpenseMinor, activeGroup?.currency ?? "TWD")}</strong>
-                  </div>
-                </div>
-                <button
-                  className="text-action records-export"
-                  type="button"
-                  disabled={pendingAction === "exportCsv"}
-                  onClick={handleExportCsv}
-                >
-                  {pendingAction === "exportCsv" ? text.processing : text.exportCsv}
-                </button>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{text.expense}</span>
-                  {expenses.length ? (
-                    expenses.map((expense) => (
-                      <button
-                        className="record-dialog-row"
-                        type="button"
-                        key={expense.id}
-                        onClick={() => openExpenseDetail(expense.id)}
-                      >
-                        {expense.imageUrl ? (
-                          <span className="record-dialog-thumb">
-                            <img src={expense.imageUrl} alt="" />
-                          </span>
-                        ) : (
-                          <span className="record-dialog-icon">
-                            {expense.kind === "settlement" ? (
-                              <History aria-hidden="true" size={18} />
-                            ) : expense.kind === "income" ? (
-                              <HandCoins aria-hidden="true" size={18} />
-                            ) : (
-                              <ReceiptText aria-hidden="true" size={18} />
-                            )}
-                          </span>
-                        )}
-                        <span>
-                          <strong>{expense.title}</strong>
-                          <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
-                        </span>
-                        <b className={expense.kind === "income" ? "amount-income" : undefined}>
-                          {expense.kind === "income"
-                            ? `+${formatAmount(expense.amountMinor, expense.currency)}`
-                            : formatAmount(expense.amountMinor, expense.currency)}
-                        </b>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="dialog-empty">{text.noRecords}</p>
-                  )}
-                  {canLoadMoreExpenses ? (
-                    <button
-                      className="text-action records-load-more"
-                      type="button"
-                      disabled={pendingAction === "loadMoreExpenses" || loadingMoreExpenses}
-                      onClick={handleLoadMoreExpenses}
-                    >
-                      {pendingAction === "loadMoreExpenses" || loadingMoreExpenses ? text.processing : text.loadMoreRecords}
-                    </button>
-                  ) : null}
-                </div>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{text.recentActivity}</span>
-                  {activities.length ? (
-                    activities.map((activity) => (
-                      <div className="record-dialog-row" key={activity.id}>
-                        <span className="record-dialog-icon">
-                          <History aria-hidden="true" size={18} />
-                        </span>
-                        <span>
-                          <strong>{activity.text}</strong>
-                          <small>{formatActivityTime(activity.createdAt)}</small>
-                        </span>
-                        <b />
-                      </div>
-                    ))
-                  ) : (
-                    <p className="dialog-empty">{text.noActivity}</p>
-                  )}
-                </div>
-              </>
+              <RecordsPanel
+                expenseCount={aggregates.expenseCount}
+                totalExpenseMinor={totalExpenseMinor}
+                currency={activeGroup?.currency ?? "TWD"}
+                expenses={expenses}
+                activities={activities}
+                canLoadMoreExpenses={canLoadMoreExpenses}
+                loadingMoreExpenses={loadingMoreExpenses}
+                pendingAction={pendingAction}
+                onLoadMore={handleLoadMoreExpenses}
+                onExportCsv={handleExportCsv}
+                onOpenExpense={openExpenseDetail}
+              />
             ) : null}
 
             {dialog === "analysisPanel" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.analysis}</h3>
-                  <p>{"\u4ee5\u76ee\u524d\u8cc7\u6599\u7d71\u8a08\u7fa4\u7d44\u6d88\u8cbb\u8207\u6210\u54e1\u9918\u984d\u3002"}</p>
-                </div>
-                <div className="panel-stat-grid">
-                  <div>
-                    <span>{"\u7e3d\u91d1\u984d"}</span>
-                    <strong>{formatAmount(totalExpenseMinor, activeGroup?.currency ?? "TWD")}</strong>
-                  </div>
-                  <div>
-                    <span>{text.members}</span>
-                    <strong>{members.length}</strong>
-                  </div>
-                  <div>
-                    <span>{text.debt}</span>
-                    <strong>{debt ? formatAmount(debt.amountMinor, activeGroup?.currency ?? "TWD") : formatAmount(0, activeGroup?.currency ?? "TWD")}</strong>
-                  </div>
-                </div>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{text.spendChartTitle}</span>
-                  <SpendBarChart
-                    days={dateChips}
-                    spendByDay={aggregates.spendByDay}
-                    currency={activeGroup?.currency ?? "TWD"}
-                    selectedKey={selectedDateKey}
-                    onSelect={setSelectedDateKey}
-                    emptyText={text.spendChartEmpty}
-                  />
-                </div>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{"\u6210\u54e1\u9918\u984d"}</span>
-                  {members.map((member) => {
-                    const balance = balances.get(member.id) ?? 0;
-                    const width = balance === 0 ? "0%" : `${Math.max(8, Math.round((Math.abs(balance) / maxBalanceMinor) * 100))}%`;
-                    return (
-                      <div className="analysis-balance-row" key={member.id}>
-                        <span>{member.name}</span>
-                        <div className="analysis-bar-track">
-                          <i style={{ width }} />
-                        </div>
-                        <strong>{formatSigned(balance, activeGroup?.currency ?? "TWD")}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{UI_TEXT.settlement.suggestionSectionTitle}</span>
-                  {settlementTransfers.length ? (
-                    settlementTransfers.map((transfer) => {
-                      const from = members.find((member) => member.id === transfer.fromMemberId);
-                      const to = members.find((member) => member.id === transfer.toMemberId);
-                      return (
-                        <div className="settlement-suggestion-row" key={`${transfer.fromMemberId}_${transfer.toMemberId}`}>
-                          <div className="settlement-suggestion-person">
-                            <MemberAvatar className="member-avatar lime" name={from?.name} avatarUrl={from?.avatarUrl} />
-                            <strong>{from?.name ?? ""}</strong>
-                          </div>
-                          <b>{"\u2192"}</b>
-                          <div className="settlement-suggestion-person">
-                            <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
-                            <strong>{to?.name ?? ""}</strong>
-                          </div>
-                          <span className="settlement-suggestion-amount">{formatAmount(transfer.amount.amount_minor, transfer.amount.currency)}</span>
-                          <button
-                            className="composer-mini-action"
-                            type="button"
-                            disabled={pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`}
-                            onClick={() => settleTransfer(transfer.fromMemberId, transfer.toMemberId, transfer.amount.amount_minor)}
-                          >
-                            {pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`
-                              ? text.processing
-                              : UI_TEXT.settlement.settleAction}
-                          </button>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="dialog-empty">{UI_TEXT.settlement.settled}</p>
-                  )}
-                </div>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{text.settlementHistoryTitle}</span>
-                  {settlementRecords.length ? (
-                    settlementRecords.map((record) => {
-                      const from = members.find((member) => member.id === record.fromMemberId);
-                      const to = members.find((member) => member.id === record.toMemberId);
-                      return (
-                        <div className="settlement-suggestion-row" key={record.id}>
-                          <div className="settlement-suggestion-person">
-                            <MemberAvatar className="member-avatar lime" name={from?.name} avatarUrl={from?.avatarUrl} />
-                            <strong>{from?.name ?? ""}</strong>
-                          </div>
-                          <b>{"→"}</b>
-                          <div className="settlement-suggestion-person">
-                            <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
-                            <strong>{to?.name ?? ""}</strong>
-                          </div>
-                          <span className="settlement-suggestion-amount">{formatAmount(record.amountMinor, record.currency)}</span>
-                          <small className="settlement-history-time">{formatActivityTime(record.createdAt)}</small>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="dialog-empty">{text.noSettlementHistory}</p>
-                  )}
-                </div>
-              </>
+              <AnalysisPanel
+                totalExpenseMinor={totalExpenseMinor}
+                currency={activeGroup?.currency ?? "TWD"}
+                members={members}
+                balances={balances}
+                maxBalanceMinor={maxBalanceMinor}
+                debtAmountMinor={debt?.amountMinor ?? 0}
+                settlementTransfers={settlementTransfers}
+                settlementRecords={settlementRecords}
+                dateChips={dateChips}
+                spendByDay={aggregates.spendByDay}
+                selectedDateKey={selectedDateKey}
+                pendingAction={pendingAction}
+                onSelectDate={setSelectedDateKey}
+                onSettleTransfer={settleTransfer}
+              />
             ) : null}
 
             {dialog === "memberActions" ? (

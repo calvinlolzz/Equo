@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { describeLastSeen, formatDate, overviewTiles, pageInfo } from "./adminDashboard";
+import {
+  auditActionLabel,
+  auditTargetText,
+  describeLastSeen,
+  formatDate,
+  formatDateTime,
+  overviewTiles,
+  pageInfo,
+} from "./adminDashboard";
 
 const overview = {
   user_count: 5,
@@ -73,6 +81,26 @@ describe("describeLastSeen", () => {
 
   test("renders an em dash for invalid timestamps", () => {
     expect(describeLastSeen("not-a-date", now)).toBe("—");
+  });
+});
+
+describe("audit helpers", () => {
+  test("translates known actions and passes unknown ones through", () => {
+    expect(auditActionLabel("user.disable")).toBe("停用帳號");
+    expect(auditActionLabel("group.restore")).toBe("復原群組");
+    expect(auditActionLabel("future.action")).toBe("future.action");
+  });
+
+  test("prefers the group name, falls back to email, then em dash", () => {
+    expect(auditTargetText({ name: "東京旅行", group_id: "g1" })).toBe("東京旅行");
+    expect(auditTargetText({ email: "alice@example.com" })).toBe("alice@example.com");
+    expect(auditTargetText({})).toBe("—");
+  });
+
+  test("formatDateTime renders date and minutes, dash on invalid", () => {
+    expect(formatDateTime("2026-07-11T08:05:00.000Z")).toMatch(/^2026\/07\/11 \d{2}:\d{2}$/);
+    expect(formatDateTime("bogus")).toBe("—");
+    expect(formatDateTime(null)).toBe("—");
   });
 });
 

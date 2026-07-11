@@ -3,6 +3,7 @@ import type { AdminRepository } from "../repositories/adminRepository.js";
 import {
   ADMIN_LIST_DEFAULT_LIMIT,
   ADMIN_LIST_MAX_LIMIT,
+  handleAdminListAuditLogs,
   handleAdminListGroups,
   handleAdminListUsers,
   handleAdminMe,
@@ -72,6 +73,20 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async setGroupDeleted(_actor, groupId, deleted) {
       return { id: groupId, archived_at: null, deleted_at: deleted ? "2026-07-11T00:00:00.000Z" : null };
     },
+    async listAuditLogs() {
+      return {
+        total: 1,
+        logs: [
+          {
+            id: "log_1",
+            admin_email: "admin@example.com",
+            action: "user.disable",
+            metadata: { email: "alice@example.com" },
+            created_at: "2026-07-11T00:00:00.000Z",
+          },
+        ],
+      };
+    },
     ...overrides,
   };
 }
@@ -93,6 +108,7 @@ describe("admin handlers", () => {
       handleAdminSetUserDisabled(repository, context, "user_alice", true),
       handleAdminSetGroupArchived(repository, context, "group_1", true),
       handleAdminSetGroupDeleted(repository, context, "group_1", true),
+      handleAdminListAuditLogs(repository, context),
     ]);
 
     for (const result of results) {
@@ -188,6 +204,13 @@ describe("admin handlers", () => {
     expect(result.ok).toBe(true);
     expect(result.body).toEqual({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
     expect(actorEmail).toBe("admin@example.com");
+  });
+
+  test("audit log listing returns the page for admins", async () => {
+    const result = await handleAdminListAuditLogs(makeRepository(), context);
+
+    expect(result.ok).toBe(true);
+    expect((result.body as { total: number }).total).toBe(1);
   });
 
   test("group operations return 404 ADMIN_NOT_FOUND for unknown groups", async () => {

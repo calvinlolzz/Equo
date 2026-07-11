@@ -1,6 +1,7 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
+  AdminAuditLogListRecord,
   AdminGroupFilter,
   AdminGroupListRecord,
   AdminGroupStateResult,
@@ -184,6 +185,22 @@ export async function handleAdminListGroups(
 
   const { search, limit, offset } = normalizeAdminListQuery(query);
   const page = await repository.listGroups(search, limit, offset, normalizeGroupFilter(query.filter));
+  return { ok: true, status: 200, body: page };
+}
+
+export async function handleAdminListAuditLogs(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  query: AdminListQuery = {},
+): Promise<HandlerResult<AdminAuditLogListRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const { limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listAuditLogs(limit, offset);
   return { ok: true, status: 200, body: page };
 }
 

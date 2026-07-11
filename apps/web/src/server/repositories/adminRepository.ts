@@ -85,6 +85,19 @@ export type AdminGroupStateResult = {
   deleted_at: string | null;
 };
 
+export type AdminAuditLogRecord = {
+  id: string;
+  admin_email: string | null;
+  action: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AdminAuditLogListRecord = {
+  total: number;
+  logs: AdminAuditLogRecord[];
+};
+
 export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
@@ -98,4 +111,5 @@ export type AdminRepository = {
   setGroupArchived(actor: AdminActor, groupId: string, archived: boolean): Promise<AdminGroupStateResult | null>;
   /** Soft-delete or restore a group. Returns null when the group does not exist. */
   setGroupDeleted(actor: AdminActor, groupId: string, deleted: boolean): Promise<AdminGroupStateResult | null>;
+  listAuditLogs(limit: number, offset: number): Promise<AdminAuditLogListRecord>;
 };

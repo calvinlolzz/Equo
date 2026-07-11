@@ -30,6 +30,7 @@ import {
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
 import {
+  adminListAuditLogsRoute,
   adminListGroupsRoute,
   adminListUsersRoute,
   adminMeRoute,
@@ -400,6 +401,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
           limit: limitParam ? Number(limitParam) : undefined,
           offset: offsetParam ? Number(offsetParam) : undefined,
           filter: queryParam(request, "filter"),
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/audit$/,
+      label: "GET /api/v1/admin/audit",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListAuditLogsRoute(routeOptions(options, request), {
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
         });
         return jsonResponse(result.status, result.body);
       },

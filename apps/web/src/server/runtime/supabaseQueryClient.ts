@@ -253,6 +253,13 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return (result ?? null) as T;
     }
 
+    if (normalized.includes("select public.admin_console_audit_logs(")) {
+      return (await rpc<unknown>("admin_console_audit_logs", {
+        p_limit: params[0],
+        p_offset: params[1],
+      })) as T;
+    }
+
     if (normalized.includes("select public.admin_console_set_group_deleted(")) {
       const result = await rpc<unknown>("admin_console_set_group_deleted", {
         p_actor: params[0],

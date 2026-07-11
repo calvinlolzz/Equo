@@ -71,6 +71,36 @@ export function describeLastSeen(iso: string, nowMs: number): string {
   return formatDate(iso);
 }
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "user.disable": "停用帳號",
+  "user.enable": "恢復帳號",
+  "group.archive": "封存群組",
+  "group.unarchive": "解除封存",
+  "group.delete": "刪除群組",
+  "group.restore": "復原群組",
+};
+
+/** zh-TW label for an admin_audit_logs action; unknown actions pass through raw. */
+export function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+/** Human-readable target from an audit row's metadata (group name or user email). */
+export function auditTargetText(metadata: Record<string, unknown>): string {
+  const name = metadata.name ?? metadata.email;
+  return typeof name === "string" && name ? name : "—";
+}
+
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "—";
+
+  const date = new Date(ms);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const ms = Date.parse(iso);

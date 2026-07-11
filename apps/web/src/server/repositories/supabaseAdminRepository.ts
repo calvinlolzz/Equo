@@ -1,4 +1,5 @@
 import type {
+  AdminAuditLogListRecord,
   AdminGroupListRecord,
   AdminGroupStateResult,
   AdminOverviewRecord,
@@ -70,6 +71,13 @@ export function createSupabaseAdminRepository(client: SupabaseQueryClient): Admi
       return client.maybeOne<AdminGroupStateResult>(
         `select public.admin_console_set_group_deleted($1, $2, $3, $4)`,
         [actor.id, actor.email, groupId, deleted],
+      );
+    },
+
+    async listAuditLogs(limit, offset) {
+      return client.one<AdminAuditLogListRecord>(
+        `select public.admin_console_audit_logs($1, $2)`,
+        [limit, offset],
       );
     },
   };
