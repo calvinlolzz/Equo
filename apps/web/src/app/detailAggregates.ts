@@ -21,6 +21,8 @@ export type GroupDetailAggregates = {
   expenseCount: number;
   spendTotalMinor: number;
   spendByDay: Array<{ day: string; totalMinor: number }>;
+  /** All-time per-category kind==="expense" totals, server-sorted largest first. */
+  spendByCategory: Array<{ category: string; totalMinor: number }>;
   memberDayShares: Array<{ day: string; memberId: string; shareMinor: number }>;
 };
 
@@ -143,6 +145,26 @@ function patchSpendByDay(
   return next;
 }
 
+function patchSpendByCategory(
+  spendByCategory: GroupDetailAggregates["spendByCategory"],
+  category: string,
+  deltaMinor: number,
+): GroupDetailAggregates["spendByCategory"] {
+  if (deltaMinor === 0) return spendByCategory;
+  const index = spendByCategory.findIndex((entry) => entry.category === category);
+  if (index === -1) {
+    return [...spendByCategory, { category, totalMinor: deltaMinor }].sort((a, b) => b.totalMinor - a.totalMinor);
+  }
+  const nextTotal = spendByCategory[index].totalMinor + deltaMinor;
+  const next = [...spendByCategory];
+  if (nextTotal === 0) {
+    next.splice(index, 1);
+  } else {
+    next[index] = { category, totalMinor: nextTotal };
+  }
+  return next.sort((a, b) => b.totalMinor - a.totalMinor);
+}
+
 function patchMemberDayShares(
   memberDayShares: GroupDetailAggregates["memberDayShares"],
   day: string,
@@ -197,6 +219,12 @@ function patchAggregates(
   const day = dateKeyFromIso(expense.createdAt);
   const spendTotalMinor = aggregates.spendTotalMinor + sign * expense.amountMinor;
   const spendByDay = patchSpendByDay(aggregates.spendByDay, day, sign * expense.amountMinor);
+  // Mirrors the server's coalesce(nullif(category, ''), 'general') fold.
+  const spendByCategory = patchSpendByCategory(
+    aggregates.spendByCategory,
+    expense.category?.trim() ? expense.category : "general",
+    sign * expense.amountMinor,
+  );
 
   let memberDayShares = aggregates.memberDayShares;
   memberIds.forEach((memberId) => {
@@ -205,7 +233,7 @@ function patchAggregates(
     memberDayShares = patchMemberDayShares(memberDayShares, day, memberId, sign * share);
   });
 
-  return { expenseCount, spendTotalMinor, spendByDay, memberDayShares };
+  return { expenseCount, spendTotalMinor, spendByDay, spendByCategory, memberDayShares };
 }
 
 export function applyExpenseToAggregates(

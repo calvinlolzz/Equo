@@ -96,6 +96,11 @@ export type SpendByDaySummary = {
   total_minor: number;
 };
 
+export type SpendByCategorySummary = {
+  category: string;
+  total_minor: number;
+};
+
 export type MemberDaySharesSummary = {
   day: string;
   member_id: string;
@@ -114,6 +119,8 @@ export type GroupDetail = {
   spend_total_minor: number;
   /** Last 8 days of kind="expense" totals, keyed by expense_date. */
   spend_by_day: SpendByDaySummary[];
+  /** All-time per-category kind="expense" totals, largest first. */
+  spend_by_category: SpendByCategorySummary[];
   /** Last 8 days of per-member kind="expense" shares, keyed by expense_date. */
   member_day_shares: MemberDaySharesSummary[];
 };

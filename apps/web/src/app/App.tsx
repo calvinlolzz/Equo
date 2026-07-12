@@ -29,6 +29,7 @@ import { RecordsPanel } from "./RecordsPanel";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
 import { GroupSideNav } from "./GroupSideNav";
+import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
 import { clearCloudCache } from "./cloudCache";
@@ -288,7 +289,7 @@ export function App() {
   // once the expenses array is truncated to a window, and re-deriving it
   // from only the loaded page would silently understate the true average
   // for any group with more history than the window.
-  const aggregates = cloudActiveDetail?.aggregates ?? { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] };
+  const aggregates = cloudActiveDetail?.aggregates ?? { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], spendByCategory: [], memberDayShares: [] };
   const totalExpenseMinor = aggregates.spendTotalMinor;
 
   // Group-level balances come straight from the server (get_group_detail's
@@ -307,6 +308,21 @@ export function App() {
   // 清償紀錄 for the analysis panel - settlement-kind entries from the loaded
   // expense window (older history pages in via the records panel's load-more).
   const settlementRecords = useMemo(() => listSettlementRecords(expenses), [expenses]);
+
+  // Pull-to-refresh on the mobile home screen: active only while no overlay
+  // is open, so the gesture never fights dialogs, drawers, or the composer.
+  const pullEnabled =
+    isMobileLayout &&
+    Boolean(session && activeGroup && cloudStore) &&
+    !dialog &&
+    !expenseComposerOpen &&
+    !feedbackOpen &&
+    !groupDrawerOpen &&
+    !settingsDrawerOpen;
+  const pullStatus = usePullToRefresh(pullEnabled, async () => {
+    if (!cloudStore || !activeGroup) return;
+    await Promise.all([cloudStore.refreshGroups(), cloudStore.refreshGroupDetail(activeGroup.id)]);
+  });
 
   // The logged-in user's own member row within the active group - NOT
   // necessarily the group owner (joined-via-invite members are non-owners).
@@ -345,6 +361,7 @@ export function App() {
   const extraTransferCount = Math.max(0, settlementTransfers.length - 1);
   const maxBalanceMinor = Math.max(1, ...members.map((member) => Math.abs(balances.get(member.id) ?? 0)));
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
+  const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
   const canLoadMoreExpenses = expenses.length < aggregates.expenseCount;
 
   async function handleLoadMoreExpenses() {
@@ -1189,6 +1206,11 @@ export function App() {
 
   return (
     <main className="app-shell">
+      {pullStatus !== "idle" ? (
+        <div className="ptr-indicator" role="status" aria-live="polite">
+          {pullStatus === "refreshing" ? "重新整理中…" : pullStatus === "armed" ? "放開以重新整理" : "下拉重新整理"}
+        </div>
+      ) : null}
       <header className="top-bar">
         {activeGroup ? (
           <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupList} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setGroupDrawerOpen(true)}>
@@ -1646,6 +1668,16 @@ export function App() {
           }}
           onEdit={openExpenseEdit}
           onDelete={deleteExpense}
+          onPrev={
+            selectedExpenseIndex > 0
+              ? () => setSelectedExpenseId(expenses[selectedExpenseIndex - 1].id)
+              : undefined
+          }
+          onNext={
+            selectedExpenseIndex >= 0 && selectedExpenseIndex < expenses.length - 1
+              ? () => setSelectedExpenseId(expenses[selectedExpenseIndex + 1].id)
+              : undefined
+          }
         />
       ) : null}
 
@@ -1800,6 +1832,7 @@ export function App() {
                 settlementRecords={settlementRecords}
                 dateChips={dateChips}
                 spendByDay={aggregates.spendByDay}
+                spendByCategory={aggregates.spendByCategory}
                 selectedDateKey={selectedDateKey}
                 pendingAction={pendingAction}
                 onSelectDate={setSelectedDateKey}

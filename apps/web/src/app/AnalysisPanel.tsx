@@ -21,11 +21,17 @@ type AnalysisPanelProps = {
   settlementRecords: SettlementRecord[];
   dateChips: SpendChartDay[];
   spendByDay: SpendByDayEntry[];
+  spendByCategory: Array<{ category: string; totalMinor: number }>;
   selectedDateKey: string;
   pendingAction: string | null;
   onSelectDate: (key: string) => void;
   onSettleTransfer: (fromMemberId: string, toMemberId: string, amountMinor: number) => void;
 };
+
+/** zh-TW label for an expense category; unknown values render as-is. */
+function categoryLabel(category: string): string {
+  return (UI_TEXT.categories as Record<string, string>)[category] ?? category;
+}
 
 /** The 分析 bottom-sheet content (stats, spend chart, balances, settlement suggestions + history). */
 export function AnalysisPanel({
@@ -39,11 +45,13 @@ export function AnalysisPanel({
   settlementRecords,
   dateChips,
   spendByDay,
+  spendByCategory,
   selectedDateKey,
   pendingAction,
   onSelectDate,
   onSettleTransfer,
 }: AnalysisPanelProps) {
+  const maxCategoryMinor = Math.max(1, ...spendByCategory.map((entry) => entry.totalMinor));
   return (
     <>
       <div className="dialog-header">
@@ -75,6 +83,23 @@ export function AnalysisPanel({
           emptyText={text.spendChartEmpty}
         />
       </div>
+      {spendByCategory.length > 0 && (
+        <div className="dialog-section-list">
+          <span className="dialog-list-title">{"分類統計"}</span>
+          {spendByCategory.map((entry) => {
+            const width = `${Math.max(6, Math.round((entry.totalMinor / maxCategoryMinor) * 100))}%`;
+            return (
+              <div className="analysis-balance-row" key={entry.category}>
+                <span>{categoryLabel(entry.category)}</span>
+                <div className="analysis-bar-track">
+                  <i style={{ width }} />
+                </div>
+                <strong>{formatAmount(entry.totalMinor, currency)}</strong>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="dialog-section-list">
         <span className="dialog-list-title">{"成員餘額"}</span>
         {members.map((member) => {

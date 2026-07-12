@@ -328,6 +328,7 @@ describe("toGroupUiData", () => {
       expense_count: 1,
       spend_total_minor: 1000,
       spend_by_day: [{ day: "2026-06-30", total_minor: 1000 }],
+      spend_by_category: [{ category: "food", total_minor: 1000 }],
       member_day_shares: [{ day: "2026-06-30", member_id: "member_1", share_minor: 1000 }],
     };
 
@@ -342,6 +343,7 @@ describe("toGroupUiData", () => {
       expenseCount: 1,
       spendTotalMinor: 1000,
       spendByDay: [{ day: "2026-06-30", totalMinor: 1000 }],
+      spendByCategory: [{ category: "food", totalMinor: 1000 }],
       memberDayShares: [{ day: "2026-06-30", memberId: "member_1", shareMinor: 1000 }],
     });
   });

@@ -22,7 +22,7 @@ import {
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
 
 function emptyAggregates(): GroupDetailAggregates {
-  return { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] };
+  return { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], spendByCategory: [], memberDayShares: [] };
 }
 
 export type CloudGroupData = {

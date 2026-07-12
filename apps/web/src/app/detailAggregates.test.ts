@@ -29,7 +29,7 @@ function emptyBalances(currency = "TWD"): BalanceSummary[] {
 }
 
 function emptyAggregates(): GroupDetailAggregates {
-  return { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] };
+  return { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], spendByCategory: [], memberDayShares: [] };
 }
 
 function balanceMap(balances: BalanceSummary[]): Record<string, number> {
@@ -228,6 +228,29 @@ describe("applyExpenseToAggregates / removeExpenseFromAggregates", () => {
 
     const expected = applyExpenseToAggregates(emptyAggregates(), edited, memberIds);
     expect(afterEdit).toEqual(expected);
+  });
+
+  test("spendByCategory accumulates per category, sorts largest first, and prunes zeros", () => {
+    const dinner = makeExpense({ id: "e1", amountMinor: 900, category: "food" });
+    const taxi = makeExpense({ id: "e2", amountMinor: 1200, category: "transport" });
+    const uncategorized = makeExpense({ id: "e3", amountMinor: 100 });
+
+    const applied = [dinner, taxi, uncategorized].reduce(
+      (aggregates, expense) => applyExpenseToAggregates(aggregates, expense, memberIds),
+      emptyAggregates(),
+    );
+
+    expect(applied.spendByCategory).toEqual([
+      { category: "transport", totalMinor: 1200 },
+      { category: "food", totalMinor: 900 },
+      { category: "general", totalMinor: 100 },
+    ]);
+
+    const removed = removeExpenseFromAggregates(applied, taxi, memberIds);
+    expect(removed.spendByCategory).toEqual([
+      { category: "food", totalMinor: 900 },
+      { category: "general", totalMinor: 100 },
+    ]);
   });
 
   test("multiple expenses on the same day accumulate spendByDay/memberDayShares", () => {

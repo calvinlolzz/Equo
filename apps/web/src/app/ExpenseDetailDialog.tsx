@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
@@ -30,14 +30,43 @@ export function ExpenseDetailDialog({
   onClose,
   onEdit,
   onDelete,
+  onPrev,
+  onNext,
 }: {
   expense: Expense;
   members: Member[];
   onClose: () => void;
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
+  /** Swipe-right target (previous/newer expense in the list). Absent = at the edge. */
+  onPrev?: () => void;
+  /** Swipe-left target (next/older expense in the list). Absent = at the edge. */
+  onNext?: () => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Horizontal swipe flips between neighbouring expenses (mobile habit:
+  // swipe left = next, swipe right = previous). Vertical-leaning drags are
+  // ignored so the dialog's own scrolling is unaffected.
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+
+  function onTouchStart(event: ReactTouchEvent<HTMLElement>) {
+    swipeStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }
+
+  function onTouchEnd(event: ReactTouchEvent<HTMLElement>) {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!start) return;
+    const deltaX = event.changedTouches[0].clientX - start.x;
+    const deltaY = event.changedTouches[0].clientY - start.y;
+    if (Math.abs(deltaX) < 64 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
+    if (deltaX < 0) {
+      onNext?.();
+    } else {
+      onPrev?.();
+    }
+  }
   const isSettlement = expense.kind === "settlement";
   const isIncome = expense.kind === "income";
   const payer = members.find((member) => member.id === expense.payerId);
@@ -81,7 +110,14 @@ export function ExpenseDetailDialog({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="flow-dialog expense-detail-dialog glass-panel" role="dialog" aria-modal="true" aria-label={dialogTitle}>
+      <section
+        className="flow-dialog expense-detail-dialog glass-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={dialogTitle}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         <button className="dialog-close" type="button" aria-label={text.cancel} onClick={onClose}>
           <X aria-hidden="true" size={18} />
         </button>

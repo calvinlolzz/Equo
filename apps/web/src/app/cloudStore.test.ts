@@ -40,6 +40,7 @@ function makeGroupDetail(overrides: {
   expense_count?: number;
   spend_total_minor?: number;
   spend_by_day?: GroupDetail["spend_by_day"];
+  spend_by_category?: GroupDetail["spend_by_category"];
   member_day_shares?: GroupDetail["member_day_shares"];
 }): GroupDetail {
   return {
@@ -50,6 +51,7 @@ function makeGroupDetail(overrides: {
     expense_count: overrides.expense_count ?? (overrides.expenses?.length ?? 0),
     spend_total_minor: overrides.spend_total_minor ?? 0,
     spend_by_day: overrides.spend_by_day ?? [],
+    spend_by_category: overrides.spend_by_category ?? [],
     member_day_shares: overrides.member_day_shares ?? [],
   };
 }
@@ -133,7 +135,7 @@ describe("createCloudGroupsStore", () => {
       members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
       expenses: [],
       balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
-      aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] },
+      aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], spendByCategory: [], memberDayShares: [] },
     });
   });
 
@@ -801,7 +803,7 @@ describe("createCloudGroupsStore", () => {
               members: [{ id: "member_1", name: "Alice", role: "owner", virtual: false, userId: "user_1" }],
               expenses: [],
               balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
-              aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], memberDayShares: [] },
+              aggregates: { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], spendByCategory: [], memberDayShares: [] },
             },
           },
         },

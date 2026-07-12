@@ -3286,3 +3286,27 @@ label span {
   outline: none;
   border-color: rgba(109, 226, 184, 0.78);
 }
+
+.ptr-indicator {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 7px 18px;
+  border-radius: 999px;
+  background: rgba(7, 17, 15, 0.88);
+  border: 1px solid rgba(109, 226, 184, 0.5);
+  color: #f7fbf8;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+@media (max-width: 620px) {
+  /* Custom pull-to-refresh owns the top-edge pull; stop the browser's
+     native pull-to-reload from hijacking the same gesture. */
+  html,
+  body {
+    overscroll-behavior-y: contain;
+  }
+}

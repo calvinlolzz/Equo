@@ -180,6 +180,7 @@ export const UI_TEXT = {
     lodging: "住宿",
     shopping: "購物",
     general: "一般",
+    other: "其他",
   },
   settlement: {
     settled: "已結清",

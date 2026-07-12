@@ -198,6 +198,11 @@ export function toGroupUiData(detail: GroupDetail): {
       expenseCount: detail.expense_count,
       spendTotalMinor: detail.spend_total_minor,
       spendByDay: detail.spend_by_day.map((entry) => ({ day: entry.day, totalMinor: entry.total_minor })),
+      // ?? [] keeps a cached pre-v4 detail payload (no spend_by_category yet) parseable.
+      spendByCategory: (detail.spend_by_category ?? []).map((entry) => ({
+        category: entry.category,
+        totalMinor: entry.total_minor,
+      })),
       memberDayShares: detail.member_day_shares.map((entry) => ({
         day: entry.day,
         memberId: entry.member_id,
