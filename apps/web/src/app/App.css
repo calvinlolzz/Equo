@@ -1005,6 +1005,26 @@ label span {
   animation: drawer-slide-in-right 220ms ease-out;
 }
 
+/* Swipe-to-dismiss handoff (useSwipeToDismissX): the drawer slides back into
+   its edge and the backdrop fades over the same 220ms window. */
+.side-drawer-backdrop.closing {
+  animation: none;
+  transition: opacity 220ms ease-in;
+  opacity: 0;
+}
+
+.side-drawer-left.closing {
+  animation: none;
+  transition: transform 220ms ease-in;
+  transform: translateX(-100%);
+}
+
+.side-drawer-right.closing {
+  animation: none;
+  transition: transform 220ms ease-in;
+  transform: translateX(100%);
+}
+
 .side-drawer-left .group-rail {
   max-height: none;
   height: 100%;

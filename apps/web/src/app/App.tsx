@@ -29,6 +29,7 @@ import { RecordsPanel } from "./RecordsPanel";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
 import { GroupSideNav } from "./GroupSideNav";
+import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
@@ -187,6 +188,10 @@ export function App() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  // Mobile drawer swipe gestures: each drawer dismisses toward the edge it
+  // slid in from (left drawer <- swipe left, right drawer -> swipe right).
+  const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
+  const settingsDrawerSwipe = useSwipeToDismissX("right", () => setSettingsDrawerOpen(false));
   // Tracks the responsive breakpoint independently of CSS so the desktop
   // rails and the mobile tab bar can be made inert/aria-hidden when hidden -
   // a display:none in CSS alone still leaves the buttons in the a11y tree.
@@ -1259,8 +1264,8 @@ export function App() {
           />
 
           {groupDrawerOpen ? (
-            <div className="side-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGroupDrawerOpen(false); }}>
-              <div className="side-drawer side-drawer-left" role="dialog" aria-modal="true" aria-label={text.groupList}>
+            <div className={groupDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGroupDrawerOpen(false); }}>
+              <div className={groupDrawerSwipe.closing ? "side-drawer side-drawer-left closing" : "side-drawer side-drawer-left"} role="dialog" aria-modal="true" aria-label={text.groupList} {...groupDrawerSwipe.dragProps}>
                 <GroupRail
                   activeGroup={activeGroup}
                   groups={displayGroups}
@@ -1522,8 +1527,8 @@ export function App() {
           </aside>
 
           {settingsDrawerOpen ? (
-            <div className="side-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsDrawerOpen(false); }}>
-              <div className="side-drawer side-drawer-right" role="dialog" aria-modal="true" aria-label={text.groupManage}>
+            <div className={settingsDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsDrawerOpen(false); }}>
+              <div className={settingsDrawerSwipe.closing ? "side-drawer side-drawer-right closing" : "side-drawer side-drawer-right"} role="dialog" aria-modal="true" aria-label={text.groupManage} {...settingsDrawerSwipe.dragProps}>
                 {activeGroup ? (
               <GroupSideNav
                 groupName={activeGroup.name}
