@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { LayoutDashboard, ScrollText, UsersRound, WalletCards } from "lucide-react";
+import { Bug, LayoutDashboard, MessageSquareText, ScrollText, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
   type AdminAuditLogPage,
+  type AdminErrorPage,
+  type AdminFeedbackPage,
   type AdminGroupFilterOption,
   type AdminGroupListPage,
   type AdminMeSummary,
@@ -28,7 +30,7 @@ import { loadSession } from "./sessionStore";
 const PAGE_SIZE = 20;
 
 type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
-type AdminTab = "overview" | "users" | "groups" | "audit";
+type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit";
 
 export function AdminApp() {
   const [session] = useState(() => loadSession());
@@ -92,6 +94,8 @@ export function AdminApp() {
     { key: "overview", label: "總覽", icon: LayoutDashboard },
     { key: "users", label: "使用者", icon: UsersRound },
     { key: "groups", label: "群組", icon: WalletCards },
+    { key: "feedback", label: "回饋", icon: MessageSquareText },
+    { key: "errors", label: "錯誤", icon: Bug },
     { key: "audit", label: "稽核", icon: ScrollText },
   ];
 
@@ -138,6 +142,8 @@ export function AdminApp() {
         {tab === "overview" && <OverviewPanel client={client} />}
         {tab === "users" && <UsersPanel client={client} />}
         {tab === "groups" && <GroupsPanel client={client} />}
+        {tab === "feedback" && <FeedbackPanel client={client} />}
+        {tab === "errors" && <ErrorsPanel client={client} />}
         {tab === "audit" && <AuditPanel client={client} />}
       </main>
     </div>
@@ -602,6 +608,230 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
                   <tr>
                     <td colSpan={9} className="admin-table__empty">
                       沒有符合的群組
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {info && (
+            <Pagination
+              info={info}
+              total={state.page.total}
+              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
+              onNext={() => setOffset(offset + PAGE_SIZE)}
+            />
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+const FEEDBACK_STATUS_CHIPS = [
+  { key: "all", label: "全部" },
+  { key: "new", label: "新進" },
+  { key: "reviewing", label: "處理中" },
+  { key: "done", label: "已完成" },
+] as const;
+
+const FEEDBACK_TYPE_LABELS: Record<string, string> = {
+  problem: "問題",
+  suggestion: "建議",
+  confusing: "困惑",
+  other: "其他",
+};
+
+const FEEDBACK_STATUS_LABELS: Record<string, string> = {
+  new: "新進",
+  reviewing: "處理中",
+  done: "已完成",
+};
+
+function FeedbackPanel({ client }: { client: EquoApiClient }) {
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [offset, setOffset] = useState(0);
+  const [state, setState] = useState<ListState<AdminFeedbackPage>>({ page: null, loading: true, error: "" });
+  const [busyId, setBusyId] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    client
+      .adminListFeedback({ limit: PAGE_SIZE, offset, status: statusFilter })
+      .then((page) => {
+        if (!cancelled) setState({ page, loading: false, error: "" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ page: null, loading: false, error: "回饋列表載入失敗。" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, offset, statusFilter, reloadKey]);
+
+  async function updateStatus(feedbackId: string, status: string) {
+    setBusyId(feedbackId);
+    try {
+      await client.adminSetFeedbackStatus(feedbackId, status);
+      setReloadKey((key) => key + 1);
+    } catch {
+      setState((current) => ({ ...current, error: "狀態更新失敗，請稍後再試。" }));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.feedback.length) : null;
+
+  return (
+    <section aria-label="使用者回饋">
+      <div className="admin-chips" role="group" aria-label="回饋狀態篩選">
+        {FEEDBACK_STATUS_CHIPS.map((chip) => (
+          <button
+            key={chip.key}
+            type="button"
+            className={statusFilter === chip.key ? "admin-chip admin-chip--active" : "admin-chip"}
+            onClick={() => {
+              setOffset(0);
+              setStatusFilter(chip.key);
+            }}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
+      {state.error && <p className="admin-error">{state.error}</p>}
+      {state.loading && <p className="admin-loading">載入中…</p>}
+
+      {state.page && !state.loading && (
+        <>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>使用者</th>
+                  <th>類型</th>
+                  <th>內容</th>
+                  <th>狀態</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.page.feedback.map((item) => {
+                  const busy = busyId === item.id;
+                  return (
+                    <tr key={item.id}>
+                      <td>{formatDateTime(item.created_at)}</td>
+                      <td>{item.user_email ?? "—"}</td>
+                      <td>{FEEDBACK_TYPE_LABELS[item.type] ?? item.type}</td>
+                      <td className="admin-table__message" title={item.message}>
+                        {item.message}
+                      </td>
+                      <td>{FEEDBACK_STATUS_LABELS[item.status] ?? item.status}</td>
+                      <td className="admin-table__actions">
+                        {item.status !== "reviewing" && item.status !== "done" && (
+                          <button type="button" className="admin-action" disabled={busy} onClick={() => updateStatus(item.id, "reviewing")}>
+                            處理中
+                          </button>
+                        )}
+                        {item.status !== "done" && (
+                          <button type="button" className="admin-action" disabled={busy} onClick={() => updateStatus(item.id, "done")}>
+                            完成
+                          </button>
+                        )}
+                        {item.status === "done" && (
+                          <button type="button" className="admin-action" disabled={busy} onClick={() => updateStatus(item.id, "new")}>
+                            重開
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {state.page.feedback.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="admin-table__empty">
+                      尚無回饋
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {info && (
+            <Pagination
+              info={info}
+              total={state.page.total}
+              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
+              onNext={() => setOffset(offset + PAGE_SIZE)}
+            />
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function ErrorsPanel({ client }: { client: EquoApiClient }) {
+  const [offset, setOffset] = useState(0);
+  const [state, setState] = useState<ListState<AdminErrorPage>>({ page: null, loading: true, error: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    client
+      .adminListErrors({ limit: PAGE_SIZE, offset })
+      .then((page) => {
+        if (!cancelled) setState({ page, loading: false, error: "" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ page: null, loading: false, error: "錯誤日誌載入失敗。" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, offset]);
+
+  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.errors.length) : null;
+
+  return (
+    <section aria-label="錯誤日誌">
+      {state.error && <p className="admin-error">{state.error}</p>}
+      {state.loading && <p className="admin-loading">載入中…</p>}
+
+      {state.page && !state.loading && (
+        <>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>使用者</th>
+                  <th>來源</th>
+                  <th>訊息</th>
+                  <th>頁面</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.page.errors.map((item) => (
+                  <tr key={item.id}>
+                    <td>{formatDateTime(item.created_at)}</td>
+                    <td>{item.user_email ?? "—"}</td>
+                    <td>{item.source === "admin" ? "後台" : "前台"}</td>
+                    <td className="admin-table__message" title={item.context ?? item.message}>
+                      {item.message}
+                    </td>
+                    <td>{item.page ?? "—"}</td>
+                  </tr>
+                ))}
+                {state.page.errors.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="admin-table__empty">
+                      沒有錯誤記錄——很好！
                     </td>
                   </tr>
                 )}

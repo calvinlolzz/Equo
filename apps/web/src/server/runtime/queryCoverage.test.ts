@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { AuthenticatedContext } from "../auth/session.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
+import { createSupabaseSupportRepository } from "../repositories/supabaseSupportRepository.js";
 import {
   createSupabaseGroupRepository,
   updateUserAvatar,
@@ -185,6 +186,16 @@ async function invokeEveryAdminRepositoryMethod(client: SupabaseQueryClient) {
   await repo.setGroupArchived(actor, "group_1", true);
   await repo.setGroupDeleted(actor, "group_1", true);
   await repo.listAuditLogs(20, 0);
+  await repo.listFeedback(20, 0, "all");
+  await repo.setFeedbackStatus(actor, "feedback_1", "done");
+  await repo.listErrors(20, 0);
+}
+
+async function invokeEverySupportRepositoryMethod(client: SupabaseQueryClient) {
+  const repo = createSupabaseSupportRepository(client);
+
+  await repo.createFeedback("user_1", { type: "problem", message: "boom", contact: null, page: "/" });
+  await repo.recordClientError("user_1", { source: "web", message: "boom", context: null, page: "/" });
 }
 
 async function invokeEverySettlementRepositoryMethod(client: SupabaseQueryClient) {
@@ -205,6 +216,7 @@ describe("Supabase REST query translator coverage", () => {
     await invokeEveryExpenseRepositoryMethod(recordingClient);
     await invokeEverySettlementRepositoryMethod(recordingClient);
     await invokeEveryAdminRepositoryMethod(recordingClient);
+    await invokeEverySupportRepositoryMethod(recordingClient);
 
     expect(recordingClient.calls.length).toBeGreaterThan(0);
 

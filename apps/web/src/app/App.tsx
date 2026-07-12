@@ -5,7 +5,6 @@ import {
   ChartNoAxesColumn,
   Check,
   ChevronRight,
-  CircleDollarSign,
   Copy,
   HandCoins,
   History,
@@ -16,11 +15,9 @@ import {
   Pencil,
   Plus,
   Settings,
-  Trash2,
   UserMinus,
   UserRound,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { createActionGuard } from "./actionGuard";
 import { createAutoSync } from "./autoSync";
@@ -30,6 +27,8 @@ import { dateKey, formatActivityTime, lastEightDays } from "./appDates";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
+import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
+import { GroupSideNav } from "./GroupSideNav";
 import { listSettlementRecords } from "./settlementHistory";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
@@ -82,13 +81,6 @@ const templates = [
   { id: "event", label: text.event, defaultName: text.eventName },
 ];
 
-const sideNavItems: Array<{ id: string; label: string; icon: LucideIcon }> = [
-  { id: "home", label: text.groupHome, icon: House },
-  { id: "currency", label: text.currency, icon: CircleDollarSign },
-  { id: "records", label: text.records, icon: History },
-  { id: "analysis", label: text.analysis, icon: ChartNoAxesColumn },
-  { id: "members", label: text.members, icon: UserRound },
-];
 
 const currencyOptions = [
   { code: "TWD", label: UI_TEXT.currencies.twd },
@@ -190,6 +182,7 @@ export function App() {
   // button to show the busy label.
   const actionGuardRef = useRef(createActionGuard());
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
@@ -358,6 +351,18 @@ export function App() {
       showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
     } finally {
       endAction();
+    }
+  }
+
+  async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
+    if (!session) return;
+    try {
+      const client = createApiClient({ authToken: session.token });
+      await client.createFeedback({ ...payload, page: window.location.pathname });
+      setFeedbackOpen(false);
+      showToast(text.feedbackDone);
+    } catch {
+      showToast(text.feedbackFailed);
     }
   }
 
@@ -1152,100 +1157,6 @@ export function App() {
     dialog === "recordsPanel" ||
     dialog === "analysisPanel";
 
-  function renderGroupSideNavContent(insideDrawer = false) {
-    if (!activeGroup) return null;
-    const closeDrawer = () => {
-      if (insideDrawer) setSettingsDrawerOpen(false);
-    };
-    return (
-      <>
-        <div className="profile-dot-row">
-          <button
-            className="profile-dot"
-            type="button"
-            aria-label={text.profile}
-            onClick={() => {
-              closeDrawer();
-              openProfileDialog();
-            }}
-          >
-            <UserRound aria-hidden="true" size={18} />
-          </button>
-        </div>
-        <div className="side-group-card">
-          <div className="side-cover">
-            {activeGroup.coverImageUrl ? <img src={activeGroup.coverImageUrl} alt="" /> : null}
-          </div>
-          <div className="side-group-name">
-            <div className="side-group-title-row">
-              <h2>{activeGroup.name}</h2>
-              {isCurrentMemberOwner ? (
-                <button
-                  className="side-edit-group"
-                  type="button"
-                  aria-label={text.editGroup}
-                  onClick={() => {
-                    closeDrawer();
-                    openEditGroup();
-                  }}
-                >
-                  <Pencil aria-hidden="true" size={15} />
-                </button>
-              ) : null}
-            </div>
-            <span>
-              {members.length} {text.people}
-            </span>
-          </div>
-        </div>
-        <nav className="side-nav-list" aria-label={text.groupHome}>
-          {sideNavItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                className={item.id === "home" ? "side-nav-item active" : "side-nav-item"}
-                type="button"
-                key={item.id}
-                onClick={() => {
-                  closeDrawer();
-                  handleSideNavClick(item.id);
-                }}
-              >
-                <Icon aria-hidden="true" size={19} />
-                {item.id === "currency" ? `${item.label} ${activeGroup.currency}` : item.label}
-              </button>
-            );
-          })}
-        </nav>
-        {isCurrentMemberOwner ? (
-          <div className="side-danger-actions">
-            <button
-              className="side-archive-action"
-              type="button"
-              onClick={() => {
-                closeDrawer();
-                setDialog("archive");
-              }}
-            >
-              <Archive aria-hidden="true" size={16} />
-              {text.archiveGroup}
-            </button>
-            <button
-              className="side-delete-action"
-              type="button"
-              onClick={() => {
-                closeDrawer();
-                setDialog("delete");
-              }}
-            >
-              <Trash2 aria-hidden="true" size={16} />
-              {text.deleteGroup}
-            </button>
-          </div>
-        ) : null}
-      </>
-    );
-  }
 
   if (!session) {
     return (
@@ -1594,13 +1505,40 @@ export function App() {
           </section>
 
           <aside className="group-side-nav glass-panel" aria-label={text.groupHome} inert={isMobileLayout} aria-hidden={isMobileLayout || undefined}>
-            {renderGroupSideNavContent()}
+            {activeGroup ? (
+              <GroupSideNav
+                groupName={activeGroup.name}
+                groupCurrency={activeGroup.currency}
+                coverImageUrl={activeGroup.coverImageUrl}
+                memberCount={members.length}
+                isOwner={isCurrentMemberOwner}
+                onProfile={openProfileDialog}
+                onEditGroup={openEditGroup}
+                onNavigate={handleSideNavClick}
+                onArchive={() => setDialog("archive")}
+                onDelete={() => setDialog("delete")}
+              />
+            ) : null}
           </aside>
 
           {settingsDrawerOpen ? (
             <div className="side-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsDrawerOpen(false); }}>
               <div className="side-drawer side-drawer-right" role="dialog" aria-modal="true" aria-label={text.groupManage}>
-                {renderGroupSideNavContent(true)}
+                {activeGroup ? (
+              <GroupSideNav
+                groupName={activeGroup.name}
+                groupCurrency={activeGroup.currency}
+                coverImageUrl={activeGroup.coverImageUrl}
+                memberCount={members.length}
+                isOwner={isCurrentMemberOwner}
+                onProfile={openProfileDialog}
+                onEditGroup={openEditGroup}
+                onNavigate={handleSideNavClick}
+                onArchive={() => setDialog("archive")}
+                onDelete={() => setDialog("delete")}
+                onBeforeNavigate={() => setSettingsDrawerOpen(false)}
+              />
+            ) : null}
               </div>
             </div>
           ) : null}
@@ -1684,8 +1622,14 @@ export function App() {
           onSave={saveProfile}
           onToast={showToast}
           onLogout={logout}
+          onFeedback={() => {
+            setDialog(null);
+            setFeedbackOpen(true);
+          }}
         />
       ) : null}
+
+      {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} onSubmit={handleFeedbackSubmit} /> : null}
 
       {dialog === "expenseDetail" && selectedExpense ? (
         <ExpenseDetailDialog

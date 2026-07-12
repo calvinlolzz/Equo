@@ -253,6 +253,63 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return (result ?? null) as T;
     }
 
+    if (normalized.includes("insert into public.app_feedback")) {
+      const rows = await request<T>({
+        method: "POST",
+        table: "app_feedback",
+        query: "select=id",
+        body: {
+          user_id: params[0],
+          type: params[1],
+          message: params[2],
+          contact: params[3],
+          page: params[4],
+        },
+        returnRepresentation: true,
+      });
+      return firstRow(rows);
+    }
+
+    if (normalized.includes("insert into public.app_error_logs")) {
+      await request({
+        method: "POST",
+        table: "app_error_logs",
+        body: {
+          user_id: params[0],
+          source: params[1],
+          message: params[2],
+          context: params[3],
+          page: params[4],
+        },
+      });
+      return undefined as T;
+    }
+
+    if (normalized.includes("select public.admin_console_feedback(")) {
+      return (await rpc<unknown>("admin_console_feedback", {
+        p_limit: params[0],
+        p_offset: params[1],
+        p_status: params[2],
+      })) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_set_feedback_status(")) {
+      const result = await rpc<unknown>("admin_console_set_feedback_status", {
+        p_actor: params[0],
+        p_actor_email: params[1],
+        p_feedback_id: params[2],
+        p_status: params[3],
+      });
+      return (result ?? null) as T;
+    }
+
+    if (normalized.includes("select public.admin_console_errors(")) {
+      return (await rpc<unknown>("admin_console_errors", {
+        p_limit: params[0],
+        p_offset: params[1],
+      })) as T;
+    }
+
     if (normalized.includes("select public.admin_console_audit_logs(")) {
       return (await rpc<unknown>("admin_console_audit_logs", {
         p_limit: params[0],

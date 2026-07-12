@@ -327,6 +327,18 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         },
       );
     },
+    createFeedback(payload: { type: string; message: string; contact?: string; page?: string }) {
+      return request<{ feedback: { id: string } }>("/feedback", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    reportClientError(payload: { source: string; message: string; context?: string; page?: string }) {
+      return request<{ ok: true }>("/errors", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
     adminMe() {
       return request<AdminMeSummary>("/admin/me", { method: "GET" });
     },
@@ -344,6 +356,23 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
     },
     adminListAuditLogs(options: AdminListOptions = {}) {
       return request<AdminAuditLogPage>(`/admin/audit${adminListQuery(options)}`, { method: "GET" });
+    },
+    adminListFeedback(options: AdminListOptions & { status?: string } = {}) {
+      const params = new URLSearchParams();
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      if (options.offset !== undefined) params.set("offset", String(options.offset));
+      if (options.status && options.status !== "all") params.set("status", options.status);
+      const query = params.toString();
+      return request<AdminFeedbackPage>(`/admin/feedback${query ? `?${query}` : ""}`, { method: "GET" });
+    },
+    adminSetFeedbackStatus(feedbackId: string, status: string) {
+      return request<{ id: string; status: string }>(`/admin/feedback/${feedbackId}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      });
+    },
+    adminListErrors(options: AdminListOptions = {}) {
+      return request<AdminErrorPage>(`/admin/errors${adminListQuery(options)}`, { method: "GET" });
     },
     adminSetUserDisabled(userId: string, disabled: boolean) {
       return request<{ id: string; disabled_at: string | null }>(
@@ -475,4 +504,35 @@ export type AdminAuditLogRow = {
 export type AdminAuditLogPage = {
   total: number;
   logs: AdminAuditLogRow[];
+};
+
+export type AdminFeedbackRow = {
+  id: string;
+  user_email: string | null;
+  type: string;
+  message: string;
+  contact: string | null;
+  page: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type AdminFeedbackPage = {
+  total: number;
+  feedback: AdminFeedbackRow[];
+};
+
+export type AdminErrorRow = {
+  id: string;
+  user_email: string | null;
+  source: string;
+  message: string;
+  context: string | null;
+  page: string | null;
+  created_at: string;
+};
+
+export type AdminErrorPage = {
+  total: number;
+  errors: AdminErrorRow[];
 };

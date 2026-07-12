@@ -4,8 +4,11 @@ import {
   ADMIN_LIST_DEFAULT_LIMIT,
   ADMIN_LIST_MAX_LIMIT,
   handleAdminListAuditLogs,
+  handleAdminListErrors,
+  handleAdminListFeedback,
   handleAdminListGroups,
   handleAdminListUsers,
+  handleAdminSetFeedbackStatus,
   handleAdminMe,
   handleAdminOverview,
   handleAdminSetGroupArchived,
@@ -87,6 +90,15 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
         ],
       };
     },
+    async listFeedback() {
+      return { total: 0, feedback: [] };
+    },
+    async setFeedbackStatus(_actor, feedbackId, status) {
+      return { id: feedbackId, status };
+    },
+    async listErrors() {
+      return { total: 0, errors: [] };
+    },
     ...overrides,
   };
 }
@@ -109,6 +121,9 @@ describe("admin handlers", () => {
       handleAdminSetGroupArchived(repository, context, "group_1", true),
       handleAdminSetGroupDeleted(repository, context, "group_1", true),
       handleAdminListAuditLogs(repository, context),
+      handleAdminListFeedback(repository, context),
+      handleAdminSetFeedbackStatus(repository, context, "feedback_1", "done"),
+      handleAdminListErrors(repository, context),
     ]);
 
     for (const result of results) {
@@ -204,6 +219,33 @@ describe("admin handlers", () => {
     expect(result.ok).toBe(true);
     expect(result.body).toEqual({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
     expect(actorEmail).toBe("admin@example.com");
+  });
+
+  test("feedback status updates validate the status vocabulary", async () => {
+    const valid = await handleAdminSetFeedbackStatus(makeRepository(), context, "feedback_1", "reviewing");
+    expect(valid.ok).toBe(true);
+    expect(valid.body).toEqual({ id: "feedback_1", status: "reviewing" });
+
+    const invalid = await handleAdminSetFeedbackStatus(makeRepository(), context, "feedback_1", "archived");
+    expect(invalid.ok).toBe(false);
+    expect(invalid.status).toBe(400);
+    expect((invalid.body as { error: { code: string } }).error.code).toBe("INVALID_FEEDBACK");
+  });
+
+  test("feedback list forwards the status filter, defaulting unknowns to all", async () => {
+    let received: string | null = null;
+    const repository = makeRepository({
+      async listFeedback(_limit, _offset, status) {
+        received = status;
+        return { total: 0, feedback: [] };
+      },
+    });
+
+    await handleAdminListFeedback(repository, context, { status: "reviewing" });
+    expect(received).toBe("reviewing");
+
+    await handleAdminListFeedback(repository, context, { status: "weird" });
+    expect(received).toBe("all");
   });
 
   test("audit log listing returns the page for admins", async () => {

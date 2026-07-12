@@ -2,6 +2,9 @@ import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
   AdminAuditLogListRecord,
+  AdminErrorListRecord,
+  AdminFeedbackListRecord,
+  AdminFeedbackStatus,
   AdminGroupFilter,
   AdminGroupListRecord,
   AdminGroupStateResult,
@@ -201,6 +204,87 @@ export async function handleAdminListAuditLogs(
 
   const { limit, offset } = normalizeAdminListQuery(query);
   const page = await repository.listAuditLogs(limit, offset);
+  return { ok: true, status: 200, body: page };
+}
+
+const FEEDBACK_STATUSES: readonly AdminFeedbackStatus[] = ["new", "reviewing", "done"];
+
+export function normalizeFeedbackStatusFilter(status: string | undefined): string {
+  return (FEEDBACK_STATUSES as readonly string[]).includes(status ?? "") ? (status as string) : "all";
+}
+
+export type AdminFeedbackListQuery = AdminListQuery & {
+  status?: string;
+};
+
+export async function handleAdminListFeedback(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  query: AdminFeedbackListQuery = {},
+): Promise<HandlerResult<AdminFeedbackListRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const { limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listFeedback(limit, offset, normalizeFeedbackStatusFilter(query.status));
+  return { ok: true, status: 200, body: page };
+}
+
+export async function handleAdminSetFeedbackStatus(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  feedbackId: string,
+  status: string | undefined,
+): Promise<HandlerResult<{ id: string; status: string }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  if (!(FEEDBACK_STATUSES as readonly string[]).includes(status ?? "")) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_FEEDBACK",
+          message: `status must be one of: ${FEEDBACK_STATUSES.join(", ")}`,
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  const result = await repository.setFeedbackStatus(
+    { id: context.user.id, email: context.user.email },
+    feedbackId,
+    status as AdminFeedbackStatus,
+  );
+
+  if (!result) {
+    return adminNotFound("Feedback not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminListErrors(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  query: AdminListQuery = {},
+): Promise<HandlerResult<AdminErrorListRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const { limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listErrors(limit, offset);
   return { ok: true, status: 200, body: page };
 }
 

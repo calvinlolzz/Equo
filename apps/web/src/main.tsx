@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./app/App.css";
 import { App } from "./app/App";
+import { installErrorReporter } from "./app/errorReporter";
 import { GlassBackground } from "./app/GlassBackground";
 
 const root = document.getElementById("root");
@@ -15,6 +16,11 @@ if (!root) {
 // backdrop entirely.
 const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 const AdminApp = React.lazy(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
+
+// Global crash telemetry -> POST /api/v1/errors (deduped, capped per page
+// load; see errorReporter.ts). Installed before render so even a crash
+// during the first mount gets reported.
+installErrorReporter(isAdminPath ? "admin" : "web");
 
 createRoot(root).render(
   <React.StrictMode>

@@ -1,5 +1,7 @@
 import type {
   AdminAuditLogListRecord,
+  AdminErrorListRecord,
+  AdminFeedbackListRecord,
   AdminGroupListRecord,
   AdminGroupStateResult,
   AdminOverviewRecord,
@@ -77,6 +79,27 @@ export function createSupabaseAdminRepository(client: SupabaseQueryClient): Admi
     async listAuditLogs(limit, offset) {
       return client.one<AdminAuditLogListRecord>(
         `select public.admin_console_audit_logs($1, $2)`,
+        [limit, offset],
+      );
+    },
+
+    async listFeedback(limit, offset, status) {
+      return client.one<AdminFeedbackListRecord>(
+        `select public.admin_console_feedback($1, $2, $3)`,
+        [limit, offset, status],
+      );
+    },
+
+    async setFeedbackStatus(actor, feedbackId, status) {
+      return client.maybeOne<{ id: string; status: string }>(
+        `select public.admin_console_set_feedback_status($1, $2, $3, $4)`,
+        [actor.id, actor.email, feedbackId, status],
+      );
+    },
+
+    async listErrors(limit, offset) {
+      return client.one<AdminErrorListRecord>(
+        `select public.admin_console_errors($1, $2)`,
         [limit, offset],
       );
     },

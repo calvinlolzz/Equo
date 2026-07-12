@@ -18,6 +18,7 @@ export const errorCodes = [
   "ADMIN_FORBIDDEN",
   "ADMIN_NOT_FOUND",
   "ACCOUNT_DISABLED",
+  "INVALID_FEEDBACK",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

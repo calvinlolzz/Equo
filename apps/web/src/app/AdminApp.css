@@ -423,6 +423,13 @@
   gap: 6px;
 }
 
+.admin-table__message {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .admin-chips {
   display: flex;
   gap: 6px;

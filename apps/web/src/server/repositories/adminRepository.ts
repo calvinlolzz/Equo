@@ -98,6 +98,40 @@ export type AdminAuditLogListRecord = {
   logs: AdminAuditLogRecord[];
 };
 
+export type AdminFeedbackRecord = {
+  id: string;
+  user_email: string | null;
+  type: string;
+  message: string;
+  contact: string | null;
+  page: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type AdminFeedbackListRecord = {
+  total: number;
+  feedback: AdminFeedbackRecord[];
+};
+
+/** app_feedback.status vocabulary (from its check constraint). */
+export type AdminFeedbackStatus = "new" | "reviewing" | "done";
+
+export type AdminErrorRecord = {
+  id: string;
+  user_email: string | null;
+  source: string;
+  message: string;
+  context: string | null;
+  page: string | null;
+  created_at: string;
+};
+
+export type AdminErrorListRecord = {
+  total: number;
+  errors: AdminErrorRecord[];
+};
+
 export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
@@ -112,4 +146,13 @@ export type AdminRepository = {
   /** Soft-delete or restore a group. Returns null when the group does not exist. */
   setGroupDeleted(actor: AdminActor, groupId: string, deleted: boolean): Promise<AdminGroupStateResult | null>;
   listAuditLogs(limit: number, offset: number): Promise<AdminAuditLogListRecord>;
+  /** status "all" lists everything; a specific status filters to it. */
+  listFeedback(limit: number, offset: number, status: string): Promise<AdminFeedbackListRecord>;
+  /** Returns null when the feedback row does not exist. */
+  setFeedbackStatus(
+    actor: AdminActor,
+    feedbackId: string,
+    status: AdminFeedbackStatus,
+  ): Promise<{ id: string; status: string } | null>;
+  listErrors(limit: number, offset: number): Promise<AdminErrorListRecord>;
 };

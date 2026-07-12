@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Contrast, FileText, Globe, Lock, LogOut, Pencil, X, Apple } from "lucide-react";
+import { Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, X, Apple } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -52,6 +52,7 @@ export function ProfileDialog({
   onSave,
   onToast,
   onLogout,
+  onFeedback,
 }: {
   profile: ProfileData;
   /**
@@ -66,6 +67,7 @@ export function ProfileDialog({
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
   onLogout: () => void;
+  onFeedback: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
   const [name, setName] = useState(profile.name);
@@ -222,6 +224,10 @@ export function ProfileDialog({
             <button className="profile-other-row" type="button" onClick={() => onToast(text.languageToast)}>
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>
+            </button>
+            <button className="profile-other-row" type="button" onClick={onFeedback}>
+              <MessageSquareText aria-hidden="true" size={19} />
+              <span>{text.feedbackEntry}</span>
             </button>
             <button className="profile-other-row" type="button" onClick={() => setInfoDialog("privacy")}>
               <Lock aria-hidden="true" size={19} />

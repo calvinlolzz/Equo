@@ -29,12 +29,16 @@ import {
   unarchiveGroupRoute,
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
+import { createFeedbackRoute, reportErrorRoute } from "../routes/supportRoutes.js";
 import {
   adminListAuditLogsRoute,
+  adminListErrorsRoute,
+  adminListFeedbackRoute,
   adminListGroupsRoute,
   adminListUsersRoute,
   adminMeRoute,
   adminOverviewRoute,
+  adminSetFeedbackStatusRoute,
   adminSetGroupArchivedRoute,
   adminSetGroupDeletedRoute,
   adminSetUserDisabledRoute,
@@ -344,6 +348,69 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[2],
           payload.client_request_id,
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/feedback$/,
+      label: "POST /api/v1/feedback",
+      async handle(request) {
+        const result = await createFeedbackRoute(
+          routeOptions(options, request),
+          body<{ type?: string; message?: string; contact?: string; page?: string }>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/errors$/,
+      label: "POST /api/v1/errors",
+      async handle(request) {
+        const result = await reportErrorRoute(
+          routeOptions(options, request),
+          body<{ source?: string; message?: string; context?: string; page?: string }>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/feedback$/,
+      label: "GET /api/v1/admin/feedback",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListFeedbackRoute(routeOptions(options, request), {
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+          status: queryParam(request, "status"),
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/feedback\/([^/]+)\/status$/,
+      label: "POST /api/v1/admin/feedback/:feedbackId/status",
+      async handle(request, match) {
+        const payload = body<{ status?: string }>(request);
+        const result = await adminSetFeedbackStatusRoute(routeOptions(options, request), match[1], payload.status);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/errors$/,
+      label: "GET /api/v1/admin/errors",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListErrorsRoute(routeOptions(options, request), {
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+        });
         return jsonResponse(result.status, result.body);
       },
     },

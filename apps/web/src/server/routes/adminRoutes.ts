@@ -7,14 +7,18 @@ import {
 } from "../repositories/supabaseGroupRepository.js";
 import {
   handleAdminListAuditLogs,
+  handleAdminListErrors,
+  handleAdminListFeedback,
   handleAdminListGroups,
   handleAdminListUsers,
   handleAdminMe,
   handleAdminOverview,
+  handleAdminSetFeedbackStatus,
   handleAdminSetGroupArchived,
   handleAdminSetGroupDeleted,
   handleAdminSetUserDisabled,
   handleAdminUserDetail,
+  type AdminFeedbackListQuery,
   type AdminGroupListQuery,
   type AdminListQuery,
 } from "../handlers/admin.js";
@@ -90,6 +94,36 @@ export async function adminListAuditLogsRoute(options: RouteOptions, query: Admi
   }
 
   return handleAdminListAuditLogs(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminListFeedbackRoute(options: RouteOptions, query: AdminFeedbackListQuery) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListFeedback(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminSetFeedbackStatusRoute(options: RouteOptions, feedbackId: string, status: string | undefined) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetFeedbackStatus(createSupabaseAdminRepository(options.client), auth.context, feedbackId, status);
+}
+
+export async function adminListErrorsRoute(options: RouteOptions, query: AdminListQuery) {
+  const auth = await buildRouteContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListErrors(createSupabaseAdminRepository(options.client), auth.context, query);
 }
 
 export async function adminSetUserDisabledRoute(options: RouteOptions, userId: string, disabled: boolean) {
