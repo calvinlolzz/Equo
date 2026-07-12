@@ -44,12 +44,31 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
   const detachListener = useRef<(() => void) | null>(null);
   const closeTimer = useRef<number | null>(null);
 
+  /** Whether the parent backdrop's blur is currently suppressed (avoids redundant style writes). */
+  const blurOff = useRef(false);
+
   function applyTransform(x: number, animate: boolean) {
     const el = node.current;
     if (!el) return;
     el.style.transition = animate ? "" : "none";
     // Only ever translate toward the dismiss edge; sign already encodes it.
     el.style.transform = x !== 0 ? `translateX(${x}px)` : "";
+  }
+
+  /**
+   * Suspend the backdrop's live blur while the finger is dragging. A
+   * `backdrop-filter: blur()` over a translating drawer forces a full-screen
+   * blur recompute every frame - the single biggest cause of drag jank on
+   * mid-range phones. The drawer is the backdrop's only child (see the
+   * .side-drawer-backdrop > .side-drawer markup), so parentElement is it.
+   * Restored on release; harmless if absent since each open remounts a fresh
+   * backdrop element.
+   */
+  function setBackdropBlur(suppressed: boolean) {
+    if (blurOff.current === suppressed) return;
+    blurOff.current = suppressed;
+    const backdrop = node.current?.parentElement;
+    if (backdrop) backdrop.style.backdropFilter = suppressed ? "none" : "";
   }
 
   const requestClose = useCallback(() => {
@@ -98,6 +117,7 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
 
     // Progress toward the dismiss edge only (a drag away from it pins at 0).
     const toward = deltaX * sign > 0 ? deltaX : 0;
+    setBackdropBlur(true);
     dragX.current = toward;
     applyTransform(toward, false);
   }
@@ -111,11 +131,13 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
     } else {
       dragX.current = 0;
       applyTransform(0, true);
+      setBackdropBlur(false);
     }
     horizontal.current = null;
   }
 
   function onTouchCancel() {
+    setBackdropBlur(false);
     startX.current = null;
     dragX.current = 0;
     horizontal.current = null;
@@ -131,6 +153,9 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
     startX.current = null;
     dragX.current = 0;
     horizontal.current = null;
+    // A remount hands us a fresh backdrop element (its inline blur override,
+    // if any, is gone), so just clear the tracking flag - no node to reset.
+    blurOff.current = false;
     if (closeTimer.current !== null) {
       window.clearTimeout(closeTimer.current);
       closeTimer.current = null;
