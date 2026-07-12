@@ -461,6 +461,11 @@
   z-index: 46;
   width: min(320px, 84vw);
   overflow-y: auto;
+  /* Horizontal gestures belong to the swipe-to-dismiss JS; vertical panning
+     stays native. Pre-promoting the layer keeps the follow-finger transform
+     off the main-thread raster path. */
+  touch-action: pan-y;
+  will-change: transform;
   display: grid;
   gap: 16px;
   padding: 20px;

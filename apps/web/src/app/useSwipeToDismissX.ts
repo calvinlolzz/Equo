@@ -141,9 +141,11 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
     }
     if (!next) return;
     const onNativeMove = (event: TouchEvent) => {
+      // Once the gesture is claimed as horizontal, own it completely -
+      // letting the browser scroll on the "away" half of a wobbly drag makes
+      // the drawer stutter between native scrolling and the JS transform.
       if (startX.current === null || !horizontal.current) return;
-      const deltaX = event.touches[0].clientX - startX.current;
-      if (deltaX * sign > 0) event.preventDefault();
+      if (event.cancelable) event.preventDefault();
     };
     next.addEventListener("touchmove", onNativeMove, { passive: false });
     detachListener.current = () => next.removeEventListener("touchmove", onNativeMove);

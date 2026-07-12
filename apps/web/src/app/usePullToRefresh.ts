@@ -58,7 +58,9 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<void
       if (nowArmed !== armed.current) {
         armed.current = nowArmed;
         setStatus(nowArmed ? "armed" : "pulling");
-      } else if (!nowArmed) {
+      } else if (!nowArmed && deltaY > 24) {
+        // Show the hint only once a deliberate pull is underway; React bails
+        // out on the repeated identical value, so this stays cheap.
         setStatus("pulling");
       }
     }
