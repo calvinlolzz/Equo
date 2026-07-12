@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   AlertTriangle,
-  Archive,
   ChartNoAxesColumn,
-  Check,
   ChevronRight,
   Copy,
   HandCoins,
@@ -15,7 +13,6 @@ import {
   Pencil,
   Plus,
   Settings,
-  UserMinus,
   UserRound,
   X,
 } from "lucide-react";
@@ -25,6 +22,8 @@ import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient, type ExpenseSummary } from "./apiClient";
 import { dateKey, formatActivityTime, lastEightDays } from "./appDates";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { ArchivedListPanel } from "./ArchivedListPanel";
+import { MemberListPanel } from "./MemberListPanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
@@ -1938,114 +1937,22 @@ export function App() {
             ) : null}
 
             {dialog === "memberList" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.members}</h3>
-                  <p>
-                    {members.length} {text.people}
-                  </p>
-                </div>
-                <div className="dialog-section-list">
-                  <span className="dialog-list-title">{text.members}</span>
-                  {members.map((member) => {
-                    // Only VIRTUAL members can be renamed/removed - real users
-                    // own their names via their profile, and the owner is
-                    // protected. (A virtual member is never the owner.)
-                    const manageable = Boolean(member.virtual);
-                    const isRenaming = manageable && renamingMemberId === member.id;
-                    const renamePending = pendingAction === `renameMember:${member.id}`;
-                    const removePending = pendingAction === `removeMember:${member.id}`;
-                    return (
-                      <div
-                        className={manageable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
-                        key={member.id}
-                      >
-                        <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
-                        {isRenaming ? (
-                          <>
-                            <input
-                              className="member-rename-input"
-                              value={renameMemberValue}
-                              onChange={(event) => setRenameMemberValue(event.target.value)}
-                              maxLength={50}
-                              aria-label={text.renameMember}
-                              autoFocus
-                            />
-                            <span className="member-row-actions">
-                              <button
-                                className="member-icon-action confirm"
-                                type="button"
-                                aria-label={text.confirm}
-                                disabled={!renameMemberValue.trim() || renamePending}
-                                onClick={() => submitRenameMember(member)}
-                              >
-                                <Check aria-hidden="true" size={15} />
-                              </button>
-                              <button
-                                className="member-icon-action"
-                                type="button"
-                                aria-label={text.cancel}
-                                disabled={renamePending}
-                                onClick={cancelRenameMember}
-                              >
-                                <X aria-hidden="true" size={15} />
-                              </button>
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span>
-                              <strong>{member.name}</strong>
-                              <small>{member.virtual ? text.virtualMember : member.role === "owner" ? text.owner : text.member}</small>
-                            </span>
-                            {manageable ? (
-                              <span className="member-row-actions">
-                                <button
-                                  className="member-icon-action"
-                                  type="button"
-                                  aria-label={text.renameMember}
-                                  disabled={removePending}
-                                  onClick={() => startRenameMember(member)}
-                                >
-                                  <Pencil aria-hidden="true" size={14} />
-                                </button>
-                                <button
-                                  className={
-                                    confirmingRemoveMemberId === member.id
-                                      ? "member-icon-action danger confirming"
-                                      : "member-icon-action danger"
-                                  }
-                                  type="button"
-                                  aria-label={text.removeMember}
-                                  disabled={removePending}
-                                  onClick={() => removeMember(member)}
-                                >
-                                  {confirmingRemoveMemberId === member.id ? (
-                                    text.confirmRemoveMember
-                                  ) : (
-                                    <UserMinus aria-hidden="true" size={14} />
-                                  )}
-                                </button>
-                              </span>
-                            ) : null}
-                            <b>{formatSigned(balances.get(member.id) ?? 0, activeGroup?.currency ?? "TWD")}</b>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="dialog-action-row">
-                  <button className="secondary-action" type="button" onClick={openInviteMembers}>
-                    <Inbox aria-hidden="true" size={18} />
-                    {text.inviteMembers}
-                  </button>
-                  <button className="primary-action" type="button" onClick={() => setDialog("virtualMember")}>
-                    <UserRound aria-hidden="true" size={18} />
-                    {text.addVirtualMember}
-                  </button>
-                </div>
-              </>
+              <MemberListPanel
+                members={members}
+                balances={balances}
+                currency={activeGroup?.currency ?? "TWD"}
+                renamingMemberId={renamingMemberId}
+                renameMemberValue={renameMemberValue}
+                confirmingRemoveMemberId={confirmingRemoveMemberId}
+                pendingAction={pendingAction}
+                onRenameValueChange={setRenameMemberValue}
+                onStartRename={startRenameMember}
+                onCancelRename={cancelRenameMember}
+                onSubmitRename={submitRenameMember}
+                onRemove={removeMember}
+                onInvite={openInviteMembers}
+                onAddVirtualMember={() => setDialog("virtualMember")}
+              />
             ) : null}
 
             {dialog === "virtualMember" ? (
@@ -2080,49 +1987,12 @@ export function App() {
             ) : null}
 
             {dialog === "archivedList" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.archivedGroups}</h3>
-                  <p>{"\u5c01\u5b58\u5f8c\u7684\u7fa4\u7d44\u6703\u653e\u5728\u9019\u88e1\uff0c\u4e0d\u6703\u51fa\u73fe\u5728\u5de6\u5074\u4e3b\u5217\u8868\u3002"}</p>
-                </div>
-                <div className="dialog-section-list archived-dialog-list">
-                  {archivedGroupsLoading ? (
-                    <div className="cloud-loading-skeleton" aria-busy="true">
-                      <span className="pulse-dot active" />
-                    </div>
-                  ) : archivedGroups.length ? (
-                    archivedGroups.map((group) => (
-                      <div className="archived-dialog-row" key={group.id}>
-                        {group.coverImageUrl ? (
-                          <span className="record-dialog-thumb">
-                            <img src={group.coverImageUrl} alt="" />
-                          </span>
-                        ) : (
-                          <span className="record-dialog-icon">
-                            <Archive aria-hidden="true" size={18} />
-                          </span>
-                        )}
-                        <span>
-                          <strong>{group.name}</strong>
-                          <small>{group.currency}</small>
-                        </span>
-                        {group.callerMemberId === group.ownerMemberId ? (
-                          <button
-                            className="composer-mini-action"
-                            type="button"
-                            disabled={Boolean(unarchivingGroupId)}
-                            onClick={() => unarchiveGroup(group)}
-                          >
-                            {unarchivingGroupId === group.id ? text.restoringGroup : text.restoreGroup}
-                          </button>
-                        ) : null}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="dialog-empty">{text.noArchivedGroups}</p>
-                  )}
-                </div>
-              </>
+              <ArchivedListPanel
+                archivedGroups={archivedGroups}
+                loading={archivedGroupsLoading}
+                unarchivingGroupId={unarchivingGroupId}
+                onUnarchive={unarchiveGroup}
+              />
             ) : null}
 
             {dialog === "archive" || dialog === "delete" ? (
