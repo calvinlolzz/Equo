@@ -36,6 +36,21 @@ const FIXED_ACCENTS: Record<number, [number, number, number]> = {
   5: ACCENT_ROSE,
 };
 
+// Light (日間) palette — a soft liquid-glass field over a near-white base.
+// Every blob is a fixed pastel (no hue cycling) referencing the demo: lavender,
+// periwinkle (demo #8E7CF0 softened), mint (demo #63DBAF), teal, peach, rose.
+// Kept high-value / low-saturation so it reads as gently drifting frosted glass
+// under the light UI rather than a saturated wash.
+const LIGHT_BG_COLOR: [number, number, number] = [0.95, 0.945, 0.975];
+const LIGHT_BLOBS: Array<[number, number, number]> = [
+  [0.8, 0.75, 0.97], // lavender
+  [0.72, 0.66, 0.95], // periwinkle (demo purple)
+  [0.68, 0.92, 0.83], // mint (demo)
+  [0.74, 0.9, 0.93], // soft teal
+  [0.97, 0.88, 0.8], // peach / cream
+  [0.94, 0.8, 0.87], // rose
+];
+
 // Default inward-curl vortex: a spiral warp centred on the screen that is always
 // on, so at rest the whole field reads as colours rolling inward (like the
 // reference site). Strength decays from the centre; the spiral turns slowly.
@@ -58,6 +73,7 @@ uniform float u_time;
 uniform float u_aspect;
 uniform vec2 u_mouse;
 uniform float u_hueShift;
+uniform float u_light;     // 1 = light theme (soften the dark vignette)
 uniform vec3 u_bg;
 uniform vec4 u_blobs[${BLOB_COUNT}];
 uniform float u_blobHue[${BLOB_COUNT}];
@@ -132,9 +148,10 @@ void main() {
                 * sin((sp.x - sp.y) * 11.0 - u_time * 0.7);
   col += vec3(0.035) * smoothstep(0.65, 1.0, caustic);
 
-  // Gentle edge vignette so central content stays readable
+  // Gentle edge vignette so central content stays readable. In light mode the
+  // edge darkening is much softer so the field stays bright and airy.
   float vig = smoothstep(1.15, 0.35, length(p));
-  col *= mix(0.82, 1.0, vig);
+  col *= mix(mix(0.82, 0.95, u_light), 1.0, vig);
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -158,11 +175,13 @@ interface SceneOptions {
   fpsCap: number;
   autoMouse: boolean;
   speed: number;
+  light: boolean;
 }
 
 interface Scene {
   dispose: () => void;
   resize: () => void;
+  setPalette: (light: boolean) => void;
 }
 
 /** One-off seed per blob (base position, radius, phase, hue). */
@@ -216,26 +235,35 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     blobRGB: gl.getUniformLocation(program, "u_blobRGB"),
     blobFixed: gl.getUniformLocation(program, "u_blobFixed"),
     blobCount: gl.getUniformLocation(program, "u_blobCount"),
+    light: gl.getUniformLocation(program, "u_light"),
   };
 
-  gl.uniform3fv(u.bg, BG_COLOR);
   gl.uniform1i(u.blobCount, BLOB_COUNT);
 
-  // Fixed accent colours (peach / dusty rose) for the flagged blobs; the rest
-  // cycle the band. These never change, so set them once.
+  // Swap the whole palette (base colour + per-blob fixed colours + vignette
+  // softening) between dark and light. In dark, blobs 0-3 cycle the hue band
+  // and 4-5 are the peach/rose accents; in light, every blob is a fixed pastel.
+  // Called once on build and again live whenever data-theme toggles.
   const blobRGB = new Float32Array(BLOB_COUNT * 3);
   const blobFixed = new Float32Array(BLOB_COUNT);
-  for (let i = 0; i < BLOB_COUNT; i++) {
-    const accent = FIXED_ACCENTS[i];
-    if (accent) {
-      blobRGB[i * 3 + 0] = accent[0];
-      blobRGB[i * 3 + 1] = accent[1];
-      blobRGB[i * 3 + 2] = accent[2];
-      blobFixed[i] = 1;
+  function applyPalette(light: boolean) {
+    gl.uniform3fv(u.bg, light ? LIGHT_BG_COLOR : BG_COLOR);
+    gl.uniform1f(u.light, light ? 1 : 0);
+    blobRGB.fill(0);
+    blobFixed.fill(0);
+    for (let i = 0; i < BLOB_COUNT; i++) {
+      const colour = light ? LIGHT_BLOBS[i % LIGHT_BLOBS.length] : FIXED_ACCENTS[i];
+      if (colour) {
+        blobRGB[i * 3 + 0] = colour[0];
+        blobRGB[i * 3 + 1] = colour[1];
+        blobRGB[i * 3 + 2] = colour[2];
+        blobFixed[i] = 1;
+      }
     }
+    gl.uniform3fv(u.blobRGB, blobRGB);
+    gl.uniform1fv(u.blobFixed, blobFixed);
   }
-  gl.uniform3fv(u.blobRGB, blobRGB);
-  gl.uniform1fv(u.blobFixed, blobFixed);
+  applyPalette(opts.light);
 
   // One-time random layout, jittered from an even ring so blobs never clump.
   const seeds: BlobSeed[] = Array.from({ length: BLOB_COUNT }, (_, i) => {
@@ -391,6 +419,12 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
 
   return {
     resize,
+    setPalette(light: boolean) {
+      applyPalette(light);
+      // Nudge one frame so the new palette shows even if the field is paused
+      // (e.g. reduced-motion or offscreen) at the moment the theme flips.
+      if (!running) gl.drawArrays(gl.TRIANGLES, 0, 3);
+    },
     dispose() {
       stop();
       io.disconnect();
@@ -417,6 +451,7 @@ export function GlassBackground() {
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     let scene: Scene | null = null;
+    const isLight = () => document.documentElement.getAttribute("data-theme") === "light";
 
     const build = () => {
       if (scene || reduce.matches) return;
@@ -427,6 +462,7 @@ export function GlassBackground() {
         fpsCap: small ? 30 : 60,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
+        light: isLight(),
       });
     };
 
@@ -442,11 +478,16 @@ export function GlassBackground() {
 
     const onResize = () => scene?.resize();
 
+    // Repaint the palette live when the day/night toggle flips data-theme.
+    const themeObserver = new MutationObserver(() => scene?.setPalette(isLight()));
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
     build();
     reduce.addEventListener("change", onPreferenceChange);
     window.addEventListener("resize", onResize);
 
     return () => {
+      themeObserver.disconnect();
       reduce.removeEventListener("change", onPreferenceChange);
       window.removeEventListener("resize", onResize);
       teardown();

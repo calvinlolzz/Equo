@@ -605,6 +605,30 @@
     display: inline-flex;
   }
 
+  /* Centre the Equo logo on mobile/H5: a 3-column grid pins the (optional)
+     left menu button and the right actions to the edges while the brand sits
+     dead-centre in the middle column regardless of whether the menu is shown. */
+  .top-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+  }
+
+  .top-bar > .top-bar-icon-button {
+    grid-column: 1;
+    justify-self: start;
+  }
+
+  .top-bar > .brand-mark {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .top-bar > .top-actions {
+    grid-column: 3;
+    justify-self: end;
+  }
+
   .toast-dock {
     top: auto;
     bottom: calc(78px + env(safe-area-inset-bottom));
@@ -615,10 +639,6 @@
   .app-shell {
     width: min(100% - 20px, 1180px);
     padding-top: 14px;
-  }
-
-  .top-bar {
-    align-items: flex-start;
   }
 
   .top-actions {
