@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { ChevronRight, Plus, X } from "lucide-react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ChevronRight, Delete, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
 import { convertToGroupAmountMinor } from "./expenseCurrency";
@@ -19,6 +19,33 @@ import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
+
+/** Custom numeric keypad layout for the mobile amount step (matches the demo's
+ *  step 1). "." replaces the demo's "00" so decimal splits stay reachable. */
+const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "del"] as const;
+
+type StepKey = "amount" | "details" | "payer" | "split" | "transferPair" | "transferNote";
+
+/** The composer becomes a stepped bottom-sheet at the phone breakpoint (the
+ *  same 620px cutoff the sheet layout uses); wider viewports keep the single
+ *  scrolling form. */
+function useIsPhone(): boolean {
+  const query = "(max-width: 620px)";
+  return useSyncExternalStore(
+    (onChange) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+function stepKeysForMode(mode: ComposerMode): StepKey[] {
+  if (mode === "transfer") return ["amount", "transferPair", "transferNote"];
+  return ["amount", "details", "payer", "split"];
+}
 
 function toLocalDateTimeInputValue(value: string) {
   const date = new Date(value);
@@ -152,6 +179,44 @@ export function ExpenseComposerSheet({
 
   // Mobile drag-to-dismiss for the bottom sheet.
   const { closing: composerClosing, requestClose, dragProps } = useSwipeToDismiss(onClose);
+
+  // Stepped flow on phones: one field group per step (amount -> details ->
+  // payer -> split), mirroring the app demo. Wider layouts keep the single
+  // scrolling form below. stepIndex is clamped to the current mode's step
+  // count so switching modes never lands on a nonexistent step.
+  const isPhone = useIsPhone();
+  const stepKeys = stepKeysForMode(composerMode);
+  const [stepIndex, setStepIndex] = useState(0);
+  const activeStep = Math.min(stepIndex, stepKeys.length - 1);
+  const isLastStep = activeStep === stepKeys.length - 1;
+
+  function selectComposerMode(mode: ComposerMode) {
+    setComposerMode(mode);
+    setStepIndex(0);
+  }
+
+  function pressKeypad(key: (typeof KEYPAD_KEYS)[number]) {
+    setComposerAmount((current) =>
+      key === "del" ? stripAmountInput(current.slice(0, -1)) : stripAmountInput(current + key),
+    );
+  }
+
+  function stepTitle(key: StepKey): string {
+    switch (key) {
+      case "amount":
+        return text.stepAmountTitle;
+      case "details":
+        return text.stepDetailsTitle;
+      case "payer":
+        return composerMode === "income" ? text.stepPayerIncomeTitle : text.stepPayerTitle;
+      case "split":
+        return text.stepSplitTitle;
+      case "transferPair":
+        return text.stepTransferPairTitle;
+      case "transferNote":
+        return text.stepTransferNoteTitle;
+    }
+  }
 
   const composerNeedsExchangeRate = composerCurrency !== groupCurrency;
   const composerTotalAmountMinor = composerNeedsExchangeRate
@@ -633,6 +698,217 @@ export function ExpenseComposerSheet({
     );
   }
 
+  // The amount step gates "下一步"; every later field either has a default or is
+  // optional, so those steps advance freely and the final CTA uses canSubmit.
+  const canAdvanceStep = stepKeys[activeStep] === "amount" ? composerTotalAmountMinor > 0 : true;
+
+  // Field groups shared by the desktop single-form layout and the phone steps.
+  const renderModeRow = () => (
+    <div className="composer-type-row segmented-control" role="tablist" aria-label={text.addExpense}>
+      <span
+        className="segmented-pill"
+        style={{ transform: `translateX(${COMPOSER_MODES.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
+        aria-hidden="true"
+      />
+      {COMPOSER_MODES.map((mode) => (
+        <button
+          key={mode.id}
+          className={mode.id === composerMode ? "composer-type active" : "composer-type"}
+          type="button"
+          role="tab"
+          aria-selected={mode.id === composerMode}
+          onClick={() => selectComposerMode(mode.id)}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderMetaGrid = () => (
+    <div className="composer-meta-grid">
+      {composerMode !== "transfer" ? (
+        <label>
+          <span>{text.category}</span>
+          <select value={composerCategory} onChange={(event) => setComposerCategory(event.target.value)} aria-label={text.category}>
+            {Object.entries(UI_TEXT.categories).map(([key, label]) => (
+              <option value={key} key={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <label>
+        <span>{text.date}</span>
+        <input
+          type="datetime-local"
+          value={composerDateTime}
+          onChange={(event) => setComposerDateTime(event.target.value)}
+          aria-label={text.date}
+        />
+      </label>
+    </div>
+  );
+
+  const renderAmountCard = () => (
+    <div className="composer-amount-card">
+      <select
+        className="composer-currency-select"
+        value={composerCurrency}
+        onChange={(event) => setComposerCurrency(event.target.value)}
+        aria-label={text.currency}
+      >
+        {currencyOptions.map((currency) => (
+          <option value={currency.code} key={currency.code}>
+            {currency.code}
+          </option>
+        ))}
+      </select>
+      <input
+        value={formatAmountInputDisplay(composerAmount)}
+        onChange={(event) => setComposerAmount(stripAmountInput(event.target.value))}
+        inputMode="decimal"
+        placeholder="0"
+        aria-label={text.amount}
+      />
+    </div>
+  );
+
+  const renderExchangeRow = () =>
+    composerNeedsExchangeRate ? (
+      <div className="composer-exchange-row">
+        <span>
+          1 {composerCurrency} → {groupCurrency}
+        </span>
+        <input
+          value={composerExchangeRate}
+          onChange={(event) => setComposerExchangeRate(event.target.value)}
+          inputMode="decimal"
+          aria-label={text.exchangeRateLabel}
+        />
+      </div>
+    ) : null;
+
+  const renderTitleField = () => (
+    <label>
+      <input
+        value={composerTitle}
+        onChange={(event) => setComposerTitle(event.target.value)}
+        placeholder={composerMode === "transfer" ? text.transferDefaultTitle : text.titlePlaceholder}
+        aria-label={text.title}
+      />
+    </label>
+  );
+
+  const renderPhotoNoteSection = () => (
+    <div className="composer-card-section composer-photo-note-row">
+      <div className="composer-photo-picker">
+        <span className="composer-section-head-label">{text.photo}</span>
+        {composerImageDataUrl || composerImageUrl ? (
+          <div className="composer-photo-preview">
+            <img src={composerImageDataUrl || composerImageUrl} alt="" />
+            <button className="composer-photo-remove" type="button" aria-label={text.removePhoto} onClick={removeComposerImage}>
+              <X aria-hidden="true" size={14} />
+            </button>
+          </div>
+        ) : (
+          <label className="composer-photo-add">
+            <Plus aria-hidden="true" size={22} />
+            <input type="file" accept="image/*" onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)} />
+          </label>
+        )}
+      </div>
+      <label className="composer-note-field">
+        <span>{text.note}</span>
+        <input
+          value={composerNote}
+          onChange={(event) => setComposerNote(event.target.value)}
+          placeholder={text.notePlaceholder}
+          aria-label={text.note}
+        />
+      </label>
+    </div>
+  );
+
+  const renderNoteSection = () => (
+    <div className="composer-card-section">
+      <label className="composer-note-field">
+        <span>{text.note}</span>
+        <input
+          value={composerNote}
+          onChange={(event) => setComposerNote(event.target.value)}
+          placeholder={text.notePlaceholder}
+          aria-label={text.note}
+        />
+      </label>
+    </div>
+  );
+
+  // Phone step 1: a big running total plus a custom numeric keypad, so amount
+  // entry never depends on the OS keyboard covering the sheet.
+  const renderAmountStep = () => (
+    <div className="composer-amount-step">
+      <div className="composer-amount-display">
+        <select
+          className="composer-currency-select"
+          value={composerCurrency}
+          onChange={(event) => setComposerCurrency(event.target.value)}
+          aria-label={text.currency}
+        >
+          {currencyOptions.map((currency) => (
+            <option value={currency.code} key={currency.code}>
+              {currency.code}
+            </option>
+          ))}
+        </select>
+        <strong>{formatAmountInputDisplay(composerAmount) || "0"}</strong>
+      </div>
+      {renderExchangeRow()}
+      <div className="composer-keypad" role="group" aria-label={text.amount}>
+        {KEYPAD_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="composer-keypad-key"
+            aria-label={key === "del" ? "刪除" : key}
+            onClick={() => pressKeypad(key)}
+          >
+            {key === "del" ? <Delete aria-hidden="true" size={22} /> : key}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderStepBody = (key: StepKey) => {
+    switch (key) {
+      case "amount":
+        return renderAmountStep();
+      case "details":
+        return (
+          <>
+            {renderTitleField()}
+            {renderMetaGrid()}
+            {renderPhotoNoteSection()}
+          </>
+        );
+      case "payer":
+        return renderPayerSection();
+      case "split":
+        return renderShareSection();
+      case "transferPair":
+        return renderTransferSection();
+      case "transferNote":
+        return (
+          <>
+            {renderMetaGrid()}
+            {renderNoteSection()}
+          </>
+        );
+    }
+  };
+
   return (
     <div
       className={composerClosing ? "composer-backdrop closing" : "composer-backdrop"}
@@ -653,159 +929,68 @@ export function ExpenseComposerSheet({
           <h2>{initialExpense ? text.editExpense : text.addExpense}</h2>
         </div>
 
-        <div className="composer-type-row segmented-control" role="tablist" aria-label={text.addExpense}>
-          <span
-            className="segmented-pill"
-            style={{ transform: `translateX(${COMPOSER_MODES.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
-            aria-hidden="true"
-          />
-          {COMPOSER_MODES.map((mode) => (
-            <button
-              key={mode.id}
-              className={mode.id === composerMode ? "composer-type active" : "composer-type"}
-              type="button"
-              role="tab"
-              aria-selected={mode.id === composerMode}
-              onClick={() => setComposerMode(mode.id)}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="composer-meta-grid">
-          {composerMode !== "transfer" ? (
-            <label>
-              <span>{text.category}</span>
-              <select value={composerCategory} onChange={(event) => setComposerCategory(event.target.value)} aria-label={text.category}>
-                {Object.entries(UI_TEXT.categories).map(([key, label]) => (
-                  <option value={key} key={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label>
-            <span>{text.date}</span>
-            <input
-              type="datetime-local"
-              value={composerDateTime}
-              onChange={(event) => setComposerDateTime(event.target.value)}
-              aria-label={text.date}
-            />
-          </label>
-        </div>
-
-        <div className="composer-amount-card">
-          <select
-            className="composer-currency-select"
-            value={composerCurrency}
-            onChange={(event) => setComposerCurrency(event.target.value)}
-            aria-label={text.currency}
-          >
-            {currencyOptions.map((currency) => (
-              <option value={currency.code} key={currency.code}>
-                {currency.code}
-              </option>
-            ))}
-          </select>
-          <input
-            value={formatAmountInputDisplay(composerAmount)}
-            onChange={(event) => setComposerAmount(stripAmountInput(event.target.value))}
-            inputMode="decimal"
-            placeholder="0"
-            aria-label={text.amount}
-          />
-        </div>
-
-        {composerNeedsExchangeRate ? (
-          <div className="composer-exchange-row">
-            <span>
-              1 {composerCurrency} → {groupCurrency}
-            </span>
-            <input
-              value={composerExchangeRate}
-              onChange={(event) => setComposerExchangeRate(event.target.value)}
-              inputMode="decimal"
-              aria-label={text.exchangeRateLabel}
-            />
-          </div>
-        ) : null}
-
-        <label>
-          <input
-            value={composerTitle}
-            onChange={(event) => setComposerTitle(event.target.value)}
-            placeholder={composerMode === "transfer" ? text.transferDefaultTitle : text.titlePlaceholder}
-            aria-label={text.title}
-          />
-        </label>
-
-        {composerMode === "transfer" ? renderTransferSection() : renderPayerSection()}
-        {composerMode !== "transfer" ? renderShareSection() : null}
-
-        {composerMode !== "transfer" ? (
-          <div className="composer-card-section composer-photo-note-row">
-            <div className="composer-photo-picker">
-              <span className="composer-section-head-label">{text.photo}</span>
-              {composerImageDataUrl || composerImageUrl ? (
-                <div className="composer-photo-preview">
-                  <img src={composerImageDataUrl || composerImageUrl} alt="" />
-                  <button
-                    className="composer-photo-remove"
-                    type="button"
-                    aria-label={text.removePhoto}
-                    onClick={removeComposerImage}
-                  >
-                    <X aria-hidden="true" size={14} />
-                  </button>
-                </div>
+        {isPhone ? (
+          <>
+            <div className="composer-progress" aria-hidden="true">
+              {stepKeys.map((key, index) => (
+                <span key={key} className={index <= activeStep ? "composer-progress-seg on" : "composer-progress-seg"} />
+              ))}
+            </div>
+            <div className="composer-step-body">
+              <div className="composer-step-heading">
+                <span className="composer-step-count">
+                  {text.stepWord} {activeStep + 1}/{stepKeys.length}
+                </span>
+                <h3 className="composer-step-title">{stepTitle(stepKeys[activeStep])}</h3>
+              </div>
+              {stepKeys[activeStep] === "amount" ? renderModeRow() : null}
+              {renderStepBody(stepKeys[activeStep])}
+            </div>
+            <div className="composer-step-nav">
+              {activeStep > 0 ? (
+                <button className="composer-step-back" type="button" onClick={() => setStepIndex(activeStep - 1)}>
+                  {text.stepBack}
+                </button>
               ) : (
-                <label className="composer-photo-add">
-                  <Plus aria-hidden="true" size={22} />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)}
-                  />
-                </label>
+                <span />
+              )}
+              {isLastStep ? (
+                <button
+                  className="composer-submit-full composer-step-save"
+                  type="button"
+                  disabled={composerSubmitState.disabled || composerSubmitting}
+                  onClick={submitComposer}
+                >
+                  {composerSubmitting ? text.savingChanges : composerSubmitState.label}
+                </button>
+              ) : (
+                <button className="composer-step-next" type="button" disabled={!canAdvanceStep} onClick={() => setStepIndex(activeStep + 1)}>
+                  {text.stepNext}
+                </button>
               )}
             </div>
-            <label className="composer-note-field">
-              <span>{text.note}</span>
-              <input
-                value={composerNote}
-                onChange={(event) => setComposerNote(event.target.value)}
-                placeholder={text.notePlaceholder}
-                aria-label={text.note}
-              />
-            </label>
-          </div>
+          </>
         ) : (
-          <div className="composer-card-section">
-            <label className="composer-note-field">
-              <span>{text.note}</span>
-              <input
-                value={composerNote}
-                onChange={(event) => setComposerNote(event.target.value)}
-                placeholder={text.notePlaceholder}
-                aria-label={text.note}
-              />
-            </label>
-          </div>
+          <>
+            {renderModeRow()}
+            {renderMetaGrid()}
+            {renderAmountCard()}
+            {renderExchangeRow()}
+            {renderTitleField()}
+            {composerMode === "transfer" ? renderTransferSection() : renderPayerSection()}
+            {composerMode !== "transfer" ? renderShareSection() : null}
+            {composerMode !== "transfer" ? renderPhotoNoteSection() : renderNoteSection()}
+            <p className="composer-hint">{composerSubmitState.hint}</p>
+            <button
+              className="composer-submit-full"
+              type="button"
+              disabled={composerSubmitState.disabled || composerSubmitting}
+              onClick={submitComposer}
+            >
+              {composerSubmitting ? text.savingChanges : composerSubmitState.label}
+            </button>
+          </>
         )}
-
-        <p className="composer-hint">{composerSubmitState.hint}</p>
-
-        <button
-          className="composer-submit-full"
-          type="button"
-          disabled={composerSubmitState.disabled || composerSubmitting}
-          onClick={submitComposer}
-        >
-          {composerSubmitting ? text.savingChanges : composerSubmitState.label}
-        </button>
       </section>
     </div>
   );

@@ -10,9 +10,11 @@ import {
   Inbox,
   Link,
   Menu,
+  Moon,
   Pencil,
   Plus,
   Settings,
+  Sun,
   UserRound,
   X,
 } from "lucide-react";
@@ -51,6 +53,7 @@ import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
+import { applyTheme, readStoredTheme, storeTheme, type ThemeMode } from "./themeStore";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
   | "createGroup"
@@ -188,6 +191,15 @@ export function App() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+  // Day/night theme. main.tsx already applied the persisted value to <html>
+  // before paint; this state just drives the toggle icon and writes changes.
+  const [theme, setTheme] = useState<ThemeMode>(() => readStoredTheme());
+  const toggleTheme = () => {
+    const next: ThemeMode = theme === "light" ? "dark" : "light";
+    applyTheme(next);
+    storeTheme(next);
+    setTheme(next);
+  };
   // Mobile drawer swipe gestures: each drawer dismisses toward the edge it
   // slid in from (left drawer <- swipe left, right drawer -> swipe right).
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
@@ -1220,6 +1232,14 @@ export function App() {
           Equo
         </button>
         <div className="top-actions">
+          <button
+            className="top-bar-icon-button theme-toggle-button"
+            type="button"
+            aria-label={theme === "light" ? text.themeToDark : text.themeToLight}
+            onClick={toggleTheme}
+          >
+            {theme === "light" ? <Moon aria-hidden="true" size={20} /> : <Sun aria-hidden="true" size={20} />}
+          </button>
           {activeGroup ? (
             <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setSettingsDrawerOpen(true)}>
               <Settings aria-hidden="true" size={22} />

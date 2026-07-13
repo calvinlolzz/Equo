@@ -4,6 +4,7 @@ import "./app/App.css";
 import { App } from "./app/App";
 import { installErrorReporter } from "./app/errorReporter";
 import { GlassBackground } from "./app/GlassBackground";
+import { initTheme } from "./app/themeStore";
 
 const root = document.getElementById("root");
 
@@ -16,6 +17,12 @@ if (!root) {
 // backdrop entirely.
 const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 const AdminApp = React.lazy(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
+
+// Apply the persisted day/night theme to <html> before first paint (no flash).
+// The admin console keeps its own dark styling, so skip theming there.
+if (!isAdminPath) {
+  initTheme();
+}
 
 // Global crash telemetry -> POST /api/v1/errors (deduped, capped per page
 // load; see errorReporter.ts). Installed before render so even a crash
