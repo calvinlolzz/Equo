@@ -41,14 +41,14 @@ const FIXED_ACCENTS: Record<number, [number, number, number]> = {
 // periwinkle (demo #8E7CF0 softened), mint (demo #63DBAF), teal, peach, rose.
 // Kept high-value / low-saturation so it reads as gently drifting frosted glass
 // under the light UI rather than a saturated wash.
-const LIGHT_BG_COLOR: [number, number, number] = [0.95, 0.945, 0.975];
+const LIGHT_BG_COLOR: [number, number, number] = [0.925, 0.92, 0.965];
 const LIGHT_BLOBS: Array<[number, number, number]> = [
-  [0.8, 0.75, 0.97], // lavender
-  [0.72, 0.66, 0.95], // periwinkle (demo purple)
-  [0.68, 0.92, 0.83], // mint (demo)
-  [0.74, 0.9, 0.93], // soft teal
-  [0.97, 0.88, 0.8], // peach / cream
-  [0.94, 0.8, 0.87], // rose
+  [0.66, 0.58, 0.93], // lavender
+  [0.557, 0.486, 0.941], // periwinkle (demo purple #8E7CF0)
+  [0.388, 0.859, 0.686], // mint (demo #63DBAF)
+  [0.42, 0.8, 0.87], // teal
+  [0.97, 0.78, 0.6], // peach
+  [0.93, 0.62, 0.76], // rose
 ];
 
 // Default inward-curl vortex: a spiral warp centred on the screen that is always
