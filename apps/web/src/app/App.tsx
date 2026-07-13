@@ -1285,7 +1285,7 @@ export function App() {
           />
 
           {groupDrawerOpen ? (
-            <div className={groupDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setGroupDrawerOpen(false); }}>
+            <div className={groupDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) groupDrawerSwipe.requestClose(); }}>
               <div className={groupDrawerSwipe.closing ? "side-drawer side-drawer-left closing" : "side-drawer side-drawer-left"} role="dialog" aria-modal="true" aria-label={text.groupList} {...groupDrawerSwipe.dragProps}>
                 <GroupRail
                   activeGroup={activeGroup}
@@ -1548,7 +1548,7 @@ export function App() {
           </aside>
 
           {settingsDrawerOpen ? (
-            <div className={settingsDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsDrawerOpen(false); }}>
+            <div className={settingsDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) settingsDrawerSwipe.requestClose(); }}>
               <div className={settingsDrawerSwipe.closing ? "side-drawer side-drawer-right closing" : "side-drawer side-drawer-right"} role="dialog" aria-modal="true" aria-label={text.groupManage} {...settingsDrawerSwipe.dragProps}>
                 {activeGroup ? (
               <GroupSideNav
