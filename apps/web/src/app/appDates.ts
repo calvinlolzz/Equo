@@ -18,6 +18,14 @@ export function lastEightDays() {
   return days;
 }
 
+const WEEKDAYS_ZH = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+
+/** Day-group heading for the records list, e.g. "7月13日 · 週一". */
+export function formatDayLabel(value: string) {
+  const date = new Date(value);
+  return `${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAYS_ZH[date.getDay()]}`;
+}
+
 /** Compact MM/DD HH:mm stamp for activity and settlement rows. */
 export function formatActivityTime(value: string) {
   const date = new Date(value);

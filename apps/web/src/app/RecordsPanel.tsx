@@ -1,6 +1,7 @@
 import { HandCoins, History, ReceiptText } from "lucide-react";
-import { formatActivityTime } from "./appDates";
+import { formatActivityTime, formatDayLabel } from "./appDates";
 import type { Activity, Expense } from "./appTypes";
+import { groupExpensesByDay } from "./expenseDayGroups";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
@@ -61,47 +62,57 @@ export function RecordsPanel({
       <div className="dialog-section-list">
         <span className="dialog-list-title">{text.expense}</span>
         {expenses.length ? (
-          expenses.map((expense) => (
-            <button className="record-dialog-row" type="button" key={expense.id} onClick={() => onOpenExpense(expense.id)}>
-              {expense.imageUrl ? (
-                <span className="record-dialog-thumb">
-                  <img src={expense.imageUrl} alt="" />
-                </span>
-              ) : (
-                <span className="record-dialog-icon">
-                  {expense.kind === "settlement" ? (
-                    <History aria-hidden="true" size={18} />
-                  ) : expense.kind === "income" ? (
-                    <HandCoins aria-hidden="true" size={18} />
-                  ) : (
-                    <ReceiptText aria-hidden="true" size={18} />
-                  )}
-                </span>
-              )}
-              <span>
-                <strong>{expense.title}</strong>
-                <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
-              </span>
-              <b className={expense.kind === "income" ? "amount-income" : undefined}>
-                {expense.kind === "income"
-                  ? `+${formatAmount(expense.amountMinor, expense.currency)}`
-                  : formatAmount(expense.amountMinor, expense.currency)}
-              </b>
-            </button>
-          ))
+          <>
+            {groupExpensesByDay(expenses).map((group) => (
+              <div className="record-day-group" key={group.key}>
+                <div className="record-day-header">
+                  <span>{formatDayLabel(group.expenses[0].createdAt)}</span>
+                  <b>{formatAmount(group.subtotalMinor, currency)}</b>
+                </div>
+                {group.expenses.map((expense) => (
+                  <button className="record-dialog-row" type="button" key={expense.id} onClick={() => onOpenExpense(expense.id)}>
+                    {expense.imageUrl ? (
+                      <span className="record-dialog-thumb">
+                        <img src={expense.imageUrl} alt="" />
+                      </span>
+                    ) : (
+                      <span className="record-dialog-icon">
+                        {expense.kind === "settlement" ? (
+                          <History aria-hidden="true" size={18} />
+                        ) : expense.kind === "income" ? (
+                          <HandCoins aria-hidden="true" size={18} />
+                        ) : (
+                          <ReceiptText aria-hidden="true" size={18} />
+                        )}
+                      </span>
+                    )}
+                    <span>
+                      <strong>{expense.title}</strong>
+                      <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
+                    </span>
+                    <b className={expense.kind === "income" ? "amount-income" : undefined}>
+                      {expense.kind === "income"
+                        ? `+${formatAmount(expense.amountMinor, expense.currency)}`
+                        : formatAmount(expense.amountMinor, expense.currency)}
+                    </b>
+                  </button>
+                ))}
+              </div>
+            ))}
+            {canLoadMoreExpenses ? (
+              <button
+                className="text-action records-load-more"
+                type="button"
+                disabled={pendingAction === "loadMoreExpenses" || loadingMoreExpenses}
+                onClick={onLoadMore}
+              >
+                {pendingAction === "loadMoreExpenses" || loadingMoreExpenses ? text.processing : text.loadMoreRecords}
+              </button>
+            ) : null}
+          </>
         ) : (
           <p className="dialog-empty">{text.noRecords}</p>
         )}
-        {canLoadMoreExpenses ? (
-          <button
-            className="text-action records-load-more"
-            type="button"
-            disabled={pendingAction === "loadMoreExpenses" || loadingMoreExpenses}
-            onClick={onLoadMore}
-          >
-            {pendingAction === "loadMoreExpenses" || loadingMoreExpenses ? text.processing : text.loadMoreRecords}
-          </button>
-        ) : null}
       </div>
       <div className="dialog-section-list">
         <span className="dialog-list-title">{text.recentActivity}</span>
