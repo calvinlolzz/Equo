@@ -56,6 +56,7 @@ import { clearSession, loadSession, saveSession, type StoredSession } from "./se
 import { useIsMobileLayout } from "./useIsMobileLayout";
 import { useThemeMode } from "./useThemeMode";
 import { useArchivedGroups } from "./useArchivedGroups";
+import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
 import { useToast } from "./useToast";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
@@ -128,21 +129,6 @@ function describeCloudActionError(error: unknown): string {
   return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
 }
 
-function getRouteGroupId() {
-  const match = window.location.pathname.match(/^\/group\/([^/]+)$/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
-
-function setGroupRoute(groupId: string | null, mode: "push" | "replace" = "push") {
-  const nextPath = groupId ? `/group/${encodeURIComponent(groupId)}` : "/";
-  if (window.location.pathname === nextPath) return;
-  if (mode === "replace") {
-    window.history.replaceState(null, document.title, nextPath);
-  } else {
-    window.history.pushState(null, document.title, nextPath);
-  }
-}
-
 function getInviteTokenFromUrl(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get("invite") ?? "";
@@ -162,7 +148,7 @@ function formatTime(value: string) {
 
 
 export function App() {
-  const [activeGroupId, setActiveGroupId] = useState(() => getRouteGroupId());
+  const { activeGroupId, openGroup, closeGroup } = useGroupRoute();
   const [startMode, setStartMode] = useState<StartMode>("create");
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
   const [groupName, setGroupName] = useState<string>("");
@@ -433,7 +419,7 @@ export function App() {
   useEffect(() => {
     if (!session) return;
     if (!cloudState || cloudState.loadingGroups) return;
-    const routeId = getRouteGroupId();
+    const routeId = readRouteGroupId();
     if (!routeId) {
       // Root URL: land the user on their most-recent group instead of the
       // create-first-group start flow. Groups are loaded here (the guard
@@ -442,26 +428,23 @@ export function App() {
       // is no longer empty, so this branch won't re-fire (no redirect loop).
       const landingId = resolveRootLanding(cloudGroups);
       if (landingId) {
-        setActiveGroupId(landingId);
-        setGroupRoute(landingId, "replace");
+        openGroup(landingId, "replace");
       }
       return;
     }
     const routeGroupExists = cloudGroups.some((group) => group.id === routeId);
     if (routeId === activeGroupId) {
       if (!routeGroupExists) {
-        setActiveGroupId("");
-        setGroupRoute(null, "replace");
+        closeGroup("replace");
         showToast(text.groupNotFound);
       }
       return;
     }
     if (routeGroupExists) {
-      setActiveGroupId(routeId);
+      openGroup(routeId, "replace");
       return;
     }
-    setActiveGroupId("");
-    setGroupRoute(null, "replace");
+    closeGroup("replace");
     showToast(text.groupNotFound);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId, cloudGroups, session, cloudState?.loadingGroups]);
@@ -590,8 +573,7 @@ export function App() {
   }
 
   function selectGroup(group: Group) {
-    setActiveGroupId(group.id);
-    setGroupRoute(group.id);
+    openGroup(group.id);
     setGroupDrawerOpen(false);
   }
 
@@ -610,8 +592,7 @@ export function App() {
 
     try {
       const group = await cloudStore.createGroup({ name, currency: "TWD" });
-      setActiveGroupId(group.id);
-      setGroupRoute(group.id, "replace");
+      openGroup(group.id, "replace");
       setDialog(null);
       setGroupName("");
       setGroupCoverDataUrl("");
@@ -754,8 +735,7 @@ export function App() {
     clearSession();
     clearCloudCache();
     setSession(null);
-    setActiveGroupId("");
-    setGroupRoute(null, "replace");
+    closeGroup("replace");
     showToast(text.logoutSuccess);
   }
 
@@ -1025,8 +1005,7 @@ export function App() {
       setInviteInputError("");
       setDialog(null);
       showToast(`${text.cloudInviteJoinedPrefix}${group.name}`);
-      setActiveGroupId(group.id);
-      setGroupRoute(group.id);
+      openGroup(group.id);
     } catch (error) {
       setInviteInputError((error as Error).message || text.inviteNotFound);
     } finally {
@@ -1068,8 +1047,7 @@ export function App() {
 
     try {
       await cloudStore.archiveGroup(activeGroup.id);
-      setActiveGroupId("");
-      setGroupRoute(null);
+      closeGroup();
       setDialog(null);
       showToast(`${text.archiveGroup}: ${activeGroup.name}`);
     } catch (error) {
@@ -1085,8 +1063,7 @@ export function App() {
 
     try {
       await cloudStore.deleteGroup(activeGroup.id);
-      setActiveGroupId("");
-      setGroupRoute(null);
+      closeGroup();
       setDialog(null);
       showToast(`${text.deleteGroup}: ${activeGroup.name}`);
     } catch (error) {
@@ -1102,11 +1079,9 @@ export function App() {
     // that would flash the start flow before the routing effect forwards.
     const landingId = resolveRootLanding(cloudGroups);
     if (landingId) {
-      setActiveGroupId(landingId);
-      setGroupRoute(landingId, "replace");
+      openGroup(landingId, "replace");
     } else {
-      setActiveGroupId("");
-      setGroupRoute(null);
+      closeGroup();
     }
   }
 
