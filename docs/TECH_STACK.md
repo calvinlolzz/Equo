@@ -60,9 +60,11 @@ api/config.js
   Reads Vercel environment variables.
   Returns Supabase public config to browser.
 
-supabase/schema.sql
-  Defines profiles, groups, members, invites, expenses, splits, settlements, payments.
-  Enables Row Level Security.
+supabase/migrations/
+  The schema, in order. Tables (users, groups, group_members, expenses,
+  expense_payments, expense_shares, invites, settlements, client_requests),
+  the transactional write RPCs, the admin_console_* reporting functions,
+  and Row Level Security.
 
 sw.js
   Caches static files for PWA behavior.
