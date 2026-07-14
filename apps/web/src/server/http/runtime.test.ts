@@ -129,6 +129,23 @@ function makeClient(): SupabaseQueryClient {
         } as never;
       }
 
+      if (sql.includes("select public.replace_expense(")) {
+        return {
+          expense: {
+            id: "expense_2",
+            group_id: params[0],
+            title: "Dinner (edited)",
+            kind: "expense",
+            amount_minor: 1500,
+            currency: "TWD",
+            version: 1,
+            client_request_id: "req_edit",
+            image_url: null,
+          },
+          previous: { id: params[2], image_url: null },
+        } as never;
+      }
+
       throw new Error(sql);
     },
     async maybeOne(sql) {
@@ -382,6 +399,42 @@ describe("createHttpRuntime", () => {
       expenses: [{ id: "expense_1" }],
       balances: [{ memberId: "member_owner" }],
     });
+  });
+
+  test("routes PUT /groups/:groupId/expenses/:expenseId to the atomic replace", async () => {
+    // An edit is a delete plus a create. It used to be issued as two separate
+    // requests from the browser, so a create that failed after the delete had
+    // landed destroyed the entry. PUT hands both halves to one transaction.
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "PUT",
+      path: "/api/v1/groups/group_1/expenses/expense_1",
+      headers: { authorization: "Bearer google-token" },
+      json: {
+        client_request_id: "req_edit",
+        title: "Dinner (edited)",
+        kind: "expense",
+        category: "food",
+        amount_minor: 1500,
+        currency: "TWD",
+        expense_date: "2026-07-01",
+        expense_payments: [{ payer_member_id: "member_owner", amount_minor: 1500, currency: "TWD" }],
+        expense_shares: [{ member_id: "member_owner", share_type: "fixed", amount_minor: 1500 }],
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ expense: { id: "expense_2", title: "Dinner (edited)" } });
   });
 
   test("routes GET /groups/archived without falling through to the group-detail handler", async () => {

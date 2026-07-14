@@ -7,13 +7,14 @@ import type {
 } from "../../contracts/schemas.js";
 import type { GoogleIdentity } from "../auth/google.js";
 import type { AuthenticatedContext } from "../auth/session.js";
-import type {
-  ArchivedGroupRecord,
-  GroupDetailRecord,
-  GroupMemberRecord,
-  GroupRecord,
-  GroupRepository,
-  InviteRecord,
+import {
+  INVITE_EXPIRED,
+  type ArchivedGroupRecord,
+  type GroupDetailRecord,
+  type GroupMemberRecord,
+  type GroupRecord,
+  type GroupRepository,
+  type InviteRecord,
 } from "./groupRepository.js";
 
 export type SupabaseQueryClient = {
@@ -437,70 +438,35 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
       return { ...invite, token };
     },
 
+    /**
+     * Validating the invite, joining the caller, and burning a use are one
+     * locked transaction in the accept_invite RPC. Splitting them (a lookup
+     * here, then an update) is what let two people redeem the last seat at
+     * once - use_count was read, incremented in JS, and written back as an
+     * absolute value - and what let an existing member re-run the join and get
+     * a *second* member row, since nothing in the schema forbids one.
+     */
     async acceptInvite(context: AuthenticatedContext, token: string, request: AcceptInviteRequest) {
-      const token_hash = createTokenHash(token);
-      const invite = await this.findInviteByTokenHash(token_hash);
+      const result = await client.maybeOne<{
+        group: GroupRecord;
+        member: GroupMemberRecord;
+        claimed: boolean;
+      }>(`select public.accept_invite($1, $2, $3, $4, $5) as result`, [
+        createTokenHash(token),
+        context.user.id,
+        request.display_name,
+        request.claim_member_id ?? null,
+        request.client_request_id,
+      ]).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        throw message.includes(INVITE_EXPIRED) ? new Error(INVITE_EXPIRED) : error;
+      });
 
-      if (!invite) {
-        throw new Error("invite not found");
+      if (!result) {
+        throw new Error(INVITE_EXPIRED);
       }
 
-      const group = await client.one<GroupRecord>(
-        `
-          select id, name, currency, owner_member_id, cover_image_url
-          from public.groups
-          where id = $1 and deleted_at is null
-        `,
-        [invite.group_id],
-      );
-      const member = request.claim_member_id
-        ? await client.one<GroupMemberRecord>(
-            `
-              update public.group_members
-              set user_id = $1, display_name = $2, claimed_at = now(), updated_at = now()
-              where id = $3 and group_id = $4 and user_id is null and status = 'active'
-              returning id, group_id, user_id, display_name, role, status
-            `,
-            [context.user.id, request.display_name, request.claim_member_id, invite.group_id],
-          )
-        : await client.one<GroupMemberRecord>(
-            `
-              insert into public.group_members (group_id, user_id, display_name, role, status, claimed_at)
-              values ($1, $2, $3, 'member', 'active', now())
-              returning id, group_id, user_id, display_name, role, status
-            `,
-            [invite.group_id, context.user.id, request.display_name],
-          );
-
-      await client.exec(
-        `
-          update public.invites
-          set use_count = use_count + 1
-          where id = $1
-        `,
-        [invite.id, invite.use_count + 1],
-      );
-
-      return { group, member, claimed: Boolean(request.claim_member_id) };
-    },
-
-    async hashInviteToken(token: string) {
-      return createTokenHash(token);
-    },
-
-    async findInviteByTokenHash(token_hash: string) {
-      return client.maybeOne<InviteRecord>(
-        `
-          select id, group_id, token_hash, max_uses, use_count, expires_at
-          from public.invites
-          where token_hash = $1
-            and revoked_at is null
-            and use_count < max_uses
-            and (expires_at is null or expires_at > now())
-          limit 1
-        `,
-        [token_hash],
-      );
+      return result;
     },
 
     async recordClientRequest(groupId: string, client_request_id: string, resourceId: string) {

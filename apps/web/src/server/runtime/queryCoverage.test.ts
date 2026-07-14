@@ -139,10 +139,8 @@ async function invokeEveryGroupRepositoryMethod(client: SupabaseQueryClient) {
   await repo.getMemberBalanceMinor("group_1", "member_2");
   await repo.createInvite(authContext, "group_1", { client_request_id: "req_3", max_uses: 5 });
   await repo
-    .acceptInvite(authContext, "EQO123456", { client_request_id: "req_4", display_name: "Guest" })
+    .acceptInvite(authContext, "EQO123456789A", { client_request_id: "req_4", display_name: "Guest" })
     .catch(() => {});
-  await repo.hashInviteToken("EQO123456");
-  await repo.findInviteByTokenHash("sha256:EQO123456");
   await repo.recordClientRequest("group_1", "req_5", "resource_1");
   await updateUserAvatar(client, "user_1", "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_1/photo.jpg");
 }
@@ -168,7 +166,16 @@ async function invokeEveryExpenseRepositoryMethod(client: SupabaseQueryClient) {
   };
 
   await repo.createExpense(authContext, "group_1", createRequest);
+  await repo.replaceExpense(authContext, "group_1", "expense_1", {
+    ...createRequest,
+    client_request_id: "req_expense_replace",
+  });
   await repo.listExpenses("group_1");
+  await repo.listExpensesPage("group_1", { limit: 50 });
+  await repo.listExpensesPage("group_1", {
+    limit: 50,
+    cursor: { beforeDate: "2026-07-01", beforeCreatedAt: "2026-07-01T00:00:00.000Z" },
+  });
   await repo.softDeleteExpense(authContext, "group_1", "expense_1", "req_expense_2");
   await repo.recordClientRequest("group_1", "req_expense_3", "resource_1");
 }

@@ -1,59 +1,81 @@
 import { describe, expect, test } from "vitest";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
+import { InvalidMemberError } from "./expenseRepository.js";
 import { createSupabaseExpenseRepository } from "./supabaseExpenseRepository.js";
 
-function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
+/**
+ * The expense write path is now a single transactional RPC per operation
+ * (create_expense / replace_expense / soft_delete_expense - see
+ * supabase/migrations/20260714100000_transactional_write_rpcs.sql). The
+ * membership gate, the cross-group member-id validation, and the
+ * client_requests idempotency check all live inside those functions, so what
+ * this repository is still responsible for - and what these tests cover - is:
+ * validating the request before spending a round trip, forwarding the right
+ * params, translating the RPC's sentinel errors back into typed errors, and
+ * cleaning up orphaned images.
+ */
+const deletedExpenseRow = {
+  id: "expense_1",
+  group_id: "group_1",
+  title: "Dinner",
+  kind: "expense",
+  amount_minor: 1200,
+  currency: "TWD",
+  version: 2,
+  client_request_id: "req_expense",
+  image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+};
+
+function makeClient(
+  overrides: { deletedImageUrl?: string | null; replacementImageUrl?: string | null } = {},
+): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
   const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
+  const deleted = {
+    ...deletedExpenseRow,
+    image_url: "deletedImageUrl" in overrides ? overrides.deletedImageUrl : deletedExpenseRow.image_url,
+  };
 
   return {
     calls,
     async one(sql, params) {
       calls.push({ method: "one", sql, params });
 
-      if (sql.includes("from public.group_members")) {
-        // The active-member-id-set lookup used to validate payer/share/
-        // transfer member ids belong to this group.
-        return [
-          { id: "member_alice" },
-          { id: "member_bob" },
-        ] as never;
-      }
-
-      if (sql.includes("insert into public.expenses")) {
+      if (sql.includes("select public.create_expense(")) {
+        const payload = params[2] as { client_request_id: string; title: string; image_url?: string };
         return {
           id: "expense_1",
           group_id: params[0],
-          title: params[2],
-          kind: params[3],
-          amount_minor: params[5],
-          currency: params[6],
-          version: 1,
-          client_request_id: params[10],
-        } as never;
-      }
-
-      if (sql.includes("update public.expenses")) {
-        return {
-          id: params[1],
-          group_id: params[0],
-          title: "Dinner",
+          title: payload.title,
           kind: "expense",
           amount_minor: 1200,
           currency: "TWD",
-          version: 2,
-          client_request_id: "req_expense",
-          image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+          version: 1,
+          client_request_id: payload.client_request_id,
+          image_url: payload.image_url ?? null,
         } as never;
+      }
+
+      if (sql.includes("select public.replace_expense(")) {
+        const payload = params[3] as { image_url?: string };
+        return {
+          expense: {
+            ...deletedExpenseRow,
+            id: "expense_2",
+            version: 1,
+            image_url:
+              "replacementImageUrl" in overrides ? overrides.replacementImageUrl : (payload.image_url ?? null),
+          },
+          previous: deleted,
+        } as never;
+      }
+
+      if (sql.includes("select public.soft_delete_expense(")) {
+        return deleted as never;
       }
 
       throw new Error(`Unexpected one query: ${sql}`);
     },
-    async maybeOne(sql) {
-      if (sql.includes("from public.group_members")) {
-        // The caller's own active-membership check (create and delete).
-        return { id: "member_alice" } as never;
-      }
-
+    async maybeOne() {
       return null;
     },
     async exec(sql, params) {
@@ -62,10 +84,11 @@ function makeClient(): SupabaseQueryClient & { calls: Array<{ method: string; sq
   };
 }
 
-function makeNonMemberClient(): SupabaseQueryClient {
+/** A client whose write RPC raises the given sentinel, the way Postgres does. */
+function makeRaisingClient(message: string): SupabaseQueryClient {
   return {
-    async one() {
-      throw new Error("Unexpected one query for a non-member caller");
+    async one(): Promise<never> {
+      throw new Error(message);
     },
     async maybeOne() {
       return null;
@@ -134,71 +157,41 @@ const validRequest = {
 };
 
 describe("createSupabaseExpenseRepository", () => {
-  test("writes expense, payments, and shares in order", async () => {
+  test("creates the expense, its payments and its shares in ONE transactional call", async () => {
     const client = makeClient();
     const repository = createSupabaseExpenseRepository(client);
 
     await repository.createExpense(context, "group_1", validRequest);
 
-    expect(client.calls.map((call) => call.sql)).toEqual([
-      expect.stringContaining("from public.group_members"),
-      expect.stringContaining("insert into public.expenses"),
-      expect.stringContaining("insert into public.expense_payments"),
-      expect.stringContaining("insert into public.expense_shares"),
-      expect.stringContaining("insert into public.expense_shares"),
-      expect.stringContaining("insert into public.client_requests"),
-    ]);
+    // This used to be 1 + N + M separate PostgREST calls with no transaction
+    // around them - a failure partway through left an expense whose share set
+    // was incomplete, which silently corrupts every balance in the group.
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toMatchObject({
+      method: "one",
+      sql: expect.stringContaining("select public.create_expense("),
+      params: ["group_1", "user_alice", validRequest],
+    });
   });
 
-  test("rejects create when the caller has no active membership in the group", async () => {
-    const repository = createSupabaseExpenseRepository(makeNonMemberClient());
+  test("passes the whole request through as the RPC payload, image_url included", async () => {
+    const client = makeClient();
+    const repository = createSupabaseExpenseRepository(client);
 
-    await expect(repository.createExpense(context, "group_1", validRequest)).rejects.toThrow(
-      "NOT_A_GROUP_MEMBER",
+    const expense = await repository.createExpense(context, "group_1", {
+      ...validRequest,
+      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+    });
+
+    expect(client.calls[0]?.params[2]).toMatchObject({
+      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+    });
+    expect(expense.image_url).toBe(
+      "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
     );
   });
 
-  test("rejects create when a payer_member_id belongs to a different group", async () => {
-    const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
-
-    await expect(
-      repository.createExpense(context, "group_1", {
-        ...validRequest,
-        expense_payments: [{ payer_member_id: "member_other_group", amount_minor: 1200, currency: "TWD" }],
-      }),
-    ).rejects.toThrow(/INVALID_MEMBER.*member_other_group/);
-  });
-
-  test("rejects create when a share member_id belongs to a different group", async () => {
-    const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
-
-    await expect(
-      repository.createExpense(context, "group_1", {
-        ...validRequest,
-        expense_shares: [
-          { member_id: "member_alice", share_type: "fixed" as const, amount_minor: 600 },
-          { member_id: "member_other_group", share_type: "fixed" as const, amount_minor: 600 },
-        ],
-      }),
-    ).rejects.toThrow(/INVALID_MEMBER.*member_other_group/);
-  });
-
-  test("rejects create when transfer_to_member_id belongs to a different group", async () => {
-    const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
-
-    await expect(
-      repository.createExpense(context, "group_1", {
-        ...validRequest,
-        kind: "transfer" as const,
-        transfer_to_member_id: "member_other_group",
-      }),
-    ).rejects.toThrow(/INVALID_MEMBER.*member_other_group/);
-  });
-
-  test("rejects invalid expense totals before writing", async () => {
+  test("rejects invalid expense totals before spending a round trip", async () => {
     const client = makeClient();
     const repository = createSupabaseExpenseRepository(client);
 
@@ -211,41 +204,50 @@ describe("createSupabaseExpenseRepository", () => {
     expect(client.calls).toEqual([]);
   });
 
-  test("records client_request_id after creating an expense", async () => {
-    const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
+  test("maps the RPC's NOT_A_GROUP_MEMBER back to the typed error routes catch", async () => {
+    const repository = createSupabaseExpenseRepository(makeRaisingClient("NOT_A_GROUP_MEMBER"));
 
-    await repository.createExpense(context, "group_1", validRequest);
-
-    expect(client.calls.at(-1)).toMatchObject({
-      method: "exec",
-      params: ["group_1", "req_expense", "expense_1"],
-    });
-  });
-
-  test("threads an optional image_url through to the expenses insert", async () => {
-    const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
-
-    await repository.createExpense(context, "group_1", {
-      ...validRequest,
-      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
-    });
-
-    const insertCall = client.calls.find((call) => call.sql.includes("insert into public.expenses"));
-    expect(insertCall?.params.at(-1)).toBe(
-      "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+    await expect(repository.createExpense(context, "group_1", validRequest)).rejects.toThrow(
+      "NOT_A_GROUP_MEMBER",
     );
   });
 
-  test("defaults image_url to null when not provided", async () => {
+  test("maps the RPC's INVALID_MEMBER:<id> back to InvalidMemberError", async () => {
+    // The cross-group member-id check itself now runs in SQL (the FKs only
+    // reference group_members(id) globally, so without it a crafted request
+    // could charge another group's member). What this asserts is that its
+    // failure still reaches the route as InvalidMemberError -> 400.
+    const repository = createSupabaseExpenseRepository(makeRaisingClient("INVALID_MEMBER:member_other_group"));
+
+    await expect(repository.createExpense(context, "group_1", validRequest)).rejects.toThrow(
+      /INVALID_MEMBER.*member_other_group/,
+    );
+    await expect(repository.createExpense(context, "group_1", validRequest)).rejects.toBeInstanceOf(
+      InvalidMemberError,
+    );
+  });
+
+  test("replaceExpense edits through a single transactional call", async () => {
     const client = makeClient();
     const repository = createSupabaseExpenseRepository(client);
 
-    await repository.createExpense(context, "group_1", validRequest);
+    const result = await repository.replaceExpense(context, "group_1", "expense_1", validRequest);
 
-    const insertCall = client.calls.find((call) => call.sql.includes("insert into public.expenses"));
-    expect(insertCall?.params.at(-1)).toBeNull();
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toMatchObject({
+      sql: expect.stringContaining("select public.replace_expense("),
+      params: ["group_1", "user_alice", "expense_1", validRequest],
+    });
+    expect(result.expense.id).toBe("expense_2");
+    expect(result.previous?.id).toBe("expense_1");
+  });
+
+  test("replaceExpense surfaces EXPENSE_NOT_FOUND when the target is already gone", async () => {
+    const repository = createSupabaseExpenseRepository(makeRaisingClient("EXPENSE_NOT_FOUND"));
+
+    await expect(repository.replaceExpense(context, "group_1", "expense_1", validRequest)).rejects.toThrow(
+      "EXPENSE_NOT_FOUND",
+    );
   });
 
   test("listExpenses returns note, transfer_to_member_id, payments, and shares batched for the whole group", async () => {
@@ -340,31 +342,39 @@ describe("createSupabaseExpenseRepository", () => {
     expect(client.calls.map((call) => call.sql)).toEqual([expect.stringContaining("from public.expenses")]);
   });
 
-  test("softDeleteExpense requires an active membership before deleting", async () => {
+  test("softDeleteExpense deletes through a single transactional call", async () => {
     const client = makeClient();
     const repository = createSupabaseExpenseRepository(client);
 
     const expense = await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
 
-    expect(expense.id).toBe("expense_1");
+    // The membership gate, the version bump (which the translated PostgREST
+    // PATCH silently dropped), and the client_requests write all live inside
+    // the RPC now.
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toMatchObject({
+      sql: expect.stringContaining("select public.soft_delete_expense("),
+      params: ["group_1", "user_alice", "expense_1", "req_delete"],
+    });
+    expect(expense).toMatchObject({ id: "expense_1", version: 2 });
   });
 
-  test("softDeleteExpense rejects a non-member with NOT_A_GROUP_MEMBER instead of deleting", async () => {
-    const repository = createSupabaseExpenseRepository(makeNonMemberClient());
+  test("softDeleteExpense rejects a non-member with NOT_A_GROUP_MEMBER", async () => {
+    const repository = createSupabaseExpenseRepository(makeRaisingClient("NOT_A_GROUP_MEMBER"));
 
-    await expect(
-      repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete"),
-    ).rejects.toThrow("NOT_A_GROUP_MEMBER");
+    await expect(repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete")).rejects.toThrow(
+      "NOT_A_GROUP_MEMBER",
+    );
   });
 
-  describe("softDeleteExpense orphaned-image cleanup", () => {
+  describe("orphaned-image cleanup", () => {
     function makeFakeStorage() {
       const deletedPaths: string[] = [];
       return {
         deletedPaths,
         client: {
           async uploadImage() {
-            throw new Error("uploadImage should not be called by softDeleteExpense");
+            throw new Error("uploadImage should not be called here");
           },
           async deleteImage(path: string) {
             deletedPaths.push(path);
@@ -373,55 +383,63 @@ describe("createSupabaseExpenseRepository", () => {
       };
     }
 
-    test("deletes the deleted expense's image from storage via the bucket-relative path", async () => {
-      const client = makeClient();
+    /** deleteImage is fire-and-forget (see cleanupOrphanedImage) - flush microtasks. */
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    test("softDeleteExpense deletes the removed expense's image via the bucket-relative path", async () => {
       const storage = makeFakeStorage();
-      const repository = createSupabaseExpenseRepository(client, storage.client);
+      const repository = createSupabaseExpenseRepository(makeClient(), storage.client);
 
       await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
-      // deleteImage is fire-and-forget (see cleanupOrphanedImage) - flush microtasks.
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flush();
 
       expect(storage.deletedPaths).toEqual(["group_1/photo.jpg"]);
     });
 
-    test("does nothing when the deleted expense has no image_url", async () => {
-      const client = makeClient();
-      (client as unknown as { one: unknown }).one = async (sql: string, params: unknown[]) => {
-        if (sql.includes("from public.group_members")) {
-          return [{ id: "member_alice" }, { id: "member_bob" }] as never;
-        }
-        if (sql.includes("update public.expenses")) {
-          return {
-            id: params[1],
-            group_id: params[0],
-            title: "Dinner",
-            kind: "expense",
-            amount_minor: 1200,
-            currency: "TWD",
-            version: 2,
-            client_request_id: "req_expense",
-            image_url: null,
-          } as never;
-        }
-        throw new Error(`Unexpected one query: ${sql}`);
-      };
+    test("softDeleteExpense does nothing when the removed expense has no image", async () => {
       const storage = makeFakeStorage();
-      const repository = createSupabaseExpenseRepository(client, storage.client);
+      const repository = createSupabaseExpenseRepository(makeClient({ deletedImageUrl: null }), storage.client);
 
       await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flush();
 
       expect(storage.deletedPaths).toEqual([]);
     });
 
-    test("does nothing when no storage client is provided (optional param)", async () => {
-      const client = makeClient();
-      const repository = createSupabaseExpenseRepository(client);
+    test("softDeleteExpense does nothing when no storage client is provided (optional param)", async () => {
+      const repository = createSupabaseExpenseRepository(makeClient());
 
       await expect(
         repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete"),
       ).resolves.toMatchObject({ id: "expense_1" });
+    });
+
+    test("replaceExpense deletes the replaced expense's image once it is unreferenced", async () => {
+      const storage = makeFakeStorage();
+      const repository = createSupabaseExpenseRepository(
+        makeClient({ replacementImageUrl: null }),
+        storage.client,
+      );
+
+      await repository.replaceExpense(context, "group_1", "expense_1", validRequest);
+      await flush();
+
+      expect(storage.deletedPaths).toEqual(["group_1/photo.jpg"]);
+    });
+
+    test("replaceExpense keeps the image when the edit reuses it", async () => {
+      const storage = makeFakeStorage();
+      // An edit that changes only the title carries the same image_url through -
+      // deleting it here would break the expense that is still using it.
+      const repository = createSupabaseExpenseRepository(
+        makeClient({ replacementImageUrl: deletedExpenseRow.image_url }),
+        storage.client,
+      );
+
+      await repository.replaceExpense(context, "group_1", "expense_1", validRequest);
+      await flush();
+
+      expect(storage.deletedPaths).toEqual([]);
     });
   });
 });

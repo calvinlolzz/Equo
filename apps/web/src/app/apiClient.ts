@@ -278,6 +278,20 @@ export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetc
         },
       );
     },
+    /**
+     * Edit an entry. The client used to do this as a DELETE followed by a
+     * POST - if the POST failed, the entry was simply gone. The server now
+     * replaces it inside one database transaction.
+     */
+    replaceExpense(groupId: string, expenseId: string, payload: CreateExpenseRequest) {
+      return request<{ expense: { id: string; title: string; amount_minor: number; currency: string } }>(
+        `/groups/${groupId}/expenses/${expenseId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
+    },
     deleteExpense(groupId: string, expenseId: string, payload: { client_request_id: string }) {
       return request<{ expense: { id: string } }>(`/groups/${groupId}/expenses/${expenseId}`, {
         method: "DELETE",

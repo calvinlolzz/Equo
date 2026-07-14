@@ -79,6 +79,9 @@ function makeFakeApiClient(overrides: Partial<ApiClientLike> = {}): ApiClientLik
     createInvite: vi.fn(async () => ({ invite: { token: "INVITE123", max_uses: 10 } })),
     acceptInvite: vi.fn(async () => ({ group: group1, member: member1, claimed: false })),
     createExpense: vi.fn(async () => ({ expense: { id: "expense_1", title: "Dinner", amount_minor: 1000, currency: "TWD" } })),
+    replaceExpense: vi.fn(async () => ({
+      expense: { id: "expense_2", title: "Lunch", amount_minor: 1000, currency: "TWD" },
+    })),
     deleteExpense: vi.fn(async () => ({ expense: { id: "expense_1" } })),
     uploadGroupImage: vi.fn(async () => ({ image: { url: "https://cdn.equo.local/image.jpg" } })),
     ...overrides,
@@ -461,7 +464,7 @@ describe("createCloudGroupsStore", () => {
     expect(detail.aggregates.spendTotalMinor).toBe(1000);
   });
 
-  test("editExpense soft-deletes the old expense, creates the replacement, and replaces it in place locally", async () => {
+  test("editExpense edits through ONE atomic request and replaces the expense in place locally", async () => {
     const apiClient = makeFakeApiClient({
       getGroupDetail: vi.fn(async () =>
         makeGroupDetail({
@@ -485,25 +488,23 @@ describe("createCloudGroupsStore", () => {
         }),
       ),
     });
-    const calls: string[] = [];
-    (apiClient.deleteExpense as any).mockImplementation(async () => {
-      calls.push("delete");
-      return { expense: { id: "expense_1" } };
-    });
-    (apiClient.createExpense as any).mockImplementation(async () => {
-      calls.push("create");
-      return { expense: { id: "expense_2", title: "Lunch", amount_minor: 1000, currency: "TWD" } };
-    });
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
     await store.refreshGroupDetail("group_1");
 
     await store.editExpense("group_1", "expense_1", baseDraft, "TWD");
 
-    expect(calls).toEqual(["delete", "create"]);
-    expect(apiClient.deleteExpense).toHaveBeenCalledWith("group_1", "expense_1", {
-      client_request_id: expect.any(String),
-    });
+    // An edit used to be DELETE then POST from here - two requests with no
+    // transaction between them, so a create that failed after the delete landed
+    // destroyed the entry outright. It is now a single PUT that the database
+    // runs as one transaction (replace_expense).
+    expect(apiClient.replaceExpense).toHaveBeenCalledWith(
+      "group_1",
+      "expense_1",
+      expect.objectContaining({ client_request_id: expect.any(String) }),
+    );
+    expect(apiClient.deleteExpense).not.toHaveBeenCalled();
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
+
     const detail = store.getState().groupDetails.group_1;
     expect(detail.expenses).toHaveLength(1);
     expect(detail.expenses[0].id).toBe("expense_2");
@@ -514,6 +515,47 @@ describe("createCloudGroupsStore", () => {
     expect(detail.balances).toEqual([{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }]);
     expect(detail.aggregates.expenseCount).toBe(1);
     expect(detail.aggregates.spendTotalMinor).toBe(1000);
+  });
+
+  test("editExpense leaves the original expense intact when the edit fails", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          expenses: [
+            {
+              id: "expense_1",
+              group_id: "group_1",
+              title: "Lunch (old)",
+              kind: "expense",
+              amount_minor: 800,
+              currency: "TWD",
+              expense_date: "2026-07-01",
+              version: 1,
+              client_request_id: "req_orig",
+              expense_payments: [{ payer_member_id: "member_1", amount_minor: 800, currency: "TWD" }],
+              expense_shares: [{ member_id: "member_1", share_type: "fixed", amount_minor: 800 }],
+            },
+          ],
+          balances: [{ memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } }],
+          spend_total_minor: 800,
+        }),
+      ),
+      replaceExpense: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroupDetail("group_1");
+
+    await expect(store.editExpense("group_1", "expense_1", baseDraft, "TWD")).rejects.toThrow("network down");
+
+    // The whole point of the single atomic request: a failed edit must not have
+    // taken the original entry with it. The cached copy still holds it, and the
+    // server's copy was never deleted.
+    const detail = store.getState().groupDetails.group_1;
+    expect(detail.expenses).toHaveLength(1);
+    expect(detail.expenses[0].id).toBe("expense_1");
+    expect(detail.aggregates.spendTotalMinor).toBe(800);
   });
 
   test("deleteExpense removes the expense from the cached detail and reverses its balance/aggregate contribution, no refetch", async () => {

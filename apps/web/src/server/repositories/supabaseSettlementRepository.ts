@@ -20,59 +20,34 @@ export function createSupabaseSettlementRepository(client: SupabaseQueryClient):
       );
     },
 
+    /**
+     * The transfer amounts are still computed here (domain/settlement.ts); only
+     * the write moved into the database. It had been an insert of the settlement
+     * followed by one insert per transfer, each its own PostgREST call - so a
+     * failure partway through left a settlement carrying only some of its
+     * transfers, which under-settles the group without any sign that it did.
+     */
     async calculateCurrentSettlement(context: AuthenticatedContext, groupId: string) {
-      const member = await client.maybeOne<{ id: string }>(
-        `
-          select id
-          from public.group_members
-          where group_id = $1 and user_id = $2 and status = 'active'
-          limit 1
-        `,
-        [groupId, context.user.id],
-      );
-
-      if (!member) {
-        throw new Error(NOT_A_GROUP_MEMBER);
-      }
-
       const balances = await this.listBalances(groupId);
       const transfers = calculateSettlement(balances);
-      const settlement = await client.one<SettlementRecord>(
-        `
-          insert into public.settlements (
-            group_id,
-            settlement_version,
-            calculated_version,
-            status,
-            created_by_member_id
-          )
-          values ($1, $2, $3, 'draft', $4)
-          returning id, group_id, settlement_version, calculated_version, status
-        `,
-        [groupId, Math.floor(Date.now() / 1000), balances.length, member.id],
-      );
 
-      for (const transfer of transfers) {
-        await client.exec(
-          `
-            insert into public.settlement_transfers (
-              settlement_id,
-              from_member_id,
-              to_member_id,
-              amount_minor,
-              currency
-            )
-            values ($1, $2, $3, $4, $5)
-          `,
-          [
-            settlement.id,
-            transfer.fromMemberId,
-            transfer.toMemberId,
-            transfer.amount.amount_minor,
-            transfer.amount.currency,
-          ],
-        );
-      }
+      const settlement = await client
+        .one<SettlementRecord>(`select public.create_settlement($1, $2, $3, $4, $5) as settlement`, [
+          groupId,
+          context.user.id,
+          Math.floor(Date.now() / 1000),
+          balances.length,
+          transfers.map((transfer) => ({
+            from_member_id: transfer.fromMemberId,
+            to_member_id: transfer.toMemberId,
+            amount_minor: transfer.amount.amount_minor,
+            currency: transfer.amount.currency,
+          })),
+        ])
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          throw message.includes(NOT_A_GROUP_MEMBER) ? new Error(NOT_A_GROUP_MEMBER) : error;
+        });
 
       return { settlement, transfers };
     },

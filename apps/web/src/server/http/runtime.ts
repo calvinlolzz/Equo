@@ -44,7 +44,12 @@ import {
   adminSetUserDisabledRoute,
   adminUserDetailRoute,
 } from "../routes/adminRoutes.js";
-import { createExpenseRoute, deleteExpenseRoute, listExpensesPageRoute } from "../routes/expenseRoutes.js";
+import {
+  createExpenseRoute,
+  deleteExpenseRoute,
+  listExpensesPageRoute,
+  replaceExpenseRoute,
+} from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -342,6 +347,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "PATCH /api/v1/me/avatar",
       async handle(request) {
         const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses\/([^/]+)$/,
+      label: "PUT /api/v1/groups/:groupId/expenses/:expenseId",
+      async handle(request, match) {
+        const result = await replaceExpenseRoute(
+          routeOptions(options, request),
+          match[1],
+          match[2],
+          body<CreateExpenseRequest>(request),
+        );
         return jsonResponse(result.status, result.body);
       },
     },

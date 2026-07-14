@@ -121,6 +121,13 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
    * (/rest/v1/rpc/<fn> vs /rest/v1/<table>) and the response is the raw
    * jsonb value the function returned - not an array of rows - so this is a
    * sibling of `request` rather than a table-shaped call through it.
+   *
+   * On failure the Postgres error message is re-thrown verbatim. The
+   * transactional write functions (create_expense, accept_invite, ...) signal
+   * business failures by raising sentinel messages - NOT_A_GROUP_MEMBER,
+   * INVITE_EXPIRED, INVALID_MEMBER:<id> - which the route layer maps to API
+   * error codes. Collapsing them into "request failed: 400" the way the
+   * generic table path does would turn every one of them into a 500.
    */
   async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     const response = await fetcher(`${baseUrl}/rest/v1/rpc/${fn}`, {
@@ -130,7 +137,12 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
     });
 
     if (!response.ok) {
-      throw new Error(`Supabase REST request failed: ${response.status}`);
+      const message = await response
+        .json()
+        .then((payload: unknown) => (payload as { message?: string } | null)?.message)
+        .catch(() => undefined);
+
+      throw new Error(message ?? `Supabase REST request failed: ${response.status}`);
     }
 
     return response.json() as Promise<T>;
@@ -353,6 +365,58 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return (result ?? null) as T;
     }
 
+    // Transactional write RPCs (see
+    // supabase/migrations/20260714100000_transactional_write_rpcs.sql). Each one
+    // replaces a sequence of PostgREST calls that had no transaction around it:
+    // the whole point is that they are a single call, so there is nothing here
+    // to stitch together - forward the params and hand back the jsonb.
+    if (normalized.includes("select public.create_expense(")) {
+      return (await rpc<unknown>("create_expense", {
+        p_group_id: params[0],
+        p_user_id: params[1],
+        p_payload: params[2],
+      })) as T;
+    }
+
+    if (normalized.includes("select public.replace_expense(")) {
+      return (await rpc<unknown>("replace_expense", {
+        p_group_id: params[0],
+        p_user_id: params[1],
+        p_expense_id: params[2],
+        p_payload: params[3],
+      })) as T;
+    }
+
+    if (normalized.includes("select public.soft_delete_expense(")) {
+      return (await rpc<unknown>("soft_delete_expense", {
+        p_group_id: params[0],
+        p_user_id: params[1],
+        p_expense_id: params[2],
+        p_client_request_id: params[3],
+      })) as T;
+    }
+
+    if (normalized.includes("select public.accept_invite(")) {
+      const result = await rpc<unknown>("accept_invite", {
+        p_token_hash: params[0],
+        p_user_id: params[1],
+        p_display_name: params[2],
+        p_claim_member_id: params[3],
+        p_client_request_id: params[4],
+      });
+      return (result ?? null) as T;
+    }
+
+    if (normalized.includes("select public.create_settlement(")) {
+      return (await rpc<unknown>("create_settlement", {
+        p_group_id: params[0],
+        p_user_id: params[1],
+        p_settlement_version: params[2],
+        p_calculated_version: params[3],
+        p_transfers: params[4],
+      })) as T;
+    }
+
     if (normalized.includes("select public.get_group_detail(")) {
       const detail = await rpc<unknown>("get_group_detail", {
         p_group_id: params[0],
@@ -548,30 +612,6 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return firstRow(rows);
     }
 
-    // Invite lookup by token hash. Every clause of findInviteByTokenHash's
-    // where-list is enforced here - revoked, exhausted, AND expired. The
-    // expiry check in particular must not be dropped: token_hash is unique,
-    // so the row comes back regardless and it is this filter alone that
-    // decides whether an expired invite still opens the group.
-    if (normalized.includes("from public.invites")) {
-      type InviteRow = { revoked_at?: string | null; use_count: number; max_uses: number; expires_at?: string | null };
-      const rows = await request<InviteRow>({
-        method: "GET",
-        table: "invites",
-        query: `select=id,group_id,token_hash,max_uses,use_count,expires_at,revoked_at&token_hash=eq.${encodeFilter(params[0])}&limit=1`,
-        returnRepresentation: true,
-      });
-      const nowMs = Date.now();
-      const invite =
-        rows.find((row) => {
-          if (row.revoked_at) return false;
-          if (row.use_count >= row.max_uses) return false;
-          if (row.expires_at && Date.parse(row.expires_at) <= nowMs) return false;
-          return true;
-        }) ?? null;
-      return (mode === "maybeOne" ? invite : firstRow(invite ? [invite] : [])) as T;
-    }
-
     if (normalized.includes("from public.groups") && normalized.includes("where id = $1")) {
       const rows = await request<T>({
         method: "GET",
@@ -609,32 +649,6 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return firstRow(rows);
     }
 
-    if (normalized.includes("update public.group_members")) {
-      const rows = await request<T>({
-        method: "PATCH",
-        table: "group_members",
-        query: `id=eq.${encodeFilter(params[2])}&group_id=eq.${encodeFilter(params[3])}&user_id=is.null&status=eq.active&select=id,group_id,user_id,display_name,role,status`,
-        body: {
-          user_id: params[0],
-          display_name: params[1],
-          claimed_at: nowIso(),
-          updated_at: nowIso(),
-        },
-        returnRepresentation: true,
-      });
-      return firstRow(rows);
-    }
-
-    if (normalized.includes("update public.invites")) {
-      await request({
-        method: "PATCH",
-        table: "invites",
-        query: `id=eq.${encodeFilter(params[0])}`,
-        body: { use_count: params[1] },
-      });
-      return undefined as T;
-    }
-
     if (normalized.includes("insert into public.client_requests")) {
       await request({
         method: "POST",
@@ -642,59 +656,6 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         query: "on_conflict=group_id,client_request_id",
         body: { group_id: params[0], client_request_id: params[1], resource_id: params[2] },
         prefer: "resolution=ignore-duplicates",
-      });
-      return undefined as T;
-    }
-
-    if (normalized.includes("insert into public.expenses")) {
-      const rows = await request<T>({
-        method: "POST",
-        table: "expenses",
-        query: "select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id,image_url",
-        body: {
-          group_id: params[0],
-          created_by_member_id: params[1],
-          title: params[2],
-          kind: params[3],
-          category: params[4],
-          amount_minor: params[5],
-          currency: params[6],
-          expense_date: params[7],
-          note: params[8],
-          transfer_to_member_id: params[9],
-          client_request_id: params[10],
-          image_url: params[11] ?? null,
-        },
-        returnRepresentation: true,
-      });
-      return firstRow(rows);
-    }
-
-    if (normalized.includes("insert into public.expense_payments")) {
-      await request({
-        method: "POST",
-        table: "expense_payments",
-        body: {
-          expense_id: params[0],
-          payer_member_id: params[1],
-          amount_minor: params[2],
-          currency: params[3],
-        },
-      });
-      return undefined as T;
-    }
-
-    if (normalized.includes("insert into public.expense_shares")) {
-      await request({
-        method: "POST",
-        table: "expense_shares",
-        body: {
-          expense_id: params[0],
-          member_id: params[1],
-          share_type: params[2],
-          share_value: params[3],
-          amount_minor: params[4],
-        },
       });
       return undefined as T;
     }
@@ -748,17 +709,6 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       }) as T;
     }
 
-    if (normalized.includes("update public.expenses")) {
-      const rows = await request<T>({
-        method: "PATCH",
-        table: "expenses",
-        query: `group_id=eq.${encodeFilter(params[0])}&id=eq.${encodeFilter(params[1])}&deleted_at=is.null&select=id,group_id,title,kind,category,amount_minor,currency,expense_date,created_at,version,client_request_id,image_url`,
-        body: { deleted_at: new Date().toISOString() },
-        returnRepresentation: true,
-      });
-      return firstRow(rows);
-    }
-
     // Single-member balance lookup (member-removal gate): must be matched
     // before the whole-group balances branch below, whose check only looks
     // at the table name.
@@ -787,38 +737,6 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
           currency: row.currency,
         },
       })) as T;
-    }
-
-    if (normalized.includes("insert into public.settlements")) {
-      const rows = await request<T>({
-        method: "POST",
-        table: "settlements",
-        query: "select=id,group_id,settlement_version,calculated_version,status",
-        body: {
-          group_id: params[0],
-          settlement_version: params[1],
-          calculated_version: params[2],
-          status: "draft",
-          created_by_member_id: params[3],
-        },
-        returnRepresentation: true,
-      });
-      return firstRow(rows);
-    }
-
-    if (normalized.includes("insert into public.settlement_transfers")) {
-      await request({
-        method: "POST",
-        table: "settlement_transfers",
-        body: {
-          settlement_id: params[0],
-          from_member_id: params[1],
-          to_member_id: params[2],
-          amount_minor: params[3],
-          currency: params[4],
-        },
-      });
-      return undefined as T;
     }
 
     if (normalized.includes("from public.settlements")) {
