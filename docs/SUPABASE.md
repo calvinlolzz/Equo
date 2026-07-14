@@ -10,14 +10,29 @@ Equo 使用 Supabase 作為正式站的登入、多人同步與後台資料來�
 
 ## 建立資料表
 
-Schema 的唯一真相來源是 `supabase/migrations/`，依檔名順序套用。
+資料庫由**兩個部分**組成，順序不能反：
 
-過去這裡指向的 `supabase/schema.sql` 已於 2026-07-14 移除：它描述的是 pre-MVP 原型的
-schema（`expense_splits`、`recurring_bills`、`notifications`、`user_snapshots`、
-`group_invites`…），那些表早已被 `20260711230000_drop_legacy_prototype_tables.sql`
-刪除，跟實際運作的 schema 完全對不上。它僅存的四張活表（`app_admins`、
-`admin_audit_logs`、`app_feedback`、`app_error_logs`）已收進
-`20260714120000_admin_support_tables.sql`。
+1. `supabase/schema.sql` —— **基底 schema**。
+2. `supabase/migrations/` —— 依檔名順序套用。
+
+**`schema.sql` 看起來像死碼，但它不是。** 它定義的大半確實是 pre-MVP 原型
+（`expense_splits`、`recurring_bills`、`notifications`…，那些表已被
+`20260711230000` 刪除），程式碼也沒有任何地方讀它。但 migrations 是**寫在它上面的**，
+沒有它跑不起來：
+
+- `20260630001000_mvp_live_compat.sql` 有
+  `alter table public.expenses alter column amount drop not null;`
+  （還有 `payer_id`、`created_by`、`settlements.amount`）。這些欄位**只存在於
+  `schema.sql` 建立的表**；`mvp_core` 自己的 `expenses` 定義沒有它們，所以在一個
+  只跑 migrations 的資料庫上，這行會直接失敗。
+- `is_group_member()` 與呼叫它的 **9 條 RLS policy** 只定義在 `schema.sql` 裡，而且
+  **是有作用的**：`authenticated` 目前仍握有 `groups` / `group_members` / `expenses` /
+  `settlements` 的 SELECT/INSERT/UPDATE 權限，而瀏覽器持有真正的 Supabase JWT ——
+  那 9 條 policy 是擋住「登入使用者直接打 PostgREST 讀寫原始資料表」的唯一一道閘門。
+
+> 2026-07-14：`schema.sql` 曾以「死碼」為由被刪除，同日還原。要真正擺脫它，正確做法是
+> 從正式庫產生一份 squash 後的 baseline（`supabase db dump`）—— 那是一件獨立的工作。
+> 在那之前不要刪它；但也不要單獨相信它 —— 兩邊衝突時，以 migrations 和正式庫為準。
 
 目前主要資料表：
 
