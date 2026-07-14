@@ -10,13 +10,14 @@ Equo 使用 Supabase 作為正式站的登入、多人同步與後台資料來�
 
 ## 建立資料表
 
-1. 進入 Supabase Dashboard。
-2. 開啟 SQL Editor。
-3. 執行專案內的 SQL：
+Schema 的唯一真相來源是 `supabase/migrations/`，依檔名順序套用。
 
-```text
-supabase/schema.sql
-```
+過去這裡指向的 `supabase/schema.sql` 已於 2026-07-14 移除：它描述的是 pre-MVP 原型的
+schema（`expense_splits`、`recurring_bills`、`notifications`、`user_snapshots`、
+`group_invites`…），那些表早已被 `20260711230000_drop_legacy_prototype_tables.sql`
+刪除，跟實際運作的 schema 完全對不上。它僅存的四張活表（`app_admins`、
+`admin_audit_logs`、`app_feedback`、`app_error_logs`）已收進
+`20260714120000_admin_support_tables.sql`。
 
 目前主要資料表：
 
