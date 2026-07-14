@@ -9,10 +9,22 @@ REQUIRED = {
         '"installCommand": "npm install"',
         '"buildCommand": "npm run build"',
         '"outputDirectory": "apps/web/dist"',
-        # SPA fallback for deep links, with /api/ excluded so API calls still
-        # reach the serverless function (rewrites replaced the legacy routes
-        # block so the headers block below could be added - the two keys are
-        # mutually exclusive in vercel.json).
+        # Every /api/v1/* path must be handed to the catch-all function.
+        #
+        # This rule is NOT redundant with Vercel's filesystem routing, which is
+        # what the legacy `routes` block was assumed to fall back on when it was
+        # migrated to `rewrites`: dropping it took production's entire API down
+        # for anything with two or more path segments (GET /api/v1/groups/:id,
+        # the expense routes, invites, settlement, the admin console - all of
+        # them 404'd at the edge, never reaching the function), while
+        # single-segment paths like /api/v1/groups kept working and hid it.
+        # Guarded here because nothing else can catch its absence.
+        '"source": "/api/v1/(.*)"',
+        '"destination": "/api/v1/[...path]"',
+        # SPA fallback for deep links, with /api/ excluded so API calls fall
+        # through to the rule above (rewrites replaced the legacy routes block
+        # so the headers block below could be added - the two keys are mutually
+        # exclusive in vercel.json).
         '"source": "/((?!api/).*)"',
         '"destination": "/index.html"',
         # Security headers (review report issue 4). CSP must stay present.
