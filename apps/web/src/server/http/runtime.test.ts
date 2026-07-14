@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createHttpRuntime } from "./runtime.js";
 import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -605,6 +605,52 @@ describe("createHttpRuntime", () => {
     });
 
     expect(response.status).toBe(400);
+  });
+
+  test("converts an unexpected handler exception into a structured 500 without leaking internals", async () => {
+    const secret = "sk_internal_db_credential_leak";
+    const client = makeClient();
+    const throwingClient: SupabaseQueryClient = {
+      ...client,
+      async one(sql, params) {
+        if (sql.includes("insert into public.groups")) {
+          // Simulate a downstream failure whose message must never reach the caller.
+          throw new Error(`connection refused ${secret}`);
+        }
+        return client.one(sql, params);
+      },
+    };
+
+    const runtime = createHttpRuntime({
+      client: throwingClient,
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups",
+      headers: { authorization: "Bearer google-token" },
+      json: { client_request_id: "req_group", name: "Tokyo Trip", currency: "TWD" },
+    });
+
+    expect(response.status).toBe(500);
+    const body = response.body as { error: { code: string; message: string; request_id: string } };
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+    expect(body.error.request_id).toMatch(/^req_err_/);
+    // The raw error (and any secret in it) stays server-side, logged against the id.
+    expect(JSON.stringify(response.body)).not.toContain(secret);
+    expect(JSON.stringify(response.body)).not.toContain("connection refused");
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(body.error.request_id), expect.anything());
+
+    errorSpy.mockRestore();
   });
 
   test("returns 404 for unknown API paths", async () => {

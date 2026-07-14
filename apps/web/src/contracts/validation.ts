@@ -1,6 +1,7 @@
 import type { ErrorCode } from "./errors.js";
 import type {
   CreateExpenseRequest,
+  CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
@@ -84,14 +85,25 @@ export function validateCreateExpenseRequest(request: CreateExpenseRequest): Val
 }
 
 /**
- * Same effective rule the virtual-member creation flow enforces (the UI
- * requires a non-empty trimmed name; group_members.display_name is text with
- * no schema cap) plus an explicit length ceiling so a rename can't smuggle in
- * an absurdly long name.
+ * group_members.display_name is text with no schema cap, so an explicit
+ * length ceiling here stops a create/rename from smuggling in an absurdly
+ * long name. 50 chars matches what the UI's name field allows.
  */
 const MAX_MEMBER_DISPLAY_NAME_LENGTH = 50;
 
-export function validateRenameGroupMemberRequest(request: RenameGroupMemberRequest): ValidationResult {
+/**
+ * Shared entry-validation for the two endpoints that write a member's
+ * display_name (create virtual member, rename member). Both require a
+ * client_request_id (idempotency key) and a non-empty, bounded display name.
+ * Enforcing this at the route boundary is what keeps a malformed request
+ * from reaching the database at all - the alternative was a half-written
+ * "ghost" member row when a later write in the same handler threw (see
+ * createVirtualMemberRoute).
+ */
+function validateMemberDisplayName(request: {
+  client_request_id?: string;
+  display_name?: string;
+}): ValidationResult {
   const issues: ValidationIssue[] = [];
 
   if (!request.client_request_id?.trim()) {
@@ -112,6 +124,14 @@ export function validateRenameGroupMemberRequest(request: RenameGroupMemberReque
     ok: issues.length === 0,
     issues,
   };
+}
+
+export function validateCreateVirtualMemberRequest(request: CreateVirtualMemberRequest): ValidationResult {
+  return validateMemberDisplayName(request);
+}
+
+export function validateRenameGroupMemberRequest(request: RenameGroupMemberRequest): ValidationResult {
+  return validateMemberDisplayName(request);
 }
 
 const DATA_URL_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;

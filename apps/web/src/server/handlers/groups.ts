@@ -310,7 +310,7 @@ export async function handleCreateVirtualMember(
     return forbidden(request.client_request_id);
   }
 
-  const virtualMember = await repository.createVirtualMember(groupId, request.display_name);
+  const virtualMember = await repository.createVirtualMember(groupId, request.display_name.trim());
   await repository.recordClientRequest(groupId, request.client_request_id, virtualMember.id);
 
   return {

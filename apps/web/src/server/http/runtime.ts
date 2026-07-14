@@ -93,6 +93,15 @@ function body<T>(request: HttpRuntimeRequest): T {
   return request.json as T;
 }
 
+/**
+ * Correlation id for an unexpected 500. The same value goes to the client
+ * (so a user can quote it in a bug report) and to the server log line that
+ * carries the real stack - the stack itself never leaves the backend.
+ */
+function newErrorRequestId(): string {
+  return `req_err_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function queryParam(request: HttpRuntimeRequest, name: string): string | undefined {
   const value = request.query?.[name];
   return Array.isArray(value) ? value[0] : value;
@@ -555,7 +564,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
         return errorResponse(404, "FORBIDDEN", "Unknown API route.", "req_not_found");
       }
 
-      return route.handle(request, match);
+      // Single choke point for unexpected exceptions: any handler that throws
+      // (a DB request that 500s, a bug, a downstream timeout) is converted
+      // into the same structured error shape the deliberate error paths use
+      // (403 FORBIDDEN, 400 issues, ...) instead of bubbling up and letting
+      // the platform emit a raw FUNCTION_INVOCATION_FAILED string with
+      // internal node/trace ids. The real error - stack included - is logged
+      // server-side against the request_id we hand back to the caller.
+      try {
+        return await route.handle(request, match);
+      } catch (error) {
+        const request_id = newErrorRequestId();
+        console.error(`[${request_id}] ${route.label} failed:`, error);
+        return errorResponse(500, "INTERNAL_ERROR", "An internal error occurred.", request_id);
+      }
     },
   };
 }

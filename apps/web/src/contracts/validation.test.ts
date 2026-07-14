@@ -4,6 +4,7 @@ import {
   decodedBase64Size,
   imageExtensionFromDataUrl,
   validateCreateExpenseRequest,
+  validateCreateVirtualMemberRequest,
   validateRenameGroupMemberRequest,
   validateUploadGroupImageRequest,
 } from "./validation.js";
@@ -55,6 +56,48 @@ describe("validateCreateExpenseRequest", () => {
     const result = validateCreateExpenseRequest(balancedExpense);
 
     expect(result).toEqual({ ok: true, issues: [] });
+  });
+});
+
+describe("validateCreateVirtualMemberRequest", () => {
+  test("accepts a non-empty display name with a client_request_id", () => {
+    const result = validateCreateVirtualMemberRequest({
+      client_request_id: "req_add_member",
+      display_name: "測試阿華",
+    });
+
+    expect(result).toEqual({ ok: true, issues: [] });
+  });
+
+  test("rejects a missing display_name before it can reach the database", () => {
+    // The malformed request the review report reproduced: no display_name,
+    // which previously slipped through to a half-written null-name member.
+    const result = validateCreateVirtualMemberRequest({
+      client_request_id: "req_add_member",
+    } as Parameters<typeof validateCreateVirtualMemberRequest>[0]);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("INVALID_MEMBER");
+  });
+
+  test("rejects a whitespace-only display name and a missing client_request_id", () => {
+    const blankName = validateCreateVirtualMemberRequest({ client_request_id: "req", display_name: "   " });
+    const noRequestId = validateCreateVirtualMemberRequest({ client_request_id: "", display_name: "阿華" });
+
+    expect(blankName.ok).toBe(false);
+    expect(blankName.issues.map((issue) => issue.code)).toContain("INVALID_MEMBER");
+    expect(noRequestId.ok).toBe(false);
+    expect(noRequestId.issues.map((issue) => issue.code)).toContain("IDEMPOTENCY_CONFLICT");
+  });
+
+  test("rejects a display name over 50 characters", () => {
+    const result = validateCreateVirtualMemberRequest({
+      client_request_id: "req",
+      display_name: "x".repeat(51),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("INVALID_MEMBER");
   });
 });
 

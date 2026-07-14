@@ -6,7 +6,10 @@ import type {
   RenameGroupMemberRequest,
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
-import { validateRenameGroupMemberRequest } from "../../contracts/validation.js";
+import {
+  validateCreateVirtualMemberRequest,
+  validateRenameGroupMemberRequest,
+} from "../../contracts/validation.js";
 import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
 import { requireAuthenticatedUser } from "../auth/session.js";
 import {
@@ -101,6 +104,12 @@ export async function createVirtualMemberRoute(
   groupId: string,
   request: CreateVirtualMemberRequest,
 ) {
+  const validation = validateCreateVirtualMemberRequest(request);
+
+  if (!validation.ok) {
+    return { ok: false, status: 400, body: { issues: validation.issues } };
+  }
+
   const auth = await buildRouteContext(options);
 
   if (auth.ok === false) {

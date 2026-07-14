@@ -19,6 +19,34 @@ function headerValue(value: string | string[] | undefined): string | undefined {
 }
 
 export async function handleV1Request(request: VercelRequest, response: VercelResponse) {
+  try {
+    await routeV1Request(request, response);
+  } catch (error) {
+    // Last-resort guard for failures that happen before the HTTP runtime's
+    // own try/catch can run - dynamic import failures, env parsing, runtime
+    // construction. Mirrors the runtime's INTERNAL_ERROR shape so the client
+    // never sees a raw platform error string, and logs the real cause with a
+    // correlation id server-side.
+    const request_id = `req_err_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    console.error(`[${request_id}] v1 handler setup failed:`, error);
+    try {
+      response.status(500).json({
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "An internal error occurred.",
+          request_id,
+        },
+      });
+    } catch (writeError) {
+      // The failure happened after the response had already started (rare -
+      // e.g. a non-serializable body). Nothing left to send; just log it so
+      // the original cause above still stands on its own.
+      console.error(`[${request_id}] failed to write error response:`, writeError);
+    }
+  }
+}
+
+async function routeV1Request(request: VercelRequest, response: VercelResponse) {
   const [
     { createHttpRuntime },
     { createGoogleTokenVerifier },
