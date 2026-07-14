@@ -33,8 +33,7 @@ import { GroupSideNav } from "./GroupSideNav";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
-import { clearCloudCache } from "./cloudCache";
-import { createCloudGroupsStore, type ArchivedGroupData, type CloudGroupsStore } from "./cloudStore";
+import { type ArchivedGroupData } from "./cloudStore";
 import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
@@ -48,14 +47,14 @@ import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { resolveRootLanding } from "./resolveRootLanding";
-import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
-import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
+import { saveSession, type StoredSession } from "./sessionStore";
 import { useIsMobileLayout } from "./useIsMobileLayout";
 import { useThemeMode } from "./useThemeMode";
 import { useArchivedGroups } from "./useArchivedGroups";
+import { useAuthSession } from "./useAuthSession";
 import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
 import { useToast } from "./useToast";
 import { UI_TEXT } from "./uiText";
@@ -184,7 +183,40 @@ export function App() {
   const [inviteInputValue, setInviteInputValue] = useState("");
   const [inviteInputError, setInviteInputError] = useState("");
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
-  const [session, setSession] = useState<StoredSession | null>(() => loadSession(Date.now()));
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [cloudInviteToken, setCloudInviteToken] = useState("");
+  const [cloudInviteLoading, setCloudInviteLoading] = useState(false);
+  const [cloudActivities, setCloudActivities] = useState<Record<string, Activity[]>>(() =>
+    readJson<Record<string, Activity[]>>(CLOUD_ACTIVITIES_KEY, {}),
+  );
+  const [groupCoverDataUrl, setGroupCoverDataUrl] = useState<string>("");
+  const [groupCoverUrl, setGroupCoverUrl] = useState<string>("");
+  const cloudInviteGroupIdRef = useRef("");
+
+  const {
+    session,
+    setSession,
+    cloudStore,
+    cloudState,
+    authLoading,
+    authError,
+    startGoogleLogin,
+    signOut,
+  } = useAuthSession({
+    showToast,
+    // A brand-new account still carries the placeholder profile name; seed it
+    // from the account. Someone who has since renamed themselves keeps their name.
+    onSignedIn: (nextSession) =>
+      setProfile((current) =>
+        current.name === DEFAULT_PROFILE.name
+          ? normalizeProfile({ ...current, name: nextSession.user.displayName })
+          : current,
+      ),
+    // Signing out has to close the open group too - that is the route's business.
+    onSignedOut: () => closeGroup("replace"),
+  });
+
   /**
    * The avatar shown on the profile dot/dialog: the freshest server-known
    * avatar_url from session state takes priority (this is the custom
@@ -195,47 +227,6 @@ export function App() {
    * the session, and finally to no avatar (icon fallback) if neither exists.
    */
   const displayAvatarUrl = session?.user.avatarUrl ?? profile.avatarDataUrl;
-  const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [cloudInviteToken, setCloudInviteToken] = useState("");
-  const [cloudInviteLoading, setCloudInviteLoading] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [cloudActivities, setCloudActivities] = useState<Record<string, Activity[]>>(() =>
-    readJson<Record<string, Activity[]>>(CLOUD_ACTIVITIES_KEY, {}),
-  );
-  const [groupCoverDataUrl, setGroupCoverDataUrl] = useState<string>("");
-  const [groupCoverUrl, setGroupCoverUrl] = useState<string>("");
-  const cloudInviteGroupIdRef = useRef("");
-
-  function handleSessionExpired() {
-    clearSession();
-    clearCloudCache();
-    setSession(null);
-    showToast(text.sessionExpired);
-  }
-
-  const cloudStore = useMemo<CloudGroupsStore | null>(() => {
-    if (!session) return null;
-    return createCloudGroupsStore({
-      apiClient: createApiClient(),
-      onSessionExpired: handleSessionExpired,
-      userId: session.user.id,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user.id]);
-
-  const cloudState = useSyncExternalStore(
-    (listener) => (cloudStore ? cloudStore.subscribe(listener) : () => {}),
-    () => (cloudStore ? cloudStore.getState() : null),
-    () => (cloudStore ? cloudStore.getState() : null),
-  );
-
-  useEffect(() => {
-    if (!cloudStore) return;
-    cloudStore.refreshGroups().catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudStore]);
 
   const {
     archivedGroups,
@@ -501,50 +492,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // OAuth fragment handling: exchange an access_token for a session on boot,
-  // or surface an OAuth error. Runs once.
-  useEffect(() => {
-    const parsed = parseOAuthFragment(window.location.hash);
-    if (!parsed) return;
-
-    window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
-
-    if ("error" in parsed) {
-      setAuthError(`${UI_TEXT.login.oauthErrorPrefix}${parsed.error}`);
-      return;
-    }
-
-    setAuthLoading(true);
-    const client = createApiClient();
-    client
-      .exchangeSupabaseToken(parsed.accessToken)
-      .then(({ session: nextSession }) => {
-        const stored: StoredSession = {
-          expiresAt: nextSession.expires_at,
-          user: {
-            id: nextSession.user.id,
-            email: nextSession.user.email,
-            displayName: nextSession.user.display_name,
-            avatarUrl: nextSession.user.avatar_url ?? undefined,
-          },
-        };
-        saveSession(stored);
-        setSession(stored);
-        setProfile((current) => {
-          if (current.name !== DEFAULT_PROFILE.name) return current;
-          return normalizeProfile({ ...current, name: stored.user.displayName });
-        });
-        showToast(`${text.loginSuccessPrefix}${stored.user.displayName}`);
-      })
-      .catch((error: { code?: string }) => {
-        setAuthError(error?.code === "ACCOUNT_DISABLED" ? text.accountDisabled : text.loginFailed);
-      })
-      .finally(() => {
-        setAuthLoading(false);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     if (!session) return;
     const stashedInvite = window.sessionStorage.getItem(PENDING_INVITE_KEY);
@@ -722,22 +669,6 @@ export function App() {
     setDialog("profile");
   }
 
-  function startGoogleLogin() {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (!supabaseUrl) {
-      showToast(UI_TEXT.login.missingSupabaseUrl);
-      return;
-    }
-    window.location.href = buildAuthorizeUrl(supabaseUrl, window.location.origin);
-  }
-
-  function logout() {
-    clearSession();
-    clearCloudCache();
-    setSession(null);
-    closeGroup("replace");
-    showToast(text.logoutSuccess);
-  }
 
   /**
    * Saves both the name (always local-only, per profileStore) and, when the
@@ -1577,7 +1508,7 @@ export function App() {
           onClose={() => setDialog(null)}
           onSave={saveProfile}
           onToast={showToast}
-          onLogout={logout}
+          onLogout={signOut}
           onFeedback={() => {
             setDialog(null);
             setFeedbackOpen(true);
