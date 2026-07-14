@@ -1,10 +1,22 @@
-import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
+import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { AuthenticatedContext } from "../auth/session.js";
+import {
+  beforeKeyset,
+  columns,
+  eq,
+  inList,
+  isNull,
+  limit as limitTo,
+  onConflict,
+  order,
+  query,
+  type PostgrestClient,
+} from "../db/postgrestClient.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { urlToStoragePath } from "../runtime/supabaseStorageClient.js";
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
 import {
+  EXPENSE_NOT_FOUND,
   InvalidMemberError,
   NOT_A_GROUP_MEMBER,
   type DeletedExpenseRecord,
@@ -15,16 +27,19 @@ import {
   type ExpenseShareRecord,
 } from "./expenseRepository.js";
 
+const EXPENSE_COLUMNS =
+  "id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url";
+
+const MAX_EXPENSE_PAGE = 100;
+
 /**
  * Fire-and-forget storage cleanup for an image URL that's about to become
- * unreferenced (a deleted expense's photo, a group's previous cover, a
- * user's previous avatar). Never awaited by the caller's main flow - a
- * failed delete just leaves an orphaned object in the bucket, which is a
- * storage-cost problem, not a correctness problem, so it must never fail or
- * delay the primary mutation (deleting the expense/updating the group/
- * updating the avatar). Only deletes URLs that resolve to a path in OUR
- * bucket (urlToStoragePath returns null for foreign URLs like Google
- * profile pictures or data: URIs).
+ * unreferenced (a deleted expense's photo, a replaced one's, a group's previous
+ * cover, a user's previous avatar). Never awaited by the caller's main flow - a
+ * failed delete leaves an orphaned object in the bucket, which is a storage-cost
+ * problem, not a correctness one, so it must never fail or delay the mutation it
+ * follows. Only deletes URLs that resolve to a path in OUR bucket
+ * (urlToStoragePath returns null for a Google profile picture or a data: URI).
  */
 function cleanupOrphanedImage(storage: SupabaseStorageClient, imageUrl: string | null | undefined): void {
   const path = urlToStoragePath(imageUrl);
@@ -35,13 +50,13 @@ function cleanupOrphanedImage(storage: SupabaseStorageClient, imageUrl: string |
 }
 
 /**
- * Batch-fetches expense_payments/expense_shares for a set of expenses (one
- * round trip per table, regardless of how many expenses) and stitches them
- * onto each expense row. Shared by listExpenses and listExpensesPage so
- * paging never re-introduces the N+1 the original listExpenses avoided.
+ * Batch-fetches expense_payments/expense_shares for a set of expenses (one round
+ * trip per table, regardless of how many expenses) and stitches them onto each
+ * expense row. Shared by listExpenses and listExpensesPage so paging never
+ * re-introduces the N+1 that listExpenses avoids.
  */
 async function enrichExpensesWithPaymentsAndShares(
-  client: SupabaseQueryClient,
+  client: PostgrestClient,
   expenses: ExpenseRecord[],
 ): Promise<ExpenseRecord[]> {
   if (expenses.length === 0) {
@@ -51,21 +66,16 @@ async function enrichExpensesWithPaymentsAndShares(
   const expenseIds = expenses.map((expense) => expense.id);
 
   const [payments, shares] = await Promise.all([
-    client.one<Array<ExpensePaymentRecord & { expense_id: string }>>(
-      `
-        select expense_id, payer_member_id, amount_minor, currency
-        from public.expense_payments
-        where expense_id = any($1)
-      `,
-      [expenseIds],
+    client.select<ExpensePaymentRecord & { expense_id: string }>(
+      "expense_payments",
+      query(columns("expense_id,payer_member_id,amount_minor,currency"), inList("expense_id", expenseIds)),
     ),
-    client.one<Array<ExpenseShareRecord & { expense_id: string }>>(
-      `
-        select expense_id, member_id, share_type, share_value, amount_minor
-        from public.expense_shares
-        where expense_id = any($1)
-      `,
-      [expenseIds],
+    client.select<ExpenseShareRecord & { expense_id: string }>(
+      "expense_shares",
+      query(
+        columns("expense_id,member_id,share_type,share_value,amount_minor"),
+        inList("expense_id", expenseIds),
+      ),
     ),
   ]);
 
@@ -92,11 +102,74 @@ async function enrichExpensesWithPaymentsAndShares(
   }));
 }
 
+/**
+ * The write RPCs signal business failures by raising a bare sentinel message
+ * (see supabase/migrations/20260714100000_transactional_write_rpcs.sql), which
+ * arrives here as the Error message. Translate them back into the typed errors
+ * the routes already know how to map.
+ */
+function rethrowWriteRpcError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes(NOT_A_GROUP_MEMBER)) {
+    throw new Error(NOT_A_GROUP_MEMBER);
+  }
+
+  if (message.includes(EXPENSE_NOT_FOUND)) {
+    throw new Error(EXPENSE_NOT_FOUND);
+  }
+
+  const invalidMember = /INVALID_MEMBER:\s*(\S+)/.exec(message);
+
+  if (invalidMember) {
+    throw new InvalidMemberError(invalidMember[1]);
+  }
+
+  throw error instanceof Error ? error : new Error(message);
+}
+
 export function createSupabaseExpenseRepository(
-  client: SupabaseQueryClient,
+  client: PostgrestClient,
   storage?: SupabaseStorageClient,
 ): ExpenseRepository {
+  async function listExpenseRows(
+    groupId: string,
+    options?: { limit: number; cursor?: ExpensePageCursor },
+  ): Promise<ExpenseRecord[]> {
+    const pageLimit = options ? Math.max(1, Math.min(options.limit, MAX_EXPENSE_PAGE)) : undefined;
+
+    const expenses = await client.select<ExpenseRecord>(
+      "expenses",
+      query(
+        columns(EXPENSE_COLUMNS),
+        eq("group_id", groupId),
+        isNull("deleted_at"),
+        options?.cursor &&
+          beforeKeyset(
+            "expense_date",
+            "created_at",
+            options.cursor.beforeDate,
+            options.cursor.beforeCreatedAt,
+          ),
+        order("expense_date.desc,created_at.desc"),
+        pageLimit !== undefined && limitTo(pageLimit),
+      ),
+    );
+
+    return enrichExpensesWithPaymentsAndShares(client, expenses);
+  }
+
   return {
+    /**
+     * The expense, its payments and its shares are written by one transactional
+     * RPC. Doing it as 1 + N + M separate PostgREST calls (which is what this
+     * used to be) meant a failure partway through left a half-written expense
+     * behind - an entry with an incomplete share set silently corrupts every
+     * balance in the group, and nothing rolled it back. The RPC also owns the
+     * membership gate, the cross-group member-id validation, and the
+     * client_requests idempotency check, so a retried create returns the
+     * original row instead of colliding with the unique index and 500ing.
+     */
     async createExpense(context: AuthenticatedContext, groupId: string, request: CreateExpenseRequest) {
       const validation = validateCreateExpenseRequest(request);
 
@@ -104,163 +177,43 @@ export function createSupabaseExpenseRepository(
         throw new Error(validation.issues[0]?.code ?? "INVALID_EXPENSE");
       }
 
-      const member = await client.maybeOne<{ id: string }>(
-        `
-          select id
-          from public.group_members
-          where group_id = $1 and user_id = $2 and status = 'active'
-          limit 1
-        `,
-        [groupId, context.user.id],
-      );
-
-      if (!member) {
-        throw new Error(NOT_A_GROUP_MEMBER);
-      }
-
-      // The FK on expense_payments/expense_shares/transfer_to_member_id only
-      // references group_members(id) globally - it does not guarantee the
-      // referenced member belongs to THIS group. Load the group's active
-      // member id set once and verify every id the request references
-      // against it before writing anything.
-      const activeMembers = await client.one<Array<{ id: string }>>(
-        `
-          select id
-          from public.group_members
-          where group_id = $1 and status = 'active'
-        `,
-        [groupId],
-      );
-      const activeMemberIds = new Set(activeMembers.map((row) => row.id));
-      activeMemberIds.add(member.id);
-
-      for (const payment of request.expense_payments) {
-        if (!activeMemberIds.has(payment.payer_member_id)) {
-          throw new InvalidMemberError(payment.payer_member_id);
-        }
-      }
-
-      for (const share of request.expense_shares) {
-        if (!activeMemberIds.has(share.member_id)) {
-          throw new InvalidMemberError(share.member_id);
-        }
-      }
-
-      if (request.transfer_to_member_id && !activeMemberIds.has(request.transfer_to_member_id)) {
-        throw new InvalidMemberError(request.transfer_to_member_id);
-      }
-
-      const expense = await client.one<ExpenseRecord>(
-        `
-          insert into public.expenses (
-            group_id,
-            created_by_member_id,
-            title,
-            kind,
-            category,
-            amount_minor,
-            currency,
-            expense_date,
-            note,
-            transfer_to_member_id,
-            client_request_id,
-            image_url
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          returning id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id, image_url
-        `,
-        [
-          groupId,
-          member.id,
-          request.title,
-          request.kind,
-          request.category,
-          request.amount_minor,
-          request.currency,
-          request.expense_date,
-          request.note ?? null,
-          request.transfer_to_member_id ?? null,
-          request.client_request_id,
-          request.image_url ?? null,
-        ],
-      );
-
-      for (const payment of request.expense_payments) {
-        await client.exec(
-          `
-            insert into public.expense_payments (
-              expense_id,
-              payer_member_id,
-              amount_minor,
-              currency
-            )
-            values ($1, $2, $3, $4)
-          `,
-          [expense.id, payment.payer_member_id, payment.amount_minor, payment.currency],
-        );
-      }
-
-      for (const share of request.expense_shares) {
-        await client.exec(
-          `
-            insert into public.expense_shares (
-              expense_id,
-              member_id,
-              share_type,
-              share_value,
-              amount_minor
-            )
-            values ($1, $2, $3, $4, $5)
-          `,
-          [expense.id, share.member_id, share.share_type, share.share_value ?? null, share.amount_minor],
-        );
-      }
-
-      await this.recordClientRequest(groupId, request.client_request_id, expense.id);
-      return expense;
+      return client
+        .rpc<ExpenseRecord>("create_expense", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          p_payload: request,
+        })
+        .catch(rethrowWriteRpcError);
     },
 
-    async listExpenses(groupId: string) {
-      const expenses = await client.one<ExpenseRecord[]>(
-        `
-          select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id, image_url
-          from public.expenses
-          where group_id = $1 and deleted_at is null
-          order by expense_date desc, created_at desc
-        `,
-        [groupId],
-      );
+    async replaceExpense(
+      context: AuthenticatedContext,
+      groupId: string,
+      expenseId: string,
+      request: CreateExpenseRequest,
+    ) {
+      const validation = validateCreateExpenseRequest(request);
 
-      return enrichExpensesWithPaymentsAndShares(client, expenses);
-    },
+      if (!validation.ok) {
+        throw new Error(validation.issues[0]?.code ?? "INVALID_EXPENSE");
+      }
 
-    async listExpensesPage(groupId: string, options: { limit: number; cursor?: ExpensePageCursor }) {
-      const limit = Math.max(1, Math.min(options.limit, 100));
+      const result = await client
+        .rpc<{ expense: ExpenseRecord; previous: DeletedExpenseRecord | null }>("replace_expense", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          p_expense_id: expenseId,
+          p_payload: request,
+        })
+        .catch(rethrowWriteRpcError);
 
-      const expenses = options.cursor
-        ? await client.one<ExpenseRecord[]>(
-            `
-              select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id, image_url
-              from public.expenses
-              where group_id = $1 and deleted_at is null
-                and (expense_date, created_at) < ($2, $3)
-              order by expense_date desc, created_at desc
-              limit $4
-            `,
-            [groupId, options.cursor.beforeDate, options.cursor.beforeCreatedAt, limit],
-          )
-        : await client.one<ExpenseRecord[]>(
-            `
-              select id, group_id, title, kind, category, amount_minor, currency, expense_date, note, transfer_to_member_id, created_at, version, client_request_id, image_url
-              from public.expenses
-              where group_id = $1 and deleted_at is null
-              order by expense_date desc, created_at desc
-              limit $2
-            `,
-            [groupId, limit],
-          );
+      // The replaced row's image is now unreferenced - unless the edit kept it,
+      // in which case deleting it would break the expense still using it.
+      if (storage && result.previous && result.previous.image_url !== result.expense.image_url) {
+        cleanupOrphanedImage(storage, result.previous.image_url);
+      }
 
-      return enrichExpensesWithPaymentsAndShares(client, expenses);
+      return result;
     },
 
     async softDeleteExpense(
@@ -269,44 +222,38 @@ export function createSupabaseExpenseRepository(
       expenseId: string,
       client_request_id: string,
     ) {
-      const member = await client.maybeOne<{ id: string }>(
-        `
-          select id
-          from public.group_members
-          where group_id = $1 and user_id = $2 and status = 'active'
-          limit 1
-        `,
-        [groupId, context.user.id],
-      );
+      // Membership gate, the version bump (which the old translated PATCH
+      // silently dropped), the client_requests write, and the idempotent-replay
+      // check all live in the RPC - one round trip, one transaction.
+      const expense = await client
+        .rpc<DeletedExpenseRecord>("soft_delete_expense", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          p_expense_id: expenseId,
+          p_client_request_id: client_request_id,
+        })
+        .catch(rethrowWriteRpcError);
 
-      if (!member) {
-        throw new Error(NOT_A_GROUP_MEMBER);
-      }
-
-      const expense = await client.one<DeletedExpenseRecord>(
-        `
-          update public.expenses
-          set deleted_at = now(), version = version + 1, updated_at = now()
-          where group_id = $1 and id = $2 and deleted_at is null
-          returning id, group_id, title, kind, category, amount_minor, currency, expense_date, created_at, version, client_request_id, image_url
-        `,
-        [groupId, expenseId],
-      );
-      await this.recordClientRequest(groupId, client_request_id, expense.id);
       if (storage) {
         cleanupOrphanedImage(storage, expense.image_url);
       }
+
       return expense;
     },
 
+    listExpenses(groupId: string) {
+      return listExpenseRows(groupId);
+    },
+
+    listExpensesPage(groupId: string, options: { limit: number; cursor?: ExpensePageCursor }) {
+      return listExpenseRows(groupId, options);
+    },
+
     async recordClientRequest(groupId: string, client_request_id: string, resourceId: string) {
-      await client.exec(
-        `
-          insert into public.client_requests (group_id, client_request_id, resource_id)
-          values ($1, $2, $3)
-          on conflict (group_id, client_request_id) do nothing
-        `,
-        [groupId, client_request_id, resourceId],
+      await client.insert(
+        "client_requests",
+        { group_id: groupId, client_request_id, resource_id: resourceId },
+        { query: onConflict("group_id,client_request_id"), prefer: "resolution=ignore-duplicates" },
       );
     },
   };

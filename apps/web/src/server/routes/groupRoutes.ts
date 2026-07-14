@@ -1,3 +1,4 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   CreateGroupRequest,
   CreateInviteRequest,
@@ -10,12 +11,10 @@ import {
   validateCreateVirtualMemberRequest,
   validateRenameGroupMemberRequest,
 } from "../../contracts/validation.js";
-import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
+import type { GoogleTokenVerifier } from "../auth/google.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import {
   createSupabaseGroupRepository,
-  type SupabaseQueryClient,
-  upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
 import {
   handleAcceptInvite,
@@ -35,22 +34,16 @@ import {
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
   /** Optional so this type stays compatible with call sites that don't need storage cleanup; updateGroupRoute passes it through to handleUpdateGroup's previous-cover cleanup hook when present. */
   storage?: SupabaseStorageClient;
 };
 
-async function buildRouteContext(options: RouteOptions) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  return requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
-}
 
 export async function createGroupRoute(options: RouteOptions, request: CreateGroupRequest) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -60,7 +53,7 @@ export async function createGroupRoute(options: RouteOptions, request: CreateGro
 }
 
 export async function listGroupsRoute(options: RouteOptions) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -70,7 +63,7 @@ export async function listGroupsRoute(options: RouteOptions) {
 }
 
 export async function listArchivedGroupsRoute(options: RouteOptions) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -80,7 +73,7 @@ export async function listArchivedGroupsRoute(options: RouteOptions) {
 }
 
 export async function getGroupDetailRoute(options: RouteOptions, groupId: string) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -90,7 +83,7 @@ export async function getGroupDetailRoute(options: RouteOptions, groupId: string
 }
 
 export async function updateGroupRoute(options: RouteOptions, groupId: string, request: UpdateGroupRequest) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -110,7 +103,7 @@ export async function createVirtualMemberRoute(
     return { ok: false, status: 400, body: { issues: validation.issues } };
   }
 
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -131,7 +124,7 @@ export async function renameGroupMemberRoute(
     return { ok: false, status: 400, body: { issues: validation.issues } };
   }
 
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -146,7 +139,7 @@ export async function removeGroupMemberRoute(
   memberId: string,
   clientRequestId: string,
 ) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -162,7 +155,7 @@ export async function removeGroupMemberRoute(
 }
 
 export async function archiveGroupRoute(options: RouteOptions, groupId: string, clientRequestId: string) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -172,7 +165,7 @@ export async function archiveGroupRoute(options: RouteOptions, groupId: string, 
 }
 
 export async function unarchiveGroupRoute(options: RouteOptions, groupId: string, clientRequestId: string) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -182,7 +175,7 @@ export async function unarchiveGroupRoute(options: RouteOptions, groupId: string
 }
 
 export async function deleteGroupRoute(options: RouteOptions, groupId: string, clientRequestId: string) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -196,7 +189,7 @@ export async function createInviteRoute(
   groupId: string,
   request: CreateInviteRequest,
 ) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -210,7 +203,7 @@ export async function acceptInviteRoute(
   token: string,
   request: AcceptInviteRequest,
 ) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

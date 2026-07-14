@@ -10,6 +10,13 @@ import type { AuthenticatedContext } from "../auth/session.js";
 export const NOT_A_GROUP_MEMBER = "NOT_A_GROUP_MEMBER";
 
 /**
+ * Raised when the expense a delete/edit targets is already gone (or was never
+ * in this group). Routes map it to 404 rather than letting it surface as an
+ * unhandled 500 the way a bare "no rows" error used to.
+ */
+export const EXPENSE_NOT_FOUND = "EXPENSE_NOT_FOUND";
+
+/**
  * Thrown when an expense_payments.payer_member_id, expense_shares.member_id,
  * or transfer_to_member_id in a create-expense request does not belong to an
  * active member of the target group. The FK on group_members(id) only
@@ -96,6 +103,22 @@ export type ExpenseRepository = {
     expenseId: string,
     client_request_id: string,
   ): Promise<DeletedExpenseRecord>;
+  /**
+   * Atomic edit: soft-deletes `expenseId` and creates its replacement in one
+   * database transaction. The API has no in-place expense update, so an edit
+   * has always been a delete plus a create - but running those as two separate
+   * calls means a failed create leaves the user with neither row. Here they
+   * either both land or neither does.
+   *
+   * `previous` is the replaced row (null on an idempotent replay), carried back
+   * so the caller can clean up its now-orphaned image.
+   */
+  replaceExpense(
+    context: AuthenticatedContext,
+    groupId: string,
+    expenseId: string,
+    request: CreateExpenseRequest,
+  ): Promise<{ expense: ExpenseRecord; previous: DeletedExpenseRecord | null }>;
   recordClientRequest(groupId: string, client_request_id: string, resourceId: string): Promise<void>;
 };
 

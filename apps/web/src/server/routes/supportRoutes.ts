@@ -1,9 +1,6 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
-import {
-  upsertUserByGoogleIdentity,
-  type SupabaseQueryClient,
-} from "../repositories/supabaseGroupRepository.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseSupportRepository } from "../repositories/supabaseSupportRepository.js";
 import {
   handleCreateFeedback,
@@ -13,16 +10,13 @@ import {
 } from "../handlers/support.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
 };
 
 export async function createFeedbackRoute(options: RouteOptions, request: CreateFeedbackRequest) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  const auth = await requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

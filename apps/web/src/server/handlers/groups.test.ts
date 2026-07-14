@@ -159,18 +159,6 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
         claimed: true,
       };
     },
-    async hashInviteToken() {
-      return "hashed_token";
-    },
-    async findInviteByTokenHash() {
-      return {
-        id: "invite_1",
-        group_id: "group_1",
-        token_hash: "hashed_token",
-        max_uses: 5,
-        use_count: 0,
-      };
-    },
     async getGroupDetail() {
       return {
         group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
@@ -535,6 +523,42 @@ describe("group handlers", () => {
       member: { id: "member_virtual" },
       claimed: true,
     });
+  });
+
+  test("maps an unusable invite to 404 INVITE_EXPIRED", async () => {
+    // The handler no longer pre-checks the invite (that lookup raced the
+    // accept). acceptInvite validates and joins in one locked transaction, and
+    // reports a revoked/exhausted/expired invite by raising INVITE_EXPIRED.
+    const repository = {
+      ...makeRepository(),
+      async acceptInvite(): Promise<never> {
+        throw new Error("INVITE_EXPIRED");
+      },
+    };
+
+    const result = await handleAcceptInvite(repository, context, "EQOBADTOKEN12", {
+      client_request_id: "req_accept",
+      display_name: "Alice",
+    });
+
+    expect(result.status).toBe(404);
+    expect(!result.ok && result.body.error.code).toBe("INVITE_EXPIRED");
+  });
+
+  test("does not swallow an unexpected acceptInvite failure as a 404", async () => {
+    const repository = {
+      ...makeRepository(),
+      async acceptInvite(): Promise<never> {
+        throw new Error("connection reset");
+      },
+    };
+
+    await expect(
+      handleAcceptInvite(repository, context, "EQO7TWD", {
+        client_request_id: "req_accept",
+        display_name: "Alice",
+      }),
+    ).rejects.toThrow("connection reset");
   });
 
   test("renames a virtual member and returns the updated summary", async () => {

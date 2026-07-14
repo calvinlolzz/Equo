@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "./imageRoutes.js";
-import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
+import { createFakePostgrest } from "../db/fakePostgrest.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 const tinyPngBase64 =
@@ -12,19 +12,17 @@ const validRequest = {
   data_url: `data:image/png;base64,${tinyPngBase64}`,
 };
 
-function makeClient(member: { id: string } | null): SupabaseQueryClient {
-  return {
-    async one() {
-      throw new Error("Unexpected one query");
+function makeClient(member: { id: string } | null, deletedAt: string | null = null) {
+  return createFakePostgrest({
+    select: (table) => {
+      // Session-token requests are gated on the account still being enabled
+      // (buildAuthContext -> findUserAuthState), so every route fake has to
+      // answer this probe, not just the route's own membership check.
+      if (table === "users") return [{ id: "user_alice", deleted_at: deletedAt }];
+      if (table === "group_members") return member ? [member] : [];
+      return [];
     },
-    async maybeOne(sql) {
-      if (sql.includes("from public.group_members")) {
-        return member as never;
-      }
-      return null;
-    },
-    async exec() {},
-  };
+  });
 }
 
 function makeStorage(): SupabaseStorageClient {
@@ -87,22 +85,21 @@ describe("uploadGroupImageRoute", () => {
   });
 });
 
-function makeAvatarClient(): SupabaseQueryClient {
-  return {
-    async one(sql, params) {
-      if (sql.includes("select id, avatar_url") && sql.includes("from public.users")) {
-        return { avatar_url: "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/old.jpg" } as never;
-      }
-      if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
-        return { avatar_url: params[0] } as never;
-      }
-      throw new Error(`Unexpected one query: ${sql}`);
-    },
-    async maybeOne() {
-      return null;
-    },
-    async exec() {},
-  };
+function makeAvatarClient() {
+  return createFakePostgrest({
+    // Serves both the account-state probe and updateUserAvatar's read of the
+    // previous avatar (the one that has to be cleaned up from storage).
+    select: () => [
+      {
+        id: "user_alice",
+        deleted_at: null,
+        avatar_url:
+          "https://example.supabase.co/storage/v1/object/public/equo-images/avatars/user_alice/old.jpg",
+      },
+    ],
+    update: (table, _query, body) =>
+      table === "users" ? [{ avatar_url: (body as { avatar_url: string }).avatar_url }] : [],
+  });
 }
 
 function makeAvatarStorage(): SupabaseStorageClient {
@@ -202,28 +199,20 @@ describe("updateMyAvatarRoute", () => {
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // makeAvatarClient's "select id, avatar_url" branch always returns
-      // avatars/user_alice/old.jpg as the previous value (see the fixture
-      // above) - the new upload is a different path, so it should be cleaned up.
+      // makeAvatarClient always reports avatars/user_alice/old.jpg as the previous
+      // value - the new upload lands on a different path, so the old object is
+      // now unreferenced and should be cleaned up.
       expect(storage.deletedPaths).toEqual(["avatars/user_alice/old.jpg"]);
     });
 
     test("does not delete a foreign previous avatar URL (e.g. a Google profile picture)", async () => {
-      const client: SupabaseQueryClient = {
-        async one(sql, params) {
-          if (sql.includes("select id, avatar_url") && sql.includes("from public.users")) {
-            return { avatar_url: "https://lh3.googleusercontent.com/a/some-photo" } as never;
-          }
-          if (sql.includes("update public.users") && sql.includes("set avatar_url = $1")) {
-            return { avatar_url: params[0] } as never;
-          }
-          throw new Error(`Unexpected one query: ${sql}`);
-        },
-        async maybeOne() {
-          return null;
-        },
-        async exec() {},
-      };
+      const client = createFakePostgrest({
+        select: () => [
+          { id: "user_alice", deleted_at: null, avatar_url: "https://lh3.googleusercontent.com/a/some-photo" },
+        ],
+        update: (table, _query, body) =>
+          table === "users" ? [{ avatar_url: (body as { avatar_url: string }).avatar_url }] : [],
+      });
       const storage = makeFakeAvatarStorage();
 
       await updateMyAvatarRoute(

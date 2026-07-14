@@ -1,133 +1,99 @@
 import { describe, expect, test } from "vitest";
+import { createFakePostgrest } from "../db/fakePostgrest.js";
 import { createSupabaseAdminRepository } from "./supabaseAdminRepository.js";
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
 
-type RecordedCall = {
-  mode: "one" | "maybeOne" | "exec";
-  sql: string;
-  params: unknown[];
-};
+const actor = { id: "user_admin", email: "admin@example.com" };
 
-function makeClient(result: unknown): SupabaseQueryClient & { calls: RecordedCall[] } {
-  const calls: RecordedCall[] = [];
-
-  return {
-    calls,
-    async one(sql, params) {
-      calls.push({ mode: "one", sql, params });
-      return result as never;
-    },
-    async maybeOne(sql, params) {
-      calls.push({ mode: "maybeOne", sql, params });
-      return result as never;
-    },
-    async exec(sql, params) {
-      calls.push({ mode: "exec", sql, params });
-    },
-  };
+/**
+ * Admin reads and writes go through admin_console_* Postgres functions rather
+ * than table access: the reads are cross-table aggregates PostgREST can't
+ * express, and the writes have to record their audit-log row in the same
+ * transaction as the change they audit. So every one of these is an rpc call,
+ * and what matters is the function name and the argument mapping.
+ */
+function makeClient(result: unknown = { total: 0, users: [] }) {
+  return createFakePostgrest({ rpc: () => result });
 }
 
-describe("supabase admin repository", () => {
-  test("findAdminRole calls admin_console_role and maps null to null", async () => {
+describe("createSupabaseAdminRepository", () => {
+  test("resolves the caller's admin role, collapsing a missing role to null", async () => {
     const client = makeClient(null);
-    const repository = createSupabaseAdminRepository(client);
 
-    const role = await repository.findAdminRole("user_1");
-
-    expect(role).toBeNull();
-    expect(client.calls).toHaveLength(1);
-    expect(client.calls[0].mode).toBe("maybeOne");
-    expect(client.calls[0].sql).toContain("admin_console_role");
-    expect(client.calls[0].params).toEqual(["user_1"]);
+    await expect(createSupabaseAdminRepository(client).findAdminRole("user_1")).resolves.toBeNull();
+    expect(client.rpcCall("admin_console_role")?.args).toEqual({ p_user_id: "user_1" });
   });
 
-  test("findAdminRole returns the role string when present", async () => {
-    const repository = createSupabaseAdminRepository(makeClient("owner"));
+  test("passes search/limit/offset through to the user listing", async () => {
+    const client = makeClient({ total: 1, users: [] });
 
-    await expect(repository.findAdminRole("user_1")).resolves.toBe("owner");
+    await createSupabaseAdminRepository(client).listUsers("alice", 20, 40);
+
+    expect(client.rpcCall("admin_console_users")?.args).toEqual({
+      p_search: "alice",
+      p_limit: 20,
+      p_offset: 40,
+    });
   });
 
-  test("getOverview calls admin_console_overview with no params", async () => {
-    const overview = { user_count: 1 };
-    const client = makeClient(overview);
-    const repository = createSupabaseAdminRepository(client);
-
-    await expect(repository.getOverview()).resolves.toBe(overview);
-    expect(client.calls[0].sql).toContain("admin_console_overview");
-    expect(client.calls[0].params).toEqual([]);
-  });
-
-  test("listUsers forwards search, limit, offset positionally", async () => {
-    const client = makeClient({ total: 0, users: [] });
-    const repository = createSupabaseAdminRepository(client);
-
-    await repository.listUsers("alice", 20, 40);
-
-    expect(client.calls[0].sql).toContain("admin_console_users");
-    expect(client.calls[0].params).toEqual(["alice", 20, 40]);
-  });
-
-  test("getUserDetail calls admin_console_user_detail and passes null through", async () => {
-    const client = makeClient(null);
-    const repository = createSupabaseAdminRepository(client);
-
-    await expect(repository.getUserDetail("user_missing")).resolves.toBeNull();
-    expect(client.calls[0].sql).toContain("admin_console_user_detail");
-    expect(client.calls[0].params).toEqual(["user_missing"]);
-  });
-
-  test("listGroups forwards search, limit, offset, filter positionally", async () => {
+  test("passes the group filter through alongside the pagination", async () => {
     const client = makeClient({ total: 0, groups: [] });
-    const repository = createSupabaseAdminRepository(client);
 
-    await repository.listGroups("trip", 10, 0, "deleted");
+    await createSupabaseAdminRepository(client).listGroups("trip", 20, 0, "archived");
 
-    expect(client.calls[0].sql).toContain("admin_console_groups");
-    expect(client.calls[0].params).toEqual(["trip", 10, 0, "deleted"]);
+    expect(client.rpcCall("admin_console_groups")?.args).toEqual({
+      p_search: "trip",
+      p_limit: 20,
+      p_offset: 0,
+      p_filter: "archived",
+    });
   });
 
-  const actor = { id: "user_admin", email: "admin@example.com" };
-
-  test("setUserDisabled forwards actor identity and the disabled flag", async () => {
-    const client = makeClient({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
+  test("every state-changing admin call carries the actor, so the audit row can name them", async () => {
+    const client = makeClient({ id: "x" });
     const repository = createSupabaseAdminRepository(client);
 
-    const result = await repository.setUserDisabled(actor, "user_alice", true);
-
-    expect(result).toEqual({ id: "user_alice", disabled_at: "2026-07-11T00:00:00.000Z" });
-    expect(client.calls[0].mode).toBe("maybeOne");
-    expect(client.calls[0].sql).toContain("admin_console_set_user_disabled");
-    expect(client.calls[0].params).toEqual(["user_admin", "admin@example.com", "user_alice", true]);
-  });
-
-  test("setGroupArchived and setGroupDeleted forward actor and flags", async () => {
-    const client = makeClient({ id: "group_1", archived_at: null, deleted_at: null });
-    const repository = createSupabaseAdminRepository(client);
-
+    await repository.setUserDisabled(actor, "user_2", true);
     await repository.setGroupArchived(actor, "group_1", true);
-    await repository.setGroupDeleted(actor, "group_1", false);
+    await repository.setGroupDeleted(actor, "group_1", true);
+    await repository.setFeedbackStatus(actor, "fb_1", "done");
 
-    expect(client.calls[0].sql).toContain("admin_console_set_group_archived");
-    expect(client.calls[0].params).toEqual(["user_admin", "admin@example.com", "group_1", true]);
-    expect(client.calls[1].sql).toContain("admin_console_set_group_deleted");
-    expect(client.calls[1].params).toEqual(["user_admin", "admin@example.com", "group_1", false]);
+    for (const call of client.calls) {
+      expect(call).toMatchObject({
+        op: "rpc",
+        args: { p_actor: "user_admin", p_actor_email: "admin@example.com" },
+      });
+    }
+    expect(client.calls.map((call) => (call.op === "rpc" ? call.fn : ""))).toEqual([
+      "admin_console_set_user_disabled",
+      "admin_console_set_group_archived",
+      "admin_console_set_group_deleted",
+      "admin_console_set_feedback_status",
+    ]);
   });
 
-  test("listAuditLogs forwards limit and offset positionally", async () => {
+  test("collapses a null RPC result to null rather than returning undefined", async () => {
+    const repository = createSupabaseAdminRepository(makeClient(null));
+
+    await expect(repository.getUserDetail("user_1")).resolves.toBeNull();
+    await expect(repository.setUserDisabled(actor, "user_1", true)).resolves.toBeNull();
+    await expect(repository.setGroupArchived(actor, "group_1", true)).resolves.toBeNull();
+  });
+
+  test("paginated log readers forward limit and offset", async () => {
     const client = makeClient({ total: 0, logs: [] });
     const repository = createSupabaseAdminRepository(client);
 
-    await repository.listAuditLogs(20, 40);
+    await repository.listAuditLogs(50, 100);
+    expect(client.rpcCall("admin_console_audit_logs")?.args).toEqual({ p_limit: 50, p_offset: 100 });
 
-    expect(client.calls[0].sql).toContain("admin_console_audit_logs");
-    expect(client.calls[0].params).toEqual([20, 40]);
-  });
+    await repository.listErrors(10, 0);
+    expect(client.rpcCall("admin_console_errors")?.args).toEqual({ p_limit: 10, p_offset: 0 });
 
-  test("group write operations pass null through for missing groups", async () => {
-    const repository = createSupabaseAdminRepository(makeClient(null));
-
-    await expect(repository.setGroupArchived(actor, "group_missing", true)).resolves.toBeNull();
-    await expect(repository.setGroupDeleted(actor, "group_missing", true)).resolves.toBeNull();
-    await expect(repository.setUserDisabled(actor, "user_missing", true)).resolves.toBeNull();
+    await repository.listFeedback(10, 0, "open");
+    expect(client.rpcCall("admin_console_feedback")?.args).toEqual({
+      p_limit: 10,
+      p_offset: 0,
+      p_status: "open",
+    });
   });
 });

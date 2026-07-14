@@ -1,10 +1,7 @@
-import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
+import type { PostgrestClient } from "../db/postgrestClient.js";
+import type { GoogleTokenVerifier } from "../auth/google.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
-import {
-  upsertUserByGoogleIdentity,
-  type SupabaseQueryClient,
-} from "../repositories/supabaseGroupRepository.js";
 import {
   handleAdminListAuditLogs,
   handleAdminListErrors,
@@ -24,20 +21,14 @@ import {
 } from "../handlers/admin.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
 };
 
-async function buildRouteContext(options: RouteOptions) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  return requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
-}
 
 export async function adminMeRoute(options: RouteOptions) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -47,7 +38,7 @@ export async function adminMeRoute(options: RouteOptions) {
 }
 
 export async function adminOverviewRoute(options: RouteOptions) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -57,7 +48,7 @@ export async function adminOverviewRoute(options: RouteOptions) {
 }
 
 export async function adminListUsersRoute(options: RouteOptions, query: AdminListQuery) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -67,7 +58,7 @@ export async function adminListUsersRoute(options: RouteOptions, query: AdminLis
 }
 
 export async function adminUserDetailRoute(options: RouteOptions, userId: string) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -77,7 +68,7 @@ export async function adminUserDetailRoute(options: RouteOptions, userId: string
 }
 
 export async function adminListGroupsRoute(options: RouteOptions, query: AdminGroupListQuery) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -87,7 +78,7 @@ export async function adminListGroupsRoute(options: RouteOptions, query: AdminGr
 }
 
 export async function adminListAuditLogsRoute(options: RouteOptions, query: AdminListQuery) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -97,7 +88,7 @@ export async function adminListAuditLogsRoute(options: RouteOptions, query: Admi
 }
 
 export async function adminListFeedbackRoute(options: RouteOptions, query: AdminFeedbackListQuery) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -107,7 +98,7 @@ export async function adminListFeedbackRoute(options: RouteOptions, query: Admin
 }
 
 export async function adminSetFeedbackStatusRoute(options: RouteOptions, feedbackId: string, status: string | undefined) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -117,7 +108,7 @@ export async function adminSetFeedbackStatusRoute(options: RouteOptions, feedbac
 }
 
 export async function adminListErrorsRoute(options: RouteOptions, query: AdminListQuery) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -127,7 +118,7 @@ export async function adminListErrorsRoute(options: RouteOptions, query: AdminLi
 }
 
 export async function adminSetUserDisabledRoute(options: RouteOptions, userId: string, disabled: boolean) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -137,7 +128,7 @@ export async function adminSetUserDisabledRoute(options: RouteOptions, userId: s
 }
 
 export async function adminSetGroupArchivedRoute(options: RouteOptions, groupId: string, archived: boolean) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -147,7 +138,7 @@ export async function adminSetGroupArchivedRoute(options: RouteOptions, groupId:
 }
 
 export async function adminSetGroupDeletedRoute(options: RouteOptions, groupId: string, deleted: boolean) {
-  const auth = await buildRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

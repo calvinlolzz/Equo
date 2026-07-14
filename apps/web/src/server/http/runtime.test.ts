@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createHttpRuntime } from "./runtime.js";
-import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
+import { createFakePostgrest } from "../db/fakePostgrest.js";
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 function makeStorage(): SupabaseStorageClient {
@@ -12,182 +13,124 @@ function makeStorage(): SupabaseStorageClient {
   };
 }
 
-function makeClient(): SupabaseQueryClient {
-  return {
-    async one(sql, params) {
-      if (sql.includes("insert into public.users")) {
-        return {
-          id: "user_alice",
-          google_sub: "google-alice",
-          email: "alice@example.com",
-          display_name: "Alice",
-        } as never;
-      }
-
-      if (sql.includes("insert into public.groups")) {
-        return { id: "group_1", name: params[0], currency: params[1], owner_member_id: null } as never;
-      }
-
-      if (sql.includes("from public.groups g") && sql.includes("archived_at is not null")) {
-        return [
-          {
-            id: "group_2",
-            name: "Osaka Trip",
-            currency: "TWD",
-            owner_member_id: "member_owner",
-            archived_at: "2026-07-01T00:00:00.000Z",
-          },
-        ] as never;
-      }
-
-      if (sql.includes("from public.groups g")) {
-        return [
-          { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
-        ] as never;
-      }
-
-      if (sql.includes("from public.group_members") && sql.includes("where group_id = $1 and status = 'active'")) {
-        return [
-          {
-            id: "member_owner",
-            group_id: params[0],
-            user_id: "user_alice",
-            display_name: "Alice",
-            role: "owner",
-            status: "active",
-          },
-        ] as never;
-      }
-
-      if (sql.includes("from public.expenses")) {
-        return [
-          {
-            id: "expense_1",
-            group_id: params[0],
-            title: "Dinner",
-            kind: "expense",
-            amount_minor: 120000,
-            currency: "TWD",
-            version: 1,
-            client_request_id: "expense_req",
-          },
-        ] as never;
-      }
-
-      if (sql.includes("from public.expense_payments")) {
-        return [{ expense_id: "expense_1", payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }] as never;
-      }
-
-      if (sql.includes("from public.expense_shares")) {
-        return [
-          { expense_id: "expense_1", member_id: "member_owner", share_type: "equal", amount_minor: 120000 },
-        ] as never;
-      }
-
-      if (sql.includes("from public.group_member_balances")) {
-        return [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" } }] as never;
-      }
-
-      if (sql.includes("insert into public.group_members")) {
-        return {
-          id: "member_owner",
-          group_id: params[0],
-          user_id: params[1],
-          display_name: params[2],
-          role: "owner",
-          status: "active",
-        } as never;
-      }
-
-      if (sql.includes("update public.groups") && sql.includes("set archived_at = null")) {
-        return { id: params[0], name: "Osaka Trip", currency: "TWD", owner_member_id: "member_owner" } as never;
-      }
-
-      if (sql.includes("update public.groups")) {
-        return { id: params[1], name: "Tokyo Trip", currency: "TWD", owner_member_id: params[0] } as never;
-      }
-
-      if (sql.includes("update public.group_members") && sql.includes("set display_name = $1")) {
-        return {
-          id: params[1],
-          group_id: params[2],
-          user_id: null,
-          display_name: params[0],
-          role: "member",
-          status: "active",
-        } as never;
-      }
-
-      if (sql.includes("update public.group_members") && sql.includes("set status = 'removed'")) {
-        return {
-          id: params[0],
-          group_id: params[1],
-          user_id: null,
-          display_name: "Bob",
-          role: "member",
-          status: "removed",
-        } as never;
-      }
-
-      throw new Error(sql);
-    },
-    async maybeOne(sql) {
-      if (sql.includes("get_group_detail")) {
-        return {
-          group: { id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" },
-          members: [
-            {
-              id: "member_owner",
-              group_id: "group_1",
-              user_id: "user_alice",
-              display_name: "Alice",
-              role: "owner",
-              status: "active",
-            },
-          ],
-          expenses: [
-            {
-              id: "expense_1",
-              group_id: "group_1",
-              title: "Dinner",
-              kind: "expense",
-              amount_minor: 120000,
-              currency: "TWD",
-              version: 1,
-              client_request_id: "expense_req",
-            },
-          ],
-          balances: [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" } }],
-        } as never;
-      }
-
-      // Target lookup for member management (rename/remove): a VIRTUAL member.
-      if (sql.includes("where group_id = $1 and id = $2")) {
-        return {
-          id: "member_virtual",
-          group_id: "group_1",
-          user_id: null,
-          display_name: "Bob",
-          role: "member",
-          status: "active",
-        } as never;
-      }
-
-      if (sql.includes("from public.group_member_balances")) {
-        return { balance_minor: 0 } as never;
-      }
-
-      return {
-        id: "member_owner",
-        group_id: "group_1",
-        user_id: "user_alice",
-        display_name: "Alice",
-        role: "owner",
-        status: "active",
-      } as never;
-    },
-    async exec() {},
+/**
+ * One fake database for the whole routing table. These tests are about routing
+ * and wiring - which pattern matches, which handler runs, what status comes
+ * back - so this answers every read/write/RPC the routes make with a plausible
+ * row and nothing more. Repository-level behaviour is covered in the repository
+ * tests, against this same PostgrestClient vocabulary.
+ */
+function makeClient(): PostgrestClient {
+  const groupRow = {
+    id: "group_1",
+    name: "Tokyo Trip",
+    currency: "TWD",
+    owner_member_id: "member_owner",
+    cover_image_url: null,
   };
+  const ownerMember = {
+    id: "member_owner",
+    group_id: "group_1",
+    user_id: "user_alice",
+    display_name: "Alice",
+    role: "owner",
+    status: "active",
+  };
+  const virtualMember = { ...ownerMember, id: "member_virtual", user_id: null, display_name: "Bob", role: "member" };
+  const expenseRow = {
+    id: "expense_1",
+    group_id: "group_1",
+    title: "Dinner",
+    kind: "expense",
+    amount_minor: 120000,
+    currency: "TWD",
+    version: 1,
+    client_request_id: "expense_req",
+    image_url: null,
+  };
+  const groupDetail = {
+    group: groupRow,
+    members: [ownerMember],
+    expenses: [expenseRow],
+    balances: [{ memberId: "member_owner", balance: { amount_minor: 120000, currency: "TWD" } }],
+  };
+
+  return createFakePostgrest({
+    select: (table, query) => {
+      if (table === "users") return [{ id: "user_alice", deleted_at: null, avatar_url: null }];
+      if (table === "group_members") {
+        // The member-management routes look their target up by id; everything
+        // else is asking about the caller's own membership.
+        return query.includes("id=eq.member_virtual") ? [virtualMember] : [ownerMember];
+      }
+      if (table === "groups") {
+        return [query.includes("archived_at=not.is.null") ? { ...groupRow, id: "group_2", name: "Osaka Trip", archived_at: "2026-07-01T00:00:00.000Z" } : groupRow];
+      }
+      if (table === "expenses") return [expenseRow];
+      if (table === "expense_payments") {
+        return [{ expense_id: "expense_1", payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }];
+      }
+      if (table === "expense_shares") {
+        return [{ expense_id: "expense_1", member_id: "member_owner", share_type: "equal", amount_minor: 120000 }];
+      }
+      if (table === "group_member_balances") return [{ member_id: "member_owner", balance_minor: 0, currency: "TWD" }];
+      return [];
+    },
+    insert: (table) => {
+      if (table === "users") {
+        return [
+          {
+            id: "user_alice",
+            google_sub: "google-alice",
+            email: "alice@example.com",
+            display_name: "Alice",
+            deleted_at: null,
+          },
+        ];
+      }
+      if (table === "groups") return [groupRow];
+      if (table === "group_members") return [ownerMember];
+      if (table === "invites") {
+        return [{ id: "invite_1", group_id: "group_1", token_hash: "hash", max_uses: 5, use_count: 0 }];
+      }
+      if (table === "app_feedback") return [{ id: "feedback_1" }];
+      return [];
+    },
+    update: (table, query, body) => {
+      // Echo the request back the way PostgREST would - the routes return the
+      // updated row, so a fake that always answers with the same fixture can't
+      // tell a rename from a remove, or group_2 from group_1.
+      if (table === "groups") {
+        const id = /id=eq\.([^&]+)/.exec(query)?.[1] ?? groupRow.id;
+        return [{ ...groupRow, id, name: id === "group_2" ? "Osaka Trip" : groupRow.name, ...(body as object) }];
+      }
+      if (table === "group_members") return [{ ...virtualMember, ...(body as object) }];
+      if (table === "users") return [{ avatar_url: (body as { avatar_url?: string }).avatar_url }];
+      return [];
+    },
+    rpc: (fn, args) => {
+      if (fn === "get_group_detail") return groupDetail;
+      if (fn === "replace_expense") {
+        return {
+          expense: { ...expenseRow, id: "expense_2", title: "Dinner (edited)", amount_minor: 1500 },
+          previous: { ...expenseRow, image_url: null },
+        };
+      }
+      if (fn === "create_expense") return expenseRow;
+      if (fn === "soft_delete_expense") return { ...expenseRow, version: 2 };
+      if (fn === "accept_invite") return { group: groupRow, member: ownerMember, claimed: false };
+      if (fn === "create_settlement") {
+        return {
+          id: "settlement_1",
+          group_id: args.p_group_id,
+          settlement_version: args.p_settlement_version,
+          calculated_version: 1,
+          status: "draft",
+        };
+      }
+      return null;
+    },
+  });
 }
 
 describe("createHttpRuntime", () => {
@@ -230,13 +173,13 @@ describe("createHttpRuntime", () => {
   test("skips the per-request user upsert once a session token is issued (fast path)", async () => {
     let userUpsertCount = 0;
     const client = makeClient();
-    const countingClient: SupabaseQueryClient = {
+    const countingClient: PostgrestClient = {
       ...client,
-      async one(sql, params) {
-        if (sql.includes("insert into public.users")) {
+      async insert(table, body, options) {
+        if (table === "users") {
           userUpsertCount += 1;
         }
-        return client.one(sql, params);
+        return client.insert(table, body, options);
       },
     };
 
@@ -382,6 +325,42 @@ describe("createHttpRuntime", () => {
       expenses: [{ id: "expense_1" }],
       balances: [{ memberId: "member_owner" }],
     });
+  });
+
+  test("routes PUT /groups/:groupId/expenses/:expenseId to the atomic replace", async () => {
+    // An edit is a delete plus a create. It used to be issued as two separate
+    // requests from the browser, so a create that failed after the delete had
+    // landed destroyed the entry. PUT hands both halves to one transaction.
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "PUT",
+      path: "/api/v1/groups/group_1/expenses/expense_1",
+      headers: { authorization: "Bearer google-token" },
+      json: {
+        client_request_id: "req_edit",
+        title: "Dinner (edited)",
+        kind: "expense",
+        category: "food",
+        amount_minor: 1500,
+        currency: "TWD",
+        expense_date: "2026-07-01",
+        expense_payments: [{ payer_member_id: "member_owner", amount_minor: 1500, currency: "TWD" }],
+        expense_shares: [{ member_id: "member_owner", share_type: "fixed", amount_minor: 1500 }],
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ expense: { id: "expense_2", title: "Dinner (edited)" } });
   });
 
   test("routes GET /groups/archived without falling through to the group-detail handler", async () => {
@@ -610,14 +589,14 @@ describe("createHttpRuntime", () => {
   test("converts an unexpected handler exception into a structured 500 without leaking internals", async () => {
     const secret = "sk_internal_db_credential_leak";
     const client = makeClient();
-    const throwingClient: SupabaseQueryClient = {
+    const throwingClient: PostgrestClient = {
       ...client,
-      async one(sql, params) {
-        if (sql.includes("insert into public.groups")) {
-          // Simulate a downstream failure whose message must never reach the caller.
+      async insert(table, body, options) {
+        if (table === "groups") {
+          // A downstream failure whose message must never reach the caller.
           throw new Error(`connection refused ${secret}`);
         }
-        return client.one(sql, params);
+        return client.insert(table, body, options);
       },
     };
 

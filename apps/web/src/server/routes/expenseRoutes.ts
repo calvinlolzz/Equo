@@ -1,19 +1,18 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import { validateCreateExpenseRequest } from "../../contracts/validation.js";
-import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
+import type { GoogleTokenVerifier } from "../auth/google.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import type { ExpensePageCursor } from "../repositories/expenseRepository.js";
-import { InvalidMemberError, NOT_A_GROUP_MEMBER } from "../repositories/expenseRepository.js";
+import { EXPENSE_NOT_FOUND, InvalidMemberError, NOT_A_GROUP_MEMBER } from "../repositories/expenseRepository.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
 import {
   createSupabaseGroupRepository,
-  type SupabaseQueryClient,
-  upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
   /**
@@ -39,12 +38,50 @@ function forbidden(request_id: string) {
   };
 }
 
-async function buildExpenseRouteContext(options: RouteOptions) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  return requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
+/**
+ * Maps the transactional write RPCs' sentinel failures onto the API's error
+ * shape. Anything else is a genuine bug or an outage and is re-thrown, so the
+ * runtime's 500 handler logs it with a request id instead of it being quietly
+ * swallowed as a 4xx.
+ */
+function writeErrorResponse(error: unknown, request_id: string) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes(NOT_A_GROUP_MEMBER)) {
+    return forbidden(request_id);
+  }
+
+  if (error instanceof InvalidMemberError) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_MEMBER" as const,
+          message: error.message,
+          request_id,
+        },
+      },
+    };
+  }
+
+  if (message.includes(EXPENSE_NOT_FOUND)) {
+    return {
+      ok: false,
+      status: 404,
+      body: {
+        error: {
+          code: "EXPENSE_NOT_FOUND" as const,
+          message: "This entry no longer exists.",
+          request_id,
+        },
+      },
+    };
+  }
+
+  throw error;
 }
+
 
 export async function createExpenseRoute(
   options: RouteOptions,
@@ -57,7 +94,7 @@ export async function createExpenseRoute(
     return { ok: false, status: 400, body: { issues: validation.issues } };
   }
 
-  const auth = await buildExpenseRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -72,25 +109,48 @@ export async function createExpenseRoute(
 
     return { ok: true, status: 201, body: { expense } };
   } catch (error) {
-    if (error instanceof Error && error.message === NOT_A_GROUP_MEMBER) {
-      return forbidden(request.client_request_id);
-    }
+    return writeErrorResponse(error, request.client_request_id);
+  }
+}
 
-    if (error instanceof InvalidMemberError) {
-      return {
-        ok: false,
-        status: 400,
-        body: {
-          error: {
-            code: "INVALID_MEMBER" as const,
-            message: error.message,
-            request_id: request.client_request_id,
-          },
-        },
-      };
-    }
+/**
+ * PUT /api/v1/groups/:groupId/expenses/:expenseId - edit an entry.
+ *
+ * The client used to do this itself: DELETE the old expense, then POST the new
+ * one. Two requests, no transaction between them - so a create that failed
+ * after the delete succeeded (offline, a validation error, a retry colliding
+ * with the idempotency index) destroyed the entry and put nothing in its place.
+ * replace_expense does both halves in one database transaction.
+ */
+export async function replaceExpenseRoute(
+  options: RouteOptions,
+  groupId: string,
+  expenseId: string,
+  request: CreateExpenseRequest,
+) {
+  const validation = validateCreateExpenseRequest(request);
 
-    throw error;
+  if (!validation.ok) {
+    return { ok: false, status: 400, body: { issues: validation.issues } };
+  }
+
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  try {
+    const { expense } = await createSupabaseExpenseRepository(options.client, options.storage).replaceExpense(
+      auth.context,
+      groupId,
+      expenseId,
+      request,
+    );
+
+    return { ok: true, status: 200, body: { expense } };
+  } catch (error) {
+    return writeErrorResponse(error, request.client_request_id);
   }
 }
 
@@ -100,7 +160,7 @@ export async function deleteExpenseRoute(
   expenseId: string,
   client_request_id: string,
 ) {
-  const auth = await buildExpenseRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -116,11 +176,7 @@ export async function deleteExpenseRoute(
 
     return { ok: true, status: 200, body: { expense } };
   } catch (error) {
-    if (error instanceof Error && error.message === NOT_A_GROUP_MEMBER) {
-      return forbidden(client_request_id);
-    }
-
-    throw error;
+    return writeErrorResponse(error, client_request_id);
   }
 }
 
@@ -141,7 +197,7 @@ export async function listExpensesPageRoute(
   groupId: string,
   query: ListExpensesPageQuery,
 ) {
-  const auth = await buildExpenseRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

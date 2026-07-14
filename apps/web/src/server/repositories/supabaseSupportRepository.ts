@@ -1,27 +1,33 @@
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
+import { columns, requireRow, type PostgrestClient } from "../db/postgrestClient.js";
 import type { SupportRepository } from "./supportRepository.js";
 
-export function createSupabaseSupportRepository(client: SupabaseQueryClient): SupportRepository {
+export function createSupabaseSupportRepository(client: PostgrestClient): SupportRepository {
   return {
     async createFeedback(userId, input) {
-      return client.one<{ id: string }>(
-        `
-          insert into public.app_feedback (user_id, type, message, contact, page)
-          values ($1, $2, $3, $4, $5)
-          returning id
-        `,
-        [userId, input.type, input.message, input.contact, input.page],
+      return requireRow(
+        await client.insert<{ id: string }>(
+          "app_feedback",
+          {
+            user_id: userId,
+            type: input.type,
+            message: input.message,
+            contact: input.contact,
+            page: input.page,
+          },
+          { query: columns("id") },
+        ),
+        "feedback",
       );
     },
 
     async recordClientError(userId, input) {
-      await client.exec(
-        `
-          insert into public.app_error_logs (user_id, source, message, context, page)
-          values ($1, $2, $3, $4, $5)
-        `,
-        [userId, input.source, input.message, input.context, input.page],
-      );
+      await client.insert("app_error_logs", {
+        user_id: userId,
+        source: input.source,
+        message: input.message,
+        context: input.context,
+        page: input.page,
+      });
     },
   };
 }

@@ -69,6 +69,7 @@ export type ApiClientLike = Pick<
   | "createInvite"
   | "acceptInvite"
   | "createExpense"
+  | "replaceExpense"
   | "deleteExpense"
   | "uploadGroupImage"
   | "listExpensesPage"
@@ -85,11 +86,16 @@ function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
   };
 }
 
+/**
+ * Session is no longer usable - the token expired, was signed with a rotated
+ * secret, or the account has since been disabled. Keyed on the API's error
+ * code, never on the message: the messages are user-facing copy (and partly
+ * Chinese), so matching them by regex means a wording change silently stops
+ * logging expired sessions out.
+ */
 function isUnauthenticatedError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  if (code === "UNAUTHENTICATED") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /sign in with google|profile could not be resolved|unauthenticated/i.test(message);
+  return code === "UNAUTHENTICATED" || code === "ACCOUNT_DISABLED";
 }
 
 function errorMessage(error: unknown): string {
@@ -450,17 +456,26 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
   }
 
   /**
-   * Edit = delete the old expense then create the new one (the API has no
-   * in-place expense update). The local patch mirrors that exactly: remove
-   * the old expense's balance/aggregate contribution, then apply the new
-   * one's - so a percent-split-to-fixed-split edit, a kind change, or a
-   * date change (moving an entry in/out of the 8-day window) all net out
-   * correctly without a refetch.
+   * Edit is still a delete plus a create server-side (the API has no in-place
+   * expense update), but it is now ONE request that the database runs in a
+   * single transaction - see replace_expense. It used to be two calls from
+   * here, delete then create, and a create that failed after the delete had
+   * landed destroyed the entry outright: the catch below fired, the background
+   * resync pulled server truth, and server truth was "deleted".
+   *
+   * The local patch mirrors the server's semantics: remove the old expense's
+   * balance/aggregate contribution, then apply the new one's - so a
+   * percent-split-to-fixed-split edit, a kind change, or a date change (moving
+   * an entry in/out of the 8-day window) all net out correctly without a
+   * refetch.
    */
   async function editExpense(groupId: string, expenseId: string, draft: ExpenseDraft, groupCurrency: string) {
     try {
-      await apiClient.deleteExpense(groupId, expenseId, { client_request_id: crypto.randomUUID() });
-      const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
+      const { expense } = await apiClient.replaceExpense(
+        groupId,
+        expenseId,
+        toCreateExpenseRequest(draft, groupCurrency),
+      );
       const current = state.groupDetails[groupId];
       if (current) {
         const nextExpense = draftToExpense(draft, expense);

@@ -1,15 +1,12 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { ConfirmSettlementRequest } from "../../contracts/schemas.js";
-import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
+import type { GoogleTokenVerifier } from "../auth/google.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import { NOT_A_GROUP_MEMBER } from "../repositories/settlementRepository.js";
-import {
-  type SupabaseQueryClient,
-  upsertUserByGoogleIdentity,
-} from "../repositories/supabaseGroupRepository.js";
 import { createSupabaseSettlementRepository } from "../repositories/supabaseSettlementRepository.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
 };
@@ -28,15 +25,9 @@ function forbidden(request_id: string) {
   };
 }
 
-async function buildSettlementRouteContext(options: RouteOptions) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  return requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
-}
 
 export async function calculateSettlementRoute(options: RouteOptions, groupId: string) {
-  const auth = await buildSettlementRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -65,7 +56,7 @@ export async function confirmSettlementRoute(
   request: ConfirmSettlementRequest,
 ) {
   const settlement_version = request.settlement_version;
-  const auth = await buildSettlementRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

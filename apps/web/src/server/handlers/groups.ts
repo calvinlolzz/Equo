@@ -8,7 +8,7 @@ import type {
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
-import type { GroupMemberRecord, GroupRepository } from "../repositories/groupRepository.js";
+import { INVITE_EXPIRED, type GroupMemberRecord, type GroupRepository } from "../repositories/groupRepository.js";
 import { urlToStoragePath, type SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type HandlerResult<T> =
@@ -416,16 +416,37 @@ export async function handleCreateInvite(
   } satisfies HandlerResult<unknown>;
 }
 
+/**
+ * The invite check used to live here: look the token up, 404 if it's no good,
+ * then accept it in a second call. Those two steps raced each other - between
+ * the lookup and the accept the invite could be exhausted or revoked - so
+ * validation now happens inside acceptInvite's transaction, and an unusable
+ * invite comes back as INVITE_EXPIRED.
+ *
+ * recordClientRequest is gone from this path for the same reason: the RPC
+ * writes it in the same transaction as the membership row.
+ */
 export async function handleAcceptInvite(
   repository: GroupRepository,
   context: AuthenticatedContext,
   token: string,
   request: AcceptInviteRequest,
 ) {
-  const token_hash = await repository.hashInviteToken(token);
-  const invite = await repository.findInviteByTokenHash(token_hash);
+  try {
+    const result = await repository.acceptInvite(context, token, request);
 
-  if (!invite) {
+    return {
+      ok: true,
+      status: 200,
+      body: result,
+    } satisfies HandlerResult<unknown>;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (!message.includes(INVITE_EXPIRED)) {
+      throw error;
+    }
+
     return {
       ok: false,
       status: 404,
@@ -438,13 +459,4 @@ export async function handleAcceptInvite(
       },
     } satisfies HandlerResult<never>;
   }
-
-  const result = await repository.acceptInvite(context, token, request);
-  await repository.recordClientRequest(result.group.id, request.client_request_id, result.member.id);
-
-  return {
-    ok: true,
-    status: 200,
-    body: result,
-  } satisfies HandlerResult<unknown>;
 }

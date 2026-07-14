@@ -53,6 +53,15 @@ export type GroupMemberRecord = {
   avatar_url?: string | null;
 };
 
+/**
+ * Raised by acceptInvite when the token matches no live invite - revoked,
+ * exhausted, expired, or pointing at a deleted group. The check used to live in
+ * the handler (a lookup, then a separate accept), which meant the validation and
+ * the write raced each other; it is now a single locked transaction inside the
+ * accept_invite RPC, so this is how the handler learns the invite was no good.
+ */
+export const INVITE_EXPIRED = "INVITE_EXPIRED";
+
 export type InviteRecord = {
   id: string;
   group_id: string;
@@ -133,7 +142,5 @@ export type GroupRepository = {
     member: GroupMemberRecord;
     claimed: boolean;
   }>;
-  hashInviteToken(token: string): Promise<string>;
-  findInviteByTokenHash(token_hash: string): Promise<InviteRecord | null>;
   recordClientRequest(groupId: string, client_request_id: string, resourceId: string): Promise<void>;
 };
