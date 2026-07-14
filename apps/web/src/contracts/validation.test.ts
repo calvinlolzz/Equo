@@ -27,6 +27,27 @@ const balancedExpense: CreateExpenseRequest = {
 };
 
 describe("validateCreateExpenseRequest", () => {
+  // The routes reach the body through an unchecked cast, so the static type is a
+  // claim about the request, not a fact. Reading a field off a body that doesn't
+  // have it threw a TypeError, which the runtime's catch-all turned into a 500 -
+  // so a malformed body, which is a plain 400, looked like a server fault.
+  test.each([
+    ["an empty object", {}],
+    ["null", null],
+    ["an array", []],
+    ["a string", "not an object"],
+    ["a body with no client_request_id", { amount_minor: 100, expense_payments: [], expense_shares: [] }],
+    ["a body with no amount_minor", { client_request_id: "r", expense_payments: [], expense_shares: [] }],
+    ["expense_payments that is not an array", { client_request_id: "r", amount_minor: 100, expense_payments: "x", expense_shares: [] }],
+    ["expense_shares that is not an array", { client_request_id: "r", amount_minor: 100, expense_payments: [], expense_shares: 7 }],
+    ["expense_payments holding a non-object", { client_request_id: "r", amount_minor: 100, expense_payments: ["x"], expense_shares: [] }],
+  ])("reports %s as MALFORMED_REQUEST rather than throwing", (_label, body) => {
+    const result = validateCreateExpenseRequest(body);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toEqual(["MALFORMED_REQUEST"]);
+  });
+
   test("rejects an expense when payments do not match amount", () => {
     const result = validateCreateExpenseRequest({
       ...balancedExpense,

@@ -20,6 +20,12 @@ export const errorCodes = [
   "ADMIN_NOT_FOUND",
   "ACCOUNT_DISABLED",
   "INVALID_FEEDBACK",
+  /**
+   * The request body is not the shape the endpoint takes at all - a missing
+   * field, a string where an array belongs, an empty `{}`. Distinct from the
+   * INVALID_* codes, which mean the shape was right and a value was wrong.
+   */
+  "MALFORMED_REQUEST",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];
