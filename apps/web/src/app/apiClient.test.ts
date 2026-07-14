@@ -2,10 +2,9 @@ import { describe, expect, test } from "vitest";
 import { createApiClient } from "./apiClient";
 
 describe("createApiClient", () => {
-  test("uses same-origin credentials and omits Authorization when no token is present", async () => {
+  test("sends same-origin credentials and never an Authorization header", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -24,13 +23,16 @@ describe("createApiClient", () => {
     });
 
     expect(calls[0].init.credentials).toBe("same-origin");
+    // The session rides in the equo_session HttpOnly cookie, which the browser
+    // attaches via credentials: "same-origin". There is no token in JS to put in
+    // a header - which is the point: script cannot read the credential, so an
+    // XSS on this page cannot steal it.
     expect(calls[0].init.headers).not.toMatchObject({ Authorization: expect.any(String) });
   });
 
   test("loads groups from the backend", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "session-token",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -50,13 +52,13 @@ describe("createApiClient", () => {
 
     expect(calls[0].url).toBe("/api/v1/groups");
     expect(calls[0].init.method).toBe("GET");
-    expect(calls[0].init.headers).toMatchObject({ Authorization: "Bearer session-token" });
+    expect(calls[0].init.headers).not.toHaveProperty("Authorization");
+    expect(calls[0].init.credentials).toBe("same-origin");
   });
 
   test("loads a group detail from the backend", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "session-token",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -84,7 +86,6 @@ describe("createApiClient", () => {
   test("accepts an invite through the backend", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "session-token",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -125,7 +126,6 @@ describe("createApiClient", () => {
   test("exchanges a Google ID token for an Equo session", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -159,7 +159,6 @@ describe("createApiClient", () => {
   test("renames a group member through PATCH /groups/:groupId/members/:memberId", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "session-token",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -192,7 +191,6 @@ describe("createApiClient", () => {
   test("removes a group member through DELETE /groups/:groupId/members/:memberId", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({
-      authToken: "session-token",
       fetcher: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
         return {
@@ -224,7 +222,6 @@ describe("createApiClient", () => {
 
   test("surfaces the API error code when member removal is balance-gated", async () => {
     const client = createApiClient({
-      authToken: "session-token",
       fetcher: async () =>
         ({
           ok: false,

@@ -14,7 +14,6 @@ import type {
 
 type ApiClientOptions = {
   baseUrl?: string;
-  authToken: string;
   fetcher?: typeof fetch;
 };
 
@@ -146,16 +145,24 @@ async function readJson<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export function createApiClient({ baseUrl = "/api/v1", authToken, fetcher = fetch }: ApiClientOptions) {
+/**
+ * The session travels in the `equo_session` cookie, which the server set at
+ * login as HttpOnly, Secure, SameSite=Lax (see sessionToken.ts's
+ * createSessionCookie). The browser attaches it to every same-origin request
+ * here; JavaScript never sees it, so an XSS on this page cannot read it out.
+ *
+ * It used to ALSO be handed to the client in the login response body and kept
+ * in localStorage, then sent back as a Bearer header - which handed the token
+ * to exactly the attacker the HttpOnly flag exists to keep it away from, and
+ * made the cookie's protection worth nothing. The server accepts either (see
+ * getAuthToken), so dropping the Bearer half changes no server behaviour.
+ */
+export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiClientOptions = {}) {
   async function request<T>(path: string, init: RequestInit): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     };
-
-    if (authToken.trim()) {
-      headers.Authorization = `Bearer ${authToken}`;
-    }
 
     const response = await fetcher(`${baseUrl}${path}`, {
       ...init,
