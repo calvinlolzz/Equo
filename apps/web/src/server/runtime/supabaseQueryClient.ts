@@ -39,6 +39,18 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+/**
+ * Every repository UPDATE carries `updated_at = now()`, but a PostgREST PATCH
+ * only writes the columns present in its body and there is no database
+ * trigger maintaining the column (see supabase/migrations - none of them
+ * install one). So each translated PATCH has to set it explicitly, or
+ * updated_at silently freezes at insert time - which is not cosmetic:
+ * listGroups orders by groups.updated_at.
+ */
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
 function encodeFilter(value: unknown): string {
   return encodeURIComponent(String(value));
 }
@@ -161,6 +173,20 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return undefined as T;
     }
 
+    // Auth-state probe for an already-resolved session user (findUserAuthState):
+    // confirms the account has not been admin-disabled since the session token
+    // was signed. Must be matched before the avatar branch below - both read
+    // from public.users and only the selected column list tells them apart.
+    if (normalized.includes("select id, deleted_at") && normalized.includes("from public.users")) {
+      const rows = await request<T>({
+        method: "GET",
+        table: "users",
+        query: `select=id,deleted_at&id=eq.${encodeFilter(params[0])}&limit=1`,
+        returnRepresentation: true,
+      });
+      return (rows[0] ?? null) as T;
+    }
+
     // Read-before-write lookup of the current avatar_url (updateUserAvatar,
     // PATCH /api/v1/me/avatar) - needed to know what to clean up from
     // storage once it's overwritten by the new upload.
@@ -183,7 +209,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "users",
         query: `id=eq.${encodeFilter(params[1])}&select=avatar_url`,
-        body: { avatar_url: params[0] },
+        body: { avatar_url: params[0], updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -194,7 +220,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "profiles",
         query: `id=eq.${encodeFilter(params[1])}`,
-        body: { avatar_url: params[0] },
+        body: { avatar_url: params[0], updated_at: nowIso() },
       });
       return undefined as T;
     }
@@ -368,7 +394,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       const groups = await request<RestGroupRow>({
         method: "GET",
         table: "groups",
-        query: `select=id,name,currency,owner_member_id,archived_at,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=not.is.null&deleted_at=is.null`,
+        query: `select=id,name,currency,owner_member_id,archived_at,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=not.is.null&deleted_at=is.null&order=updated_at.desc,created_at.desc&limit=50`,
         returnRepresentation: true,
       });
 
@@ -394,7 +420,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return request<RestGroupRow>({
         method: "GET",
         table: "groups",
-        query: `select=id,name,currency,owner_member_id,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=is.null&deleted_at=is.null`,
+        query: `select=id,name,currency,owner_member_id,cover_image_url&id=in.(${groupIds.map(encodeFilter).join(",")})&archived_at=is.null&deleted_at=is.null&order=updated_at.desc,created_at.desc&limit=50`,
         returnRepresentation: true,
       }) as T;
     }
@@ -423,7 +449,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "groups",
         query: `id=eq.${encodeFilter(params[1])}&select=id,name,currency,owner_member_id,cover_image_url`,
-        body: { owner_member_id: params[0] },
+        body: { owner_member_id: params[0], updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -434,7 +460,10 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "groups",
         query: `id=eq.${encodeFilter(params[2])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
-        body: params[1] == null ? { name: params[0] } : { name: params[0], cover_image_url: params[1] },
+        body:
+          params[1] == null
+            ? { name: params[0], updated_at: nowIso() }
+            : { name: params[0], cover_image_url: params[1], updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -445,7 +474,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "groups",
         query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
-        body: { archived_at: new Date().toISOString() },
+        body: { archived_at: nowIso(), updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -456,7 +485,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "groups",
         query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
-        body: { archived_at: null },
+        body: { archived_at: null, updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -467,7 +496,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "groups",
         query: `id=eq.${encodeFilter(params[0])}&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url`,
-        body: { deleted_at: new Date().toISOString() },
+        body: { deleted_at: nowIso(), updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -519,14 +548,27 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
       return firstRow(rows);
     }
 
+    // Invite lookup by token hash. Every clause of findInviteByTokenHash's
+    // where-list is enforced here - revoked, exhausted, AND expired. The
+    // expiry check in particular must not be dropped: token_hash is unique,
+    // so the row comes back regardless and it is this filter alone that
+    // decides whether an expired invite still opens the group.
     if (normalized.includes("from public.invites")) {
-      const rows = await request<Array<T & { revoked_at?: string | null; use_count: number; max_uses: number }>[number]>({
+      type InviteRow = { revoked_at?: string | null; use_count: number; max_uses: number; expires_at?: string | null };
+      const rows = await request<InviteRow>({
         method: "GET",
         table: "invites",
         query: `select=id,group_id,token_hash,max_uses,use_count,expires_at,revoked_at&token_hash=eq.${encodeFilter(params[0])}&limit=1`,
         returnRepresentation: true,
       });
-      const invite = rows.find((row) => !row.revoked_at && row.use_count < row.max_uses) ?? null;
+      const nowMs = Date.now();
+      const invite =
+        rows.find((row) => {
+          if (row.revoked_at) return false;
+          if (row.use_count >= row.max_uses) return false;
+          if (row.expires_at && Date.parse(row.expires_at) <= nowMs) return false;
+          return true;
+        }) ?? null;
       return (mode === "maybeOne" ? invite : firstRow(invite ? [invite] : [])) as T;
     }
 
@@ -548,7 +590,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "group_members",
         query: `id=eq.${encodeFilter(params[1])}&group_id=eq.${encodeFilter(params[2])}&user_id=is.null&status=eq.active&select=id,group_id,user_id,display_name,role,status`,
-        body: { display_name: params[0] },
+        body: { display_name: params[0], updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -561,7 +603,7 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "group_members",
         query: `id=eq.${encodeFilter(params[0])}&group_id=eq.${encodeFilter(params[1])}&user_id=is.null&status=eq.active&select=id,group_id,user_id,display_name,role,status`,
-        body: { status: "removed" },
+        body: { status: "removed", updated_at: nowIso() },
         returnRepresentation: true,
       });
       return firstRow(rows);
@@ -572,7 +614,12 @@ export function createSupabaseRestQueryClient(options: SupabaseRestOptions): Sup
         method: "PATCH",
         table: "group_members",
         query: `id=eq.${encodeFilter(params[2])}&group_id=eq.${encodeFilter(params[3])}&user_id=is.null&status=eq.active&select=id,group_id,user_id,display_name,role,status`,
-        body: { user_id: params[0], display_name: params[1], claimed_at: new Date().toISOString() },
+        body: {
+          user_id: params[0],
+          display_name: params[1],
+          claimed_at: nowIso(),
+          updated_at: nowIso(),
+        },
         returnRepresentation: true,
       });
       return firstRow(rows);

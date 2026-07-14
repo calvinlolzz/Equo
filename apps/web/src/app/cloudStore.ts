@@ -85,11 +85,16 @@ function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
   };
 }
 
+/**
+ * Session is no longer usable - the token expired, was signed with a rotated
+ * secret, or the account has since been disabled. Keyed on the API's error
+ * code, never on the message: the messages are user-facing copy (and partly
+ * Chinese), so matching them by regex means a wording change silently stops
+ * logging expired sessions out.
+ */
 function isUnauthenticatedError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  if (code === "UNAUTHENTICATED") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /sign in with google|profile could not be resolved|unauthenticated/i.test(message);
+  return code === "UNAUTHENTICATED" || code === "ACCOUNT_DISABLED";
 }
 
 function errorMessage(error: unknown): string {

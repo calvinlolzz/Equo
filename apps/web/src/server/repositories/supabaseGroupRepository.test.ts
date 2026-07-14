@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
 import { createSupabaseGroupRepository, updateUserAvatar, upsertUserByGoogleIdentity } from "./supabaseGroupRepository.js";
@@ -249,8 +250,13 @@ describe("createSupabaseGroupRepository", () => {
       max_uses: 5,
     });
 
-    expect(invite.token).toContain("EQO");
-    expect(invite.token_hash).toContain("sha256:");
+    // The token is a bearer credential, so what lands in the database must be
+    // a real SHA-256 digest of it - never the token itself, and never a
+    // reversible "sha256:<token>" tag (which is what this used to store).
+    expect(invite.token).toMatch(/^EQO[2-9A-HJ-NP-Z]{12}$/);
+    expect(invite.token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(invite.token_hash).not.toContain(invite.token);
+    expect(invite.token_hash).toBe(createHash("sha256").update(String(invite.token), "utf8").digest("hex"));
     expect(client.calls.some((call) => call.sql.includes("token_hash"))).toBe(true);
   });
 

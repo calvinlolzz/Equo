@@ -1,14 +1,13 @@
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import { validateCreateExpenseRequest } from "../../contracts/validation.js";
-import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
+import type { GoogleTokenVerifier } from "../auth/google.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import type { ExpensePageCursor } from "../repositories/expenseRepository.js";
 import { InvalidMemberError, NOT_A_GROUP_MEMBER } from "../repositories/expenseRepository.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
 import {
   createSupabaseGroupRepository,
   type SupabaseQueryClient,
-  upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
@@ -39,12 +38,6 @@ function forbidden(request_id: string) {
   };
 }
 
-async function buildExpenseRouteContext(options: RouteOptions) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  return requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
-}
 
 export async function createExpenseRoute(
   options: RouteOptions,
@@ -57,7 +50,7 @@ export async function createExpenseRoute(
     return { ok: false, status: 400, body: { issues: validation.issues } };
   }
 
-  const auth = await buildExpenseRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -100,7 +93,7 @@ export async function deleteExpenseRoute(
   expenseId: string,
   client_request_id: string,
 ) {
-  const auth = await buildExpenseRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -141,7 +134,7 @@ export async function listExpensesPageRoute(
   groupId: string,
   query: ListExpensesPageQuery,
 ) {
-  const auth = await buildExpenseRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

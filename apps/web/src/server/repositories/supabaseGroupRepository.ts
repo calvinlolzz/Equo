@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import type {
   AcceptInviteRequest,
   CreateGroupRequest,
@@ -122,8 +123,59 @@ export async function updateUserAvatar(
   return { avatar_url: user.avatar_url, previousAvatarUrl: current.avatar_url ?? null };
 }
 
+/**
+ * Unambiguous base32 alphabet (no I/O/0/1) - invite tokens get read aloud and
+ * retyped, so the characters that get confused for each other are excluded.
+ * 32 symbols means one random byte masked to 5 bits maps to exactly one
+ * symbol with no modulo bias (256 = 8 x 32).
+ */
+const INVITE_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const INVITE_TOKEN_LENGTH = 12;
+
+/**
+ * The invite token is a bearer credential: whoever holds it can join the
+ * group. It must come from a CSPRNG (Math.random is predictable from a few
+ * observed outputs) and it must never be stored as-is - only the SHA-256
+ * digest goes to invites.token_hash, so a leaked database row, backup, or
+ * admin query yields no usable token.
+ */
+function generateInviteToken(): string {
+  const bytes = randomBytes(INVITE_TOKEN_LENGTH);
+  let token = "";
+
+  for (const byte of bytes) {
+    token += INVITE_TOKEN_ALPHABET[byte & 31];
+  }
+
+  return `EQO${token}`;
+}
+
 function createTokenHash(token: string): string {
-  return `sha256:${token}`;
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+/**
+ * Cheap auth-state probe for a user id we already trust (an Equo session
+ * token carries an already-resolved users.id - see sessionToken.ts). Exists
+ * so an authenticated request can confirm the account is still enabled
+ * without paying for upsertUserByGoogleIdentity's full write round-trip:
+ * without this check an admin-disabled user keeps working until their
+ * session token expires (up to 7 days), which makes the admin console's
+ * "disable user" control effectively inert against an active session.
+ */
+export async function findUserAuthState(
+  client: SupabaseQueryClient,
+  userId: string,
+): Promise<{ id: string; deleted_at: string | null } | null> {
+  return client.maybeOne<{ id: string; deleted_at: string | null }>(
+    `
+      select id, deleted_at
+      from public.users
+      where id = $1
+      limit 1
+    `,
+    [userId],
+  );
 }
 
 export function createSupabaseGroupRepository(client: SupabaseQueryClient): GroupRepository {
@@ -359,7 +411,7 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     },
 
     async createInvite(context: AuthenticatedContext, groupId: string, request: CreateInviteRequest) {
-      const token = `EQO${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      const token = generateInviteToken();
       const token_hash = createTokenHash(token);
       const member = await this.findActiveMember(groupId, context.user.id);
 

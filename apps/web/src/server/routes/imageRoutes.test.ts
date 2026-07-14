@@ -12,12 +12,18 @@ const validRequest = {
   data_url: `data:image/png;base64,${tinyPngBase64}`,
 };
 
-function makeClient(member: { id: string } | null): SupabaseQueryClient {
+function makeClient(member: { id: string } | null, deletedAt: string | null = null): SupabaseQueryClient {
   return {
     async one() {
       throw new Error("Unexpected one query");
     },
     async maybeOne(sql) {
+      // Session-token requests are gated on the account still being enabled
+      // (buildAuthContext -> findUserAuthState), so every route fake has to
+      // answer this probe, not just the route's own membership check.
+      if (sql.includes("from public.users")) {
+        return { id: "user_alice", deleted_at: deletedAt } as never;
+      }
       if (sql.includes("from public.group_members")) {
         return member as never;
       }
@@ -98,7 +104,12 @@ function makeAvatarClient(): SupabaseQueryClient {
       }
       throw new Error(`Unexpected one query: ${sql}`);
     },
-    async maybeOne() {
+    async maybeOne(sql) {
+      // See makeClient: the session-token fast path probes the account state
+      // before any route work happens.
+      if (sql.includes("from public.users")) {
+        return { id: "user_alice", deleted_at: null } as never;
+      }
       return null;
     },
     async exec() {},

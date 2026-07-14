@@ -4,13 +4,12 @@ import {
   validateUpdateMyAvatarRequest,
   validateUploadGroupImageRequest,
 } from "../../contracts/validation.js";
-import { verifyGoogleIdToken, type GoogleTokenVerifier } from "../auth/google.js";
-import { requireAuthenticatedUser } from "../auth/session.js";
+import type { GoogleTokenVerifier } from "../auth/google.js";
+import { buildAuthContext } from "../auth/routeContext.js";
 import {
   createSupabaseGroupRepository,
   type SupabaseQueryClient,
   updateUserAvatar,
-  upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
 import { urlToStoragePath, type SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
@@ -31,12 +30,6 @@ function decodeBase64(base64: string): Uint8Array {
   return Uint8Array.from(Buffer.from(base64, "base64"));
 }
 
-async function buildImageRouteContext(options: RouteOptions) {
-  const identity = await verifyGoogleIdToken(options.idToken, options.verifier);
-  return requireAuthenticatedUser(identity, (googleIdentity) =>
-    upsertUserByGoogleIdentity(options.client, googleIdentity),
-  );
-}
 
 export async function uploadGroupImageRoute(
   options: RouteOptions,
@@ -59,7 +52,7 @@ export async function uploadGroupImageRoute(
     };
   }
 
-  const auth = await buildImageRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
@@ -121,7 +114,7 @@ export async function updateMyAvatarRoute(options: RouteOptions, request: Update
     };
   }
 
-  const auth = await buildImageRouteContext(options);
+  const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };

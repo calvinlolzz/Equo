@@ -73,6 +73,40 @@ describe("requireAuthenticatedUser", () => {
     });
   });
 
+  test("refuses a session-token identity whose account has been disabled since the token was signed", async () => {
+    const resolveUser = vi.fn();
+    const loadSessionUserState = vi.fn(async () => ({ deleted_at: "2026-07-14T00:00:00.000Z" }));
+
+    const result = await requireAuthenticatedUser(resolvedIdentity, resolveUser, "req_3", loadSessionUserState);
+
+    expect(loadSessionUserState).toHaveBeenCalledWith("user_1");
+    expect(resolveUser).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      ok: false,
+      error: { error: { code: "ACCOUNT_DISABLED", message: "此帳號已被停用。", request_id: "req_3" } },
+    });
+  });
+
+  test("refuses a session-token identity whose user row no longer exists", async () => {
+    const loadSessionUserState = vi.fn(async () => null);
+
+    const result = await requireAuthenticatedUser(resolvedIdentity, vi.fn(), "req_4", loadSessionUserState);
+
+    expect(result).toEqual({
+      ok: false,
+      error: { error: { code: "UNAUTHENTICATED", message: "User profile could not be resolved.", request_id: "req_4" } },
+    });
+  });
+
+  test("admits a session-token identity whose account is still enabled", async () => {
+    const loadSessionUserState = vi.fn(async () => ({ deleted_at: null }));
+
+    const result = await requireAuthenticatedUser(resolvedIdentity, vi.fn(), "req_5", loadSessionUserState);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.context.user.id).toBe("user_1");
+  });
+
   test("returns UNAUTHENTICATED when resolveUser cannot resolve a fresh identity", async () => {
     const resolveUser = vi.fn(async () => null);
 

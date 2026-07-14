@@ -152,6 +152,90 @@ describe("runtime adapters", () => {
     );
     expect(calls[1].url).toContain("archived_at=is.null");
     expect(calls[1].url).not.toContain("groups!inner");
+    // The SQL says `order by g.updated_at desc, g.created_at desc` - without an
+    // explicit order= the REST call returns rows in PostgREST's unspecified
+    // order, and the groups list quietly stops being sorted by recent activity.
+    expect(calls[1].url).toContain("order=updated_at.desc,created_at.desc");
+  });
+
+  test("refuses an expired invite even though its token hash still matches a row", async () => {
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async () =>
+        ({
+          ok: true,
+          async json() {
+            return [
+              {
+                id: "invite_1",
+                group_id: "group_1",
+                token_hash: "hash_1",
+                max_uses: 5,
+                use_count: 0,
+                expires_at: "2020-01-01T00:00:00.000Z",
+                revoked_at: null,
+              },
+            ];
+          },
+        }) as Response,
+    });
+
+    // token_hash is unique, so the row always comes back - the expiry filter is
+    // the only thing standing between an expired invite and joining the group.
+    await expect(
+      client.maybeOne(
+        `
+          select id, group_id, token_hash, max_uses, use_count, expires_at
+          from public.invites
+          where token_hash = $1
+            and revoked_at is null
+            and use_count < max_uses
+            and (expires_at is null or expires_at > now())
+          limit 1
+        `,
+        ["hash_1"],
+      ),
+    ).resolves.toBeNull();
+  });
+
+  test("accepts an unexpired, unrevoked, unexhausted invite", async () => {
+    const client = createSupabaseRestQueryClient({
+      url: "https://example.supabase.co",
+      serviceRoleKey: "service-role-key",
+      fetcher: async () =>
+        ({
+          ok: true,
+          async json() {
+            return [
+              {
+                id: "invite_1",
+                group_id: "group_1",
+                token_hash: "hash_1",
+                max_uses: 5,
+                use_count: 1,
+                expires_at: "2999-01-01T00:00:00.000Z",
+                revoked_at: null,
+              },
+            ];
+          },
+        }) as Response,
+    });
+
+    await expect(
+      client.maybeOne(
+        `
+          select id, group_id, token_hash, max_uses, use_count, expires_at
+          from public.invites
+          where token_hash = $1
+            and revoked_at is null
+            and use_count < max_uses
+            and (expires_at is null or expires_at > now())
+          limit 1
+        `,
+        ["hash_1"],
+      ),
+    ).resolves.toMatchObject({ id: "invite_1", group_id: "group_1" });
   });
 
   test("archives and deletes groups with the correct REST update payloads", async () => {
@@ -191,10 +275,19 @@ describe("runtime adapters", () => {
 
     expect(calls[0].url).toContain("/rest/v1/groups?id=eq.group_1&deleted_at=is.null");
     expect(calls[0].init.method).toBe("PATCH");
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({ archived_at: expect.any(String) });
+    // updated_at rides along on every translated PATCH: the repository SQL says
+    // `updated_at = now()` and no DB trigger maintains the column, so dropping
+    // it here would freeze groups.updated_at - which listGroups orders by.
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      archived_at: expect.any(String),
+      updated_at: expect.any(String),
+    });
     expect(calls[1].url).toContain("/rest/v1/groups?id=eq.group_1&deleted_at=is.null");
     expect(calls[1].init.method).toBe("PATCH");
-    expect(JSON.parse(String(calls[1].init.body))).toEqual({ deleted_at: expect.any(String) });
+    expect(JSON.parse(String(calls[1].init.body))).toEqual({
+      deleted_at: expect.any(String),
+      updated_at: expect.any(String),
+    });
   });
 
   test("unarchives a group by clearing archived_at", async () => {
@@ -235,7 +328,7 @@ describe("runtime adapters", () => {
       "/rest/v1/groups?id=eq.group_1&deleted_at=is.null&select=id,name,currency,owner_member_id,cover_image_url",
     );
     expect(calls[0].init.method).toBe("PATCH");
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({ archived_at: null });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ archived_at: null, updated_at: expect.any(String) });
   });
 
   test("lists archived groups via a membership lookup followed by an archived_at filter", async () => {
@@ -391,7 +484,7 @@ describe("runtime adapters", () => {
       "/rest/v1/group_members?id=eq.member_2&group_id=eq.group_1&user_id=is.null&status=eq.active",
     );
     expect(calls[0].init.method).toBe("PATCH");
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({ display_name: "Bobby" });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ display_name: "Bobby", updated_at: expect.any(String) });
   });
 
   test("removes virtual members by PATCHing status to removed, not the claim payload", async () => {
@@ -437,7 +530,7 @@ describe("runtime adapters", () => {
     expect(calls[0].init.method).toBe("PATCH");
     // Must not fall through to the accept-invite claim branch, whose body
     // would set user_id/claimed_at instead.
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({ status: "removed" });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ status: "removed", updated_at: expect.any(String) });
   });
 
   test("looks up a member by id and a single member balance through Supabase REST", async () => {
