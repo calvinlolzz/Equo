@@ -22,8 +22,22 @@ describe("amount input formatting", () => {
 });
 
 describe("formatAmount", () => {
-  test("formats TWD with a $ prefix, whole-unit rounding, and thousands separators", () => {
-    expect(formatAmount(123456, "TWD")).toBe("$1,235");
+  test("shows no cents for whole amounts, with thousands separators", () => {
+    expect(formatAmount(100000, "TWD")).toBe("$1,000");
+    expect(formatAmount(123400, "TWD")).toBe("$1,234");
+  });
+
+  test("shows two decimals for amounts with a fractional part", () => {
+    expect(formatAmount(123456, "TWD")).toBe("$1,234.56");
+  });
+
+  test("keeps uneven-split shares honest instead of rounding a dollar away", () => {
+    // $100 / 3 stores as 3334 / 3333 / 3333 minor. Rounding each to $33 made
+    // the three shares read as $99 (review report issue ③); the real cents
+    // must show. The $100 total itself stays clean.
+    expect(formatAmount(3334, "TWD")).toBe("$33.34");
+    expect(formatAmount(3333, "TWD")).toBe("$33.33");
+    expect(formatAmount(10000, "TWD")).toBe("$100");
   });
 
   test("formats USD and EUR with their own symbols", () => {
@@ -38,11 +52,6 @@ describe("formatAmount", () => {
 
   test("falls back to a '<CODE> ' prefix for an unmapped currency", () => {
     expect(formatAmount(100000, "GBP")).toBe("GBP 1,000");
-  });
-
-  test("rounds to the nearest whole unit", () => {
-    expect(formatAmount(149, "TWD")).toBe("$1");
-    expect(formatAmount(150, "TWD")).toBe("$2");
   });
 
   test("formats zero", () => {

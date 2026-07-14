@@ -4,7 +4,12 @@ import "./app/App.css";
 import { App } from "./app/App";
 import { installErrorReporter } from "./app/errorReporter";
 import { GlassBackground } from "./app/GlassBackground";
+import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { initTheme } from "./app/themeStore";
+
+// Drop the pre-rename `floatpay-*` localStorage keys left behind on returning
+// visitors' devices (see legacyStorageCleanup.ts). Idempotent no-op once gone.
+purgeLegacyBrowserStorage();
 
 const root = document.getElementById("root");
 

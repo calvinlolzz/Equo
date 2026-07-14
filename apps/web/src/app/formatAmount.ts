@@ -9,9 +9,14 @@
  * group currency before submit, but keeping the distinction explicit avoids
  * silently hard-coding TWD/group currency assumptions into a shared helper).
  *
- * Formatting rules (unchanged from the old formatTwd):
- * - amountMinor is rounded to whole units (Math.round(amountMinor / 100))
- *   before formatting - this app never shows cents.
+ * Formatting rules:
+ * - Whole amounts show no cents ($100, not $100.00) - the common case, and
+ *   the clean look the app has always had.
+ * - Amounts with a fractional part show exactly two decimals ($33.34). This
+ *   matters for uneven splits: $100 / 3 stores as 3334 / 3333 / 3333 minor,
+ *   and rounding each to $33 made three shares look like $99 - as if a dollar
+ *   had vanished. Showing the real $33.34 / $33.33 keeps the on-screen total
+ *   honest. (See the review report's issue ③.)
  * - thousands separators via toLocaleString("zh-TW").
  */
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -27,7 +32,12 @@ function currencyPrefix(currency: string): string {
 }
 
 export function formatAmount(amountMinor: number, currency: string): string {
-  return `${currencyPrefix(currency)}${Math.round(amountMinor / 100).toLocaleString("zh-TW")}`;
+  const hasCents = amountMinor % 100 !== 0;
+  const formatted = (amountMinor / 100).toLocaleString("zh-TW", {
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  });
+  return `${currencyPrefix(currency)}${formatted}`;
 }
 
 export function formatSigned(amountMinor: number, currency: string): string {
