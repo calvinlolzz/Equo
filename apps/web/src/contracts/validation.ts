@@ -29,7 +29,53 @@ function isPositiveInteger(value: number): boolean {
   return Number.isInteger(value) && value > 0;
 }
 
-export function validateCreateExpenseRequest(request: CreateExpenseRequest): ValidationResult {
+function malformed(message: string): ValidationResult {
+  return { ok: false, issues: [issue("MALFORMED_REQUEST", message)] };
+}
+
+/**
+ * The input is whatever JSON the caller sent. The routes reach it through
+ * `body<CreateExpenseRequest>(request)`, which is an unchecked cast, not a
+ * parse - so the static type is a claim about the request, not a fact about it.
+ *
+ * Take it as `unknown` and check the shape before touching a field. Reading
+ * `request.client_request_id.trim()` off a `{}` throws a TypeError, and the
+ * runtime's catch-all turns that into a 500 - so a malformed body, which is a
+ * plain 400, came back looking like a server fault instead. POST and PUT
+ * /groups/:id/expenses both did exactly that.
+ */
+export function validateCreateExpenseRequest(input: unknown): ValidationResult {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return malformed("request body must be a JSON object");
+  }
+
+  const candidate = input as Partial<CreateExpenseRequest>;
+
+  if (typeof candidate.client_request_id !== "string") {
+    return malformed("client_request_id is required");
+  }
+
+  if (typeof candidate.amount_minor !== "number") {
+    return malformed("amount_minor is required");
+  }
+
+  if (!Array.isArray(candidate.expense_payments)) {
+    return malformed("expense_payments is required");
+  }
+
+  if (!Array.isArray(candidate.expense_shares)) {
+    return malformed("expense_shares is required");
+  }
+
+  if (candidate.expense_payments.some((payment) => !payment || typeof payment !== "object")) {
+    return malformed("expense_payments must contain objects");
+  }
+
+  if (candidate.expense_shares.some((share) => !share || typeof share !== "object")) {
+    return malformed("expense_shares must contain objects");
+  }
+
+  const request = candidate as CreateExpenseRequest;
   const issues: ValidationIssue[] = [];
 
   if (!request.client_request_id.trim()) {
