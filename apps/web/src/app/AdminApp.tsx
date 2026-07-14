@@ -35,7 +35,7 @@ type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit
 export function AdminApp() {
   const [session] = useState(() => loadSession());
   const [client] = useState<EquoApiClient | null>(() =>
-    session ? createApiClient({ authToken: session.token }) : null,
+    session ? createApiClient() : null,
   );
   const [access, setAccess] = useState<AccessState>(session ? "checking" : "no-session");
   const [me, setMe] = useState<AdminMeSummary | null>(null);

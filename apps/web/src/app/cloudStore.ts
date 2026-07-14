@@ -656,6 +656,3 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
 
 export type CloudGroupsStore = ReturnType<typeof createCloudGroupsStore>;
 
-export function createCloudApiClient(authToken: string): ApiClientLike {
-  return createApiClient({ authToken });
-}

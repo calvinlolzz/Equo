@@ -232,12 +232,12 @@ export function App() {
   const cloudStore = useMemo<CloudGroupsStore | null>(() => {
     if (!session) return null;
     return createCloudGroupsStore({
-      apiClient: createApiClient({ authToken: session.token }),
+      apiClient: createApiClient(),
       onSessionExpired: handleSessionExpired,
       userId: session.user.id,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.token]);
+  }, [session?.user.id]);
 
   const cloudState = useSyncExternalStore(
     (listener) => (cloudStore ? cloudStore.subscribe(listener) : () => {}),
@@ -380,7 +380,7 @@ export function App() {
   async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
     if (!session) return;
     try {
-      const client = createApiClient({ authToken: session.token });
+      const client = createApiClient();
       await client.createFeedback({ ...payload, page: window.location.pathname });
       setFeedbackOpen(false);
       showToast(text.feedbackDone);
@@ -395,7 +395,7 @@ export function App() {
     try {
       // The loaded window may be paginated - walk listExpensesPage until a
       // short page so the export always covers the group's full history.
-      const client = createApiClient({ authToken: session.token });
+      const client = createApiClient();
       const pageLimit = 100;
       const all: ExpenseSummary[] = [];
       let cursor: { beforeDate?: string; beforeCreatedAt?: string } = {};
@@ -532,12 +532,11 @@ export function App() {
     }
 
     setAuthLoading(true);
-    const client = createApiClient({ authToken: "" });
+    const client = createApiClient();
     client
       .exchangeSupabaseToken(parsed.accessToken)
       .then(({ session: nextSession }) => {
         const stored: StoredSession = {
-          token: nextSession.token,
           expiresAt: nextSession.expires_at,
           user: {
             id: nextSession.user.id,
@@ -787,7 +786,7 @@ export function App() {
 
     if (avatarChanged && session) {
       try {
-        const apiClient = createApiClient({ authToken: session.token });
+        const apiClient = createApiClient();
         const { avatar_url } = await apiClient.updateMyAvatar({
           client_request_id: crypto.randomUUID(),
           data_url: normalized.avatarDataUrl!,

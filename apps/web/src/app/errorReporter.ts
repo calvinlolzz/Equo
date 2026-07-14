@@ -1,5 +1,4 @@
 import { createApiClient } from "./apiClient";
-import { loadSession } from "./sessionStore";
 
 export type ReporterState = {
   seen: Set<string>;
@@ -46,9 +45,11 @@ export function describeErrorEvent(input: unknown): { message: string; context: 
 
 /**
  * Installs window-level error + unhandledrejection listeners that POST to
- * /api/v1/errors. The session token (when present) attributes the report;
- * the endpoint also accepts anonymous pre-login reports. Every failure path
- * here is swallowed - the reporter must never become an error source itself.
+ * /api/v1/errors. The equo_session cookie attributes the report when the user
+ * is logged in - the browser attaches it on its own, and the endpoint also
+ * accepts anonymous pre-login reports, which are the ones most worth hearing
+ * about. Every failure path here is swallowed - the reporter must never become
+ * an error source itself.
  */
 export function installErrorReporter(source: "web" | "admin") {
   if (typeof window === "undefined") return;
@@ -59,8 +60,7 @@ export function installErrorReporter(source: "web" | "admin") {
     if (!shouldReport(state, message)) return;
 
     try {
-      const session = loadSession();
-      const client = createApiClient({ authToken: session?.token ?? "" });
+      const client = createApiClient();
       void client
         .reportClientError({
           source,

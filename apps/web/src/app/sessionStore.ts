@@ -14,8 +14,21 @@ type StoredUser = {
   avatarUrl?: string | null;
 };
 
+/**
+ * What's kept in localStorage is who is logged in and until when - NOT the
+ * credential. The session token lives in the `equo_session` HttpOnly cookie
+ * and JavaScript never touches it (see apiClient.ts).
+ *
+ * `expiresAt` mirrors the cookie's own lifetime so the app can render a logged
+ * -out state without a round-trip; it is a hint, never the authority. The
+ * server decides, and any request that comes back UNAUTHENTICATED logs the
+ * session out regardless of what this says.
+ *
+ * A session persisted by an older build still carries a `token` field. It is
+ * simply ignored - and cleared on the next write - so an upgrade does not log
+ * anyone out.
+ */
 export type StoredSession = {
-  token: string;
   expiresAt: string;
   user: StoredUser;
 };
@@ -40,11 +53,9 @@ function isStoredUser(value: unknown): value is StoredUser {
 function isStoredSession(value: unknown): value is StoredSession {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.token === "string" &&
-    typeof candidate.expiresAt === "string" &&
-    isStoredUser(candidate.user)
-  );
+  // A `token` field from an older build may still be present. Don't require it,
+  // and don't reject it - an already-logged-in user must survive the upgrade.
+  return typeof candidate.expiresAt === "string" && isStoredUser(candidate.user);
 }
 
 export function loadSession(now: number = Date.now(), storage: SessionStorage | null = browserStorage()): StoredSession | null {
@@ -66,7 +77,17 @@ export function loadSession(now: number = Date.now(), storage: SessionStorage | 
     return null;
   }
 
-  return parsed;
+  // Anyone logged in before this build still has the raw session token sitting
+  // in localStorage. Moving the credential to an HttpOnly cookie is worth
+  // nothing while a copy of it is still lying there readable, so purge it on
+  // the first load after the upgrade rather than waiting for it to expire.
+  const session: StoredSession = { expiresAt: parsed.expiresAt, user: parsed.user };
+
+  if ("token" in parsed) {
+    saveSession(session, storage);
+  }
+
+  return session;
 }
 
 export function saveSession(session: StoredSession, storage: SessionStorage | null = browserStorage()) {

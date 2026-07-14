@@ -19,7 +19,6 @@ function memoryStorage() {
 
 function makeSession(overrides: Partial<StoredSession> = {}): StoredSession {
   return {
-    token: "session-token",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
     user: { id: "user-1", email: "person@example.com", displayName: "小明" },
     ...overrides,
@@ -27,6 +26,37 @@ function makeSession(overrides: Partial<StoredSession> = {}): StoredSession {
 }
 
 describe("sessionStore", () => {
+  test("never writes the session token to localStorage", () => {
+    const storage = memoryStorage();
+
+    saveSession(makeSession(), storage);
+
+    // The credential belongs in the equo_session HttpOnly cookie and nowhere
+    // else. Persisting it here would hand it to any XSS on the page - which is
+    // exactly what the cookie's HttpOnly flag exists to prevent, and exactly
+    // what this app used to do.
+    expect(storage.getItem("equo.clean.session")).not.toContain("token");
+  });
+
+  test("purges a token left behind by an older build, on the first load", () => {
+    const storage = memoryStorage();
+    const legacy = {
+      token: "leaked-session-token",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      user: { id: "user-1", email: "person@example.com", displayName: "小明" },
+    };
+    storage.setItem("equo.clean.session", JSON.stringify(legacy));
+
+    const loaded = loadSession(Date.now(), storage);
+
+    // The user stays logged in - the cookie still authenticates them - but the
+    // copy of the credential sitting in localStorage is gone. Moving the token
+    // to an HttpOnly cookie is worth nothing while a readable copy remains.
+    expect(loaded?.user.id).toBe("user-1");
+    expect(loaded).not.toHaveProperty("token");
+    expect(storage.getItem("equo.clean.session")).not.toContain("leaked-session-token");
+  });
+
   test("saves and loads a session that has not expired", () => {
     const storage = memoryStorage();
     const session = makeSession();
@@ -106,7 +136,12 @@ describe("sessionStore", () => {
     };
     storage.setItem("equo.clean.session", JSON.stringify(legacySession));
 
-    expect(loadSession(Date.now(), storage)).toEqual(legacySession);
+    // Still loads (the user is not logged out by the upgrade), minus the token -
+    // see the purge test above.
+    expect(loadSession(Date.now(), storage)).toEqual({
+      expiresAt: legacySession.expiresAt,
+      user: legacySession.user,
+    });
   });
 
   test("rejects a session whose avatarUrl is a non-string, non-null value", () => {
