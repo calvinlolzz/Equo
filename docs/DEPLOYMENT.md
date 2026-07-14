@@ -21,7 +21,14 @@ These are declared in `vercel.json`:
 - Output directory: `apps/web/dist`
 - API path: `/api/v1/*` routes to `api/v1/[...path].ts`
 - Static files and built assets are served from the filesystem before fallback.
-- Frontend deep links such as `/group/:groupId` fallback to `/index.html`.
+- Frontend deep links such as `/group/:groupId` fallback to `/index.html` via the
+  `rewrites` rule (which excludes `/api/` so API calls still reach the function).
+- Security headers (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Permissions-Policy`) are applied to every response via the
+  `headers` block. The CSP allowlists `self`, Supabase (`*.supabase.co`), and Google
+  avatar hosts (`*.googleusercontent.com`); widen it there if a new external origin
+  is introduced. Note: `headers` cannot be combined with the legacy `routes` key, which
+  is why routing uses `rewrites`.
 
 ## Required Vercel Env Vars
 

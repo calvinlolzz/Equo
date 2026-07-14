@@ -9,10 +9,16 @@ REQUIRED = {
         '"installCommand": "npm install"',
         '"buildCommand": "npm run build"',
         '"outputDirectory": "apps/web/dist"',
-        '"src": "/api/v1/(.*)"',
-        '"dest": "/api/v1/[...path]"',
-        '"handle": "filesystem"',
-        '"dest": "/index.html"',
+        # SPA fallback for deep links, with /api/ excluded so API calls still
+        # reach the serverless function (rewrites replaced the legacy routes
+        # block so the headers block below could be added - the two keys are
+        # mutually exclusive in vercel.json).
+        '"source": "/((?!api/).*)"',
+        '"destination": "/index.html"',
+        # Security headers (review report issue 4). CSP must stay present.
+        '"Content-Security-Policy"',
+        '"X-Frame-Options"',
+        '"X-Content-Type-Options"',
     ],
     "package.json": [
         '"check:launch-readiness"',
