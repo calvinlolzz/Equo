@@ -53,7 +53,10 @@ import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
-import { applyTheme, readStoredTheme, storeTheme, type ThemeMode } from "./themeStore";
+import { useIsMobileLayout } from "./useIsMobileLayout";
+import { useThemeMode } from "./useThemeMode";
+import { useArchivedGroups } from "./useArchivedGroups";
+import { useToast } from "./useToast";
 import { UI_TEXT } from "./uiText";
 type DialogMode =
   | "createGroup"
@@ -172,12 +175,7 @@ export function App() {
   // analysis / members / etc.). Kept mounted across open/close cycles.
   const dialogSwipe = useSwipeToDismiss(() => setDialog(null));
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
-  const [toast, setToast] = useState<{
-    id: number;
-    text: string;
-    action?: { label: string; onAction: () => void };
-  } | null>(null);
-  const toastTimeoutRef = useRef<number | null>(null);
+  const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
   // pendingAction gates every mutation control's disabled/busy label. The
   // guard (see actionGuard.ts) is the synchronous double-submit check -
@@ -191,25 +189,12 @@ export function App() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
-  // Day/night theme. main.tsx already applied the persisted value to <html>
-  // before paint; this state just drives the toggle icon and writes changes.
-  const [theme, setTheme] = useState<ThemeMode>(() => readStoredTheme());
-  const toggleTheme = () => {
-    const next: ThemeMode = theme === "light" ? "dark" : "light";
-    applyTheme(next);
-    storeTheme(next);
-    setTheme(next);
-  };
+  const { theme, toggleTheme } = useThemeMode();
   // Mobile drawer swipe gestures: each drawer dismisses toward the edge it
   // slid in from (left drawer <- swipe left, right drawer -> swipe right).
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
   const settingsDrawerSwipe = useSwipeToDismissX("right", () => setSettingsDrawerOpen(false));
-  // Tracks the responsive breakpoint independently of CSS so the desktop
-  // rails and the mobile tab bar can be made inert/aria-hidden when hidden -
-  // a display:none in CSS alone still leaves the buttons in the a11y tree.
-  const [isMobileLayout, setIsMobileLayout] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(max-width: 960px)").matches,
-  );
+  const isMobileLayout = useIsMobileLayout();
   const [inviteInputValue, setInviteInputValue] = useState("");
   const [inviteInputError, setInviteInputError] = useState("");
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
@@ -233,9 +218,6 @@ export function App() {
   const [cloudActivities, setCloudActivities] = useState<Record<string, Activity[]>>(() =>
     readJson<Record<string, Activity[]>>(CLOUD_ACTIVITIES_KEY, {}),
   );
-  const [archivedGroups, setArchivedGroups] = useState<ArchivedGroupData[]>([]);
-  const [archivedGroupsLoading, setArchivedGroupsLoading] = useState(false);
-  const [unarchivingGroupId, setUnarchivingGroupId] = useState<string>("");
   const [groupCoverDataUrl, setGroupCoverDataUrl] = useState<string>("");
   const [groupCoverUrl, setGroupCoverUrl] = useState<string>("");
   const cloudInviteGroupIdRef = useRef("");
@@ -268,6 +250,14 @@ export function App() {
     cloudStore.refreshGroups().catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudStore]);
+
+  const {
+    archivedGroups,
+    loading: archivedGroupsLoading,
+    unarchivingGroupId,
+    loadArchivedGroups,
+    unarchiveGroup,
+  } = useArchivedGroups({ cloudStore, showToast, describeError: describeCloudActionError });
 
   const cloudGroups = useMemo(() => cloudState?.groups ?? [], [cloudState]);
   const cloudActiveDetail = activeGroupId ? cloudState?.groupDetails[activeGroupId] ?? null : null;
@@ -518,20 +508,6 @@ export function App() {
     return () => autoSync.stop();
   }, [cloudStore]);
 
-  useEffect(() => {
-    return () => {
-      if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 960px)");
-    const update = () => setIsMobileLayout(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
   // Stash any ?invite=TOKEN before the OAuth redirect (or immediately, if
   // already logged in) so it survives the round-trip and query-param loss.
   useEffect(() => {
@@ -596,17 +572,6 @@ export function App() {
     setDialog("inviteInput");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
-
-  function showToast(message: string, action?: { label: string; onAction: () => void }) {
-    if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
-    const id = Date.now();
-    setToast({ id, text: message, action });
-    // Actionable toasts (e.g. an undo) linger longer so the user has time to
-    // reach the button before it auto-dismisses.
-    toastTimeoutRef.current = window.setTimeout(() => {
-      setToast((current) => (current?.id === id ? null : current));
-    }, action ? 6000 : 2600);
-  }
 
   /**
    * Synchronous double-submit guard for mutation controls: returns false
@@ -722,39 +687,10 @@ export function App() {
     }
   }
 
-  async function openArchivedGroups() {
+  function openArchivedGroups() {
     if (!cloudStore) return;
     setDialog("archivedList");
-    setArchivedGroupsLoading(true);
-    try {
-      const groups = await cloudStore.listArchivedGroups();
-      setArchivedGroups(groups);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      setArchivedGroupsLoading(false);
-    }
-  }
-
-  async function unarchiveGroup(group: ArchivedGroupData) {
-    if (!cloudStore || unarchivingGroupId) return;
-    // Defense in depth: the restore button itself is only rendered for
-    // groups the caller owns (see the archivedList dialog below), but this
-    // guards the handler directly too in case that ever drifts.
-    if (group.callerMemberId !== group.ownerMemberId) {
-      showToast(text.ownerOnlyAction);
-      return;
-    }
-    setUnarchivingGroupId(group.id);
-    try {
-      await cloudStore.unarchiveGroup(group.id);
-      setArchivedGroups((current) => current.filter((item) => item.id !== group.id));
-      showToast(`${text.restoredGroupPrefix}${group.name}`);
-    } catch (error) {
-      showToast(describeCloudActionError(error));
-    } finally {
-      setUnarchivingGroupId("");
-    }
+    void loadArchivedGroups();
   }
 
   function updateActiveCurrency(currency: string) {
