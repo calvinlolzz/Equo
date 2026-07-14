@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
+});
+
+afterEach(() => {
+  // The unmount test spies on window.addEventListener/removeEventListener. Left
+  // in place, those spies would sit on the window every later test in this file
+  // shares.
+  vi.restoreAllMocks();
 });
 
 /**
@@ -13,9 +20,23 @@ beforeEach(() => {
  * ultimately fires rather than for a timer, so this can't go flaky.
  */
 async function pressBack() {
-  const traversed = new Promise<void>((resolve) => {
-    window.addEventListener("popstate", () => resolve(), { once: true });
+  const traversed = new Promise<void>((resolve, reject) => {
+    const onPopState = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    // back() with nothing to go back to fires no popstate at all. Without this
+    // the promise would just hang until the suite timed out, and the failure
+    // would point at the test runner instead of at the history stack - which the
+    // tests in this file share, so a reordering can produce exactly that.
+    const timer = window.setTimeout(() => {
+      window.removeEventListener("popstate", onPopState);
+      reject(new Error("history.back() fired no popstate - nothing to go back to"));
+    }, 1_000);
+
+    window.addEventListener("popstate", onPopState, { once: true });
   });
+
   window.history.back();
   await traversed;
 }
@@ -135,17 +156,21 @@ describe("useGroupRoute", () => {
     expect(window.history.length).toBe(lengthBefore);
   });
 
-  test("stops listening on unmount", async () => {
-    const { result, unmount } = renderHook(() => useGroupRoute());
+  test("stops listening on unmount", () => {
+    // Assert on the listener itself. Pressing Back after unmount and checking
+    // `result.current` proves nothing: it is frozen at the last render, and React
+    // no-ops setState on an unmounted component - so that assertion holds whether
+    // or not the listener was ever removed, and a leaked listener would ship green.
+    const addEventListener = vi.spyOn(window, "addEventListener");
+    const removeEventListener = vi.spyOn(window, "removeEventListener");
 
-    act(() => result.current.openGroup("group_1"));
-    const activeGroupIdAtUnmount = result.current.activeGroupId;
+    const { unmount } = renderHook(() => useGroupRoute());
+
+    const registered = addEventListener.mock.calls.find(([type]) => type === "popstate")?.[1];
+    expect(registered).toBeDefined();
+
     unmount();
 
-    await pressBack();
-
-    // The hook's listener is gone: nothing tried to set state on the unmounted
-    // component, and the last value it published is untouched.
-    expect(result.current.activeGroupId).toBe(activeGroupIdAtUnmount);
+    expect(removeEventListener).toHaveBeenCalledWith("popstate", registered);
   });
 });
