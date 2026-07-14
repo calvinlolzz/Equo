@@ -698,11 +698,13 @@
   box-shadow: inset 0 0 0 1px rgb(var(--surf) / 0.24);
 }
 
+/* Fallback avatar for members with no uploaded/Google photo: a clean solid
+   circle + initial (replacing the old glossy sphere whose peach highlight dot
+   read as a stray speck). A real photo, when present, is an <img> that fills
+   and hides this background. */
 .member-avatar.photo {
   color: #ffffff;
-  background:
-    radial-gradient(circle at 34% 28%, #f6d1bd 0 17%, transparent 18%),
-    linear-gradient(135deg, #2d211f, #7d4f3f 48%, #d9d9d9);
+  background: #6f7399;
 }
 
 .member-avatar.settlement-avatar {
