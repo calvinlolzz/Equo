@@ -14,13 +14,12 @@ import {
  * label; every band is a full-width tap target with a native tooltip.
  * Bar color #2aa77b: the app's mint accent snapped one step darker to pass
  * the dark-surface lightness/contrast checks (dataviz validator, surface
- * #14201d).
+ * #14201d); it also reads fine on the light surface. Axis labels + baseline
+ * are theme-driven via CSS classes (--fg token) so they stay legible in both
+ * light and dark — hardcoded white here was invisible on the light panel.
  */
 const BAR_COLOR = "#2aa77b";
 const BAR_COLOR_MUTED = "rgba(42, 167, 123, 0.45)";
-const INK_MUTED = "rgba(247, 251, 248, 0.55)";
-const INK = "rgba(247, 251, 248, 0.92)";
-const BASELINE = "rgba(247, 251, 248, 0.16)";
 
 type SpendBarChartProps = {
   days: SpendChartDay[];
@@ -51,7 +50,14 @@ export function SpendBarChart({ days, spendByDay, currency, selectedKey, onSelec
         .join("、")}
       style={{ display: "block" }}
     >
-      <line x1={0} y1={layout.plotBottom} x2={layout.width} y2={layout.plotBottom} stroke={BASELINE} strokeWidth={1} />
+      <line
+        className="spend-chart-baseline"
+        x1={0}
+        y1={layout.plotBottom}
+        x2={layout.width}
+        y2={layout.plotBottom}
+        strokeWidth={1}
+      />
       {layout.bars.map((bar) => {
         const selected = bar.key === selectedKey;
         return (
@@ -69,11 +75,11 @@ export function SpendBarChart({ days, spendByDay, currency, selectedKey, onSelec
               <path d={roundedBarPath(bar, layout.plotBottom)} fill={selected ? BAR_COLOR : BAR_COLOR_MUTED} />
             )}
             <text
+              className={selected ? "spend-chart-label selected" : "spend-chart-label"}
               x={bar.centerX}
               y={layout.plotBottom + 15}
               textAnchor="middle"
               fontSize={10}
-              fill={selected ? INK : INK_MUTED}
             >
               {bar.label}
             </text>
@@ -82,12 +88,12 @@ export function SpendBarChart({ days, spendByDay, currency, selectedKey, onSelec
       })}
       {selectedBar && selectedBar.totalMinor > 0 && (
         <text
+          className="spend-chart-value"
           x={Math.min(Math.max(selectedBar.centerX, 28), layout.width - 28)}
           y={selectedBar.yTop - 8}
           textAnchor="middle"
           fontSize={11}
           fontWeight={600}
-          fill={INK}
         >
           {formatAmount(selectedBar.totalMinor, currency)}
         </text>

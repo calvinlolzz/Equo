@@ -831,3 +831,21 @@
     width: 100%;
   }
 }
+
+/* 近 8 日支出 chart axis labels + baseline — theme-driven so they stay legible
+   in both light and dark (the SVG previously hardcoded white). */
+.spend-chart-baseline {
+  stroke: rgb(var(--fg) / 0.16);
+}
+
+.spend-chart-label {
+  fill: rgb(var(--fg) / 0.55);
+}
+
+.spend-chart-label.selected {
+  fill: rgb(var(--fg) / 0.92);
+}
+
+.spend-chart-value {
+  fill: rgb(var(--fg) / 0.92);
+}
