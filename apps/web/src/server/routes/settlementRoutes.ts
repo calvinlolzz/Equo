@@ -1,14 +1,12 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { ConfirmSettlementRequest } from "../../contracts/schemas.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { NOT_A_GROUP_MEMBER } from "../repositories/settlementRepository.js";
-import {
-  type SupabaseQueryClient,
-} from "../repositories/supabaseGroupRepository.js";
 import { createSupabaseSettlementRepository } from "../repositories/supabaseSettlementRepository.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
 };

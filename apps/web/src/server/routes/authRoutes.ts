@@ -1,8 +1,8 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { verifyGoogleIdToken } from "../auth/google.js";
 import { createSessionCookie, createSessionToken, sessionExpiresAt } from "../auth/sessionToken.js";
 import {
-  type SupabaseQueryClient,
   upsertUserByGoogleIdentity,
 } from "../repositories/supabaseGroupRepository.js";
 
@@ -15,7 +15,7 @@ type AuthSupabaseRequest = {
 };
 
 type AuthRouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   sessionSecret: string;
   now?: number;

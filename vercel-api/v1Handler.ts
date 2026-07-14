@@ -52,14 +52,14 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     { createGoogleTokenVerifier },
     { missingRuntimeEnv, readRuntimeEnv },
     { createSupabaseAccessTokenVerifier },
-    { createSupabaseRestQueryClient },
+    { createPostgrestClient },
     { createSupabaseStorageClient },
   ] = await Promise.all([
     import("../apps/web/src/server/http/runtime.js"),
     import("../apps/web/src/server/runtime/googleTokenVerifier.js"),
     import("../apps/web/src/server/runtime/runtimeEnv.js"),
     import("../apps/web/src/server/runtime/supabaseAuthVerifier.js"),
-    import("../apps/web/src/server/runtime/supabaseQueryClient.js"),
+    import("../apps/web/src/server/db/postgrestClient.js"),
     import("../apps/web/src/server/runtime/supabaseStorageClient.js"),
   ]);
 
@@ -91,7 +91,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     SESSION_SECRET: runtimeEnv.SESSION_SECRET as string,
   };
   const runtime = createHttpRuntime({
-    client: createSupabaseRestQueryClient({
+    client: createPostgrestClient({
       url: requiredEnv.SUPABASE_URL,
       serviceRoleKey: requiredEnv.SUPABASE_SERVICE_ROLE_KEY,
     }),

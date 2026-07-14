@@ -1,3 +1,4 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   CreateGroupRequest,
   CreateInviteRequest,
@@ -14,7 +15,6 @@ import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import {
   createSupabaseGroupRepository,
-  type SupabaseQueryClient,
 } from "../repositories/supabaseGroupRepository.js";
 import {
   handleAcceptInvite,
@@ -34,7 +34,7 @@ import {
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
   /** Optional so this type stays compatible with call sites that don't need storage cleanup; updateGroupRoute passes it through to handleUpdateGroup's previous-cover cleanup hook when present. */

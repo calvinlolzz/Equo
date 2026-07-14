@@ -1,136 +1,7 @@
 import { describe, expect, test } from "vitest";
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
+import { createFakePostgrest, type FakePostgrest } from "../db/fakePostgrest.js";
 import { InvalidMemberError } from "./expenseRepository.js";
 import { createSupabaseExpenseRepository } from "./supabaseExpenseRepository.js";
-
-/**
- * The expense write path is now a single transactional RPC per operation
- * (create_expense / replace_expense / soft_delete_expense - see
- * supabase/migrations/20260714100000_transactional_write_rpcs.sql). The
- * membership gate, the cross-group member-id validation, and the
- * client_requests idempotency check all live inside those functions, so what
- * this repository is still responsible for - and what these tests cover - is:
- * validating the request before spending a round trip, forwarding the right
- * params, translating the RPC's sentinel errors back into typed errors, and
- * cleaning up orphaned images.
- */
-const deletedExpenseRow = {
-  id: "expense_1",
-  group_id: "group_1",
-  title: "Dinner",
-  kind: "expense",
-  amount_minor: 1200,
-  currency: "TWD",
-  version: 2,
-  client_request_id: "req_expense",
-  image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
-};
-
-function makeClient(
-  overrides: { deletedImageUrl?: string | null; replacementImageUrl?: string | null } = {},
-): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
-  const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
-  const deleted = {
-    ...deletedExpenseRow,
-    image_url: "deletedImageUrl" in overrides ? overrides.deletedImageUrl : deletedExpenseRow.image_url,
-  };
-
-  return {
-    calls,
-    async one(sql, params) {
-      calls.push({ method: "one", sql, params });
-
-      if (sql.includes("select public.create_expense(")) {
-        const payload = params[2] as { client_request_id: string; title: string; image_url?: string };
-        return {
-          id: "expense_1",
-          group_id: params[0],
-          title: payload.title,
-          kind: "expense",
-          amount_minor: 1200,
-          currency: "TWD",
-          version: 1,
-          client_request_id: payload.client_request_id,
-          image_url: payload.image_url ?? null,
-        } as never;
-      }
-
-      if (sql.includes("select public.replace_expense(")) {
-        const payload = params[3] as { image_url?: string };
-        return {
-          expense: {
-            ...deletedExpenseRow,
-            id: "expense_2",
-            version: 1,
-            image_url:
-              "replacementImageUrl" in overrides ? overrides.replacementImageUrl : (payload.image_url ?? null),
-          },
-          previous: deleted,
-        } as never;
-      }
-
-      if (sql.includes("select public.soft_delete_expense(")) {
-        return deleted as never;
-      }
-
-      throw new Error(`Unexpected one query: ${sql}`);
-    },
-    async maybeOne() {
-      return null;
-    },
-    async exec(sql, params) {
-      calls.push({ method: "exec", sql, params });
-    },
-  };
-}
-
-/** A client whose write RPC raises the given sentinel, the way Postgres does. */
-function makeRaisingClient(message: string): SupabaseQueryClient {
-  return {
-    async one(): Promise<never> {
-      throw new Error(message);
-    },
-    async maybeOne() {
-      return null;
-    },
-    async exec() {},
-  };
-}
-
-function makeListExpensesClient(overrides: {
-  expenses: unknown[];
-  payments: unknown[];
-  shares: unknown[];
-}): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
-  const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
-
-  return {
-    calls,
-    async one(sql, params) {
-      calls.push({ method: "one", sql, params });
-
-      if (sql.includes("from public.expenses")) {
-        return overrides.expenses as never;
-      }
-
-      if (sql.includes("from public.expense_payments")) {
-        return overrides.payments as never;
-      }
-
-      if (sql.includes("from public.expense_shares")) {
-        return overrides.shares as never;
-      }
-
-      throw new Error(`Unexpected one query: ${sql}`);
-    },
-    async maybeOne() {
-      return null;
-    },
-    async exec(sql, params) {
-      calls.push({ method: "exec", sql, params });
-    },
-  };
-}
 
 const context = {
   user: {
@@ -143,7 +14,7 @@ const context = {
 
 const validRequest = {
   client_request_id: "req_expense",
-  title: "??",
+  title: "Dinner",
   kind: "expense" as const,
   category: "food",
   amount_minor: 1200,
@@ -156,47 +27,117 @@ const validRequest = {
   ],
 };
 
+const IMAGE_URL = "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg";
+
+const deletedExpenseRow = {
+  id: "expense_1",
+  group_id: "group_1",
+  title: "Dinner",
+  kind: "expense",
+  amount_minor: 1200,
+  currency: "TWD",
+  version: 2,
+  client_request_id: "req_expense",
+  image_url: IMAGE_URL as string | null,
+};
+
+/**
+ * The expense write path is a single transactional RPC per operation
+ * (create_expense / replace_expense / soft_delete_expense - see
+ * supabase/migrations/20260714100000_transactional_write_rpcs.sql). The
+ * membership gate, the cross-group member-id validation, and the
+ * client_requests idempotency check all live inside those functions. What the
+ * repository still owns - and what these tests cover - is validating the request
+ * before spending a round trip, forwarding the right arguments, translating the
+ * RPC's sentinel errors into typed errors, and cleaning up orphaned images.
+ */
+function makeClient(
+  overrides: { deletedImageUrl?: string | null; replacementImageUrl?: string | null } = {},
+): FakePostgrest {
+  const deleted = {
+    ...deletedExpenseRow,
+    image_url: "deletedImageUrl" in overrides ? overrides.deletedImageUrl : deletedExpenseRow.image_url,
+  };
+
+  return createFakePostgrest({
+    rpc: (fn, args) => {
+      if (fn === "create_expense") {
+        const payload = args.p_payload as { client_request_id: string; title: string; image_url?: string };
+        return {
+          ...deletedExpenseRow,
+          version: 1,
+          title: payload.title,
+          client_request_id: payload.client_request_id,
+          image_url: payload.image_url ?? null,
+        };
+      }
+
+      if (fn === "replace_expense") {
+        const payload = args.p_payload as { image_url?: string };
+        return {
+          expense: {
+            ...deletedExpenseRow,
+            id: "expense_2",
+            version: 1,
+            image_url:
+              "replacementImageUrl" in overrides ? overrides.replacementImageUrl : (payload.image_url ?? null),
+          },
+          previous: deleted,
+        };
+      }
+
+      if (fn === "soft_delete_expense") {
+        return deleted;
+      }
+
+      throw new Error(`Unexpected rpc ${fn}`);
+    },
+  });
+}
+
+/** A client whose write RPC raises the given sentinel, the way Postgres does. */
+function makeRaisingClient(message: string): FakePostgrest {
+  return createFakePostgrest({
+    rpc: () => {
+      throw new Error(message);
+    },
+  });
+}
+
 describe("createSupabaseExpenseRepository", () => {
   test("creates the expense, its payments and its shares in ONE transactional call", async () => {
     const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
 
-    await repository.createExpense(context, "group_1", validRequest);
+    await createSupabaseExpenseRepository(client).createExpense(context, "group_1", validRequest);
 
     // This used to be 1 + N + M separate PostgREST calls with no transaction
     // around them - a failure partway through left an expense whose share set
     // was incomplete, which silently corrupts every balance in the group.
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0]).toMatchObject({
-      method: "one",
-      sql: expect.stringContaining("select public.create_expense("),
-      params: ["group_1", "user_alice", validRequest],
+    expect(client.rpcCall("create_expense")?.args).toEqual({
+      p_group_id: "group_1",
+      p_user_id: "user_alice",
+      p_payload: validRequest,
     });
   });
 
-  test("passes the whole request through as the RPC payload, image_url included", async () => {
+  test("threads image_url through to the RPC payload", async () => {
     const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
 
-    const expense = await repository.createExpense(context, "group_1", {
+    const expense = await createSupabaseExpenseRepository(client).createExpense(context, "group_1", {
       ...validRequest,
-      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
+      image_url: IMAGE_URL,
     });
 
-    expect(client.calls[0]?.params[2]).toMatchObject({
-      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
-    });
-    expect(expense.image_url).toBe(
-      "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
-    );
+    expect(client.rpcCall("create_expense")?.args.p_payload).toMatchObject({ image_url: IMAGE_URL });
+    expect(expense.image_url).toBe(IMAGE_URL);
   });
 
   test("rejects invalid expense totals before spending a round trip", async () => {
     const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
 
     await expect(
-      repository.createExpense(context, "group_1", {
+      createSupabaseExpenseRepository(client).createExpense(context, "group_1", {
         ...validRequest,
         expense_payments: [{ payer_member_id: "member_alice", amount_minor: 1000, currency: "TWD" }],
       }),
@@ -213,7 +154,7 @@ describe("createSupabaseExpenseRepository", () => {
   });
 
   test("maps the RPC's INVALID_MEMBER:<id> back to InvalidMemberError", async () => {
-    // The cross-group member-id check itself now runs in SQL (the FKs only
+    // The cross-group member-id check itself runs in SQL now (the FKs only
     // reference group_members(id) globally, so without it a crafted request
     // could charge another group's member). What this asserts is that its
     // failure still reaches the route as InvalidMemberError -> 400.
@@ -229,14 +170,20 @@ describe("createSupabaseExpenseRepository", () => {
 
   test("replaceExpense edits through a single transactional call", async () => {
     const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
 
-    const result = await repository.replaceExpense(context, "group_1", "expense_1", validRequest);
+    const result = await createSupabaseExpenseRepository(client).replaceExpense(
+      context,
+      "group_1",
+      "expense_1",
+      validRequest,
+    );
 
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0]).toMatchObject({
-      sql: expect.stringContaining("select public.replace_expense("),
-      params: ["group_1", "user_alice", "expense_1", validRequest],
+    expect(client.rpcCall("replace_expense")?.args).toEqual({
+      p_group_id: "group_1",
+      p_user_id: "user_alice",
+      p_expense_id: "expense_1",
+      p_payload: validRequest,
     });
     expect(result.expense.id).toBe("expense_2");
     expect(result.previous?.id).toBe("expense_1");
@@ -250,111 +197,24 @@ describe("createSupabaseExpenseRepository", () => {
     );
   });
 
-  test("listExpenses returns note, transfer_to_member_id, payments, and shares batched for the whole group", async () => {
-    const client = makeListExpensesClient({
-      expenses: [
-        {
-          id: "expense_1",
-          group_id: "group_1",
-          title: "Dinner",
-          kind: "expense",
-          category: "food",
-          amount_minor: 1200,
-          currency: "TWD",
-          expense_date: "2026-06-30",
-          note: "Split unevenly, Bob paid",
-          transfer_to_member_id: null,
-          image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
-          created_at: "2026-06-30T00:00:00.000Z",
-          version: 1,
-          client_request_id: "expense_req_1",
-        },
-        {
-          id: "expense_2",
-          group_id: "group_1",
-          title: "Payback",
-          kind: "transfer",
-          category: "transfer",
-          amount_minor: 500,
-          currency: "TWD",
-          expense_date: "2026-07-01",
-          note: null,
-          transfer_to_member_id: "member_bob",
-          created_at: "2026-07-01T00:00:00.000Z",
-          version: 1,
-          client_request_id: "expense_req_2",
-        },
-      ],
-      payments: [
-        { expense_id: "expense_1", payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" },
-        { expense_id: "expense_2", payer_member_id: "member_alice", amount_minor: 500, currency: "TWD" },
-      ],
-      shares: [
-        // Custom (fixed) split, and the payer (member_bob) is excluded from the shares entirely.
-        { expense_id: "expense_1", member_id: "member_alice", share_type: "fixed", share_value: undefined, amount_minor: 800 },
-        { expense_id: "expense_1", member_id: "member_carol", share_type: "fixed", share_value: undefined, amount_minor: 400 },
-      ],
-    });
-    const repository = createSupabaseExpenseRepository(client);
-
-    const expenses = await repository.listExpenses("group_1");
-
-    expect(client.calls.map((call) => call.sql)).toEqual([
-      expect.stringContaining("from public.expenses"),
-      expect.stringContaining("from public.expense_payments"),
-      expect.stringContaining("from public.expense_shares"),
-    ]);
-    expect(client.calls[1]?.params).toEqual([["expense_1", "expense_2"]]);
-    expect(client.calls[2]?.params).toEqual([["expense_1", "expense_2"]]);
-
-    expect(expenses[0]).toMatchObject({
-      id: "expense_1",
-      note: "Split unevenly, Bob paid",
-      transfer_to_member_id: null,
-      image_url: "https://example.supabase.co/storage/v1/object/public/equo-images/group_1/photo.jpg",
-      expense_payments: [{ payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" }],
-      expense_shares: [
-        { member_id: "member_alice", share_type: "fixed", amount_minor: 800 },
-        { member_id: "member_carol", share_type: "fixed", amount_minor: 400 },
-      ],
-    });
-    // The payer (member_bob) does not appear in expense_shares for expense_1.
-    expect(
-      expenses[0]?.expense_shares?.some((share) => share.member_id === "member_bob"),
-    ).toBe(false);
-
-    expect(expenses[1]).toMatchObject({
-      id: "expense_2",
-      note: null,
-      transfer_to_member_id: "member_bob",
-      expense_payments: [{ payer_member_id: "member_alice", amount_minor: 500, currency: "TWD" }],
-      expense_shares: [],
-    });
-  });
-
-  test("listExpenses skips payments/shares queries when the group has no expenses", async () => {
-    const client = makeListExpensesClient({ expenses: [], payments: [], shares: [] });
-    const repository = createSupabaseExpenseRepository(client);
-
-    const expenses = await repository.listExpenses("group_empty");
-
-    expect(expenses).toEqual([]);
-    expect(client.calls.map((call) => call.sql)).toEqual([expect.stringContaining("from public.expenses")]);
-  });
-
   test("softDeleteExpense deletes through a single transactional call", async () => {
     const client = makeClient();
-    const repository = createSupabaseExpenseRepository(client);
 
-    const expense = await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
+    const expense = await createSupabaseExpenseRepository(client).softDeleteExpense(
+      context,
+      "group_1",
+      "expense_1",
+      "req_delete",
+    );
 
-    // The membership gate, the version bump (which the translated PostgREST
-    // PATCH silently dropped), and the client_requests write all live inside
-    // the RPC now.
+    // The membership gate, the version bump (which the old translated PATCH
+    // silently dropped), and the client_requests write all live in the RPC.
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0]).toMatchObject({
-      sql: expect.stringContaining("select public.soft_delete_expense("),
-      params: ["group_1", "user_alice", "expense_1", "req_delete"],
+    expect(client.rpcCall("soft_delete_expense")?.args).toEqual({
+      p_group_id: "group_1",
+      p_user_id: "user_alice",
+      p_expense_id: "expense_1",
+      p_client_request_id: "req_delete",
     });
     expect(expense).toMatchObject({ id: "expense_1", version: 2 });
   });
@@ -362,9 +222,101 @@ describe("createSupabaseExpenseRepository", () => {
   test("softDeleteExpense rejects a non-member with NOT_A_GROUP_MEMBER", async () => {
     const repository = createSupabaseExpenseRepository(makeRaisingClient("NOT_A_GROUP_MEMBER"));
 
-    await expect(repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete")).rejects.toThrow(
-      "NOT_A_GROUP_MEMBER",
-    );
+    await expect(
+      repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete"),
+    ).rejects.toThrow("NOT_A_GROUP_MEMBER");
+  });
+
+  describe("listing", () => {
+    function makeListClient(expenses: unknown[], payments: unknown[], shares: unknown[]): FakePostgrest {
+      return createFakePostgrest({
+        select: (table) => {
+          if (table === "expenses") return expenses;
+          if (table === "expense_payments") return payments;
+          if (table === "expense_shares") return shares;
+          return [];
+        },
+      });
+    }
+
+    test("batch-fetches payments and shares for the whole page (no N+1)", async () => {
+      const client = makeListClient(
+        [
+          { id: "expense_1", group_id: "group_1", title: "Dinner", note: "Bob paid", image_url: IMAGE_URL },
+          { id: "expense_2", group_id: "group_1", title: "Payback", transfer_to_member_id: "member_bob" },
+        ],
+        [
+          { expense_id: "expense_1", payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" },
+          { expense_id: "expense_2", payer_member_id: "member_alice", amount_minor: 500, currency: "TWD" },
+        ],
+        [
+          { expense_id: "expense_1", member_id: "member_alice", share_type: "fixed", amount_minor: 800 },
+          { expense_id: "expense_1", member_id: "member_carol", share_type: "fixed", amount_minor: 400 },
+        ],
+      );
+
+      const expenses = await createSupabaseExpenseRepository(client).listExpenses("group_1");
+
+      // Three reads total, regardless of how many expenses came back.
+      expect(client.calls.map((call) => ("table" in call ? call.table : ""))).toEqual([
+        "expenses",
+        "expense_payments",
+        "expense_shares",
+      ]);
+      expect((client.calls[1] as { query: string }).query).toContain("expense_id=in.(expense_1,expense_2)");
+
+      expect(expenses[0]).toMatchObject({
+        id: "expense_1",
+        note: "Bob paid",
+        expense_payments: [{ payer_member_id: "member_bob", amount_minor: 1200, currency: "TWD" }],
+        expense_shares: [
+          { member_id: "member_alice", share_type: "fixed", amount_minor: 800 },
+          { member_id: "member_carol", share_type: "fixed", amount_minor: 400 },
+        ],
+      });
+      // The payer is not among expense_1's shares.
+      expect(expenses[0]?.expense_shares?.some((share) => share.member_id === "member_bob")).toBe(false);
+      expect(expenses[1]).toMatchObject({ id: "expense_2", expense_shares: [] });
+    });
+
+    test("skips the payments/shares reads entirely when the group has no expenses", async () => {
+      const client = makeListClient([], [], []);
+
+      await expect(createSupabaseExpenseRepository(client).listExpenses("group_empty")).resolves.toEqual([]);
+      expect(client.calls).toHaveLength(1);
+    });
+
+    test("the first page is limited and ordered, with no cursor predicate", async () => {
+      const client = makeListClient([], [], []);
+
+      await createSupabaseExpenseRepository(client).listExpensesPage("group_1", { limit: 50 });
+
+      const read = (client.calls[0] as { query: string }).query;
+      expect(read).toContain("limit=50");
+      expect(read).toContain("order=expense_date.desc,created_at.desc");
+      expect(read).not.toContain("or=(");
+    });
+
+    test("a cursored page compares strictly, so a page boundary never repeats a row", async () => {
+      const client = makeListClient([], [], []);
+
+      await createSupabaseExpenseRepository(client).listExpensesPage("group_1", {
+        limit: 50,
+        cursor: { beforeDate: "2026-07-01", beforeCreatedAt: "2026-07-01T10:00:00.000Z" },
+      });
+
+      const read = (client.calls[0] as { query: string }).query;
+      expect(read).toContain("or=(expense_date.lt.2026-07-01,and(expense_date.eq.2026-07-01,created_at.lt.");
+      expect(read).not.toContain(".lte.");
+    });
+
+    test("clamps an oversized page request", async () => {
+      const client = makeListClient([], [], []);
+
+      await createSupabaseExpenseRepository(client).listExpensesPage("group_1", { limit: 5_000 });
+
+      expect((client.calls[0] as { query: string }).query).toContain("limit=100");
+    });
   });
 
   describe("orphaned-image cleanup", () => {
@@ -398,7 +350,10 @@ describe("createSupabaseExpenseRepository", () => {
 
     test("softDeleteExpense does nothing when the removed expense has no image", async () => {
       const storage = makeFakeStorage();
-      const repository = createSupabaseExpenseRepository(makeClient({ deletedImageUrl: null }), storage.client);
+      const repository = createSupabaseExpenseRepository(
+        makeClient({ deletedImageUrl: null }),
+        storage.client,
+      );
 
       await repository.softDeleteExpense(context, "group_1", "expense_1", "req_delete");
       await flush();
@@ -432,7 +387,7 @@ describe("createSupabaseExpenseRepository", () => {
       // An edit that changes only the title carries the same image_url through -
       // deleting it here would break the expense that is still using it.
       const repository = createSupabaseExpenseRepository(
-        makeClient({ replacementImageUrl: deletedExpenseRow.image_url }),
+        makeClient({ replacementImageUrl: IMAGE_URL }),
         storage.client,
       );
 

@@ -1,49 +1,61 @@
 import type { ConfirmSettlementRequest } from "../../contracts/schemas.js";
 import { calculateSettlement, type MemberBalance } from "../../domain/settlement.js";
 import type { AuthenticatedContext } from "../auth/session.js";
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
+import {
+  columns,
+  eq,
+  limit,
+  query,
+  requireRow,
+  type PostgrestClient,
+} from "../db/postgrestClient.js";
 import { NOT_A_GROUP_MEMBER, type SettlementRecord, type SettlementRepository } from "./settlementRepository.js";
 
-export function createSupabaseSettlementRepository(client: SupabaseQueryClient): SettlementRepository {
+const SETTLEMENT_COLUMNS = "id,group_id,settlement_version,calculated_version,status";
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export function createSupabaseSettlementRepository(client: PostgrestClient): SettlementRepository {
   return {
-    async listBalances(groupId: string) {
-      return client.one<MemberBalance[]>(
-        `
-          select member_id as "memberId", json_build_object(
-            'amount_minor', balance_minor,
-            'currency', currency
-          ) as balance
-          from public.group_member_balances
-          where group_id = $1
-        `,
-        [groupId],
+    async listBalances(groupId: string): Promise<MemberBalance[]> {
+      const rows = await client.select<{ member_id: string; balance_minor: number; currency: string }>(
+        "group_member_balances",
+        query(columns("member_id,balance_minor,currency"), eq("group_id", groupId)),
       );
+
+      return rows.map((row) => ({
+        memberId: row.member_id,
+        balance: { amount_minor: row.balance_minor, currency: row.currency },
+      }));
     },
 
     /**
-     * The transfer amounts are still computed here (domain/settlement.ts); only
-     * the write moved into the database. It had been an insert of the settlement
+     * The transfer amounts are computed here (domain/settlement.ts); only the
+     * write lives in the database. It used to be an insert of the settlement
      * followed by one insert per transfer, each its own PostgREST call - so a
      * failure partway through left a settlement carrying only some of its
-     * transfers, which under-settles the group without any sign that it did.
+     * transfers, which under-settles the group with nothing to show that it did.
      */
     async calculateCurrentSettlement(context: AuthenticatedContext, groupId: string) {
       const balances = await this.listBalances(groupId);
       const transfers = calculateSettlement(balances);
 
       const settlement = await client
-        .one<SettlementRecord>(`select public.create_settlement($1, $2, $3, $4, $5) as settlement`, [
-          groupId,
-          context.user.id,
-          Math.floor(Date.now() / 1000),
-          balances.length,
-          transfers.map((transfer) => ({
+        .rpc<SettlementRecord>("create_settlement", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          // Postgres integer: seconds, not milliseconds.
+          p_settlement_version: Math.floor(Date.now() / 1000),
+          p_calculated_version: balances.length,
+          p_transfers: transfers.map((transfer) => ({
             from_member_id: transfer.fromMemberId,
             to_member_id: transfer.toMemberId,
             amount_minor: transfer.amount.amount_minor,
             currency: transfer.amount.currency,
           })),
-        ])
+        })
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
           throw message.includes(NOT_A_GROUP_MEMBER) ? new Error(NOT_A_GROUP_MEMBER) : error;
@@ -58,42 +70,48 @@ export function createSupabaseSettlementRepository(client: SupabaseQueryClient):
       settlementId: string,
       request: ConfirmSettlementRequest,
     ) {
-      const member = await client.maybeOne<{ id: string }>(
-        `
-          select id
-          from public.group_members
-          where group_id = $1 and user_id = $2 and status = 'active'
-          limit 1
-        `,
-        [groupId, context.user.id],
+      const member = await client.select<{ id: string }>(
+        "group_members",
+        query(
+          columns("id"),
+          eq("group_id", groupId),
+          eq("user_id", context.user.id),
+          eq("status", "active"),
+          limit(1),
+        ),
       );
 
-      if (!member) {
+      if (!member[0]) {
         throw new Error(NOT_A_GROUP_MEMBER);
       }
 
-      const current = await client.one<SettlementRecord>(
-        `
-          select id, group_id, settlement_version, calculated_version, status
-          from public.settlements
-          where group_id = $1 and id = $2
-          limit 1
-        `,
-        [groupId, settlementId],
+      const current = requireRow(
+        await client.select<SettlementRecord>(
+          "settlements",
+          query(columns(SETTLEMENT_COLUMNS), eq("group_id", groupId), eq("id", settlementId), limit(1)),
+        ),
+        "settlement",
       );
 
       if (current.settlement_version !== request.settlement_version) {
         throw new Error("SETTLEMENT_VERSION_CONFLICT");
       }
 
-      return client.one<SettlementRecord>(
-        `
-          update public.settlements
-          set status = 'confirmed', confirmed_at = now()
-          where group_id = $1 and id = $2 and settlement_version = $3
-          returning id, group_id, settlement_version, calculated_version, status
-        `,
-        [groupId, settlementId, request.settlement_version],
+      // settlement_version in the filter is the optimistic-concurrency check:
+      // if another confirm landed between the read above and this write, it has
+      // already moved the version and this matches nothing.
+      return requireRow(
+        await client.update<SettlementRecord>(
+          "settlements",
+          query(
+            eq("group_id", groupId),
+            eq("id", settlementId),
+            eq("settlement_version", request.settlement_version),
+            columns(SETTLEMENT_COLUMNS),
+          ),
+          { status: "confirmed", confirmed_at: nowIso() },
+        ),
+        "settlement",
       );
     },
   };

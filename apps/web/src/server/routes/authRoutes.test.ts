@@ -1,25 +1,25 @@
 import { describe, expect, test } from "vitest";
 import { authGoogleRoute } from "./authRoutes.js";
 import { verifySessionToken } from "../auth/sessionToken.js";
-import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
+import { createFakePostgrest } from "../db/fakePostgrest.js";
 
-function makeClient(overrides: { deleted_at?: string | null } = {}): SupabaseQueryClient {
-  return {
-    async one() {
-      return {
-        id: "google_1",
-        google_sub: "google_1",
-        email: "alice@example.com",
-        display_name: "Alice",
-        avatar_url: "https://cdn.equo.local/avatars/google_1/photo.jpg",
-        deleted_at: overrides.deleted_at ?? null,
-      } as never;
-    },
-    async maybeOne() {
-      return null;
-    },
-    async exec() {},
-  };
+function makeClient(overrides: { deleted_at?: string | null } = {}) {
+  return createFakePostgrest({
+    // The users upsert; profiles rides along and returns nothing anyone reads.
+    insert: (table) =>
+      table === "users"
+        ? [
+            {
+              id: "google_1",
+              google_sub: "google_1",
+              email: "alice@example.com",
+              display_name: "Alice",
+              avatar_url: "https://cdn.equo.local/avatars/google_1/photo.jpg",
+              deleted_at: overrides.deleted_at ?? null,
+            },
+          ]
+        : [],
+  });
 }
 
 describe("authGoogleRoute", () => {

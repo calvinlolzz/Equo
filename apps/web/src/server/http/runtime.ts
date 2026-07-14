@@ -1,3 +1,4 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AcceptInviteRequest,
   ConfirmSettlementRequest,
@@ -12,7 +13,6 @@ import type {
 } from "../../contracts/schemas.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { verifySessionToken } from "../auth/sessionToken.js";
-import type { SupabaseQueryClient } from "../repositories/supabaseGroupRepository.js";
 import { authGoogleRoute, authSupabaseRoute } from "../routes/authRoutes.js";
 import {
   createGroupRoute,
@@ -57,7 +57,7 @@ import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from 
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
 
 type RuntimeOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   storage: SupabaseStorageClient;
   verifier: GoogleTokenVerifier;
   supabaseVerifier?: GoogleTokenVerifier;

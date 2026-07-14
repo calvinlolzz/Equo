@@ -8,6 +8,20 @@ import type {
 import type { GoogleIdentity } from "../auth/google.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import {
+  columns,
+  eq,
+  inList,
+  isNotNull,
+  isNull,
+  limit,
+  onConflict,
+  optionalRow,
+  order,
+  query,
+  requireRow,
+  type PostgrestClient,
+} from "../db/postgrestClient.js";
+import {
   INVITE_EXPIRED,
   type ArchivedGroupRecord,
   type GroupDetailRecord,
@@ -17,109 +31,122 @@ import {
   type InviteRecord,
 } from "./groupRepository.js";
 
-export type SupabaseQueryClient = {
-  one<T>(sql: string, params: unknown[]): Promise<T>;
-  maybeOne<T>(sql: string, params: unknown[]): Promise<T | null>;
-  exec(sql: string, params: unknown[]): Promise<void>;
-};
+/** The column list every GroupRecord-shaped read/write returns. */
+const GROUP_COLUMNS = "id,name,currency,owner_member_id,cover_image_url";
+/** The column list every GroupMemberRecord-shaped read/write returns. */
+const MEMBER_COLUMNS = "id,group_id,user_id,display_name,role,status";
 
 /**
- * get_group_detail's p_expense_limit (v3): the expenses array is capped to
- * this many newest entries (expense_date desc, created_at desc). The
- * client's records panel pages past this window via listExpensesPage/GET
+ * A user's group list is capped here. The cap is on memberships, and it exists
+ * because PostgREST cannot express the join - the list is a membership read
+ * followed by a groups read keyed on the resulting ids.
+ */
+const GROUP_LIST_LIMIT = 50;
+
+/**
+ * get_group_detail's p_expense_limit: the expenses array is capped to this many
+ * newest entries (expense_date desc, created_at desc). The client's records
+ * panel pages past this window via listExpensesPage / GET
  * /groups/:groupId/expenses once expense_count exceeds what's loaded.
  */
 export const EXPENSE_WINDOW_LIMIT = 100;
 
-export async function upsertUserByGoogleIdentity(
-  client: SupabaseQueryClient,
-  identity: GoogleIdentity,
-) {
-  // deleted_at rides along so callers (authRoutes, requireAuthenticatedUser)
-  // can refuse admin-disabled accounts - the upsert itself must NOT clear it,
-  // or a disabled user could re-enable themselves by logging in.
-  const user = await client.one<AuthenticatedContext["user"] & { deleted_at?: string | null }>(
-    `
-      insert into public.users (id, google_sub, email, display_name, avatar_url, updated_at)
-      values ($1, $2, $3, $4, $5, now())
-      on conflict (google_sub) do update set
-        email = excluded.email,
-        display_name = excluded.display_name,
-        avatar_url = excluded.avatar_url,
-        updated_at = now()
-      returning id, google_sub, email, display_name, avatar_url, deleted_at
-    `,
-    [
-      identity.auth_user_id,
-      identity.google_sub,
-      identity.email,
-      identity.display_name,
-      identity.avatar_url ?? null,
-    ],
-  );
+function nowIso(): string {
+  return new Date().toISOString();
+}
 
-  await client.exec(
-    `
-      insert into public.profiles (id, display_name, avatar_url, default_currency, updated_at)
-      values ($1, $2, $3, 'TWD', now())
-      on conflict (id) do update set
-        display_name = excluded.display_name,
-        avatar_url = excluded.avatar_url,
-        updated_at = now()
-    `,
-    [user.id, identity.display_name, identity.avatar_url ?? null],
+export async function upsertUserByGoogleIdentity(client: PostgrestClient, identity: GoogleIdentity) {
+  // deleted_at rides along so callers (authRoutes, requireAuthenticatedUser)
+  // can refuse admin-disabled accounts. The upsert must NOT clear it, or a
+  // disabled user could re-enable themselves just by logging in again.
+  const rows = await client.insert<AuthenticatedContext["user"] & { deleted_at?: string | null }>(
+    "users",
+    {
+      id: identity.auth_user_id,
+      google_sub: identity.google_sub,
+      email: identity.email,
+      display_name: identity.display_name,
+      avatar_url: identity.avatar_url ?? null,
+      updated_at: nowIso(),
+    },
+    {
+      query: query(onConflict("google_sub"), columns("id,google_sub,email,display_name,avatar_url,deleted_at")),
+      prefer: "resolution=merge-duplicates",
+    },
+  );
+  const user = requireRow(rows, "user");
+
+  // profiles is the legacy per-user settings row; keep it in step with users so
+  // the two never drift (updateUserAvatar does the same on the other side).
+  await client.insert(
+    "profiles",
+    {
+      id: user.id,
+      display_name: identity.display_name,
+      avatar_url: identity.avatar_url ?? null,
+      default_currency: "TWD",
+      updated_at: nowIso(),
+    },
+    { query: onConflict("id"), prefer: "resolution=merge-duplicates" },
   );
 
   return user;
 }
 
 /**
- * Self-scoped avatar update (PATCH /api/v1/me/avatar): sets users.avatar_url
- * to a freshly-uploaded storage URL for the given userId. Also mirrors the
- * value into profiles.avatar_url so the two tables (users - the auth
- * identity row read by every session/group-detail query, and profiles - the
- * legacy per-user settings row) never drift, matching how
- * upsertUserByGoogleIdentity keeps both in sync on login.
+ * Cheap auth-state probe for a user id we already trust (an Equo session token
+ * carries an already-resolved users.id - see sessionToken.ts). Exists so an
+ * authenticated request can confirm the account is still enabled without paying
+ * for upsertUserByGoogleIdentity's full write round-trip: without this check an
+ * admin-disabled user keeps working until their session token expires (up to 7
+ * days), which makes the admin console's "disable user" control inert against
+ * exactly the sessions it most needs to stop.
+ */
+export async function findUserAuthState(
+  client: PostgrestClient,
+  userId: string,
+): Promise<{ id: string; deleted_at: string | null } | null> {
+  const rows = await client.select<{ id: string; deleted_at: string | null }>(
+    "users",
+    query(columns("id,deleted_at"), eq("id", userId), limit(1)),
+  );
+
+  return optionalRow(rows);
+}
+
+/**
+ * Self-scoped avatar update (PATCH /api/v1/me/avatar). Mirrors the value into
+ * profiles.avatar_url so the two tables never drift.
  *
- * Returns the PREVIOUS avatar_url alongside the new one so the caller can
- * clean up an orphaned storage object (see updateMyAvatarRoute) - read
- * fresh right before the write rather than trusting the caller's session
- * context, since upsertUserByGoogleIdentity overwrites users.avatar_url with
- * the Google identity's picture on every login, so a stale in-memory value
- * from earlier in the request could be wrong by the time this runs.
+ * Returns the PREVIOUS avatar_url alongside the new one so the caller can clean
+ * up the orphaned storage object (see updateMyAvatarRoute). It is read fresh
+ * right before the write rather than taken from the caller's session context,
+ * because upsertUserByGoogleIdentity overwrites users.avatar_url with the Google
+ * picture on every login - an in-memory value from earlier in the request can
+ * already be stale by the time this runs.
  */
 export async function updateUserAvatar(
-  client: SupabaseQueryClient,
+  client: PostgrestClient,
   userId: string,
   avatarUrl: string,
 ): Promise<{ avatar_url: string; previousAvatarUrl: string | null }> {
-  const current = await client.one<{ avatar_url: string | null }>(
-    `
-      select id, avatar_url
-      from public.users
-      where id = $1
-    `,
-    [userId],
+  const currentRows = await client.select<{ avatar_url: string | null }>(
+    "users",
+    query(columns("id,avatar_url"), eq("id", userId), limit(1)),
   );
+  const current = requireRow(currentRows, "user");
 
-  const user = await client.one<{ avatar_url: string }>(
-    `
-      update public.users
-      set avatar_url = $1, updated_at = now()
-      where id = $2
-      returning avatar_url
-    `,
-    [avatarUrl, userId],
+  const updatedRows = await client.update<{ avatar_url: string }>(
+    "users",
+    query(eq("id", userId), columns("avatar_url")),
+    { avatar_url: avatarUrl, updated_at: nowIso() },
   );
+  const user = requireRow(updatedRows, "user");
 
-  await client.exec(
-    `
-      update public.profiles
-      set avatar_url = $1, updated_at = now()
-      where id = $2
-    `,
-    [avatarUrl, userId],
-  );
+  await client.update("profiles", eq("id", userId), {
+    avatar_url: avatarUrl,
+    updated_at: nowIso(),
+  });
 
   return { avatar_url: user.avatar_url, previousAvatarUrl: current.avatar_url ?? null };
 }
@@ -127,18 +154,18 @@ export async function updateUserAvatar(
 /**
  * Unambiguous base32 alphabet (no I/O/0/1) - invite tokens get read aloud and
  * retyped, so the characters that get confused for each other are excluded.
- * 32 symbols means one random byte masked to 5 bits maps to exactly one
- * symbol with no modulo bias (256 = 8 x 32).
+ * 32 symbols means one random byte masked to 5 bits maps to exactly one symbol
+ * with no modulo bias (256 = 8 x 32).
  */
 const INVITE_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const INVITE_TOKEN_LENGTH = 12;
 
 /**
- * The invite token is a bearer credential: whoever holds it can join the
- * group. It must come from a CSPRNG (Math.random is predictable from a few
- * observed outputs) and it must never be stored as-is - only the SHA-256
- * digest goes to invites.token_hash, so a leaked database row, backup, or
- * admin query yields no usable token.
+ * The invite token is a bearer credential: whoever holds it can join the group.
+ * It must come from a CSPRNG (Math.random is predictable from a few observed
+ * outputs) and it must never be stored as-is - only the SHA-256 digest goes to
+ * invites.token_hash, so a leaked row, backup, or admin query yields no usable
+ * token.
  */
 function generateInviteToken(): string {
   const bytes = randomBytes(INVITE_TOKEN_LENGTH);
@@ -155,89 +182,98 @@ function createTokenHash(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
-/**
- * Cheap auth-state probe for a user id we already trust (an Equo session
- * token carries an already-resolved users.id - see sessionToken.ts). Exists
- * so an authenticated request can confirm the account is still enabled
- * without paying for upsertUserByGoogleIdentity's full write round-trip:
- * without this check an admin-disabled user keeps working until their
- * session token expires (up to 7 days), which makes the admin console's
- * "disable user" control effectively inert against an active session.
- */
-export async function findUserAuthState(
-  client: SupabaseQueryClient,
-  userId: string,
-): Promise<{ id: string; deleted_at: string | null } | null> {
-  return client.maybeOne<{ id: string; deleted_at: string | null }>(
-    `
-      select id, deleted_at
-      from public.users
-      where id = $1
-      limit 1
-    `,
-    [userId],
-  );
-}
+export function createSupabaseGroupRepository(client: PostgrestClient): GroupRepository {
+  /**
+   * The groups a user belongs to. PostgREST can't express the join without an
+   * embedded resource (which is ambiguous here - groups relates to
+   * group_members through more than one key), so it is two reads: the caller's
+   * memberships, then the groups those point at.
+   */
+  async function listMemberships(userId: string): Promise<Array<{ id: string; group_id: string }>> {
+    return client.select<{ id: string; group_id: string }>(
+      "group_members",
+      query(
+        columns("id,group_id"),
+        eq("user_id", userId),
+        eq("status", "active"),
+        limit(GROUP_LIST_LIMIT),
+      ),
+    );
+  }
 
-export function createSupabaseGroupRepository(client: SupabaseQueryClient): GroupRepository {
   return {
     async listGroups(context: AuthenticatedContext) {
-      return client.one<GroupRecord[]>(
-        `
-          select g.id, g.name, g.currency, g.owner_member_id, g.cover_image_url
-          from public.groups g
-          join public.group_members gm on gm.group_id = g.id
-          where gm.user_id = $1
-            and gm.status = 'active'
-            and g.archived_at is null
-            and g.deleted_at is null
-          order by g.updated_at desc, g.created_at desc
-          limit 50
-        `,
-        [context.user.id],
+      const memberships = await listMemberships(context.user.id);
+      const groupIds = [...new Set(memberships.map((row) => row.group_id))];
+
+      if (groupIds.length === 0) {
+        return [];
+      }
+
+      return client.select<GroupRecord>(
+        "groups",
+        query(
+          columns(GROUP_COLUMNS),
+          inList("id", groupIds),
+          isNull("archived_at"),
+          isNull("deleted_at"),
+          order("updated_at.desc,created_at.desc"),
+          limit(GROUP_LIST_LIMIT),
+        ),
       );
     },
 
     async listArchivedGroups(context: AuthenticatedContext) {
-      return client.one<ArchivedGroupRecord[]>(
-        `
-          select g.id, g.name, g.currency, g.owner_member_id, g.archived_at, g.cover_image_url, gm.id as caller_member_id
-          from public.groups g
-          join public.group_members gm on gm.group_id = g.id
-          where gm.user_id = $1
-            and gm.status = 'active'
-            and g.archived_at is not null
-            and g.deleted_at is null
-          order by g.updated_at desc, g.created_at desc
-          limit 50
-        `,
-        [context.user.id],
+      const memberships = await listMemberships(context.user.id);
+      const callerMemberIdByGroupId = new Map(memberships.map((row) => [row.group_id, row.id]));
+      const groupIds = [...new Set(memberships.map((row) => row.group_id))];
+
+      if (groupIds.length === 0) {
+        return [];
+      }
+
+      const groups = await client.select<Omit<ArchivedGroupRecord, "caller_member_id">>(
+        "groups",
+        query(
+          columns("id,name,currency,owner_member_id,archived_at,cover_image_url"),
+          inList("id", groupIds),
+          isNotNull("archived_at"),
+          isNull("deleted_at"),
+          order("updated_at.desc,created_at.desc"),
+          limit(GROUP_LIST_LIMIT),
+        ),
       );
+
+      return groups.map((group) => ({
+        ...group,
+        caller_member_id: callerMemberIdByGroupId.get(group.id) ?? null,
+      })) as ArchivedGroupRecord[];
     },
 
     async listMembers(groupId: string) {
-      return client.one<GroupMemberRecord[]>(
-        `
-          select id, group_id, user_id, display_name, role, status
-          from public.group_members
-          where group_id = $1 and status = 'active'
-          order by role desc, created_at asc
-        `,
-        [groupId],
+      return client.select<GroupMemberRecord>(
+        "group_members",
+        query(
+          columns(MEMBER_COLUMNS),
+          eq("group_id", groupId),
+          eq("status", "active"),
+          order("role.desc,created_at.asc"),
+        ),
       );
     },
 
     async getGroupDetail(context: AuthenticatedContext, groupId: string) {
-      const result = await client.maybeOne<GroupDetailRecord | null>(
-        `select public.get_group_detail($1, $2, $3) as detail`,
-        [groupId, context.user.id, EXPENSE_WINDOW_LIMIT],
-      );
+      const result = await client.rpc<GroupDetailRecord | null>("get_group_detail", {
+        p_group_id: groupId,
+        p_user_id: context.user.id,
+        p_expense_limit: EXPENSE_WINDOW_LIMIT,
+      });
 
       if (!result || !Array.isArray(result.members)) return result ?? null;
 
-      // The RPC's members subquery has no status filter (unlike listMembers),
-      // so filter to active members here to keep this method's contract
-      // identical to the multi-query path it replaces.
+      // The RPC's members subquery has no status filter (unlike listMembers), so
+      // filter to active members here to keep this method's contract identical
+      // to the multi-query path it replaced.
       return {
         ...result,
         members: result.members.filter((member) => member.status === "active"),
@@ -245,167 +281,192 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     },
 
     async createGroup(context: AuthenticatedContext, request: CreateGroupRequest) {
-      const group = await client.one<GroupRecord>(
-        `
-          insert into public.groups (name, currency, owner_id, cover_image_url)
-          values ($1, $2, $3, $4)
-          returning id, name, currency, owner_member_id, cover_image_url
-        `,
-        [request.name, request.currency, context.user.id, request.cover_image_url ?? null],
+      const group = requireRow(
+        await client.insert<GroupRecord>(
+          "groups",
+          {
+            name: request.name,
+            currency: request.currency,
+            owner_id: context.user.id,
+            cover_image_url: request.cover_image_url ?? null,
+          },
+          { query: columns(GROUP_COLUMNS) },
+        ),
+        "group",
       );
-      const ownerMember = await client.one<GroupMemberRecord>(
-        `
-          insert into public.group_members (group_id, user_id, display_name, role, status, claimed_at)
-          values ($1, $2, $3, 'owner', 'active', now())
-          returning id, group_id, user_id, display_name, role, status
-        `,
-        [group.id, context.user.id, context.user.display_name],
+
+      const ownerMember = requireRow(
+        await client.insert<GroupMemberRecord>(
+          "group_members",
+          {
+            group_id: group.id,
+            user_id: context.user.id,
+            display_name: context.user.display_name,
+            role: "owner",
+            status: "active",
+            claimed_at: nowIso(),
+          },
+          { query: columns(MEMBER_COLUMNS) },
+        ),
+        "group member",
       );
-      const updatedGroup = await client.one<GroupRecord>(
-        `
-          update public.groups
-          set owner_member_id = $1, updated_at = now()
-          where id = $2
-          returning id, name, currency, owner_member_id, cover_image_url
-        `,
-        [ownerMember.id, group.id],
+
+      // groups.owner_member_id can only be set once the owner's member row
+      // exists, so the group is created first and pointed at it here.
+      const updatedGroup = requireRow(
+        await client.update<GroupRecord>("groups", query(eq("id", group.id), columns(GROUP_COLUMNS)), {
+          owner_member_id: ownerMember.id,
+          updated_at: nowIso(),
+        }),
+        "group",
       );
 
       return { group: updatedGroup, ownerMember };
     },
 
     async updateGroup(groupId: string, request: UpdateGroupRequest) {
-      // Read the current cover_image_url before overwriting it - the UPDATE
-      // below only returns the NEW row, and coalesce() means a request that
-      // omits cover_image_url leaves the column untouched, so this is the
-      // only way the caller can know what the old value was (needed to
-      // clean it up from storage - see handleUpdateGroup).
-      const current = await client.one<{ cover_image_url: string | null }>(
-        `
-          select id, name, currency, owner_member_id, cover_image_url
-          from public.groups
-          where id = $1 and deleted_at is null
-        `,
-        [groupId],
+      // Read the current cover before overwriting it: the update returns only
+      // the new row, and a request that omits cover_image_url leaves the column
+      // untouched, so this is the only way the caller can learn the old value
+      // (needed to clean it up from storage - see handleUpdateGroup).
+      const current = requireRow(
+        await client.select<{ cover_image_url: string | null }>(
+          "groups",
+          query(columns(GROUP_COLUMNS), eq("id", groupId), isNull("deleted_at"), limit(1)),
+        ),
+        "group",
       );
 
-      const group = await client.one<GroupRecord>(
-        `
-          update public.groups
-          set name = $1, cover_image_url = coalesce($2, cover_image_url), updated_at = now()
-          where id = $3 and deleted_at is null
-          returning id, name, currency, owner_member_id, cover_image_url
-        `,
-        [request.name, request.cover_image_url ?? null, groupId],
+      const group = requireRow(
+        await client.update<GroupRecord>(
+          "groups",
+          query(eq("id", groupId), isNull("deleted_at"), columns(GROUP_COLUMNS)),
+          request.cover_image_url == null
+            ? { name: request.name, updated_at: nowIso() }
+            : { name: request.name, cover_image_url: request.cover_image_url, updated_at: nowIso() },
+        ),
+        "group",
       );
 
       return { group, previousCoverImageUrl: current.cover_image_url ?? null };
     },
 
     async archiveGroup(groupId: string) {
-      return client.one<GroupRecord>(
-        `
-          update public.groups
-          set archived_at = now(), updated_at = now()
-          where id = $1 and deleted_at is null
-          returning id, name, currency, owner_member_id, cover_image_url
-        `,
-        [groupId],
+      return requireRow(
+        await client.update<GroupRecord>(
+          "groups",
+          query(eq("id", groupId), isNull("deleted_at"), columns(GROUP_COLUMNS)),
+          { archived_at: nowIso(), updated_at: nowIso() },
+        ),
+        "group",
       );
     },
 
     async unarchiveGroup(groupId: string) {
-      return client.one<GroupRecord>(
-        `
-          update public.groups
-          set archived_at = null, updated_at = now()
-          where id = $1 and deleted_at is null
-          returning id, name, currency, owner_member_id, cover_image_url
-        `,
-        [groupId],
+      return requireRow(
+        await client.update<GroupRecord>(
+          "groups",
+          query(eq("id", groupId), isNull("deleted_at"), columns(GROUP_COLUMNS)),
+          { archived_at: null, updated_at: nowIso() },
+        ),
+        "group",
       );
     },
 
     async deleteGroup(groupId: string) {
-      return client.one<GroupRecord>(
-        `
-          update public.groups
-          set deleted_at = now(), updated_at = now()
-          where id = $1 and deleted_at is null
-          returning id, name, currency, owner_member_id, cover_image_url
-        `,
-        [groupId],
+      return requireRow(
+        await client.update<GroupRecord>(
+          "groups",
+          query(eq("id", groupId), isNull("deleted_at"), columns(GROUP_COLUMNS)),
+          { deleted_at: nowIso(), updated_at: nowIso() },
+        ),
+        "group",
       );
     },
 
     async createVirtualMember(groupId: string, displayName: string) {
-      return client.one<GroupMemberRecord>(
-        `
-          insert into public.group_members (group_id, user_id, display_name, role, status)
-          values ($1, null, $2, 'member', 'active')
-          returning id, group_id, user_id, display_name, role, status
-        `,
-        [groupId, displayName],
+      return requireRow(
+        await client.insert<GroupMemberRecord>(
+          "group_members",
+          {
+            group_id: groupId,
+            user_id: null,
+            display_name: displayName,
+            role: "member",
+            status: "active",
+          },
+          { query: columns(MEMBER_COLUMNS) },
+        ),
+        "group member",
       );
     },
 
     async renameVirtualMember(groupId: string, memberId: string, displayName: string) {
-      return client.one<GroupMemberRecord>(
-        `
-          update public.group_members
-          set display_name = $1, updated_at = now()
-          where id = $2 and group_id = $3 and user_id is null and status = 'active'
-          returning id, group_id, user_id, display_name, role, status
-        `,
-        [displayName, memberId, groupId],
+      // user_id is null / status active: only an unclaimed member can be renamed
+      // this way - a real user owns their own name through their profile.
+      return requireRow(
+        await client.update<GroupMemberRecord>(
+          "group_members",
+          query(
+            eq("id", memberId),
+            eq("group_id", groupId),
+            isNull("user_id"),
+            eq("status", "active"),
+            columns(MEMBER_COLUMNS),
+          ),
+          { display_name: displayName, updated_at: nowIso() },
+        ),
+        "group member",
       );
     },
 
     async removeVirtualMember(groupId: string, memberId: string) {
-      return client.one<GroupMemberRecord>(
-        `
-          update public.group_members
-          set status = 'removed', updated_at = now()
-          where id = $1 and group_id = $2 and user_id is null and status = 'active'
-          returning id, group_id, user_id, display_name, role, status
-        `,
-        [memberId, groupId],
+      return requireRow(
+        await client.update<GroupMemberRecord>(
+          "group_members",
+          query(
+            eq("id", memberId),
+            eq("group_id", groupId),
+            isNull("user_id"),
+            eq("status", "active"),
+            columns(MEMBER_COLUMNS),
+          ),
+          { status: "removed", updated_at: nowIso() },
+        ),
+        "group member",
       );
     },
 
     async findActiveMember(groupId: string, userId: string) {
-      return client.maybeOne<GroupMemberRecord>(
-        `
-          select id, group_id, user_id, display_name, role, status
-          from public.group_members
-          where group_id = $1 and user_id = $2 and status = 'active'
-          limit 1
-        `,
-        [groupId, userId],
+      return optionalRow(
+        await client.select<GroupMemberRecord>(
+          "group_members",
+          query(
+            columns(MEMBER_COLUMNS),
+            eq("group_id", groupId),
+            eq("user_id", userId),
+            eq("status", "active"),
+            limit(1),
+          ),
+        ),
       );
     },
 
     async findMemberById(groupId: string, memberId: string) {
-      return client.maybeOne<GroupMemberRecord>(
-        `
-          select id, group_id, user_id, display_name, role, status
-          from public.group_members
-          where group_id = $1 and id = $2
-          limit 1
-        `,
-        [groupId, memberId],
+      return optionalRow(
+        await client.select<GroupMemberRecord>(
+          "group_members",
+          query(columns(MEMBER_COLUMNS), eq("group_id", groupId), eq("id", memberId), limit(1)),
+        ),
       );
     },
 
     async getMemberBalanceMinor(groupId: string, memberId: string) {
-      const row = await client.maybeOne<{ balance_minor: number } | null>(
-        `
-          select balance_minor
-          from public.group_member_balances
-          where group_id = $1 and member_id = $2
-          limit 1
-        `,
-        [groupId, memberId],
+      const row = optionalRow(
+        await client.select<{ balance_minor: number }>(
+          "group_member_balances",
+          query(columns("balance_minor"), eq("group_id", groupId), eq("member_id", memberId), limit(1)),
+        ),
       );
 
       return row?.balance_minor ?? 0;
@@ -413,26 +474,25 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
 
     async createInvite(context: AuthenticatedContext, groupId: string, request: CreateInviteRequest) {
       const token = generateInviteToken();
-      const token_hash = createTokenHash(token);
       const member = await this.findActiveMember(groupId, context.user.id);
 
       if (!member) {
         throw new Error("active member required to create invite");
       }
 
-      const invite = await client.one<InviteRecord>(
-        `
-          insert into public.invites (
-            group_id,
-            token_hash,
-            max_uses,
-            expires_at,
-            created_by_member_id
-          )
-          values ($1, $2, $3, $4, $5)
-          returning id, group_id, token_hash, max_uses, use_count, expires_at
-        `,
-        [groupId, token_hash, request.max_uses, request.expires_at ?? null, member.id],
+      const invite = requireRow(
+        await client.insert<InviteRecord>(
+          "invites",
+          {
+            group_id: groupId,
+            token_hash: createTokenHash(token),
+            max_uses: request.max_uses,
+            expires_at: request.expires_at ?? null,
+            created_by_member_id: member.id,
+          },
+          { query: columns("id,group_id,token_hash,max_uses,use_count,expires_at") },
+        ),
+        "invite",
       );
 
       return { ...invite, token };
@@ -440,27 +500,25 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
 
     /**
      * Validating the invite, joining the caller, and burning a use are one
-     * locked transaction in the accept_invite RPC. Splitting them (a lookup
-     * here, then an update) is what let two people redeem the last seat at
+     * locked transaction in the accept_invite RPC. Splitting them (look the
+     * invite up, then update it) is what let two people redeem the last seat at
      * once - use_count was read, incremented in JS, and written back as an
-     * absolute value - and what let an existing member re-run the join and get
-     * a *second* member row, since nothing in the schema forbids one.
+     * absolute value - and what let an existing member re-run the join and get a
+     * SECOND member row, since nothing in the schema forbids one.
      */
     async acceptInvite(context: AuthenticatedContext, token: string, request: AcceptInviteRequest) {
-      const result = await client.maybeOne<{
-        group: GroupRecord;
-        member: GroupMemberRecord;
-        claimed: boolean;
-      }>(`select public.accept_invite($1, $2, $3, $4, $5) as result`, [
-        createTokenHash(token),
-        context.user.id,
-        request.display_name,
-        request.claim_member_id ?? null,
-        request.client_request_id,
-      ]).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        throw message.includes(INVITE_EXPIRED) ? new Error(INVITE_EXPIRED) : error;
-      });
+      const result = await client
+        .rpc<{ group: GroupRecord; member: GroupMemberRecord; claimed: boolean } | null>("accept_invite", {
+          p_token_hash: createTokenHash(token),
+          p_user_id: context.user.id,
+          p_display_name: request.display_name,
+          p_claim_member_id: request.claim_member_id ?? null,
+          p_client_request_id: request.client_request_id,
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          throw message.includes(INVITE_EXPIRED) ? new Error(INVITE_EXPIRED) : error;
+        });
 
       if (!result) {
         throw new Error(INVITE_EXPIRED);
@@ -470,13 +528,10 @@ export function createSupabaseGroupRepository(client: SupabaseQueryClient): Grou
     },
 
     async recordClientRequest(groupId: string, client_request_id: string, resourceId: string) {
-      await client.exec(
-        `
-          insert into public.client_requests (group_id, client_request_id, resource_id)
-          values ($1, $2, $3)
-          on conflict (group_id, client_request_id) do nothing
-        `,
-        [groupId, client_request_id, resourceId],
+      await client.insert(
+        "client_requests",
+        { group_id: groupId, client_request_id, resource_id: resourceId },
+        { query: onConflict("group_id,client_request_id"), prefer: "resolution=ignore-duplicates" },
       );
     },
   };

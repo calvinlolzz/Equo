@@ -1,3 +1,4 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { UpdateMyAvatarRequest, UploadGroupImageRequest } from "../../contracts/schemas.js";
 import {
   imageExtensionFromDataUrl,
@@ -8,13 +9,12 @@ import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import {
   createSupabaseGroupRepository,
-  type SupabaseQueryClient,
   updateUserAvatar,
 } from "../repositories/supabaseGroupRepository.js";
 import { urlToStoragePath, type SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   storage: SupabaseStorageClient;
   verifier: GoogleTokenVerifier;
   idToken: string;

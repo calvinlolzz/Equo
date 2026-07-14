@@ -1,3 +1,4 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AdminAuditLogListRecord,
   AdminErrorListRecord,
@@ -10,98 +11,113 @@ import type {
   AdminUserDisabledResult,
   AdminUserListRecord,
 } from "./adminRepository.js";
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
 
 /**
- * Admin reads all go through admin_console_* Postgres functions (see
+ * Admin reads and writes all go through admin_console_* Postgres functions (see
  * supabase/migrations/20260711120000_admin_console_v2.sql) rather than table
- * selects: the queries are cross-table aggregates that PostgREST can't
- * express, and keeping them in SQL functions means the service-role-only
- * EXECUTE grant is the single enforcement point. The SQL strings below are
- * matched by name in supabaseQueryClient.ts and forwarded as RPC calls.
+ * access: the queries are cross-table aggregates PostgREST can't express, the
+ * writes have to be audited atomically alongside the change they record, and
+ * keeping them in SQL functions makes the service-role-only EXECUTE grant the
+ * single enforcement point.
  */
-export function createSupabaseAdminRepository(client: SupabaseQueryClient): AdminRepository {
+export function createSupabaseAdminRepository(client: PostgrestClient): AdminRepository {
   return {
     async findAdminRole(userId) {
-      const role = await client.maybeOne<string | null>(
-        `select public.admin_console_role($1)`,
-        [userId],
-      );
+      const role = await client.rpc<string | null>("admin_console_role", { p_user_id: userId });
       return role ?? null;
     },
 
-    async getOverview() {
-      return client.one<AdminOverviewRecord>(`select public.admin_console_overview()`, []);
+    getOverview() {
+      return client.rpc<AdminOverviewRecord>("admin_console_overview", {});
     },
 
-    async listUsers(search, limit, offset) {
-      return client.one<AdminUserListRecord>(
-        `select public.admin_console_users($1, $2, $3)`,
-        [search, limit, offset],
-      );
+    listUsers(search, limit, offset) {
+      return client.rpc<AdminUserListRecord>("admin_console_users", {
+        p_search: search,
+        p_limit: limit,
+        p_offset: offset,
+      });
     },
 
     async getUserDetail(userId) {
-      return client.maybeOne<AdminUserDetailRecord>(
-        `select public.admin_console_user_detail($1)`,
-        [userId],
-      );
+      const detail = await client.rpc<AdminUserDetailRecord | null>("admin_console_user_detail", {
+        p_user_id: userId,
+      });
+      return detail ?? null;
     },
 
-    async listGroups(search, limit, offset, filter) {
-      return client.one<AdminGroupListRecord>(
-        `select public.admin_console_groups($1, $2, $3, $4)`,
-        [search, limit, offset, filter],
-      );
+    listGroups(search, limit, offset, filter) {
+      return client.rpc<AdminGroupListRecord>("admin_console_groups", {
+        p_search: search,
+        p_limit: limit,
+        p_offset: offset,
+        p_filter: filter,
+      });
     },
 
     async setUserDisabled(actor, userId, disabled) {
-      return client.maybeOne<AdminUserDisabledResult>(
-        `select public.admin_console_set_user_disabled($1, $2, $3, $4)`,
-        [actor.id, actor.email, userId, disabled],
-      );
+      const result = await client.rpc<AdminUserDisabledResult | null>("admin_console_set_user_disabled", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_user_id: userId,
+        p_disabled: disabled,
+      });
+      return result ?? null;
     },
 
     async setGroupArchived(actor, groupId, archived) {
-      return client.maybeOne<AdminGroupStateResult>(
-        `select public.admin_console_set_group_archived($1, $2, $3, $4)`,
-        [actor.id, actor.email, groupId, archived],
-      );
+      const result = await client.rpc<AdminGroupStateResult | null>("admin_console_set_group_archived", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+        p_archived: archived,
+      });
+      return result ?? null;
     },
 
     async setGroupDeleted(actor, groupId, deleted) {
-      return client.maybeOne<AdminGroupStateResult>(
-        `select public.admin_console_set_group_deleted($1, $2, $3, $4)`,
-        [actor.id, actor.email, groupId, deleted],
-      );
+      const result = await client.rpc<AdminGroupStateResult | null>("admin_console_set_group_deleted", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+        p_deleted: deleted,
+      });
+      return result ?? null;
     },
 
-    async listAuditLogs(limit, offset) {
-      return client.one<AdminAuditLogListRecord>(
-        `select public.admin_console_audit_logs($1, $2)`,
-        [limit, offset],
-      );
+    listAuditLogs(limit, offset) {
+      return client.rpc<AdminAuditLogListRecord>("admin_console_audit_logs", {
+        p_limit: limit,
+        p_offset: offset,
+      });
     },
 
-    async listFeedback(limit, offset, status) {
-      return client.one<AdminFeedbackListRecord>(
-        `select public.admin_console_feedback($1, $2, $3)`,
-        [limit, offset, status],
-      );
+    listFeedback(limit, offset, status) {
+      return client.rpc<AdminFeedbackListRecord>("admin_console_feedback", {
+        p_limit: limit,
+        p_offset: offset,
+        p_status: status,
+      });
     },
 
     async setFeedbackStatus(actor, feedbackId, status) {
-      return client.maybeOne<{ id: string; status: string }>(
-        `select public.admin_console_set_feedback_status($1, $2, $3, $4)`,
-        [actor.id, actor.email, feedbackId, status],
+      const result = await client.rpc<{ id: string; status: string } | null>(
+        "admin_console_set_feedback_status",
+        {
+          p_actor: actor.id,
+          p_actor_email: actor.email,
+          p_feedback_id: feedbackId,
+          p_status: status,
+        },
       );
+      return result ?? null;
     },
 
-    async listErrors(limit, offset) {
-      return client.one<AdminErrorListRecord>(
-        `select public.admin_console_errors($1, $2)`,
-        [limit, offset],
-      );
+    listErrors(limit, offset) {
+      return client.rpc<AdminErrorListRecord>("admin_console_errors", {
+        p_limit: limit,
+        p_offset: offset,
+      });
     },
   };
 }

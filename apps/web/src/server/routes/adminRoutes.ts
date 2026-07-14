@@ -1,9 +1,7 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
-import {
-  type SupabaseQueryClient,
-} from "../repositories/supabaseGroupRepository.js";
 import {
   handleAdminListAuditLogs,
   handleAdminListErrors,
@@ -23,7 +21,7 @@ import {
 } from "../handlers/admin.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
 };

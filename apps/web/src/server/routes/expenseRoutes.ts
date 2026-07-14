@@ -1,3 +1,4 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { CreateExpenseRequest } from "../../contracts/schemas.js";
 import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
@@ -7,12 +8,11 @@ import { EXPENSE_NOT_FOUND, InvalidMemberError, NOT_A_GROUP_MEMBER } from "../re
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
 import {
   createSupabaseGroupRepository,
-  type SupabaseQueryClient,
 } from "../repositories/supabaseGroupRepository.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type RouteOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
   /**

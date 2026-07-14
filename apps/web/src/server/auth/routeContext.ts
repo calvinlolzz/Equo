@@ -1,13 +1,13 @@
+import type { PostgrestClient } from "../db/postgrestClient.js";
 import {
   findUserAuthState,
   upsertUserByGoogleIdentity,
-  type SupabaseQueryClient,
 } from "../repositories/supabaseGroupRepository.js";
 import { verifyGoogleIdToken, type GoogleTokenVerifier } from "./google.js";
 import { requireAuthenticatedUser, type AuthResult } from "./session.js";
 
 export type AuthContextOptions = {
-  client: SupabaseQueryClient;
+  client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
 };

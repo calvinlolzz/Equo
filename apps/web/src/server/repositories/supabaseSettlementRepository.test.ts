@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { SupabaseQueryClient } from "./supabaseGroupRepository.js";
+import { createFakePostgrest, type FakePostgrest } from "../db/fakePostgrest.js";
 import { createSupabaseSettlementRepository } from "./supabaseSettlementRepository.js";
 
 const context = {
@@ -11,154 +11,136 @@ const context = {
   },
 };
 
-function makeClient(settlementVersion = 3): SupabaseQueryClient & { calls: Array<{ method: string; sql: string; params: unknown[] }> } {
-  const calls: Array<{ method: string; sql: string; params: unknown[] }> = [];
+const balanceRows = [
+  { member_id: "member_alice", balance_minor: 600, currency: "TWD" },
+  { member_id: "member_bob", balance_minor: -600, currency: "TWD" },
+];
 
-  return {
-    calls,
-    async one(sql, params) {
-      calls.push({ method: "one", sql, params });
-
-      if (sql.includes("from public.group_members")) {
-        return { id: "member_alice" } as never;
-      }
-
-      if (sql.includes("from public.group_member_balances")) {
+function makeClient(settlementVersion = 3): FakePostgrest {
+  return createFakePostgrest({
+    select: (table) => {
+      if (table === "group_member_balances") return balanceRows;
+      if (table === "group_members") return [{ id: "member_alice" }];
+      if (table === "settlements") {
         return [
-          { memberId: "member_alice", balance: { amount_minor: 600, currency: "TWD" } },
-          { memberId: "member_bob", balance: { amount_minor: -600, currency: "TWD" } },
-        ] as never;
+          {
+            id: "settlement_1",
+            group_id: "group_1",
+            settlement_version: settlementVersion,
+            calculated_version: 2,
+            status: "draft",
+          },
+        ];
       }
-
-      // The settlement row and all of its transfers are written by one
-      // transactional RPC. It used to be an insert of the settlement followed by
-      // one insert per transfer, each its own PostgREST call - a failure partway
-      // through left a settlement carrying only some of its transfers, which
-      // under-settles the group with nothing to show that it did.
-      if (sql.includes("select public.create_settlement(")) {
+      return [];
+    },
+    update: () => [
+      {
+        id: "settlement_1",
+        group_id: "group_1",
+        settlement_version: settlementVersion,
+        calculated_version: 2,
+        status: "confirmed",
+      },
+    ],
+    rpc: (fn, args) => {
+      if (fn === "create_settlement") {
         return {
           id: "settlement_1",
-          group_id: params[0],
-          settlement_version: params[2],
-          calculated_version: params[3],
+          group_id: args.p_group_id,
+          settlement_version: args.p_settlement_version,
+          calculated_version: args.p_calculated_version,
           status: "draft",
-        } as never;
+        };
       }
-
-      if (sql.includes("select id, group_id, settlement_version")) {
-        return {
-          id: params[1],
-          group_id: params[0],
-          settlement_version: settlementVersion,
-          calculated_version: 2,
-          status: "draft",
-        } as never;
-      }
-
-      if (sql.includes("update public.settlements")) {
-        return {
-          id: params[1],
-          group_id: params[0],
-          settlement_version: params[2],
-          calculated_version: 2,
-          status: "confirmed",
-        } as never;
-      }
-
-      throw new Error(`Unexpected one query: ${sql}`);
+      throw new Error(`Unexpected rpc ${fn}`);
     },
-    async maybeOne(sql) {
-      if (sql.includes("from public.group_members")) {
-        return { id: "member_alice" } as never;
-      }
-
-      return null;
-    },
-    async exec(sql, params) {
-      calls.push({ method: "exec", sql, params });
-    },
-  };
-}
-
-/**
- * A client whose calls behave the way they do for a caller with no active
- * membership: the balances read comes back empty, and the create_settlement RPC
- * raises NOT_A_GROUP_MEMBER (the membership gate now lives in SQL, alongside the
- * write it guards, instead of in a separate query that raced it).
- */
-function makeNonMemberClient(): SupabaseQueryClient {
-  return {
-    async one(sql) {
-      if (sql.includes("from public.group_member_balances")) {
-        return [] as never;
-      }
-
-      throw new Error("NOT_A_GROUP_MEMBER");
-    },
-    async maybeOne() {
-      return null;
-    },
-    async exec() {},
-  };
+  });
 }
 
 describe("createSupabaseSettlementRepository", () => {
-  test("persists calculated settlement transfers", async () => {
+  test("listBalances maps the view's rows into the domain shape", async () => {
     const client = makeClient();
-    const repository = createSupabaseSettlementRepository(client);
 
-    const result = await repository.calculateCurrentSettlement(context, "group_1");
+    await expect(createSupabaseSettlementRepository(client).listBalances("group_1")).resolves.toEqual([
+      { memberId: "member_alice", balance: { amount_minor: 600, currency: "TWD" } },
+      { memberId: "member_bob", balance: { amount_minor: -600, currency: "TWD" } },
+    ]);
+  });
+
+  test("writes the settlement and ALL of its transfers in one transactional call", async () => {
+    const client = makeClient();
+
+    const result = await createSupabaseSettlementRepository(client).calculateCurrentSettlement(
+      context,
+      "group_1",
+    );
 
     expect(result.transfers).toEqual([
-      {
-        fromMemberId: "member_bob",
-        toMemberId: "member_alice",
-        amount: { amount_minor: 600, currency: "TWD" },
-      },
+      { fromMemberId: "member_bob", toMemberId: "member_alice", amount: { amount_minor: 600, currency: "TWD" } },
     ]);
-    // One call carries the settlement AND its transfers.
-    const create = client.calls.find((call) => call.sql.includes("select public.create_settlement("));
-    expect(create?.params[4]).toEqual([
+    // It used to be an insert of the settlement followed by one insert per
+    // transfer, each its own call - a partial failure produced a settlement that
+    // under-settles the group, with nothing to show that it had.
+    expect(client.rpcCall("create_settlement")?.args.p_transfers).toEqual([
       { from_member_id: "member_bob", to_member_id: "member_alice", amount_minor: 600, currency: "TWD" },
     ]);
-    expect(client.calls.some((call) => call.sql.includes("insert into public.settlement_transfers"))).toBe(false);
+    expect(client.calls.some((call) => "table" in call && call.table === "settlement_transfers")).toBe(false);
   });
 
-  test("stores settlement_version inside Postgres integer range", async () => {
+  test("settlement_version stays inside the Postgres integer range", async () => {
     const client = makeClient();
-    const repository = createSupabaseSettlementRepository(client);
 
-    await repository.calculateCurrentSettlement(context, "group_1");
+    await createSupabaseSettlementRepository(client).calculateCurrentSettlement(context, "group_1");
 
-    const create = client.calls.find((call) => call.sql.includes("select public.create_settlement("));
-    expect(create?.params[2]).toBeLessThanOrEqual(2_147_483_647);
+    // Seconds, not milliseconds: Date.now() overflows int4.
+    expect(client.rpcCall("create_settlement")?.args.p_settlement_version).toBeLessThanOrEqual(2_147_483_647);
   });
 
-  test("rejects confirmation when settlement_version differs", async () => {
-    const client = makeClient(4);
-    const repository = createSupabaseSettlementRepository(client);
+  test("rejects calculateCurrentSettlement when the caller has no active membership", async () => {
+    const client = createFakePostgrest({
+      select: () => [],
+      rpc: () => {
+        throw new Error("NOT_A_GROUP_MEMBER");
+      },
+    });
 
     await expect(
-      repository.confirmSettlement(context, "group_1", "settlement_1", {
+      createSupabaseSettlementRepository(client).calculateCurrentSettlement(context, "group_1"),
+    ).rejects.toThrow("NOT_A_GROUP_MEMBER");
+  });
+
+  test("rejects confirmation when the settlement_version differs (someone else confirmed first)", async () => {
+    const client = makeClient(4);
+
+    await expect(
+      createSupabaseSettlementRepository(client).confirmSettlement(context, "group_1", "settlement_1", {
         client_request_id: "req_settle",
         settlement_version: 3,
       }),
     ).rejects.toThrow("SETTLEMENT_VERSION_CONFLICT");
   });
 
-  test("rejects calculateCurrentSettlement when the caller has no active membership", async () => {
-    const repository = createSupabaseSettlementRepository(makeNonMemberClient());
+  test("confirm carries the version into the write filter, not just the pre-check", async () => {
+    const client = makeClient(3);
 
-    await expect(repository.calculateCurrentSettlement(context, "group_1")).rejects.toThrow(
-      "NOT_A_GROUP_MEMBER",
-    );
+    await createSupabaseSettlementRepository(client).confirmSettlement(context, "group_1", "settlement_1", {
+      client_request_id: "req_settle",
+      settlement_version: 3,
+    });
+
+    // The read-then-write above is not atomic on its own; the version in the
+    // PATCH filter is what makes a concurrent confirm match nothing.
+    const write = client.calls.find((call) => call.op === "update") as { query: string; body: unknown };
+    expect(write.query).toContain("settlement_version=eq.3");
+    expect(write.body).toMatchObject({ status: "confirmed" });
   });
 
   test("rejects confirmSettlement when the caller has no active membership", async () => {
-    const repository = createSupabaseSettlementRepository(makeNonMemberClient());
+    const client = createFakePostgrest({ select: () => [] });
 
     await expect(
-      repository.confirmSettlement(context, "group_1", "settlement_1", {
+      createSupabaseSettlementRepository(client).confirmSettlement(context, "group_1", "settlement_1", {
         client_request_id: "req_settle",
         settlement_version: 3,
       }),
