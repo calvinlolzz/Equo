@@ -47,6 +47,11 @@ export function AnalysisPanel({
   onSelectDate,
   onSettleTransfer,
 }: AnalysisPanelProps) {
+  // The 近 8 日支出 chart looks empty with only a day or two of data, so only
+  // show it once there's enough spread to be worth a chart.
+  const spendTotalsByDay = new Map(spendByDay.map((entry) => [entry.day, entry.totalMinor]));
+  const daysWithSpend = dateChips.filter((day) => (spendTotalsByDay.get(day.key) ?? 0) > 0).length;
+
   return (
     <>
       <div className="dialog-header">
@@ -67,17 +72,19 @@ export function AnalysisPanel({
           <strong>{formatAmount(debtAmountMinor, currency)}</strong>
         </div>
       </div>
-      <div className="dialog-section-list">
-        <span className="dialog-list-title">{text.spendChartTitle}</span>
-        <SpendBarChart
-          days={dateChips}
-          spendByDay={spendByDay}
-          currency={currency}
-          selectedKey={selectedDateKey}
-          onSelect={onSelectDate}
-          emptyText={text.spendChartEmpty}
-        />
-      </div>
+      {daysWithSpend >= 2 && (
+        <div className="dialog-section-list">
+          <span className="dialog-list-title">{text.spendChartTitle}</span>
+          <SpendBarChart
+            days={dateChips}
+            spendByDay={spendByDay}
+            currency={currency}
+            selectedKey={selectedDateKey}
+            onSelect={onSelectDate}
+            emptyText={text.spendChartEmpty}
+          />
+        </div>
+      )}
       {spendByCategory.length > 0 && (
         <div className="dialog-section-list">
           <span className="dialog-list-title">{"分類佔比"}</span>
