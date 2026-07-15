@@ -54,9 +54,12 @@ export function stubBrowser(): void {
 }
 
 /**
- * A fetch that answers from a route table. An unlisted route is a test failure,
- * not a silent 404 - a request the test did not anticipate is exactly the kind of
- * thing worth being told about.
+ * A fetch that answers from a route table. An unlisted route throws - but the app
+ * catches its own refresh failures (refreshGroups/refreshGroupDetail both .catch
+ * into a toast), so a stray route surfaces as a 同步失敗 toast, not a failed test
+ * run. It is always recorded in `calls` (pushed before the throw), so assert on
+ * `calls` when you need to prove a request did or did not happen; do not rely on
+ * an unlisted route to fail the test for you.
  */
 export function fakeApi(routes: ApiRoute[]): FakeApi {
   const table = new Map<string, { status: number; body: unknown }>();

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { UI_TEXT } from "./uiText";
@@ -80,7 +80,7 @@ describe("a signed-in user", () => {
     expect(api.calls).toContain("GET /groups/group_1");
   });
 
-  test("a group in the URL is opened directly, without bouncing through home", async () => {
+  test("opens the group named in the URL and loads its detail", async () => {
     signIn();
     window.history.replaceState(null, "", "/group/group_1");
     fakeApi([
@@ -322,21 +322,29 @@ describe("the Back button", () => {
 });
 
 describe("the toast", () => {
-  test("a failed refresh is reported to the user rather than swallowed", async () => {
+  test("a non-auth failure is surfaced, and does NOT log the user out", async () => {
+    // The regression guarded here: a transient 500 must not be mistaken for
+    // session expiry. Only UNAUTHENTICATED/ACCOUNT_DISABLED sign the user out
+    // (see the two tests above that assert exactly that); everything else stays
+    // signed in and shows a sync-failed toast.
+    //
+    // The detail load fails from the start, deterministically - the previous
+    // version raced the initial fetch against an api.set() after landing, and
+    // the assertion was scoped inside the toast element, where the login text can
+    // never appear, so it could not have caught a logout regression at all.
     signIn();
-    const api = fakeApi([
+    fakeApi([
       { route: "GET /groups", body: { groups: [group()] } },
-      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "GET /groups/group_1", status: 500, body: { error: { code: "INTERNAL_ERROR", message: "boom" } } },
     ]);
 
     renderApp();
-    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
 
-    // The next detail load fails with something that is NOT an auth error, so the
-    // app must stay signed in and surface it instead of logging the user out.
-    api.set("GET /groups/group_1", { error: { code: "INTERNAL_ERROR", message: "boom" } }, 500);
-
-    const status = await screen.findByRole("status");
-    expect(within(status).queryByText(UI_TEXT.login.googleLogin)).toBeNull();
+    // The sync-failed toast appears...
+    expect(await screen.findByText(new RegExp(UI_TEXT.app.cloudSyncFailedPrefix))).toBeTruthy();
+    // ...and the user is still signed in: no login wall, session intact. If a 500
+    // were treated as expiry, both of these would flip.
+    expect(screen.queryByText(UI_TEXT.login.googleLogin)).toBeNull();
+    expect(window.localStorage.getItem(SESSION_KEY)).toContain("user_alice");
   });
 });
