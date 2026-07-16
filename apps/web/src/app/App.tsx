@@ -18,26 +18,23 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { createActionGuard } from "./actionGuard";
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
-import { createApiClient, type ExpenseSummary } from "./apiClient";
+import { createApiClient } from "./apiClient";
 import { dateKey, formatActivityTime, lastEightDays } from "./appDates";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { ArchivedListPanel } from "./ArchivedListPanel";
+import { describeCloudActionError } from "./describeCloudActionError";
 import { MemberListPanel } from "./MemberListPanel";
 import { RecordsPanel } from "./RecordsPanel";
-import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
 import { GroupSideNav } from "./GroupSideNav";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
-import { ExpenseComposerSheet, type ExpenseDraft } from "./ExpenseComposerSheet";
+import { ExpenseComposerSheet } from "./ExpenseComposerSheet";
 import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
-import { downscaleImageFileToDataUrl } from "./expenseImage";
-import { expenseToDraft } from "./expenseUndo";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { MemberAvatar } from "./MemberAvatar";
@@ -47,37 +44,23 @@ import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { resolveRootLanding } from "./resolveRootLanding";
-import type { Activity, Expense, Group, Member, StartMode } from "./appTypes";
+import type { DialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { saveSession, type StoredSession } from "./sessionStore";
+import { useActionGuard } from "./useActionGuard";
+import { useExpenseComposer } from "./useExpenseComposer";
+import { useGroupMutations } from "./useGroupMutations";
 import { useIsMobileLayout } from "./useIsMobileLayout";
+import { useInviteFlow } from "./useInviteFlow";
+import { useMemberMutations } from "./useMemberMutations";
 import { useThemeMode } from "./useThemeMode";
 import { useArchivedGroups } from "./useArchivedGroups";
 import { useAuthSession } from "./useAuthSession";
 import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
 import { useToast } from "./useToast";
+import { useCloudActivities } from "./useCloudActivities";
 import { UI_TEXT } from "./uiText";
-type DialogMode =
-  | "createGroup"
-  | "editGroup"
-  | "inviteMembers"
-  | "inviteInput"
-  | "currencyPanel"
-  | "recordsPanel"
-  | "analysisPanel"
-  | "memberActions"
-  | "memberList"
-  | "virtualMember"
-  | "archivedList"
-  | "archive"
-  | "delete"
-  | "profile"
-  | "expenseDetail"
-  | null;
-
-const CLOUD_ACTIVITIES_KEY = "equo.clean.cloud_activities";
-const PENDING_INVITE_KEY = "equo.clean.pending_invite";
 
 const text = UI_TEXT.app;
 
@@ -112,34 +95,6 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-/**
- * Group rename/cover, archive, unarchive, and delete are owner-only on the
- * backend (see server/handlers/groups.ts's requireGroupOwner). The frontend
- * already hides the triggers for non-owners, but a stale UI state (e.g. a
- * cached member list, or ownership changing in another tab) can still let a
- * non-owner reach the action - map that 403 to a clear, specific toast
- * instead of the generic "sync failed: <message>" wording.
- */
-function describeCloudActionError(error: unknown): string {
-  const code = (error as { code?: string } | null)?.code;
-  if (code === "FORBIDDEN") {
-    return text.ownerOnlyAction;
-  }
-  return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
-}
-
-function getInviteTokenFromUrl(): string {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("invite") ?? "";
-}
-
-function clearInviteTokenFromUrl() {
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has("invite")) return;
-  url.searchParams.delete("invite");
-  window.history.replaceState(null, document.title, `${url.pathname}${url.search}${url.hash}`);
-}
-
 function formatTime(value: string) {
   const date = new Date(value);
   return date.toLocaleTimeString("zh-TW", { hour: "numeric", minute: "2-digit", second: "2-digit" });
@@ -150,25 +105,17 @@ export function App() {
   const { activeGroupId, openGroup, closeGroup } = useGroupRoute();
   const [startMode, setStartMode] = useState<StartMode>("create");
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
-  const [groupName, setGroupName] = useState<string>("");
-  const [virtualMemberName, setVirtualMemberName] = useState("");
-  const [renamingMemberId, setRenamingMemberId] = useState("");
-  const [renameMemberValue, setRenameMemberValue] = useState("");
-  const [confirmingRemoveMemberId, setConfirmingRemoveMemberId] = useState("");
   const [dialog, setDialog] = useState<DialogMode>(null);
   // Swipe-to-dismiss for the shared bottom-sheet dialog shell (records /
   // analysis / members / etc.). Kept mounted across open/close cycles.
   const dialogSwipe = useSwipeToDismiss(() => setDialog(null));
-  const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
   const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
-  // pendingAction gates every mutation control's disabled/busy label. The
-  // guard (see actionGuard.ts) is the synchronous double-submit check -
-  // begin()/end() mutate a plain field, not React state, so two clicks in
-  // the same tick can't both pass; pendingAction (state) just re-renders the
-  // button to show the busy label.
-  const actionGuardRef = useRef(createActionGuard());
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  // The double-submit guard for every mutation control (see useActionGuard /
+  // actionGuard.ts): pendingAction drives the busy label, actionGuardRef is the
+  // synchronous gate, and the auto-sync loop reads the ref to skip refreshes
+  // while a mutation is in flight.
+  const { pendingAction, actionGuardRef, beginAction, endAction } = useActionGuard();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
@@ -180,19 +127,8 @@ export function App() {
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
   const settingsDrawerSwipe = useSwipeToDismissX("right", () => setSettingsDrawerOpen(false));
   const isMobileLayout = useIsMobileLayout();
-  const [inviteInputValue, setInviteInputValue] = useState("");
-  const [inviteInputError, setInviteInputError] = useState("");
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
-  const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [cloudInviteToken, setCloudInviteToken] = useState("");
-  const [cloudInviteLoading, setCloudInviteLoading] = useState(false);
-  const [cloudActivities, setCloudActivities] = useState<Record<string, Activity[]>>(() =>
-    readJson<Record<string, Activity[]>>(CLOUD_ACTIVITIES_KEY, {}),
-  );
-  const [groupCoverDataUrl, setGroupCoverDataUrl] = useState<string>("");
-  const [groupCoverUrl, setGroupCoverUrl] = useState<string>("");
-  const cloudInviteGroupIdRef = useRef("");
+  const { cloudActivities, recordCloudActivity } = useCloudActivities();
 
   const {
     session,
@@ -248,13 +184,111 @@ export function App() {
   const activities = cloudActivities[activeGroupId] ?? [];
   const loadingMoreExpenses = activeGroupId ? Boolean(cloudState?.loadingMoreExpenseIds[activeGroupId]) : false;
 
-  function recordCloudActivity(groupId: string, activityText: string) {
-    const activity: Activity = { id: crypto.randomUUID(), text: activityText, createdAt: new Date().toISOString() };
-    setCloudActivities((current) => ({
-      ...current,
-      [groupId]: [activity, ...(current[groupId] ?? [])].slice(0, 8),
-    }));
+  const {
+    expenseComposerOpen,
+    editingExpense,
+    selectedExpenseId,
+    setSelectedExpenseId,
+    openExpenseComposer,
+    openExpenseEdit,
+    closeExpenseComposer,
+    openExpenseDetail,
+    handleExpenseDraftSubmit,
+    deleteExpense,
+    handleLoadMoreExpenses,
+    handleExportCsv,
+  } = useExpenseComposer({
+    activeGroup,
+    cloudStore,
+    members,
+    session,
+    showToast,
+    recordCloudActivity,
+    beginAction,
+    endAction,
+    setDialog,
+    setBusy,
+  });
+
+  const {
+    groupName,
+    setGroupName,
+    groupCoverDataUrl,
+    setGroupCoverDataUrl,
+    groupCoverUrl,
+    createGroup,
+    openCreateGroupDialog,
+    openEditGroup,
+    handleGroupCoverPick,
+    updateActiveGroup,
+    openArchivedGroups,
+    archiveActiveGroup,
+    deleteActiveGroup,
+  } = useGroupMutations({
+    activeGroup,
+    cloudStore,
+    showToast,
+    recordCloudActivity,
+    beginAction,
+    endAction,
+    setDialog,
+    setBusy,
+    openGroup,
+    closeGroup,
+    loadArchivedGroups,
+  });
+
+  const {
+    virtualMemberName,
+    setVirtualMemberName,
+    renamingMemberId,
+    renameMemberValue,
+    setRenameMemberValue,
+    confirmingRemoveMemberId,
+    resetMemberManagement,
+    addVirtualMember,
+    startRenameMember,
+    cancelRenameMember,
+    submitRenameMember,
+    removeMember,
+  } = useMemberMutations({
+    activeGroup,
+    cloudStore,
+    showToast,
+    recordCloudActivity,
+    beginAction,
+    endAction,
+    setDialog,
+  });
+
+  // Both mobile drawers close together whenever a dialog takes over the screen.
+  function closeDrawers() {
+    setGroupDrawerOpen(false);
+    setSettingsDrawerOpen(false);
   }
+
+  const {
+    cloudInviteToken,
+    cloudInviteLoading,
+    inviteInputValue,
+    setInviteInputValue,
+    inviteInputError,
+    setInviteInputError,
+    openInviteMembers,
+    copyInviteText,
+    submitInviteInput,
+  } = useInviteFlow({
+    activeGroup,
+    cloudStore,
+    session,
+    profileName: profile.name,
+    showToast,
+    beginAction,
+    endAction,
+    setDialog,
+    openGroup,
+    closeDrawers,
+  });
 
   // Server-authoritative aggregates (get_group_detail v3 - see
   // detailAggregates.ts). expenseCount counts every non-deleted entry
@@ -342,18 +376,6 @@ export function App() {
   const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
   const canLoadMoreExpenses = expenses.length < aggregates.expenseCount;
 
-  async function handleLoadMoreExpenses() {
-    if (!activeGroup || !cloudStore) return;
-    if (!beginAction("loadMoreExpenses")) return;
-    try {
-      await cloudStore.loadMoreExpenses(activeGroup.id);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      endAction();
-    }
-  }
-
   async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
     if (!session) return;
     try {
@@ -366,46 +388,7 @@ export function App() {
     }
   }
 
-  async function handleExportCsv() {
-    if (!activeGroup || !session) return;
-    if (!beginAction("exportCsv")) return;
-    try {
-      // The loaded window may be paginated - walk listExpensesPage until a
-      // short page so the export always covers the group's full history.
-      const client = createApiClient();
-      const pageLimit = 100;
-      const all: ExpenseSummary[] = [];
-      let cursor: { beforeDate?: string; beforeCreatedAt?: string } = {};
-
-      for (;;) {
-        const page = await client.listExpensesPage(activeGroup.id, { limit: pageLimit, ...cursor });
-        all.push(...page.expenses);
-        if (page.expenses.length < pageLimit) break;
-        const last = page.expenses[page.expenses.length - 1];
-        if (!last.expense_date || !last.created_at) break;
-        cursor = { beforeDate: last.expense_date, beforeCreatedAt: last.created_at };
-      }
-
-      const memberName = (memberId: string | null | undefined) =>
-        members.find((member) => member.id === memberId)?.name ?? "";
-      const csv = buildExpenseCsv(all, memberName);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = csvFileName(activeGroup.name, dateKey(new Date().toISOString()));
-      anchor.click();
-      URL.revokeObjectURL(url);
-      showToast(text.exportCsvDone);
-    } catch {
-      showToast(text.exportCsvFailed);
-    } finally {
-      endAction();
-    }
-  }
-
   useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
-  useEffect(() => writeJson(CLOUD_ACTIVITIES_KEY, cloudActivities), [cloudActivities]);
 
   useEffect(() => {
     if (!session) return;
@@ -482,142 +465,9 @@ export function App() {
     return () => autoSync.stop();
   }, [cloudStore]);
 
-  // Stash any ?invite=TOKEN before the OAuth redirect (or immediately, if
-  // already logged in) so it survives the round-trip and query-param loss.
-  useEffect(() => {
-    const token = getInviteTokenFromUrl();
-    if (!token) return;
-    clearInviteTokenFromUrl();
-    window.sessionStorage.setItem(PENDING_INVITE_KEY, token);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!session) return;
-    const stashedInvite = window.sessionStorage.getItem(PENDING_INVITE_KEY);
-    if (!stashedInvite) return;
-    window.sessionStorage.removeItem(PENDING_INVITE_KEY);
-    setInviteInputValue(stashedInvite);
-    setDialog("inviteInput");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
-
-  /**
-   * Synchronous double-submit guard for mutation controls: returns false
-   * (does nothing else) if an action is already in flight, so callers can
-   * bail out before doing any work. See actionGuard.ts for why this can't
-   * just be a useState flag.
-   */
-  function beginAction(key: string): boolean {
-    if (!actionGuardRef.current.begin(key)) return false;
-    setPendingAction(key);
-    return true;
-  }
-
-  function endAction() {
-    actionGuardRef.current.end();
-    setPendingAction(null);
-  }
-
   function selectGroup(group: Group) {
     openGroup(group.id);
     setGroupDrawerOpen(false);
-  }
-
-  async function createGroup() {
-    if (!cloudStore) return;
-    // Require a typed, non-empty name - the template no longer supplies a
-    // fallback, so an empty field must not silently create a group named
-    // after the template placeholder.
-    const name = groupName.trim();
-    if (!name) return;
-    // Synchronous guard checked before anything else, including the
-    // cloudStore null-check above having already run: two fast clicks both
-    // enter this function, but only the first passes beginAction.
-    if (!beginAction("createGroup")) return;
-    const pickedCover = groupCoverDataUrl;
-
-    try {
-      const group = await cloudStore.createGroup({ name, currency: "TWD" });
-      openGroup(group.id, "replace");
-      setDialog(null);
-      setGroupName("");
-      setGroupCoverDataUrl("");
-      setGroupCoverUrl("");
-      showToast(`${text.createGroup}: ${name}`);
-
-      if (pickedCover) {
-        try {
-          const uploadedUrl = await cloudStore.uploadGroupImage(group.id, "cover", pickedCover);
-          await cloudStore.updateGroupCover(group.id, name, uploadedUrl);
-        } catch {
-          showToast(text.coverUploadFailedAfterCreate);
-        }
-      }
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      endAction();
-    }
-  }
-
-  function openCreateGroupDialog() {
-    // Start from a clean slate so a name left over from a prior edit (or a
-    // previous create) never leaks into the create form.
-    setGroupName("");
-    setGroupCoverDataUrl("");
-    setGroupCoverUrl("");
-    setDialog("createGroup");
-  }
-
-  function openEditGroup() {
-    if (!activeGroup) return;
-    setGroupName(activeGroup.name);
-    setGroupCoverDataUrl("");
-    setGroupCoverUrl(activeGroup.coverImageUrl ?? "");
-    setDialog("editGroup");
-  }
-
-  async function handleGroupCoverPick(file: File | null) {
-    if (!file) return;
-    try {
-      const dataUrl = await downscaleImageFileToDataUrl(file);
-      setGroupCoverDataUrl(dataUrl);
-    } catch {
-      showToast(text.photoError);
-    }
-  }
-
-  async function updateActiveGroup() {
-    if (!activeGroup || !cloudStore) return;
-    const name = groupName.trim();
-    if (!name) return;
-    if (!beginAction("editGroup")) return;
-
-    setBusy(true);
-    try {
-      if (groupCoverDataUrl) {
-        const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "cover", groupCoverDataUrl);
-        await cloudStore.updateGroupCover(activeGroup.id, name, uploadedUrl);
-      } else {
-        await cloudStore.renameGroup(activeGroup.id, name);
-      }
-      recordCloudActivity(activeGroup.id, `${text.editGroup}: ${name}`);
-      setDialog(null);
-      setGroupCoverDataUrl("");
-      showToast(`${text.editGroup}: ${name}`);
-    } catch (error) {
-      showToast(describeCloudActionError(error));
-    } finally {
-      setBusy(false);
-      endAction();
-    }
-  }
-
-  function openArchivedGroups() {
-    if (!cloudStore) return;
-    setDialog("archivedList");
-    void loadArchivedGroups();
   }
 
   function updateActiveCurrency(currency: string) {
@@ -630,42 +480,15 @@ export function App() {
     showToast(text.cloudCurrencyUnsupported);
   }
 
-  async function openInviteMembers() {
-    if (!activeGroup || !cloudStore) return;
-    setGroupDrawerOpen(false);
-    setSettingsDrawerOpen(false);
-    setDialog("inviteMembers");
-
-    if (cloudInviteGroupIdRef.current === activeGroup.id && cloudInviteToken) return;
-    setCloudInviteLoading(true);
-    try {
-      const token = await cloudStore.createInvite(activeGroup.id);
-      cloudInviteGroupIdRef.current = activeGroup.id;
-      setCloudInviteToken(token);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      setCloudInviteLoading(false);
-    }
-  }
-
-  function resetMemberManagement() {
-    setRenamingMemberId("");
-    setRenameMemberValue("");
-    setConfirmingRemoveMemberId("");
-  }
-
   function openMemberList() {
     if (!activeGroup) return;
-    setGroupDrawerOpen(false);
-    setSettingsDrawerOpen(false);
+    closeDrawers();
     resetMemberManagement();
     setDialog("memberList");
   }
 
   function openProfileDialog() {
-    setGroupDrawerOpen(false);
-    setSettingsDrawerOpen(false);
+    closeDrawers();
     setDialog("profile");
   }
 
@@ -725,19 +548,8 @@ export function App() {
     showToast(`${text.profile}: ${normalized.name}`);
   }
 
-  async function copyInviteText(value: string) {
-    if (!value) return;
-    try {
-      await navigator.clipboard?.writeText(value);
-      showToast("\u5df2\u8907\u88fd\u5230\u526a\u8cbc\u7c3f\u3002");
-    } catch {
-      showToast("\u526a\u8cbc\u7c3f\u7121\u6cd5\u4f7f\u7528\uff0c\u8acb\u624b\u52d5\u8907\u88fd\u3002");
-    }
-  }
-
   function handleSideNavClick(id: string) {
-    setGroupDrawerOpen(false);
-    setSettingsDrawerOpen(false);
+    closeDrawers();
     if (id === "members") {
       resetMemberManagement();
       setDialog("memberList");
@@ -756,192 +568,6 @@ export function App() {
       return;
     }
     showToast(text.groupHome);
-  }
-
-  async function addVirtualMember() {
-    if (!activeGroup || !cloudStore || !virtualMemberName.trim()) return;
-    if (!beginAction("addVirtualMember")) return;
-    const name = virtualMemberName.trim();
-
-    try {
-      await cloudStore.addVirtualMember(activeGroup.id, name);
-      recordCloudActivity(activeGroup.id, `${text.addVirtualMember}: ${name}`);
-      setVirtualMemberName("");
-      setDialog(null);
-      showToast(`${text.addVirtualMember}: ${name}`);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      endAction();
-    }
-  }
-
-  function startRenameMember(member: Member) {
-    setConfirmingRemoveMemberId("");
-    setRenamingMemberId(member.id);
-    setRenameMemberValue(member.name);
-  }
-
-  function cancelRenameMember() {
-    setRenamingMemberId("");
-    setRenameMemberValue("");
-  }
-
-  async function submitRenameMember(member: Member) {
-    if (!activeGroup || !cloudStore) return;
-    const name = renameMemberValue.trim();
-    if (!name) return;
-    if (name === member.name) {
-      cancelRenameMember();
-      return;
-    }
-    if (!beginAction(`renameMember:${member.id}`)) return;
-
-    try {
-      await cloudStore.renameMember(activeGroup.id, member.id, name);
-      recordCloudActivity(activeGroup.id, `${text.renameMember}: ${member.name} → ${name}`);
-      cancelRenameMember();
-      showToast(text.memberRenamed);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      endAction();
-    }
-  }
-
-  async function removeMember(member: Member) {
-    if (!activeGroup || !cloudStore) return;
-    if (confirmingRemoveMemberId !== member.id) {
-      setRenamingMemberId("");
-      setRenameMemberValue("");
-      setConfirmingRemoveMemberId(member.id);
-      return;
-    }
-    if (!beginAction(`removeMember:${member.id}`)) return;
-
-    try {
-      await cloudStore.removeMember(activeGroup.id, member.id);
-      recordCloudActivity(activeGroup.id, `${text.removeMember}: ${member.name}`);
-      setConfirmingRemoveMemberId("");
-      showToast(text.memberRemoved);
-    } catch (error) {
-      const code = (error as { code?: string }).code;
-      setConfirmingRemoveMemberId("");
-      showToast(
-        code === "MEMBER_HAS_BALANCE"
-          ? text.memberHasBalance
-          : `${text.cloudSyncFailedPrefix}${(error as Error).message}`,
-      );
-    } finally {
-      endAction();
-    }
-  }
-
-  async function handleExpenseDraftSubmit(draft: ExpenseDraft) {
-    if (!activeGroup || !cloudStore) return;
-    const editingId = editingExpense?.id;
-
-    let finalDraft = draft;
-    if (draft.imageDataUrl) {
-      setBusy(true);
-      try {
-        const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "expense", draft.imageDataUrl);
-        finalDraft = { ...draft, imageUrl: uploadedUrl, imageDataUrl: undefined };
-      } catch {
-        setBusy(false);
-        showToast(text.imageUploadFailed);
-        return;
-      }
-      setBusy(false);
-    }
-
-    try {
-      if (editingId) {
-        await cloudStore.editExpense(activeGroup.id, editingId, finalDraft, activeGroup.currency);
-      } else {
-        await cloudStore.addExpense(activeGroup.id, finalDraft, activeGroup.currency);
-      }
-      recordCloudActivity(
-        activeGroup.id,
-        editingId
-          ? `${text.editExpense}: ${draft.title}`
-          : `${text.addExpense}: ${draft.title} (${formatAmount(draft.amountMinor, activeGroup.currency)})`,
-      );
-      setExpenseComposerOpen(false);
-      setEditingExpense(null);
-      showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    }
-  }
-
-  function openExpenseDetail(expenseId: string) {
-    setSelectedExpenseId(expenseId);
-    setDialog("expenseDetail");
-  }
-
-  function openExpenseEdit(expense: Expense) {
-    setDialog(null);
-    setSelectedExpenseId("");
-    setEditingExpense(expense);
-    setExpenseComposerOpen(true);
-  }
-
-  async function deleteExpense(expense: Expense) {
-    if (!activeGroup || !cloudStore) return;
-    // Capture the target group up front so undo re-creates the expense in the
-    // right group even if the user navigates away before tapping 復原.
-    const groupId = activeGroup.id;
-    const groupCurrency = activeGroup.currency;
-
-    try {
-      await cloudStore.deleteExpense(groupId, expense.id);
-      recordCloudActivity(groupId, `${text.deleteExpense}: ${expense.title}`);
-      setDialog(null);
-      setSelectedExpenseId("");
-      showToast(`${text.deleteExpense}: ${expense.title}`, {
-        label: text.undo,
-        onAction: () => restoreExpense(groupId, groupCurrency, expense),
-      });
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    }
-  }
-
-  // Re-create a just-deleted expense from its captured snapshot. The recreated
-  // expense gets a new id (a delete is not reversible server-side) - that is
-  // acceptable; the split, payers, note, image and timestamp are preserved.
-  async function restoreExpense(groupId: string, groupCurrency: string, expense: Expense) {
-    if (!cloudStore) return;
-    if (!beginAction("undoDeleteExpense")) return;
-
-    try {
-      await cloudStore.addExpense(groupId, expenseToDraft(expense), groupCurrency);
-      recordCloudActivity(groupId, `${text.undoRestored}: ${expense.title}`);
-      showToast(text.undoRestored);
-    } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
-    } finally {
-      endAction();
-    }
-  }
-
-  async function submitInviteInput() {
-    if (!inviteInputValue.trim() || !cloudStore) return;
-    if (!beginAction("joinGroup")) return;
-
-    try {
-      const group = await cloudStore.acceptInvite(inviteInputValue.trim(), profile.name);
-      setInviteInputValue("");
-      setInviteInputError("");
-      setDialog(null);
-      showToast(`${text.cloudInviteJoinedPrefix}${group.name}`);
-      openGroup(group.id);
-    } catch (error) {
-      setInviteInputError((error as Error).message || text.inviteNotFound);
-    } finally {
-      endAction();
-    }
   }
 
   async function settleTransfer(fromId: string, toId: string, amountMinor: number) {
@@ -969,39 +595,6 @@ export function App() {
   function settleDebt() {
     if (!debt) return;
     settleTransfer(debt.from.id, debt.to.id, debt.amountMinor);
-  }
-
-  async function archiveActiveGroup() {
-    if (!activeGroup || !cloudStore) return;
-    if (!beginAction("archiveGroup")) return;
-    setBusy(true);
-
-    try {
-      await cloudStore.archiveGroup(activeGroup.id);
-      closeGroup();
-      setDialog(null);
-      showToast(`${text.archiveGroup}: ${activeGroup.name}`);
-    } catch (error) {
-      showToast(describeCloudActionError(error));
-    }
-    setBusy(false);
-    endAction();
-  }
-
-  async function deleteActiveGroup() {
-    if (!activeGroup || !cloudStore) return;
-    if (!beginAction("deleteGroup")) return;
-
-    try {
-      await cloudStore.deleteGroup(activeGroup.id);
-      closeGroup();
-      setDialog(null);
-      showToast(`${text.deleteGroup}: ${activeGroup.name}`);
-    } catch (error) {
-      showToast(describeCloudActionError(error));
-    } finally {
-      endAction();
-    }
   }
 
   function openHome() {
@@ -1436,10 +1029,7 @@ export function App() {
             aria-label={text.addExpense}
             inert={isMobileLayout}
             aria-hidden={isMobileLayout || undefined}
-            onClick={() => {
-              setEditingExpense(null);
-              setExpenseComposerOpen(true);
-            }}
+            onClick={openExpenseComposer}
           >
             <Plus aria-hidden="true" size={34} />
           </button>
@@ -1451,7 +1041,7 @@ export function App() {
               aria-label={text.navHome}
               onClick={() => {
                 setDialog(null);
-                setExpenseComposerOpen(false);
+                closeExpenseComposer();
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             >
@@ -1466,10 +1056,7 @@ export function App() {
               className="mobile-tab-center"
               type="button"
               aria-label={text.addExpense}
-              onClick={() => {
-                setEditingExpense(null);
-                setExpenseComposerOpen(true);
-              }}
+              onClick={openExpenseComposer}
             >
               <Plus aria-hidden="true" size={26} />
             </button>
@@ -1491,10 +1078,7 @@ export function App() {
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
           initialExpense={editingExpense ?? undefined}
-          onClose={() => {
-            setExpenseComposerOpen(false);
-            setEditingExpense(null);
-          }}
+          onClose={closeExpenseComposer}
           onSubmit={handleExpenseDraftSubmit}
           onImageError={() => showToast(text.photoError)}
         />
