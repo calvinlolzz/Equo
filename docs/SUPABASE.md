@@ -142,9 +142,9 @@ on conflict (user_id) do update set role = excluded.role;
 5. Invites：邀請連結寫入 `group_invites`。
 6. Expenses：支出寫入 `expenses` 與 `expense_splits`。
 7. Settlements：付款狀態寫入 `settlement_statuses` 與 `payment_records`。
-8. Admin：後台透過 `get_admin_dashboard()` 讀取總覽資料。
-9. Monitoring：前台與後台錯誤透過 `record_app_error()` 寫入 `app_error_logs`。
-10. Feedback：用戶回饋透過 `record_user_feedback()` 寫入 `app_feedback`。
+8. Admin：後台透過 `admin_console_overview()` 讀取總覽，其餘查詢與管理操作走同一組 `admin_console_*` RPC（`admin_console_users`／`admin_console_groups`／`admin_console_set_user_disabled` 等）。
+9. Monitoring：前台與後台錯誤由伺服器以 service_role 直接寫入 `app_error_logs`（見 `supabaseSupportRepository.recordClientError`）。
+10. Feedback：用戶回饋由伺服器以 service_role 直接寫入 `app_feedback`（見 `supabaseSupportRepository.createFeedback`）。
 
 ## 注意事項
 
