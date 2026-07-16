@@ -51,7 +51,7 @@ vercel-api/           v1 API handler（轉接到 apps/web/src/server）
 apps/web/src/app/     前端 SPA（App.tsx 為主畫面）
 apps/web/src/server/  API routes、handlers、repositories、auth
 apps/web/src/domain/  金額與結算領域邏輯
-supabase/migrations/  資料庫 migration（正式環境歷史以 Supabase 端為準）
+supabase/migrations/  單一 squash baseline（全新 DB 套這支；squash/repair 見 docs/SUPABASE.md）
 scripts/              release 驗證與煙霧測試腳本
 docs/                 部署、OAuth、Supabase、測試等文件
 ```
