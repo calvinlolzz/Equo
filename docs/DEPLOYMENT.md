@@ -32,17 +32,31 @@ These are declared in `vercel.json`:
 
 ## Required Vercel Env Vars
 
-Set these for both Preview and Production:
+Set these for both Preview and Production.
+
+Server-side — the API returns 503 `RUNTIME_ENV_MISSING` unless **all five** are present
+(see `apps/web/src/server/runtime/runtimeEnv.ts`):
 
 ```text
-VITE_GOOGLE_OAUTH_CLIENT_ID
+SUPABASE_URL
+SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
 GOOGLE_OAUTH_CLIENT_ID
 SESSION_SECRET
-SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` and `SESSION_SECRET` are server-only. Do not expose them as public client variables.
+Frontend build — just the one (without it the login button is dead):
+
+```text
+VITE_SUPABASE_URL
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` and `SESSION_SECRET` are server-only. Do not expose them as public client variables. `SUPABASE_ANON_KEY` is **also server-only** here — it is the apikey used to verify Supabase access tokens; the frontend holds no Supabase key at all. See `docs/SUPABASE.md` for the details.
+
+> This list previously omitted `SUPABASE_ANON_KEY` and `VITE_SUPABASE_URL` (following it
+> literally produced a permanently-503 deployment) and required `VITE_GOOGLE_OAUTH_CLIENT_ID`,
+> which no frontend code reads — the Google client ID lives in Supabase's provider config.
+> Corrected 2026-07-16 against `runtimeEnv.ts` and a repo-wide `import.meta.env` grep.
 
 Current linked Vercel project status:
 
@@ -59,7 +73,7 @@ Authorized JavaScript origins should include:
 - The preview deployment URL used for launch testing.
 - `http://127.0.0.1:14062` when local Google sign-in testing is needed.
 
-`VITE_GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_ID` should be the same OAuth client ID for this MVP.
+`GOOGLE_OAUTH_CLIENT_ID` (server-side) is the one that matters. `VITE_GOOGLE_OAUTH_CLIENT_ID` is still set on the project but is vestigial — no frontend code reads it, and the browser never sends a client ID: `buildAuthorizeUrl` only needs `VITE_SUPABASE_URL`, and Google's client ID is configured inside Supabase's own auth provider settings.
 
 ## Deployment Flow
 
