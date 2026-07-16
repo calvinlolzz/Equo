@@ -78,9 +78,9 @@ PostgREST 是一個語句一個 HTTP 呼叫，中間沒有 transaction。所以�
 
 ## 資料庫
 
-**資料庫 = `supabase/schema.sql`（基底）＋ `supabase/migrations/`（依序），順序不能反。**
+**全新資料庫 = 套用 `supabase/schema.sql`（就這一個檔）。**
 
-`schema.sql` 看起來像死碼 —— 它定義的大半是 pre-MVP 原型 —— 但 migrations 是寫在它上面的，沒有它跑不起來（`mvp_live_compat` 會 ALTER 只有它建過的欄位）。它也是 `is_group_member()` 和 9 條生效中 RLS policy 的唯一來源。**細節見該檔案的檔頭。**
+`schema.sql` 是 2026-07-16 用 `supabase db dump --schema public` 從正式庫匯出、並逐物件對過 pg_catalog 的**完整當前 schema**（已把所有 migration 的累積結果摺疊在內；末尾手動補回 `--schema public` 會漏掉的 `ensure_rls` event trigger）。`supabase/migrations/` 保留作歷史紀錄，不再疊加套用在它之上。細節見 `schema.sql` 檔頭與 `docs/SUPABASE.md`。
 
 **角色**：只有 `service_role`。`anon` 和 `authenticated` 對 public schema 的所有權限已於 2026-07-14 撤銷（連 default privileges 一起，不然新表會被自動重新授權）。要開放資料給前端，**加 API endpoint，不要開資料表權限**。
 
