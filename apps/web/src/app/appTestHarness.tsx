@@ -30,16 +30,25 @@ export type FakeApi = {
   set(route: string, body: unknown, status?: number): void;
 };
 
-export function stubBrowser(): void {
+export function stubBrowser(options: { mobile?: boolean } = {}): void {
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.history.replaceState(null, "", "/");
   document.documentElement.removeAttribute("data-theme");
 
+  // jsdom has no layout engine, so matchMedia is stubbed. It stays query-aware:
+  // only width breakpoints answer `true` in mobile mode, so an unrelated query
+  // (e.g. prefers-color-scheme / prefers-reduced-motion) is never accidentally
+  // flipped on. Default (desktop) keeps every query false, exactly as before.
+  //
+  // Note `mobile: true` matches EVERY max-width query, including the 620px
+  // phone breakpoint (useSwipeToDismiss, ExpenseComposerSheet, ...), so it
+  // simulates a ≤620px phone - not the 621-960px tablet band.
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({
-      matches: false,
+    vi.fn((query: string) => ({
+      matches: options.mobile ? /max-width/.test(query) : false,
+      media: query,
       addEventListener: () => {},
       removeEventListener: () => {},
     })),
