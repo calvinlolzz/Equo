@@ -106,3 +106,26 @@ export type ArchivedGroup = Group & {
 };
 
 export type StartMode = "create" | "join" | "continue";
+
+/**
+ * The single bottom-sheet/dialog the app shows at a time (null = none). Lives
+ * here rather than in App.tsx so the mutation hooks that open and close dialogs
+ * (useGroupMutations, useMemberMutations, useInviteFlow, …) can share the type.
+ */
+export type DialogMode =
+  | "createGroup"
+  | "editGroup"
+  | "inviteMembers"
+  | "inviteInput"
+  | "currencyPanel"
+  | "recordsPanel"
+  | "analysisPanel"
+  | "memberActions"
+  | "memberList"
+  | "virtualMember"
+  | "archivedList"
+  | "archive"
+  | "delete"
+  | "profile"
+  | "expenseDetail"
+  | null;
