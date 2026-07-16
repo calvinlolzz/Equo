@@ -78,9 +78,9 @@ PostgREST 是一個語句一個 HTTP 呼叫，中間沒有 transaction。所以�
 
 ## 資料庫
 
-**全新資料庫 = 套用 `supabase/schema.sql`（就這一個檔）。**
+**全新資料庫 = 套用 `supabase/migrations/20260601000000_baseline.sql`（單一 squash baseline，就這一個檔）。**
 
-`schema.sql` 是 2026-07-16 用 `supabase db dump --schema public` 從正式庫匯出、並逐物件對過 pg_catalog 的**完整當前 schema**（已把所有 migration 的累積結果摺疊在內；末尾手動補回 `--schema public` 會漏掉的 `ensure_rls` event trigger）。`supabase/migrations/` 保留作歷史紀錄，不再疊加套用在它之上。細節見 `schema.sql` 檔頭與 `docs/SUPABASE.md`。
+這支 baseline 是 2026-07-16 用 `supabase db dump --schema public` 從正式庫匯出、並逐物件對過 pg_catalog 的**完整當前 schema**（已把所有 migration 的累積結果摺疊在內；末尾手動補回 `--schema public` 會漏掉的 `ensure_rls` event trigger）。23 支本地增量 migration 已 squash 進它並移除（git 歷史保留）；正式庫的 migration ledger（34 筆歷史）則用 `docs/SUPABASE.md` 的 runbook `migration repair` 收斂成這一支。
 
 **角色**：只有 `service_role`。`anon` 和 `authenticated` 對 public schema 的所有權限已於 2026-07-14 撤銷（連 default privileges 一起，不然新表會被自動重新授權）。要開放資料給前端，**加 API endpoint，不要開資料表權限**。
 
@@ -93,10 +93,9 @@ npm run verify:release    # test + build + encoding + launch-readiness
 
 - 純函式與伺服器端邏輯：node 環境，佔絕大多數。
 - React hook：檔頭加 `// @vitest-environment jsdom`，用 `@testing-library/react` 的 `renderHook`。
-- **還沒有整頁的元件測試。** App.tsx 仍然很大（~1,950 行），而繼續拆它需要先有這類測試 —— 一個「type-check 過、build 過、單元測試全綠，但 UI 壞掉」的拆分，目前沒有東西攔得住。
+- 整頁元件測試：`App.test.tsx`（桌面）與 `App.mobile.test.tsx`（手機）透過 `appTestHarness` mount 真的 `<App/>`，只 fake fetch 與 jsdom 缺的瀏覽器 API —— 攔得住「type-check 過、build 過、單元測試全綠，但 UI 壞掉」的改動。
 
 ## 已知的技術債
 
-- `App.tsx` 約 1,950 行。自成一體的 concern 已陸續抽成 hook（`useToast`、`useThemeMode`、`useIsMobileLayout`、`useArchivedGroups`、`useGroupRoute`，都有測試）；剩下的是雲端 mutation handler、OAuth 開機流程、composer 狀態。
-- `schema.sql` 應該被一份從正式庫產出的 squash baseline（`supabase db dump`）取代，之後才能真正退役它。
+- `App.tsx` 約 1,470 行。自成一體的 concern 都已抽成 hook（`useToast`、`useThemeMode`、`useIsMobileLayout`、`useArchivedGroups`、`useGroupRoute`、`useAuthSession`，以及雲端 mutation / composer 狀態的 `useActionGuard`／`useCloudActivities`／`useExpenseComposer`／`useGroupMutations`／`useMemberMutations`／`useInviteFlow`）；留在檔內的是純渲染與 render-衍生狀態緊耦合的少數 handler。
 - `docs/` 其餘文件年代不一，讀之前先確認。

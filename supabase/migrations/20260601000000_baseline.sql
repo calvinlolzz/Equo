@@ -1,18 +1,19 @@
--- Equo — full database schema baseline.
+-- Equo — squashed baseline migration (the whole schema in one file).
 --
 -- This is the COMPLETE current state of the production `public` schema, produced
 -- by `supabase db dump --schema public` against the live database and verified
 -- object-by-object against pg_catalog (16 tables, 69 constraints, 24 indexes,
 -- 23 functions, 1 view, 38 policies, RLS on all 16 tables, service_role grants).
 --
--- It supersedes the old hand-written schema.sql, which described the pre-MVP
--- prototype and had drifted from reality. For a fresh database, apply THIS file;
--- it already contains the folded result of every migration. The files in
--- supabase/migrations/ are kept as the historical record of how the schema got
--- here and are NOT applied on top of this baseline.
+-- It is the single baseline that folds in every migration that ever ran against
+-- prod. The 23 incremental migration files that used to sit beside it were
+-- squashed into this one and removed (git history keeps them). Prod's migration
+-- ledger (supabase_migrations.schema_migrations) is collapsed to this single
+-- version by the repair runbook in docs/SUPABASE.md (its 34 historical rows ->
+-- reverted, this baseline -> applied). For a fresh database, apply THIS file.
 --
 -- Regenerate with:
---   npx supabase db dump --schema public -f supabase/schema.sql
+--   npx supabase db dump --schema public -f supabase/migrations/20260601000000_baseline.sql
 -- then re-append the event trigger below (see note).
 
 

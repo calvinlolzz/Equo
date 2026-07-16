@@ -10,25 +10,22 @@ Equo 使用 Supabase 作為正式站的登入、多人同步與後台資料來�
 
 ## 建立資料表
 
-**全新資料庫：只要套用 `supabase/schema.sql`。**
+**全新資料庫：只要套用 `supabase/migrations/20260601000000_baseline.sql`（單一 squash baseline）。**
 
-`schema.sql` 是用 `npx supabase db dump --schema public` 從正式庫匯出的**完整當前
+這支 baseline 是用 `npx supabase db dump --schema public` 從正式庫匯出的**完整當前
 schema**（2026-07-16），並逐物件對過 pg_catalog（16 表、69 約束、24 索引、23 functions、
 1 view、38 policies、全 16 表開 RLS、service_role grants）。它已經把每一支 migration 的
 累積結果摺疊在內，所以套用它一次就是正式庫的現況。
 
 > `--schema public` 不會匯出 event trigger（它是資料庫全域物件，不屬於任何 schema），
 > 所以檔案末尾手動補回了 `ensure_rls` event trigger（照 catalog 原樣）。要重新產生時：
-> `npx supabase db dump --schema public -f supabase/schema.sql`，然後把那段 event trigger
-> 重新補到檔尾。
+> `npx supabase db dump --schema public -f supabase/migrations/20260601000000_baseline.sql`，
+> 然後把那段 event trigger 重新補到檔尾。
 
-`supabase/migrations/` 保留作**歷史紀錄**（記錄 schema 怎麼演變到今天，以及每一步的「為什麼」），
-**不會**再疊加套用在 `schema.sql` 之上。正式庫已經套過全部 migration；它的 migration 歷史
-不受此檔影響。
-
-（先前這裡寫的「schema.sql 是基底、migrations 疊在上面」已作廢——那是 2026-07-16 產出這份
-certified baseline 之前的狀態。舊的手寫 schema.sql 描述的是 pre-MVP 原型、且與現況漂移，
-已被本檔取代。）
+（先前這裡的 `supabase/schema.sql` 已在 2026-07-16 squash 成上面這支單一 baseline
+migration；23 支本地增量 migration 檔一併移除，git 歷史仍保留。更早的「schema.sql 是基底、
+migrations 疊在上面」模型已作廢。squash + 遠端 ledger repair 的做法見下方〈Migration
+squash baseline〉。）
 
 目前主要資料表：
 
@@ -50,6 +47,46 @@ certified baseline 之前的狀態。舊的手寫 schema.sql 描述的是 pre-MV
 - `app_feedback`
 
 所有正式資料表都需要 Row Level Security。
+
+## Migration squash baseline
+
+2026-07-16 把增量 migration 收斂成單一 baseline：
+
+- **本地（已完成）**：`supabase/migrations/` 現在只有 `20260601000000_baseline.sql`
+  （＝上面那份 certified dump）。23 支本地增量檔已移除（git 歷史保留）。
+- **遠端（待執行）**：正式庫的 `supabase_migrations.schema_migrations` 有 34 筆真實歷史，
+  版本號與本地檔對不上（本地早先已把 10 支 prototype 摺進 mvp_core，卻沒同步遠端）。
+  下方 runbook 用 `migration repair` 把那 34 筆全標 `reverted`、把 baseline 標 `applied`，
+  讓 local 與 remote 收斂成同一支 baseline。**此步尚未執行**——指令如下。
+
+> `migration repair` **只改追蹤表、不動任何 schema 或資料**（Supabase 官方文件明載）。
+> 這步不會重建、刪除或改動任何正式庫物件——正式庫的實際 schema 完全不變。
+
+一次性收斂指令（在已 `supabase link` 到正式專案、且能連到 DB 的終端執行）。
+**步驟 1、2 要接連跑完、中間不要 `db push`**：步驟 1 之後遠端 ledger 會短暫變空，此時若
+`db push` 會嘗試把 baseline SQL 真的套到正式庫（會在第一個重複的 `CREATE POLICY` 就中止，
+不致損壞，但仍應避免）。
+
+```bash
+# 1) 把遠端 34 筆歷史全部標記為 reverted（只改記帳表）
+npx supabase migration repair --status reverted \
+  20260610062230 20260610062301 20260610070037 20260610070320 20260610071944 \
+  20260610073727 20260611025818 20260625092403 20260625094019 20260625134312 \
+  20260630043638 20260630043815 20260630123733 20260701001352 20260704105056 \
+  20260705114530 20260705120735 20260706121425 20260707015933 20260707150107 \
+  20260707154135 20260711020324 20260711055419 20260711142656 20260711142712 \
+  20260712074915 20260712155549 20260714040033 20260714122019 20260714122107 \
+  20260714133931 20260714135723 20260714140634 20260714163519
+
+# 2) 把單一 baseline 標記為 applied
+npx supabase migration repair --status applied 20260601000000
+
+# 3) 驗證：local 與 remote 應只剩 20260601000000 這一支，且對齊
+npx supabase migration list
+```
+
+之後新增 schema 變更就走正常 CLI 流程：新增一支 `supabase/migrations/<ts>_xxx.sql`，
+`supabase db push` 只會套用它（baseline 已在兩邊標記 applied，不會重跑）。
 
 ## Vercel 環境變數
 
