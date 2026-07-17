@@ -31,9 +31,11 @@ import {
 } from "../routes/groupRoutes.js";
 import { createFeedbackRoute, reportErrorRoute } from "../routes/supportRoutes.js";
 import {
+  adminGroupDetailRoute,
   adminListAuditLogsRoute,
   adminListErrorsRoute,
   adminListFeedbackRoute,
+  adminListGroupExpensesRoute,
   adminListGroupsRoute,
   adminListUsersRoute,
   adminMeRoute,
@@ -496,6 +498,30 @@ export function createHttpRuntime(options: RuntimeOptions) {
           limit: limitParam ? Number(limitParam) : undefined,
           offset: offsetParam ? Number(offsetParam) : undefined,
           filter: queryParam(request, "filter"),
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)$/,
+      label: "GET /api/v1/admin/groups/:groupId",
+      async handle(request, match) {
+        const result = await adminGroupDetailRoute(routeOptions(options, request), match[1]);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)\/expenses$/,
+      label: "GET /api/v1/admin/groups/:groupId/expenses",
+      async handle(request, match) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListGroupExpensesRoute(routeOptions(options, request), match[1], {
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+          include_deleted: queryParam(request, "include_deleted") === "true",
         });
         return jsonResponse(result.status, result.body);
       },

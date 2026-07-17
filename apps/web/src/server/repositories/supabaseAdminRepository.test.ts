@@ -35,6 +35,47 @@ describe("createSupabaseAdminRepository", () => {
     });
   });
 
+  test("passes the actor through to the group detail read, which audits it", async () => {
+    const client = makeClient({ group: {}, members: [] });
+
+    await createSupabaseAdminRepository(client).getGroupDetail(actor, "group_1");
+
+    expect(client.rpcCall("admin_console_group_detail")?.args).toEqual({
+      p_actor: "user_admin",
+      p_actor_email: "admin@example.com",
+      p_group_id: "group_1",
+    });
+  });
+
+  test("collapses a missing group to null on the detail read", async () => {
+    const client = makeClient(null);
+
+    await expect(createSupabaseAdminRepository(client).getGroupDetail(actor, "group_missing")).resolves.toBeNull();
+  });
+
+  test("passes the actor and include-deleted flag through to the expense listing", async () => {
+    const client = makeClient({ total: 0, expenses: [] });
+
+    await createSupabaseAdminRepository(client).listGroupExpenses(actor, "group_1", 20, 40, true);
+
+    expect(client.rpcCall("admin_console_group_expenses")?.args).toEqual({
+      p_actor: "user_admin",
+      p_actor_email: "admin@example.com",
+      p_group_id: "group_1",
+      p_limit: 20,
+      p_offset: 40,
+      p_include_deleted: true,
+    });
+  });
+
+  test("collapses a missing group to null on the expense listing", async () => {
+    const client = makeClient(null);
+
+    await expect(
+      createSupabaseAdminRepository(client).listGroupExpenses(actor, "group_missing", 20, 0, false),
+    ).resolves.toBeNull();
+  });
+
   test("passes the group filter through alongside the pagination", async () => {
     const client = makeClient({ total: 0, groups: [] });
 

@@ -109,6 +109,13 @@ function makeClient(): PostgrestClient {
       return [];
     },
     rpc: (fn, args) => {
+      if (fn === "admin_console_role") return "owner";
+      if (fn === "admin_console_groups") return { total: 1, groups: [groupRow] };
+      if (fn === "admin_console_group_detail") return { group: groupRow, members: [ownerMember] };
+      if (fn === "admin_console_group_expenses") {
+        // Echo the flag back so the query-string wiring is visible to the test.
+        return { total: 1, expenses: [expenseRow], include_deleted: args.p_include_deleted };
+      }
       if (fn === "get_group_detail") return groupDetail;
       if (fn === "replace_expense") {
         return {
@@ -389,6 +396,61 @@ describe("createHttpRuntime", () => {
     expect(response.body).not.toHaveProperty("members");
     expect(response.body).not.toHaveProperty("expenses");
     expect(response.body).not.toHaveProperty("balances");
+  });
+
+  test("routes the admin group listing, detail, and expense drill-down to distinct handlers", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const headers = { authorization: "Bearer google-token" };
+
+    const list = await runtime.handle({ method: "GET", path: "/api/v1/admin/groups", headers });
+    const detail = await runtime.handle({ method: "GET", path: "/api/v1/admin/groups/group_1", headers });
+    const expenses = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/admin/groups/group_1/expenses",
+      headers,
+      query: { include_deleted: "true" },
+    });
+
+    // The list must not fall through to the :groupId detail pattern, and the
+    // detail must not swallow the /expenses suffix.
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveProperty("groups");
+    expect(detail.status).toBe(200);
+    expect(detail.body).toHaveProperty("members");
+    expect(detail.body).not.toHaveProperty("groups");
+    expect(expenses.status).toBe(200);
+    expect(expenses.body).toMatchObject({ include_deleted: true });
+  });
+
+  test("admin expense drill-down leaves deleted rows out unless the query asks for them", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/admin/groups/group_1/expenses",
+      headers: { authorization: "Bearer google-token" },
+    });
+
+    expect(response.body).toMatchObject({ include_deleted: false });
   });
 
   test("routes group unarchive requests", async () => {

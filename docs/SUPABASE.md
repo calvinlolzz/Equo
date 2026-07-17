@@ -125,11 +125,22 @@ on conflict (user_id) do update set role = excluded.role;
 - 總覽（`admin_console_overview`）：使用者數、7 日活躍／新增使用者、群組數、7 日活躍群組、支出筆數、7 日支出
 - 使用者清單（`admin_console_users`，可搜尋、分頁）與單一使用者細節（`admin_console_user_detail`，只吃 `p_user_id`）
 - 群組清單（`admin_console_groups`，可搜尋、分頁、可篩選）
+- 群組細節（`admin_console_group_detail`）：群組本身的統計＋成員名冊（含 email、角色、記帳筆數、
+  以群組幣別計的結餘）
+- 群組帳目明細（`admin_console_group_expenses`，分頁、`p_include_deleted` 可帶出軟刪除的帳目）：
+  每筆的金額、付款人、分攤、備註與照片 URL
 - 後台操作紀錄（`admin_console_audit_logs`，讀 `admin_audit_logs`）
 - 錯誤紀錄（`admin_console_errors`）
 - 用戶回饋（`admin_console_feedback`）
 
 （先前這裡列的「結算狀態數」不存在——沒有任何 `admin_console_*` RPC 回傳結算指標。）
+
+**讀取也會留紀錄**：帳目明細是個人財務資料，所以 `admin_console_group_detail` 與
+`admin_console_group_expenses` 兩支都會經由 `admin_log_group_view()` 寫一筆 `group.view` 到
+`admin_audit_logs`（跟讀取同一個交易）。兩支都寫是因為它們各自可被直接呼叫，只稽核其中一支等於留
+後門。同一個管理員在 5 分鐘內重複看同一個群組只會留一筆——一次下鑽（詳情＋第一頁帳目）＝一筆，
+翻頁不會再寫，才不會把真正的寫入操作洗掉。`admin_log_group_view` 沒有 grant 給 `service_role`，
+只有上面兩支 SECURITY DEFINER 函式會用它。
 
 ## 正式站資料流程
 

@@ -65,6 +65,75 @@ export type AdminGroupListRecord = {
   groups: AdminGroupSummaryRecord[];
 };
 
+export type AdminGroupDetailGroupRecord = AdminGroupSummaryRecord & {
+  cover_image_url: string | null;
+  /** Soft-deleted expenses, i.e. what the include-deleted listing adds. */
+  deleted_expense_count: number;
+};
+
+export type AdminGroupMemberRecord = {
+  /** group_members.id - what expenses reference, not the user id. */
+  id: string;
+  /** null for a member who was added by name and never claimed by a login. */
+  user_id: string | null;
+  display_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  role: string;
+  status: string;
+  joined_at: string;
+  expense_count: number;
+  /** Balance in the group's currency; positive means the group owes them. */
+  balance_minor: number;
+};
+
+export type AdminGroupDetailRecord = {
+  group: AdminGroupDetailGroupRecord;
+  members: AdminGroupMemberRecord[];
+};
+
+export type AdminExpensePayerRecord = {
+  member_id: string;
+  display_name: string | null;
+  amount_minor: number;
+  currency: string;
+};
+
+export type AdminExpenseShareRecord = {
+  member_id: string;
+  display_name: string | null;
+  share_type: string;
+  share_value: number | null;
+  amount_minor: number;
+};
+
+export type AdminExpenseRecord = {
+  id: string;
+  title: string;
+  kind: string;
+  category: string;
+  amount_minor: number | null;
+  currency: string;
+  expense_date: string;
+  note: string | null;
+  /** The photo attached to the expense, if any. */
+  image_url: string | null;
+  receipt_image_url: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  version: number;
+  created_by_name: string | null;
+  /** Only set for kind = 'transfer'. */
+  transfer_to_name: string | null;
+  payers: AdminExpensePayerRecord[];
+  shares: AdminExpenseShareRecord[];
+};
+
+export type AdminExpenseListRecord = {
+  total: number;
+  expenses: AdminExpenseRecord[];
+};
+
 /** 'all' = non-deleted, 'empty' = non-deleted with zero live expenses, 'deleted' = soft-deleted only. */
 export type AdminGroupFilter = "all" | "archived" | "empty" | "deleted";
 
@@ -139,6 +208,26 @@ export type AdminRepository = {
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
   getUserDetail(userId: string): Promise<AdminUserDetailRecord | null>;
   listGroups(search: string, limit: number, offset: number, filter: AdminGroupFilter): Promise<AdminGroupListRecord>;
+  /**
+   * Group roster + aggregates. Records a 'group.view' audit row for the actor,
+   * hence the actor param on a read. Returns null when the group does not
+   * exist; soft-deleted groups are still returned so the console can inspect
+   * one before restoring it.
+   */
+  getGroupDetail(actor: AdminActor, groupId: string): Promise<AdminGroupDetailRecord | null>;
+  /**
+   * Expense-level drill-down; includeDeleted adds soft-deleted expenses. Audits
+   * the actor the same way getGroupDetail does - this is the endpoint that
+   * actually exposes the financial data, and it is callable on its own.
+   * Returns null when the group does not exist.
+   */
+  listGroupExpenses(
+    actor: AdminActor,
+    groupId: string,
+    limit: number,
+    offset: number,
+    includeDeleted: boolean,
+  ): Promise<AdminExpenseListRecord | null>;
   /** Disable (block login) or re-enable a user. Returns null when the user does not exist. */
   setUserDisabled(actor: AdminActor, userId: string, disabled: boolean): Promise<AdminUserDisabledResult | null>;
   /** Archive/unarchive a non-deleted group. Returns null when the group does not exist or is deleted. */

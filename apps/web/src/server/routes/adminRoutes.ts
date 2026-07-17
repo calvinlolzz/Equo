@@ -3,9 +3,11 @@ import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
 import {
+  handleAdminGroupDetail,
   handleAdminListAuditLogs,
   handleAdminListErrors,
   handleAdminListFeedback,
+  handleAdminListGroupExpenses,
   handleAdminListGroups,
   handleAdminListUsers,
   handleAdminMe,
@@ -15,6 +17,7 @@ import {
   handleAdminSetGroupDeleted,
   handleAdminSetUserDisabled,
   handleAdminUserDetail,
+  type AdminExpenseListQuery,
   type AdminFeedbackListQuery,
   type AdminGroupListQuery,
   type AdminListQuery,
@@ -75,6 +78,30 @@ export async function adminListGroupsRoute(options: RouteOptions, query: AdminGr
   }
 
   return handleAdminListGroups(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminGroupDetailRoute(options: RouteOptions, groupId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminGroupDetail(createSupabaseAdminRepository(options.client), auth.context, groupId);
+}
+
+export async function adminListGroupExpensesRoute(
+  options: RouteOptions,
+  groupId: string,
+  query: AdminExpenseListQuery,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListGroupExpenses(createSupabaseAdminRepository(options.client), auth.context, groupId, query);
 }
 
 export async function adminListAuditLogsRoute(options: RouteOptions, query: AdminListQuery) {
