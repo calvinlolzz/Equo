@@ -2,7 +2,9 @@ import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AdminAuditLogListRecord,
   AdminErrorListRecord,
+  AdminExpenseListRecord,
   AdminFeedbackListRecord,
+  AdminGroupDetailRecord,
   AdminGroupListRecord,
   AdminGroupStateResult,
   AdminOverviewRecord,
@@ -13,9 +15,9 @@ import type {
 } from "./adminRepository.js";
 
 /**
- * Admin reads and writes all go through admin_console_* Postgres functions (see
- * supabase/migrations/20260711120000_admin_console_v2.sql) rather than table
- * access: the queries are cross-table aggregates PostgREST can't express, the
+ * Admin reads and writes all go through admin_console_* Postgres functions
+ * (defined in the baseline migration) rather than table access: the queries are
+ * cross-table aggregates PostgREST can't express, the
  * writes have to be audited atomically alongside the change they record, and
  * keeping them in SQL functions makes the service-role-only EXECUTE grant the
  * single enforcement point.
@@ -53,6 +55,27 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
         p_offset: offset,
         p_filter: filter,
       });
+    },
+
+    async getGroupDetail(actor, groupId) {
+      const detail = await client.rpc<AdminGroupDetailRecord | null>("admin_console_group_detail", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+      });
+      return detail ?? null;
+    },
+
+    async listGroupExpenses(actor, groupId, limit, offset, includeDeleted) {
+      const page = await client.rpc<AdminExpenseListRecord | null>("admin_console_group_expenses", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+        p_limit: limit,
+        p_offset: offset,
+        p_include_deleted: includeDeleted,
+      });
+      return page ?? null;
     },
 
     async setUserDisabled(actor, userId, disabled) {

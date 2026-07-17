@@ -382,6 +382,19 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminListGroups(options: AdminGroupListOptions = {}) {
       return request<AdminGroupListPage>(`/admin/groups${adminListQuery(options)}`, { method: "GET" });
     },
+    adminGroupDetail(groupId: string) {
+      return request<AdminGroupDetail>(`/admin/groups/${groupId}`, { method: "GET" });
+    },
+    adminListGroupExpenses(groupId: string, options: AdminExpenseListOptions = {}) {
+      const params = new URLSearchParams();
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      if (options.offset !== undefined) params.set("offset", String(options.offset));
+      if (options.includeDeleted) params.set("include_deleted", "true");
+      const query = params.toString();
+      return request<AdminExpensePage>(`/admin/groups/${groupId}/expenses${query ? `?${query}` : ""}`, {
+        method: "GET",
+      });
+    },
     adminListAuditLogs(options: AdminListOptions = {}) {
       return request<AdminAuditLogPage>(`/admin/audit${adminListQuery(options)}`, { method: "GET" });
     },
@@ -519,6 +532,74 @@ export type AdminGroupRow = {
 export type AdminGroupListPage = {
   total: number;
   groups: AdminGroupRow[];
+};
+
+export type AdminGroupMemberRow = {
+  /** group_members.id - what an expense's payers/shares reference. */
+  id: string;
+  user_id: string | null;
+  display_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  role: string;
+  status: string;
+  joined_at: string;
+  expense_count: number;
+  balance_minor: number;
+};
+
+export type AdminGroupDetail = {
+  group: AdminGroupRow & {
+    cover_image_url: string | null;
+    deleted_expense_count: number;
+  };
+  members: AdminGroupMemberRow[];
+};
+
+export type AdminExpenseListOptions = {
+  limit?: number;
+  offset?: number;
+  includeDeleted?: boolean;
+};
+
+export type AdminExpensePayer = {
+  member_id: string;
+  display_name: string | null;
+  amount_minor: number;
+  currency: string;
+};
+
+export type AdminExpenseShare = {
+  member_id: string;
+  display_name: string | null;
+  share_type: string;
+  share_value: number | null;
+  amount_minor: number;
+};
+
+export type AdminExpenseRow = {
+  id: string;
+  title: string;
+  kind: string;
+  category: string;
+  amount_minor: number | null;
+  currency: string;
+  expense_date: string;
+  note: string | null;
+  image_url: string | null;
+  receipt_image_url: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  version: number;
+  created_by_name: string | null;
+  transfer_to_name: string | null;
+  payers: AdminExpensePayer[];
+  shares: AdminExpenseShare[];
+};
+
+export type AdminExpensePage = {
+  total: number;
+  expenses: AdminExpenseRow[];
 };
 
 export type AdminAuditLogRow = {

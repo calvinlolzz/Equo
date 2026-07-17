@@ -5,7 +5,10 @@ import {
   createApiClient,
   type AdminAuditLogPage,
   type AdminErrorPage,
+  type AdminExpensePage,
+  type AdminExpenseRow,
   type AdminFeedbackPage,
+  type AdminGroupDetail,
   type AdminGroupFilterOption,
   type AdminGroupListPage,
   type AdminMeSummary,
@@ -19,10 +22,16 @@ import {
   auditActionLabel,
   auditTargetText,
   describeLastSeen,
+  expenseCategoryLabel,
+  expenseImageUrl,
+  expenseKindLabel,
   formatDate,
   formatDateTime,
+  formatExpenseAmount,
   overviewTiles,
   pageInfo,
+  payerSummary,
+  shareTypeLabel,
 } from "./adminDashboard";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
@@ -309,6 +318,7 @@ function UserDetailPanel({
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -345,6 +355,17 @@ function UserDetailPanel({
     } finally {
       setActionBusy(false);
     }
+  }
+
+  if (selectedGroupId) {
+    return (
+      <GroupDetailPanel
+        client={client}
+        groupId={selectedGroupId}
+        backLabel="回使用者詳情"
+        onBack={() => setSelectedGroupId("")}
+      />
+    );
   }
 
   return (
@@ -403,7 +424,7 @@ function UserDetailPanel({
               </thead>
               <tbody>
                 {detail.groups.map((group) => (
-                  <tr key={group.id}>
+                  <tr key={group.id} className="admin-table__row" onClick={() => setSelectedGroupId(group.id)}>
                     <td>{group.name}</td>
                     <td>{group.role === "owner" ? "擁有者" : "成員"}</td>
                     <td className="admin-table__num">{group.member_count}</td>
@@ -429,6 +450,358 @@ function UserDetailPanel({
   );
 }
 
+/**
+ * Group drill-down: roster on top, the group's actual expenses below. Reached
+ * from both the groups tab and a user's group list, so it takes an onBack
+ * label rather than assuming which list it came from.
+ */
+function GroupDetailPanel({
+  client,
+  groupId,
+  backLabel,
+  onBack,
+}: {
+  client: EquoApiClient;
+  groupId: string;
+  backLabel: string;
+  onBack: () => void;
+}) {
+  const [detail, setDetail] = useState<AdminGroupDetail | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(null);
+    setError("");
+    client
+      .adminGroupDetail(groupId)
+      .then((result) => {
+        if (!cancelled) setDetail(result);
+      })
+      .catch(() => {
+        if (!cancelled) setError("群組資料載入失敗。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, groupId]);
+
+  return (
+    <section aria-label="群組詳情">
+      <button type="button" className="admin-back" onClick={onBack}>
+        ← {backLabel}
+      </button>
+
+      {error && <p className="admin-error">{error}</p>}
+      {!detail && !error && <p className="admin-loading">載入中…</p>}
+
+      {detail && (
+        <>
+          <article className="admin-group-card">
+            {detail.group.cover_image_url ? (
+              <img className="admin-group-card__cover" src={detail.group.cover_image_url} alt="" />
+            ) : (
+              <div className="admin-group-card__cover admin-group-card__cover--fallback" aria-hidden="true">
+                {detail.group.name.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div className="admin-group-card__body">
+              <h2 className="admin-group-card__name">
+                {detail.group.name}
+                {detail.group.deleted_at && <span className="admin-badge admin-badge--danger">已刪除</span>}
+                {!detail.group.deleted_at && detail.group.archived_at && <span className="admin-badge">已封存</span>}
+              </h2>
+              <p className="admin-group-card__meta">
+                建立 {formatDate(detail.group.created_at)}・擁有者 {detail.group.owner_display_name ?? "—"}・
+                {detail.group.member_count} 位成員・{detail.group.expense_count} 筆帳目・總支出{" "}
+                {formatAmount(detail.group.spend_total_minor, detail.group.currency)}
+              </p>
+              <p className="admin-group-card__meta">
+                最後記帳 {detail.group.last_expense_at ? formatDateTime(detail.group.last_expense_at) : "—"}・幣別{" "}
+                {detail.group.currency}
+              </p>
+            </div>
+          </article>
+
+          <h3 className="admin-subheading">成員</h3>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>成員</th>
+                  <th>Email</th>
+                  <th>角色</th>
+                  <th>加入時間</th>
+                  <th className="admin-table__num">記帳筆數</th>
+                  <th className="admin-table__num">結餘</th>
+                  <th>狀態</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.members.map((member) => (
+                  <tr key={member.id}>
+                    <td>{member.display_name || "—"}</td>
+                    <td>{member.email ?? <span className="admin-muted">未綁定帳號</span>}</td>
+                    <td>{member.role === "owner" ? "擁有者" : "成員"}</td>
+                    <td>{formatDate(member.joined_at)}</td>
+                    <td className="admin-table__num">{member.expense_count}</td>
+                    <td
+                      className={
+                        member.balance_minor < 0 ? "admin-table__num admin-amount--negative" : "admin-table__num"
+                      }
+                    >
+                      {formatAmount(member.balance_minor, detail.group.currency)}
+                    </td>
+                    <td>{member.status === "removed" ? "已退出" : "使用中"}</td>
+                  </tr>
+                ))}
+                {detail.members.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="admin-table__empty">
+                      這個群組沒有成員
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <GroupExpensesSection client={client} group={detail.group} />
+        </>
+      )}
+    </section>
+  );
+}
+
+function GroupExpensesSection({
+  client,
+  group,
+}: {
+  client: EquoApiClient;
+  group: AdminGroupDetail["group"];
+}) {
+  const [offset, setOffset] = useState(0);
+  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [state, setState] = useState<ListState<AdminExpensePage>>({ page: null, loading: true, error: "" });
+  const [selected, setSelected] = useState<AdminExpenseRow | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    client
+      .adminListGroupExpenses(group.id, { limit: PAGE_SIZE, offset, includeDeleted })
+      .then((page) => {
+        if (!cancelled) setState({ page, loading: false, error: "" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ page: null, loading: false, error: "支出明細載入失敗。" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, group.id, offset, includeDeleted]);
+
+  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.expenses.length) : null;
+
+  return (
+    <>
+      <div className="admin-subheading-row">
+        <h3 className="admin-subheading">帳目明細</h3>
+        <label className="admin-toggle">
+          <input
+            type="checkbox"
+            checked={includeDeleted}
+            onChange={(event) => {
+              setOffset(0);
+              setIncludeDeleted(event.target.checked);
+            }}
+          />
+          顯示已刪除（{group.deleted_expense_count} 筆）
+        </label>
+      </div>
+
+      {state.error && <p className="admin-error">{state.error}</p>}
+      {state.loading && <p className="admin-loading">載入中…</p>}
+
+      {state.page && !state.loading && (
+        <>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>項目</th>
+                  <th>類型</th>
+                  <th>分類</th>
+                  <th className="admin-table__num">金額</th>
+                  <th>付款</th>
+                  <th className="admin-table__num">分攤人數</th>
+                  <th>記錄者</th>
+                  <th>照片</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.page.expenses.map((expense) => {
+                  const image = expenseImageUrl(expense);
+                  return (
+                    <tr
+                      key={expense.id}
+                      className={
+                        expense.deleted_at ? "admin-table__row admin-table__row--deleted" : "admin-table__row"
+                      }
+                      onClick={() => setSelected(expense)}
+                    >
+                      <td>{formatDate(expense.expense_date)}</td>
+                      <td>
+                        {expense.title}
+                        {expense.deleted_at && <span className="admin-badge admin-badge--danger">已刪除</span>}
+                      </td>
+                      <td>{expenseKindLabel(expense.kind)}</td>
+                      <td>{expense.kind === "transfer" ? "—" : expenseCategoryLabel(expense.category)}</td>
+                      <td className="admin-table__num">
+                        {formatExpenseAmount(expense.amount_minor, expense.currency)}
+                      </td>
+                      <td>
+                        {expense.kind === "transfer"
+                          ? `${payerSummary(expense.payers)} → ${expense.transfer_to_name ?? "—"}`
+                          : payerSummary(expense.payers)}
+                      </td>
+                      <td className="admin-table__num">{expense.shares.length}</td>
+                      <td>{expense.created_by_name ?? "—"}</td>
+                      <td>
+                        {image ? (
+                          <img className="admin-thumb" src={image} alt="" loading="lazy" />
+                        ) : (
+                          <span className="admin-muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {state.page.expenses.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="admin-table__empty">
+                      這個群組還沒有帳目
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {info && (
+            <Pagination
+              info={info}
+              total={state.page.total}
+              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
+              onNext={() => setOffset(offset + PAGE_SIZE)}
+            />
+          )}
+        </>
+      )}
+
+      {selected && (
+        <ExpenseDetailDialog
+          expense={selected}
+          groupCurrency={group.currency}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function ExpenseDetailDialog({
+  expense,
+  groupCurrency,
+  onClose,
+}: {
+  expense: AdminExpenseRow;
+  groupCurrency: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const image = expenseImageUrl(expense);
+
+  return (
+    <div className="admin-modal" role="dialog" aria-modal="true" aria-label="帳目明細" onClick={onClose}>
+      <article className="admin-modal__panel" onClick={(event) => event.stopPropagation()}>
+        <header className="admin-modal__header">
+          <div>
+            <h3 className="admin-modal__title">
+              {expense.title}
+              {expense.deleted_at && <span className="admin-badge admin-badge--danger">已刪除</span>}
+            </h3>
+            <p className="admin-modal__meta">
+              {formatDate(expense.expense_date)}・{expenseKindLabel(expense.kind)}
+              {expense.kind !== "transfer" && `・${expenseCategoryLabel(expense.category)}`}・
+              {formatExpenseAmount(expense.amount_minor, expense.currency)}
+              {expense.currency !== groupCurrency && `（群組幣別為 ${groupCurrency}）`}
+            </p>
+          </div>
+          <button type="button" className="admin-modal__close" onClick={onClose} aria-label="關閉">
+            ×
+          </button>
+        </header>
+
+        {image && (
+          <a className="admin-modal__image-link" href={image} target="_blank" rel="noreferrer">
+            <img className="admin-modal__image" src={image} alt="帳目照片" />
+          </a>
+        )}
+
+        {expense.note && <p className="admin-modal__note">{expense.note}</p>}
+
+        <h4 className="admin-modal__subheading">付款</h4>
+        <ul className="admin-split-list">
+          {expense.payers.map((payer) => (
+            <li key={payer.member_id}>
+              <span>{payer.display_name || "—"}</span>
+              <span>{formatAmount(payer.amount_minor, payer.currency)}</span>
+            </li>
+          ))}
+          {expense.payers.length === 0 && <li className="admin-muted">沒有付款記錄</li>}
+        </ul>
+
+        {expense.kind === "transfer" ? (
+          <p className="admin-modal__note">轉帳給 {expense.transfer_to_name ?? "—"}</p>
+        ) : (
+          <>
+            <h4 className="admin-modal__subheading">分攤</h4>
+            <ul className="admin-split-list">
+              {expense.shares.map((share) => (
+                <li key={share.member_id}>
+                  <span>
+                    {share.display_name || "—"}
+                    <span className="admin-muted">
+                      {" "}
+                      {shareTypeLabel(share.share_type)}
+                      {share.share_type === "percent" && share.share_value !== null && ` ${share.share_value}%`}
+                    </span>
+                  </span>
+                  <span>{formatAmount(share.amount_minor, expense.currency)}</span>
+                </li>
+              ))}
+              {expense.shares.length === 0 && <li className="admin-muted">沒有分攤記錄</li>}
+            </ul>
+          </>
+        )}
+
+        <p className="admin-modal__footer">
+          建立者 {expense.created_by_name ?? "—"}・記錄於 {formatDateTime(expense.created_at)}・版本 {expense.version}
+          {expense.deleted_at && `・刪除於 ${formatDateTime(expense.deleted_at)}`}
+        </p>
+      </article>
+    </div>
+  );
+}
+
 const GROUP_FILTER_CHIPS: Array<{ key: AdminGroupFilterOption; label: string }> = [
   { key: "all", label: "全部" },
   { key: "archived", label: "已封存" },
@@ -450,6 +823,7 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
   const [state, setState] = useState<ListState<AdminGroupListPage>>({ page: null, loading: true, error: "" });
   const [busyGroupId, setBusyGroupId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -489,6 +863,22 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
     } finally {
       setBusyGroupId("");
     }
+  }
+
+  if (selectedGroupId) {
+    return (
+      <GroupDetailPanel
+        client={client}
+        groupId={selectedGroupId}
+        backLabel="回群組列表"
+        onBack={() => {
+          setSelectedGroupId("");
+          // The detail's own actions don't write, but coming back from a group
+          // that was archived/deleted elsewhere shouldn't show a stale row.
+          setReloadKey((key) => key + 1);
+        }}
+      />
+    );
   }
 
   const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.groups.length) : null;
@@ -569,6 +959,9 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
                         )}
                       </td>
                       <td className="admin-table__actions">
+                        <button type="button" className="admin-action" onClick={() => setSelectedGroupId(group.id)}>
+                          查看
+                        </button>
                         {group.deleted_at ? (
                           <button
                             type="button"

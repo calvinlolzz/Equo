@@ -1,4 +1,6 @@
-import type { AdminOverviewSummary } from "./apiClient";
+import type { AdminExpenseRow, AdminOverviewSummary } from "./apiClient";
+import { formatAmount } from "./formatAmount";
+import { UI_TEXT } from "./uiText";
 
 export type OverviewTile = {
   key: string;
@@ -78,6 +80,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "group.unarchive": "解除封存",
   "group.delete": "刪除群組",
   "group.restore": "復原群組",
+  "group.view": "檢視群組帳目",
 };
 
 /** zh-TW label for an admin_audit_logs action; unknown actions pass through raw. */
@@ -89,6 +92,61 @@ export function auditActionLabel(action: string): string {
 export function auditTargetText(metadata: Record<string, unknown>): string {
   const name = metadata.name ?? metadata.email;
   return typeof name === "string" && name ? name : "—";
+}
+
+/**
+ * zh-TW label for expenses.kind; unknown kinds pass through raw. The app's
+ * composer already names these three kinds, so reuse its dictionary rather
+ * than keeping a second copy that can drift.
+ */
+export function expenseKindLabel(kind: string): string {
+  return (UI_TEXT.composerModes as Record<string, string>)[kind] ?? kind;
+}
+
+/** Reuses the app's own category dictionary so the console reads the same. */
+export function expenseCategoryLabel(category: string): string {
+  return (UI_TEXT.categories as Record<string, string>)[category] ?? category;
+}
+
+const SHARE_TYPE_LABELS: Record<string, string> = {
+  equal: "均分",
+  fixed: "固定金額",
+  percent: "百分比",
+};
+
+export function shareTypeLabel(shareType: string): string {
+  return SHARE_TYPE_LABELS[shareType] ?? shareType;
+}
+
+/**
+ * The photo to show for an expense. image_url is what the current composer
+ * writes; receipt_image_url is the older FloatPay-era column that some rows
+ * still carry, so fall back to it rather than showing "no photo" for them.
+ */
+export function expenseImageUrl(expense: Pick<AdminExpenseRow, "image_url" | "receipt_image_url">): string | null {
+  return expense.image_url || expense.receipt_image_url || null;
+}
+
+/**
+ * expenses.amount_minor is nullable: FloatPay-era rows carry only the legacy
+ * numeric `amount`. Rendering those as $0 would state a wrong number, so they
+ * render as "—" instead - an admin looking at a billing dispute needs to see
+ * "no amount recorded", not a confident zero.
+ */
+export function formatExpenseAmount(amountMinor: number | null, currency: string): string {
+  if (amountMinor === null) return "—";
+  return formatAmount(amountMinor, currency);
+}
+
+/**
+ * One-line "who paid" summary for a list row. Multi-payer expenses are common
+ * enough that naming only the first payer would be misleading, so they collapse
+ * to a count instead.
+ */
+export function payerSummary(payers: AdminExpenseRow["payers"]): string {
+  if (payers.length === 0) return "—";
+  if (payers.length === 1) return payers[0].display_name || "—";
+  return `${payers.length} 人分攤付款`;
 }
 
 export function formatDateTime(iso: string | null | undefined): string {

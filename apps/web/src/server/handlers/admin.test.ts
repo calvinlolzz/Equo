@@ -3,6 +3,8 @@ import type { AdminRepository } from "../repositories/adminRepository.js";
 import {
   ADMIN_LIST_DEFAULT_LIMIT,
   ADMIN_LIST_MAX_LIMIT,
+  handleAdminGroupDetail,
+  handleAdminListGroupExpenses,
   handleAdminListAuditLogs,
   handleAdminListErrors,
   handleAdminListFeedback,
@@ -50,6 +52,22 @@ const userSummary = {
   expense_count: 9,
 };
 
+const groupDetailSummary = {
+  id: "group_1",
+  name: "Trip",
+  currency: "TWD",
+  created_at: "2026-07-01T00:00:00.000Z",
+  archived_at: null,
+  deleted_at: null,
+  member_count: 2,
+  expense_count: 4,
+  deleted_expense_count: 1,
+  spend_total_minor: 12_000,
+  last_expense_at: "2026-07-10T00:00:00.000Z",
+  owner_display_name: "Alice",
+  cover_image_url: null,
+};
+
 function makeRepository(overrides: Partial<AdminRepository> = {}): AdminRepository {
   return {
     async findAdminRole(userId) {
@@ -66,6 +84,12 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     },
     async listGroups() {
       return { total: 0, groups: [] };
+    },
+    async getGroupDetail() {
+      return { group: groupDetailSummary, members: [] };
+    },
+    async listGroupExpenses() {
+      return { total: 0, expenses: [] };
     },
     async setUserDisabled(_actor, userId, disabled) {
       return { id: userId, disabled_at: disabled ? "2026-07-11T00:00:00.000Z" : null };
@@ -117,6 +141,8 @@ describe("admin handlers", () => {
       handleAdminListUsers(repository, context),
       handleAdminUserDetail(repository, context, "user_alice"),
       handleAdminListGroups(repository, context),
+      handleAdminGroupDetail(repository, context, "group_1"),
+      handleAdminListGroupExpenses(repository, context, "group_1"),
       handleAdminSetUserDisabled(repository, context, "user_alice", true),
       handleAdminSetGroupArchived(repository, context, "group_1", true),
       handleAdminSetGroupDeleted(repository, context, "group_1", true),
@@ -203,6 +229,97 @@ describe("admin handlers", () => {
 
     await handleAdminListGroups(repository, context, { filter: "nonsense" });
     expect(received).toBe("all");
+  });
+
+  test("group detail passes the acting admin through, since the read is audited", async () => {
+    let receivedActor = { id: "", email: "" };
+    let receivedGroupId = "";
+    const repository = makeRepository({
+      async getGroupDetail(actor, groupId) {
+        receivedActor = actor;
+        receivedGroupId = groupId;
+        return { group: groupDetailSummary, members: [] };
+      },
+    });
+
+    const result = await handleAdminGroupDetail(repository, context, "group_1");
+
+    expect(result.ok).toBe(true);
+    expect(result.body).toEqual({ group: groupDetailSummary, members: [] });
+    expect(receivedActor).toEqual({ id: "user_admin", email: "admin@example.com" });
+    expect(receivedGroupId).toBe("group_1");
+  });
+
+  test("group detail returns 404 ADMIN_NOT_FOUND for unknown groups", async () => {
+    const repository = makeRepository({
+      async getGroupDetail() {
+        return null;
+      },
+    });
+
+    const result = await handleAdminGroupDetail(repository, context, "group_missing");
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(404);
+    expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
+  });
+
+  test("group expenses pass the acting admin through, since the read is audited too", async () => {
+    let receivedActor = { id: "", email: "" };
+    const repository = makeRepository({
+      async listGroupExpenses(actor) {
+        receivedActor = actor;
+        return { total: 0, expenses: [] };
+      },
+    });
+
+    await handleAdminListGroupExpenses(repository, context, "group_1");
+
+    expect(receivedActor).toEqual({ id: "user_admin", email: "admin@example.com" });
+  });
+
+  test("group expenses return 404 ADMIN_NOT_FOUND for unknown groups", async () => {
+    const repository = makeRepository({
+      async listGroupExpenses() {
+        return null;
+      },
+    });
+
+    const result = await handleAdminListGroupExpenses(repository, context, "group_missing");
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(404);
+    expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
+  });
+
+  test("group expenses default to hiding deleted rows and only include them when asked", async () => {
+    let receivedIncludeDeleted: boolean | null = null;
+    const repository = makeRepository({
+      async listGroupExpenses(_actor, _groupId, _limit, _offset, includeDeleted) {
+        receivedIncludeDeleted = includeDeleted;
+        return { total: 0, expenses: [] };
+      },
+    });
+
+    await handleAdminListGroupExpenses(repository, context, "group_1");
+    expect(receivedIncludeDeleted).toBe(false);
+
+    await handleAdminListGroupExpenses(repository, context, "group_1", { include_deleted: true });
+    expect(receivedIncludeDeleted).toBe(true);
+  });
+
+  test("group expenses forward the group id and clamp the pagination", async () => {
+    let received = { groupId: "", limit: 0, offset: 0 };
+    const repository = makeRepository({
+      async listGroupExpenses(_actor, groupId, limit, offset) {
+        received = { groupId, limit, offset };
+        return { total: 0, expenses: [] };
+      },
+    });
+
+    await handleAdminListGroupExpenses(repository, context, "group_1", { limit: 5000, offset: -3 });
+
+    expect(received).toEqual({ groupId: "group_1", limit: ADMIN_LIST_MAX_LIMIT, offset: 0 });
   });
 
   test("disable user passes the acting admin and returns the new state", async () => {

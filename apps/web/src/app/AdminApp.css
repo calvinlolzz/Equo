@@ -385,9 +385,207 @@
   vertical-align: middle;
 }
 
+.admin-badge {
+  background: #eceff2;
+  color: #5b6069;
+}
+
 .admin-badge--danger {
   background: #fde8e6;
   color: #b3261e;
+}
+
+.admin-muted {
+  color: #8a8f98;
+}
+
+.admin-amount--negative {
+  color: #b3261e;
+}
+
+/* ---- Group detail ---- */
+
+.admin-group-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.admin-group-card__cover {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.admin-group-card__cover--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1f23;
+  color: #ffffff;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.admin-group-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-group-card__name {
+  margin: 0;
+  font-size: 18px;
+}
+
+.admin-group-card__meta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.admin-subheading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.admin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #5b6069;
+  cursor: pointer;
+}
+
+/* Receipt thumbnail in the expense list; the full image lives in the dialog. */
+.admin-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+  background: #eceff2;
+}
+
+.admin-table__row--deleted td {
+  color: #8a8f98;
+  text-decoration: line-through;
+}
+
+/* ---- Expense dialog ---- */
+
+.admin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(16, 18, 21, 0.55);
+  overflow-y: auto;
+}
+
+.admin-modal__panel {
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 20px 22px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.admin-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-modal__title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.admin-modal__meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.admin-modal__close {
+  border: none;
+  background: none;
+  color: #8a8f98;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.admin-modal__image-link {
+  display: block;
+  margin: 16px 0;
+}
+
+.admin-modal__image {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #eceff2;
+}
+
+.admin-modal__note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6f8fa;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-modal__subheading {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  color: #5b6069;
+}
+
+.admin-split-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-split-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #eceff2;
+}
+
+.admin-split-list li:last-child {
+  border-bottom: none;
+}
+
+.admin-modal__footer {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: #8a8f98;
 }
 
 .admin-action {
@@ -534,6 +732,8 @@
   .admin-gate,
   .admin-tile,
   .admin-user-card,
+  .admin-group-card,
+  .admin-modal__panel,
   .admin-table-wrap,
   .admin-sidebar {
     background: #1e2126;
@@ -568,8 +768,29 @@
   .admin-tile__label,
   .admin-loading,
   .admin-pagination,
+  .admin-toggle,
+  .admin-modal__subheading,
   .admin-user-card__email {
     color: #a2a7b0;
+  }
+
+  .admin-badge {
+    background: #2c3037;
+    color: #a2a7b0;
+  }
+
+  .admin-amount--negative {
+    color: #ef8a84;
+  }
+
+  .admin-thumb,
+  .admin-modal__image,
+  .admin-modal__note {
+    background: #262a30;
+  }
+
+  .admin-split-list li {
+    border-bottom-color: #262a30;
   }
 
   .admin-search input,

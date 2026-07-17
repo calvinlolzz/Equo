@@ -3,8 +3,10 @@ import type { AuthenticatedContext } from "../auth/session.js";
 import type {
   AdminAuditLogListRecord,
   AdminErrorListRecord,
+  AdminExpenseListRecord,
   AdminFeedbackListRecord,
   AdminFeedbackStatus,
+  AdminGroupDetailRecord,
   AdminGroupFilter,
   AdminGroupListRecord,
   AdminGroupStateResult,
@@ -188,6 +190,58 @@ export async function handleAdminListGroups(
 
   const { search, limit, offset } = normalizeAdminListQuery(query);
   const page = await repository.listGroups(search, limit, offset, normalizeGroupFilter(query.filter));
+  return { ok: true, status: 200, body: page };
+}
+
+export async function handleAdminGroupDetail(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+): Promise<HandlerResult<AdminGroupDetailRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const detail = await repository.getGroupDetail({ id: context.user.id, email: context.user.email }, groupId);
+
+  if (!detail) {
+    return adminNotFound("Group not found.");
+  }
+
+  return { ok: true, status: 200, body: detail };
+}
+
+export type AdminExpenseListQuery = AdminListQuery & {
+  include_deleted?: boolean;
+};
+
+export async function handleAdminListGroupExpenses(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  query: AdminExpenseListQuery = {},
+): Promise<HandlerResult<AdminExpenseListRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const { limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listGroupExpenses(
+    { id: context.user.id, email: context.user.email },
+    groupId,
+    limit,
+    offset,
+    query.include_deleted === true,
+  );
+
+  if (!page) {
+    return adminNotFound("Group not found.");
+  }
+
   return { ok: true, status: 200, body: page };
 }
 

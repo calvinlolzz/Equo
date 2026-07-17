@@ -3,10 +3,16 @@ import {
   auditActionLabel,
   auditTargetText,
   describeLastSeen,
+  expenseCategoryLabel,
+  expenseImageUrl,
+  expenseKindLabel,
   formatDate,
   formatDateTime,
+  formatExpenseAmount,
   overviewTiles,
   pageInfo,
+  payerSummary,
+  shareTypeLabel,
 } from "./adminDashboard";
 
 const overview = {
@@ -113,5 +119,58 @@ describe("formatDate", () => {
     expect(formatDate(null)).toBe("—");
     expect(formatDate(undefined)).toBe("—");
     expect(formatDate("nope")).toBe("—");
+  });
+});
+
+describe("expense labels", () => {
+  test("translates known kinds and share types, passing unknown ones through", () => {
+    expect(expenseKindLabel("expense")).toBe("支出");
+    expect(expenseKindLabel("transfer")).toBe("轉帳");
+    expect(expenseKindLabel("future_kind")).toBe("future_kind");
+    expect(shareTypeLabel("equal")).toBe("均分");
+    expect(shareTypeLabel("percent")).toBe("百分比");
+    expect(shareTypeLabel("future_type")).toBe("future_type");
+  });
+
+  test("reuses the app's category dictionary, passing unknown categories through", () => {
+    expect(expenseCategoryLabel("food")).toBe("餐飲");
+    expect(expenseCategoryLabel("lodging")).toBe("住宿");
+    expect(expenseCategoryLabel("crypto")).toBe("crypto");
+  });
+});
+
+describe("expenseImageUrl", () => {
+  test("prefers image_url but falls back to the legacy receipt column", () => {
+    expect(expenseImageUrl({ image_url: "https://cdn/a.jpg", receipt_image_url: "https://cdn/b.jpg" })).toBe(
+      "https://cdn/a.jpg",
+    );
+    expect(expenseImageUrl({ image_url: null, receipt_image_url: "https://cdn/b.jpg" })).toBe("https://cdn/b.jpg");
+  });
+
+  test("returns null when neither column has a usable url", () => {
+    expect(expenseImageUrl({ image_url: null, receipt_image_url: null })).toBeNull();
+    expect(expenseImageUrl({ image_url: "", receipt_image_url: "" })).toBeNull();
+  });
+});
+
+describe("payerSummary", () => {
+  test("names a single payer but collapses multi-payer expenses to a count", () => {
+    const payer = { member_id: "m1", display_name: "Alice", amount_minor: 1000, currency: "TWD" };
+
+    expect(payerSummary([payer])).toBe("Alice");
+    expect(payerSummary([payer, { ...payer, member_id: "m2", display_name: "Bob" }])).toBe("2 人分攤付款");
+  });
+
+  test("renders an em dash for no payers or a nameless one", () => {
+    expect(payerSummary([])).toBe("—");
+    expect(payerSummary([{ member_id: "m1", display_name: null, amount_minor: 1000, currency: "TWD" }])).toBe("—");
+  });
+});
+
+describe("formatExpenseAmount", () => {
+  test("formats a real amount but renders legacy null amounts as an em dash, not $0", () => {
+    expect(formatExpenseAmount(12_000, "TWD")).toBe("$120");
+    expect(formatExpenseAmount(0, "TWD")).toBe("$0");
+    expect(formatExpenseAmount(null, "TWD")).toBe("—");
   });
 });
