@@ -1,8 +1,17 @@
-# Equo 算好 功能規格與 MVP 建議
+# Equo 算好 功能規格與 MVP 建議（歷史文件）
+
+> **⚠️ 歷史規劃文件，不是現況說明。** 這是 MVP 前的**規格草案**（v0.1，2026-06-26 後未更新），
+> 整份是在盤點當時那個 `index.html` demo 並提出建議——**那個 demo 已經不存在**，正式產品也
+> 早就照著自己的路走完 MVP 了。**不要拿它跟程式碼對帳**，也不要據此推論現況或當成待辦清單。
+>
+> 現況請看：`README.md`、`docs/TECH_STACK.md`、`docs/SUPABASE.md`、`docs/OAUTH.md`、
+> `docs/TESTING.md`（這幾份有對著程式碼與 DB baseline 校正過）。
+>
+> 保留本檔是為了產品思路的出處。2026-07-17 標記。
 
 版本：v0.1  
-狀態：Prototype 盤點與正式產品規格草案  
-依據：目前 `index.html` demo、既有 SDD、Supabase schema、產品優化方向  
+狀態：Prototype 盤點與正式產品規格草案（歷史）  
+依據：當時的 `index.html` demo（已不存在）、既有 SDD、Supabase schema、產品優化方向  
 
 ## 1. 文件目的
 
