@@ -3,12 +3,23 @@
 ## 1. 自動化測試
 
 ```bash
-npm test             # Vitest 全套單元測試
+npm test             # Vitest 全套（單元 + hook + 整頁元件測試）
 npm run build        # 型別檢查 + 產出 bundle
 npm run verify:release   # test + build + 打包內容檢查 + 編碼檢查 + launch readiness
 ```
 
 `verify:release` 是發佈前的必跑關卡，任何一項失敗都不應部署。
+
+測試不只有純函式單元測試，分三層：
+
+- **純函式／伺服器邏輯**：node 環境，佔絕大多數。
+- **hook 測試**：檔頭加 `// @vitest-environment jsdom`，用 `@testing-library/react` 的 `renderHook`。
+- **整頁元件測試**：`App.test.tsx`（桌面）與 `App.mobile.test.tsx`（手機）透過 `appTestHarness`
+  mount 真的 `<App/>`，只 fake fetch 與 jsdom 缺的瀏覽器 API——攔得住「型別過、build 過、
+  單元測試全綠，但畫面壞掉」的改動。
+
+> 寫 hook 測試時**一定要 mutation 驗證**（故意弄壞行為、確認測試真的會紅）。這個專案出過
+> 好幾次「無論行為對錯都會通過」的套套邏輯測試。
 
 ## 2. 手動驗收（正式站或 preview）
 

@@ -1,6 +1,17 @@
-# Equo Claude Continuation Handoff
+# Equo Claude Continuation Handoff（歷史文件，勿當成現況）
 
 Date: 2026-07-04
+
+> **⚠️ 這是 2026-07-04 的一次性交接快照，不是現況說明，也不要照它的指示動手。**
+> 2026-07-17 對著程式碼核對後確認**大部分已失效**：描述的 session 儲存方式已改（token 現在
+> 只在 HttpOnly cookie 裡）、〈Use This Workspace Only〉的理由已不成立（root 與 worktree 現在
+> 同步）、〈Next Product Tasks〉列的工作**都做完了**、它要人先讀的三份 docs
+> （`launch_readiness_stage.md`／`stage6_launch_closure.md`／`production_readiness_stage.md`）
+> **都不存在**，而它把 App.tsx 當成行為的權威來源——那是 PR #14 把 App.tsx 拆成一堆 hook 之前的事。
+>
+> 保留本檔只為了**決策出處**。它唯二仍然有效的結論（硬登入牆、GIS 永不復活）已經寫進
+> `docs/OAUTH.md`；現況請看 `docs/OAUTH.md`、`docs/SUPABASE.md`、`docs/TECH_STACK.md`、
+> `docs/TESTING.md`、`README.md`。
 
 ## Login Wall Decision (2026-07-04, supersedes earlier "no forced login" guidance)
 

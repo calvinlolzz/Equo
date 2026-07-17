@@ -65,13 +65,13 @@ Current linked Vercel project status:
 
 ## Google OAuth Setup
 
-Use a Google OAuth web client ID.
+Use a Google OAuth web client ID. The setting that matters is the **Authorized redirect URI**, which must be Supabase's callback:
 
-Authorized JavaScript origins should include:
+```text
+https://cmfgptuzbayzdrxuoapm.supabase.co/auth/v1/callback
+```
 
-- `https://equo-mu.vercel.app`
-- The preview deployment URL used for launch testing.
-- `http://127.0.0.1:14062` when local Google sign-in testing is needed.
+**Authorized JavaScript origins are not needed.** They were a requirement of the abandoned GIS flow (browser talks to Google directly). The shipped flow is a full-page redirect to Supabase, which talks to Google server-side — the browser never loads Google's JS SDK. Harmless if already set; just don't blame a broken login on them. See `docs/OAUTH.md`.
 
 `GOOGLE_OAUTH_CLIENT_ID` (server-side) is the one that matters. `VITE_GOOGLE_OAUTH_CLIENT_ID` is still set on the project but is vestigial — no frontend code reads it, and the browser never sends a client ID: `buildAuthorizeUrl` only needs `VITE_SUPABASE_URL`, and Google's client ID is configured inside Supabase's own auth provider settings.
 

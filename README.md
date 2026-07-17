@@ -20,7 +20,7 @@ Equo 是一個手機優先的分帳 Web App：建立群組、記錄支出、多�
 - API：單一 Vercel Function `api/v1/[...path].ts` → `vercel-api/v1Handler.ts` → `apps/web/src/server`（routes → handlers → repositories）
 - 資料庫：Supabase Postgres（server 端以 service role 經 REST 存取，RLS 與 RPC 面已強化）
 - 認證：Supabase OAuth（Google）換發 Equo 自簽 session cookie（`equo_session`）
-- 測試：Vitest（node 環境、純函式單元測試）
+- 測試：Vitest 三層——純函式／伺服器邏輯（node）、hook 測試、整頁元件測試（jsdom + Testing Library，mount 真的 `<App/>`）
 
 ## 開發
 
@@ -62,4 +62,4 @@ docs/                 部署、OAuth、Supabase、測試等文件
 - [docs/OAUTH.md](docs/OAUTH.md) — Google / Supabase OAuth 設定
 - [docs/SUPABASE.md](docs/SUPABASE.md) — 資料庫說明
 - [docs/TESTING.md](docs/TESTING.md) — 測試流程
-- [docs/claude_continuation_handoff.md](docs/claude_continuation_handoff.md) — 重要產品決策記錄（登入牆等）
+- [docs/claude_continuation_handoff.md](docs/claude_continuation_handoff.md) — **歷史交接快照（2026-07-04，大部分已失效）**，只留決策出處；現況看上面幾份
