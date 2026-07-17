@@ -413,10 +413,10 @@ describe("createHttpRuntime", () => {
     const headers = { authorization: "Bearer google-token" };
 
     const list = await runtime.handle({ method: "GET", path: "/api/v1/admin/groups", headers });
-    const detail = await runtime.handle({ method: "GET", path: "/api/v1/admin/groups/group_1", headers });
+    const detail = await runtime.handle({ method: "GET", path: "/api/v1/admin/groups/11111111-1111-4111-8111-111111111111", headers });
     const expenses = await runtime.handle({
       method: "GET",
-      path: "/api/v1/admin/groups/group_1/expenses",
+      path: "/api/v1/admin/groups/11111111-1111-4111-8111-111111111111/expenses",
       headers,
       query: { include_deleted: "true" },
     });
@@ -446,7 +446,7 @@ describe("createHttpRuntime", () => {
 
     const response = await runtime.handle({
       method: "GET",
-      path: "/api/v1/admin/groups/group_1/expenses",
+      path: "/api/v1/admin/groups/11111111-1111-4111-8111-111111111111/expenses",
       headers: { authorization: "Bearer google-token" },
     });
 

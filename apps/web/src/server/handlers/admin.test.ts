@@ -30,6 +30,11 @@ const context = {
   },
 };
 
+// The group/user drill-down handlers screen ids as uuids before the RPC, so the
+// success-path tests use real uuids; the friendly labels stay for readability.
+const GROUP_ID = "11111111-1111-4111-8111-111111111111";
+const USER_ID = "22222222-2222-4222-8222-222222222222";
+
 const overview = {
   user_count: 5,
   active_users_7d: 3,
@@ -208,7 +213,7 @@ describe("admin handlers", () => {
       },
     });
 
-    const result = await handleAdminUserDetail(repository, context, "user_missing");
+    const result = await handleAdminUserDetail(repository, context, USER_ID);
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe(404);
@@ -242,12 +247,44 @@ describe("admin handlers", () => {
       },
     });
 
-    const result = await handleAdminGroupDetail(repository, context, "group_1");
+    const result = await handleAdminGroupDetail(repository, context, GROUP_ID);
 
     expect(result.ok).toBe(true);
     expect(result.body).toEqual({ group: groupDetailSummary, members: [] });
     expect(receivedActor).toEqual({ id: "user_admin", email: "admin@example.com" });
-    expect(receivedGroupId).toBe("group_1");
+    expect(receivedGroupId).toBe(GROUP_ID);
+  });
+
+  test("a malformed (non-uuid) id is treated as not found, not passed to the RPC", async () => {
+    let rpcCalled = false;
+    const repository = makeRepository({
+      async getGroupDetail() {
+        rpcCalled = true;
+        return { group: groupDetailSummary, members: [] };
+      },
+      async getUserDetail() {
+        rpcCalled = true;
+        return { user: userSummary, groups: [] };
+      },
+      async listGroupExpenses() {
+        rpcCalled = true;
+        return { total: 0, expenses: [] };
+      },
+    });
+
+    const results = await Promise.all([
+      handleAdminGroupDetail(repository, context, "not-a-uuid"),
+      handleAdminListGroupExpenses(repository, context, "123"),
+      handleAdminUserDetail(repository, context, "../etc/passwd"),
+    ]);
+
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(404);
+      expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
+    }
+    // The guard short-circuits before the RPC, so PostgREST never sees the bad id.
+    expect(rpcCalled).toBe(false);
   });
 
   test("group detail returns 404 ADMIN_NOT_FOUND for unknown groups", async () => {
@@ -257,7 +294,7 @@ describe("admin handlers", () => {
       },
     });
 
-    const result = await handleAdminGroupDetail(repository, context, "group_missing");
+    const result = await handleAdminGroupDetail(repository, context, GROUP_ID);
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe(404);
@@ -273,7 +310,7 @@ describe("admin handlers", () => {
       },
     });
 
-    await handleAdminListGroupExpenses(repository, context, "group_1");
+    await handleAdminListGroupExpenses(repository, context, GROUP_ID);
 
     expect(receivedActor).toEqual({ id: "user_admin", email: "admin@example.com" });
   });
@@ -285,7 +322,7 @@ describe("admin handlers", () => {
       },
     });
 
-    const result = await handleAdminListGroupExpenses(repository, context, "group_missing");
+    const result = await handleAdminListGroupExpenses(repository, context, GROUP_ID);
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe(404);
@@ -301,10 +338,10 @@ describe("admin handlers", () => {
       },
     });
 
-    await handleAdminListGroupExpenses(repository, context, "group_1");
+    await handleAdminListGroupExpenses(repository, context, GROUP_ID);
     expect(receivedIncludeDeleted).toBe(false);
 
-    await handleAdminListGroupExpenses(repository, context, "group_1", { include_deleted: true });
+    await handleAdminListGroupExpenses(repository, context, GROUP_ID, { include_deleted: true });
     expect(receivedIncludeDeleted).toBe(true);
   });
 
@@ -317,9 +354,9 @@ describe("admin handlers", () => {
       },
     });
 
-    await handleAdminListGroupExpenses(repository, context, "group_1", { limit: 5000, offset: -3 });
+    await handleAdminListGroupExpenses(repository, context, GROUP_ID, { limit: 5000, offset: -3 });
 
-    expect(received).toEqual({ groupId: "group_1", limit: ADMIN_LIST_MAX_LIMIT, offset: 0 });
+    expect(received).toEqual({ groupId: GROUP_ID, limit: ADMIN_LIST_MAX_LIMIT, offset: 0 });
   });
 
   test("disable user passes the acting admin and returns the new state", async () => {
