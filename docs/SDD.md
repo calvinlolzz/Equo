@@ -1,8 +1,17 @@
-# Equo 算好 Software Design Document
+# Equo 算好 Software Design Document（歷史文件）
+
+> **⚠️ 歷史規劃文件，不是現況說明。** 這是**設計草案**（狀態 Draft，2026-06-18 後未更新），
+> 記錄的是「當時打算怎麼做」，不是「系統現在怎麼運作」。**不要拿它跟程式碼對帳**，也不要
+> 據此推論現況——產品與實作早已往前走。它宣稱的主軸來源 `docs/equo_sdd_v2.html` 也已不存在。
+>
+> 現況請看：`README.md`、`docs/TECH_STACK.md`、`docs/SUPABASE.md`、`docs/OAUTH.md`、
+> `docs/TESTING.md`（這幾份有對著程式碼與 DB baseline 校正過）。
+>
+> 保留本檔是為了設計思路的出處。2026-07-17 標記。
 
 版本：2.0  
-狀態：Draft  
-主軸來源：`docs/equo_sdd_v2.html`  
+狀態：Draft（歷史）  
+主軸來源：`docs/equo_sdd_v2.html`（已不存在）  
 產品前提：90% 使用情境發生在手機上，手機版是主產品，網頁版是輔助入口。
 
 ## 1. 文件目的
