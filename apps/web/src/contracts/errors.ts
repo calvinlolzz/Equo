@@ -18,8 +18,11 @@ export const errorCodes = [
   "INVALID_IMAGE",
   "ADMIN_FORBIDDEN",
   "ADMIN_NOT_FOUND",
+  /** A well-formed admin request that conflicts with an invariant (last owner). */
+  "ADMIN_CONFLICT",
   "ACCOUNT_DISABLED",
   "INVALID_FEEDBACK",
+  "INVALID_ADMIN",
   /**
    * The request body is not the shape the endpoint takes at all - a missing
    * field, a string where an array belongs, an empty `{}`. Distinct from the

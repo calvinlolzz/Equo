@@ -18,6 +18,9 @@ import {
   handleAdminSetGroupDeleted,
   handleAdminSetUserDisabled,
   handleAdminUserDetail,
+  handleAdminListAdmins,
+  handleAdminSetAdminRole,
+  handleAdminRemoveAdmin,
   normalizeAdminListQuery,
   normalizeGroupFilter,
 } from "./admin.js";
@@ -74,10 +77,28 @@ const groupDetailSummary = {
   cover_image_url: null,
 };
 
+const adminAccount = {
+  user_id: "user_admin",
+  email: "admin@example.com",
+  display_name: "Admin",
+  avatar_url: null,
+  role: "owner",
+  created_at: "2026-07-01T00:00:00.000Z",
+};
+
 function makeRepository(overrides: Partial<AdminRepository> = {}): AdminRepository {
   return {
     async findAdminRole(userId) {
       return userId === "user_admin" ? "owner" : null;
+    },
+    async listAdmins() {
+      return [adminAccount];
+    },
+    async setAdminRole(_actor, _email, role) {
+      return { ok: true, admin: { ...adminAccount, role } };
+    },
+    async removeAdmin(_actor, userId) {
+      return { ok: true, user_id: userId };
     },
     async getOverview() {
       return overview;
@@ -160,6 +181,9 @@ describe("admin handlers", () => {
       handleAdminListFeedback(repository, context),
       handleAdminSetFeedbackStatus(repository, context, "feedback_1", "done"),
       handleAdminListErrors(repository, context),
+      handleAdminListAdmins(repository, context),
+      handleAdminSetAdminRole(repository, context, "x@example.com", "admin"),
+      handleAdminRemoveAdmin(repository, context, "11111111-1111-4111-8111-111111111111"),
     ]);
 
     for (const result of results) {
@@ -469,6 +493,123 @@ describe("admin handlers", () => {
       expect(result.status).toBe(404);
       expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
     }
+  });
+});
+
+describe("admin role gating", () => {
+  const supportContext = { user: { ...context.user, id: "user_support" } };
+
+  function supportRepo(overrides: Partial<AdminRepository> = {}): AdminRepository {
+    return makeRepository({
+      async findAdminRole(userId) {
+        return userId === "user_support" ? "support" : null;
+      },
+      ...overrides,
+    });
+  }
+
+  test("a support role cannot perform destructive user/group writes", async () => {
+    const repository = supportRepo();
+
+    const results = await Promise.all([
+      handleAdminSetUserDisabled(repository, supportContext, "user_x", true),
+      handleAdminSetGroupArchived(repository, supportContext, "group_x", true),
+      handleAdminSetGroupDeleted(repository, supportContext, "group_x", true),
+    ]);
+
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(403);
+      expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_FORBIDDEN");
+    }
+  });
+
+  test("a support role can still read and triage feedback", async () => {
+    const repository = supportRepo();
+
+    const overview = await handleAdminOverview(repository, supportContext);
+    const feedback = await handleAdminSetFeedbackStatus(repository, supportContext, "feedback_1", "done");
+
+    expect(overview.ok).toBe(true);
+    expect(feedback.ok).toBe(true);
+  });
+
+  test("managing admins is owner-only - support and admin roles are refused", async () => {
+    for (const role of ["support", "admin"]) {
+      const repository = makeRepository({
+        async findAdminRole() {
+          return role;
+        },
+      });
+
+      const list = await handleAdminListAdmins(repository, context);
+      const set = await handleAdminSetAdminRole(repository, context, "x@example.com", "admin");
+      const remove = await handleAdminRemoveAdmin(repository, context, "11111111-1111-4111-8111-111111111111");
+
+      for (const result of [list, set, remove]) {
+        expect(result.ok).toBe(false);
+        expect(result.status).toBe(403);
+      }
+    }
+  });
+});
+
+describe("admin management", () => {
+  test("owner lists admins", async () => {
+    const result = await handleAdminListAdmins(makeRepository(), context);
+
+    expect(result.ok).toBe(true);
+    expect((result.body as { admins: unknown[] }).admins).toHaveLength(1);
+  });
+
+  test("set role validates email and role before hitting the repository", async () => {
+    let called = false;
+    const repository = makeRepository({
+      async setAdminRole(_actor, _email, role) {
+        called = true;
+        return { ok: true, admin: { ...adminAccount, role } };
+      },
+    });
+
+    const noEmail = await handleAdminSetAdminRole(repository, context, "  ", "admin");
+    const badRole = await handleAdminSetAdminRole(repository, context, "x@example.com", "superuser");
+
+    expect(noEmail.status).toBe(400);
+    expect(badRole.status).toBe(400);
+    expect(called).toBe(false);
+  });
+
+  test("set role maps repository failures to status codes", async () => {
+    const notFound = await handleAdminSetAdminRole(
+      makeRepository({ async setAdminRole() { return { ok: false, error: "USER_NOT_FOUND" }; } }),
+      context,
+      "ghost@example.com",
+      "admin",
+    );
+    const lastOwner = await handleAdminSetAdminRole(
+      makeRepository({ async setAdminRole() { return { ok: false, error: "LAST_OWNER" }; } }),
+      context,
+      "owner@example.com",
+      "support",
+    );
+
+    expect(notFound.status).toBe(404);
+    expect((notFound.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
+    expect(lastOwner.status).toBe(409);
+    expect((lastOwner.body as { error: { code: string } }).error.code).toBe("ADMIN_CONFLICT");
+  });
+
+  test("remove screens malformed ids and maps last-owner to 409", async () => {
+    const badId = await handleAdminRemoveAdmin(makeRepository(), context, "not-a-uuid");
+    const lastOwner = await handleAdminRemoveAdmin(
+      makeRepository({ async removeAdmin() { return { ok: false, error: "LAST_OWNER" }; } }),
+      context,
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(badId.status).toBe(404);
+    expect(lastOwner.status).toBe(409);
+    expect((lastOwner.body as { error: { code: string } }).error.code).toBe("ADMIN_CONFLICT");
   });
 });
 
