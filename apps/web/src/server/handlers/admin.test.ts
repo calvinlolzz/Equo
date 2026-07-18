@@ -95,7 +95,7 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
       return { total: 0, groups: [] };
     },
     async getGroupDetail() {
-      return { group: groupDetailSummary, members: [] };
+      return { group: groupDetailSummary, members: [], invites: [] };
     },
     async listGroupExpenses() {
       return { total: 0, expenses: [] };
@@ -255,14 +255,14 @@ describe("admin handlers", () => {
       async getGroupDetail(actor, groupId) {
         receivedActor = actor;
         receivedGroupId = groupId;
-        return { group: groupDetailSummary, members: [] };
+        return { group: groupDetailSummary, members: [], invites: [] };
       },
     });
 
     const result = await handleAdminGroupDetail(repository, context, GROUP_ID);
 
     expect(result.ok).toBe(true);
-    expect(result.body).toEqual({ group: groupDetailSummary, members: [] });
+    expect(result.body).toEqual({ group: groupDetailSummary, members: [], invites: [] });
     expect(receivedActor).toEqual({ id: "user_admin", email: "admin@example.com" });
     expect(receivedGroupId).toBe(GROUP_ID);
   });
@@ -272,7 +272,7 @@ describe("admin handlers", () => {
     const repository = makeRepository({
       async getGroupDetail() {
         rpcCalled = true;
-        return { group: groupDetailSummary, members: [] };
+        return { group: groupDetailSummary, members: [], invites: [] };
       },
       async getUserDetail() {
         rpcCalled = true;

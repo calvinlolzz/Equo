@@ -112,7 +112,7 @@ function makeClient(): PostgrestClient {
       if (fn === "admin_console_role") return "owner";
       if (fn === "admin_console_storage") return { object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 };
       if (fn === "admin_console_groups") return { total: 1, groups: [groupRow] };
-      if (fn === "admin_console_group_detail") return { group: groupRow, members: [ownerMember] };
+      if (fn === "admin_console_group_detail") return { group: groupRow, members: [ownerMember], invites: [] };
       if (fn === "admin_console_group_expenses") {
         // Echo the flag back so the query-string wiring is visible to the test.
         return { total: 1, expenses: [expenseRow], include_deleted: args.p_include_deleted };

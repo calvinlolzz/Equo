@@ -558,12 +558,23 @@ export type AdminGroupMemberRow = {
   balance_minor: number;
 };
 
+export type AdminGroupInvite = {
+  id: string;
+  max_uses: number;
+  use_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  created_by_name: string | null;
+};
+
 export type AdminGroupDetail = {
   group: AdminGroupRow & {
     cover_image_url: string | null;
     deleted_expense_count: number;
   };
   members: AdminGroupMemberRow[];
+  invites: AdminGroupInvite[];
 };
 
 export type AdminExpenseListOptions = {
