@@ -126,6 +126,11 @@ export function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
 }
 
+/** {value,label} pairs for the audit action filter dropdown, same source of truth. */
+export function auditActionOptions(): Array<{ value: string; label: string }> {
+  return Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => ({ value, label }));
+}
+
 /** Human-readable target from an audit row's metadata (group name or user email). */
 export function auditTargetText(metadata: Record<string, unknown>): string {
   const name = metadata.name ?? metadata.email;

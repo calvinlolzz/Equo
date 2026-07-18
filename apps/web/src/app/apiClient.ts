@@ -398,8 +398,14 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "GET",
       });
     },
-    adminListAuditLogs(options: AdminListOptions = {}) {
-      return request<AdminAuditLogPage>(`/admin/audit${adminListQuery(options)}`, { method: "GET" });
+    adminListAuditLogs(options: AdminListOptions & { action?: string } = {}) {
+      const params = new URLSearchParams();
+      if (options.search) params.set("search", options.search);
+      if (options.action) params.set("action", options.action);
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      if (options.offset !== undefined) params.set("offset", String(options.offset));
+      const query = params.toString();
+      return request<AdminAuditLogPage>(`/admin/audit${query ? `?${query}` : ""}`, { method: "GET" });
     },
     adminListFeedback(options: AdminListOptions & { status?: string } = {}) {
       const params = new URLSearchParams();

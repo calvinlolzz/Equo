@@ -439,6 +439,7 @@ export function createHttpRuntime(options: RuntimeOptions) {
         const limitParam = queryParam(request, "limit");
         const offsetParam = queryParam(request, "offset");
         const result = await adminListErrorsRoute(routeOptions(options, request), {
+          search: queryParam(request, "search"),
           limit: limitParam ? Number(limitParam) : undefined,
           offset: offsetParam ? Number(offsetParam) : undefined,
         });
@@ -544,6 +545,8 @@ export function createHttpRuntime(options: RuntimeOptions) {
         const limitParam = queryParam(request, "limit");
         const offsetParam = queryParam(request, "offset");
         const result = await adminListAuditLogsRoute(routeOptions(options, request), {
+          search: queryParam(request, "search"),
+          action: queryParam(request, "action"),
           limit: limitParam ? Number(limitParam) : undefined,
           offset: offsetParam ? Number(offsetParam) : undefined,
         });

@@ -117,6 +117,11 @@ function makeClient(): PostgrestClient {
         // Echo the flag back so the query-string wiring is visible to the test.
         return { total: 1, expenses: [expenseRow], include_deleted: args.p_include_deleted };
       }
+      // Echo the log filters back so the query-string wiring is visible.
+      if (fn === "admin_console_audit_logs") {
+        return { total: 0, logs: [], search: args.p_search, action: args.p_action };
+      }
+      if (fn === "admin_console_errors") return { total: 0, errors: [], search: args.p_search };
       if (fn === "get_group_detail") return groupDetail;
       if (fn === "replace_expense") {
         return {
@@ -397,6 +402,37 @@ describe("createHttpRuntime", () => {
     expect(response.body).not.toHaveProperty("members");
     expect(response.body).not.toHaveProperty("expenses");
     expect(response.body).not.toHaveProperty("balances");
+  });
+
+  test("threads audit search/action and error search from the query string to the RPC", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const headers = { authorization: "Bearer google-token" };
+
+    const audit = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/admin/audit",
+      headers,
+      query: { search: "alice", action: "group.delete" },
+    });
+    const errors = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/admin/errors",
+      headers,
+      query: { search: "boom" },
+    });
+
+    expect(audit.body).toMatchObject({ search: "alice", action: "group.delete" });
+    expect(errors.body).toMatchObject({ search: "boom" });
   });
 
   test("routes the admin storage stats endpoint", async () => {

@@ -21,6 +21,7 @@ import {
 } from "./apiClient";
 import {
   auditActionLabel,
+  auditActionOptions,
   auditTargetText,
   describeLastSeen,
   expenseCategoryLabel,
@@ -1249,6 +1250,8 @@ function FeedbackPanel({ client }: { client: EquoApiClient }) {
 }
 
 function ErrorsPanel({ client }: { client: EquoApiClient }) {
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [state, setState] = useState<ListState<AdminErrorPage>>({ page: null, loading: true, error: "" });
 
@@ -1256,7 +1259,7 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
     let cancelled = false;
     setState((current) => ({ ...current, loading: true, error: "" }));
     client
-      .adminListErrors({ limit: PAGE_SIZE, offset })
+      .adminListErrors({ search, limit: PAGE_SIZE, offset })
       .then((page) => {
         if (!cancelled) setState({ page, loading: false, error: "" });
       })
@@ -1266,12 +1269,30 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
     return () => {
       cancelled = true;
     };
-  }, [client, offset]);
+  }, [client, search, offset]);
 
   const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.errors.length) : null;
 
   return (
     <section aria-label="錯誤日誌">
+      <form
+        className="admin-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setOffset(0);
+          setSearch(searchInput.trim());
+        }}
+      >
+        <input
+          type="search"
+          value={searchInput}
+          placeholder="搜尋訊息、頁面或 email"
+          onChange={(event) => setSearchInput(event.target.value)}
+          aria-label="搜尋錯誤"
+        />
+        <button type="submit">搜尋</button>
+      </form>
+
       {state.error && <p className="admin-error">{state.error}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
@@ -1303,7 +1324,7 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
                 {state.page.errors.length === 0 && (
                   <tr>
                     <td colSpan={5} className="admin-table__empty">
-                      沒有錯誤記錄——很好！
+                      {search ? "沒有符合的錯誤記錄" : "沒有錯誤記錄——很好！"}
                     </td>
                   </tr>
                 )}
@@ -1325,6 +1346,9 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
 }
 
 function AuditPanel({ client }: { client: EquoApiClient }) {
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [action, setAction] = useState("");
   const [offset, setOffset] = useState(0);
   const [state, setState] = useState<ListState<AdminAuditLogPage>>({ page: null, loading: true, error: "" });
 
@@ -1332,7 +1356,7 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
     let cancelled = false;
     setState((current) => ({ ...current, loading: true, error: "" }));
     client
-      .adminListAuditLogs({ limit: PAGE_SIZE, offset })
+      .adminListAuditLogs({ search, action, limit: PAGE_SIZE, offset })
       .then((page) => {
         if (!cancelled) setState({ page, loading: false, error: "" });
       })
@@ -1342,12 +1366,46 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
     return () => {
       cancelled = true;
     };
-  }, [client, offset]);
+  }, [client, search, action, offset]);
 
   const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.logs.length) : null;
 
   return (
     <section aria-label="稽核記錄">
+      <form
+        className="admin-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setOffset(0);
+          setSearch(searchInput.trim());
+        }}
+      >
+        <input
+          type="search"
+          value={searchInput}
+          placeholder="搜尋操作者或對象"
+          onChange={(event) => setSearchInput(event.target.value)}
+          aria-label="搜尋稽核記錄"
+        />
+        <select
+          className="admin-select"
+          value={action}
+          aria-label="篩選動作"
+          onChange={(event) => {
+            setOffset(0);
+            setAction(event.target.value);
+          }}
+        >
+          <option value="">全部動作</option>
+          {auditActionOptions().map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button type="submit">搜尋</button>
+      </form>
+
       {state.error && <p className="admin-error">{state.error}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
@@ -1375,7 +1433,7 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
                 {state.page.logs.length === 0 && (
                   <tr>
                     <td colSpan={4} className="admin-table__empty">
-                      尚無稽核記錄
+                      {search || action ? "沒有符合的稽核記錄" : "尚無稽核記錄"}
                     </td>
                   </tr>
                 )}
