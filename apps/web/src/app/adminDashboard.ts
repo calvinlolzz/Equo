@@ -1,4 +1,4 @@
-import type { AdminExpenseRow, AdminOverviewSummary, AdminStorageSummary } from "./apiClient";
+import type { AdminGroupInvite, AdminExpenseRow, AdminOverviewSummary, AdminStorageSummary } from "./apiClient";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
@@ -130,6 +130,34 @@ export function auditActionLabel(action: string): string {
 export function auditTargetText(metadata: Record<string, unknown>): string {
   const name = metadata.name ?? metadata.email;
   return typeof name === "string" && name ? name : "—";
+}
+
+export type InviteStatus = "revoked" | "expired" | "used_up" | "live";
+
+/**
+ * An invite's effective state, checked in priority order: an explicit revoke
+ * wins, then expiry, then exhausted uses; anything left is still joinable.
+ * `nowMs` is passed in (not read from the clock) so the rule is deterministic
+ * in tests. use_count >= max_uses counts as used up - accept_invite increments
+ * on join, so an equal count means the last seat was taken.
+ */
+export function inviteStatus(invite: AdminGroupInvite, nowMs: number): InviteStatus {
+  if (invite.revoked_at) return "revoked";
+  const expiresMs = invite.expires_at ? Date.parse(invite.expires_at) : Number.NaN;
+  if (!Number.isNaN(expiresMs) && expiresMs <= nowMs) return "expired";
+  if (invite.use_count >= invite.max_uses) return "used_up";
+  return "live";
+}
+
+const INVITE_STATUS_LABELS: Record<InviteStatus, string> = {
+  live: "有效",
+  revoked: "已撤銷",
+  expired: "已過期",
+  used_up: "已用完",
+};
+
+export function inviteStatusLabel(status: InviteStatus): string {
+  return INVITE_STATUS_LABELS[status];
 }
 
 /**

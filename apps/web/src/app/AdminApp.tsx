@@ -29,6 +29,8 @@ import {
   formatDate,
   formatDateTime,
   formatExpenseAmount,
+  inviteStatus,
+  inviteStatusLabel,
   overviewTiles,
   pageInfo,
   payerSummary,
@@ -517,6 +519,8 @@ function GroupDetailPanel({
     };
   }, [client, groupId]);
 
+  const now = Date.now();
+
   return (
     <section aria-label="群組詳情">
       <button type="button" className="admin-back" onClick={onBack}>
@@ -590,6 +594,50 @@ function GroupDetailPanel({
                   <tr>
                     <td colSpan={7} className="admin-table__empty">
                       這個群組沒有成員
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="admin-subheading admin-subheading--spaced">邀請碼</h3>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>狀態</th>
+                  <th className="admin-table__num">使用</th>
+                  <th>到期</th>
+                  <th>建立者</th>
+                  <th>建立時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.invites.map((invite) => {
+                  const status = inviteStatus(invite, now);
+                  return (
+                    <tr key={invite.id}>
+                      <td>
+                        <span
+                          className={status === "live" ? "admin-badge admin-badge--ok" : "admin-badge"}
+                        >
+                          {inviteStatusLabel(status)}
+                        </span>
+                      </td>
+                      <td className="admin-table__num">
+                        {invite.use_count} / {invite.max_uses}
+                      </td>
+                      <td>{invite.expires_at ? formatDate(invite.expires_at) : "永久"}</td>
+                      <td>{invite.created_by_name ?? "—"}</td>
+                      <td>{formatDate(invite.created_at)}</td>
+                    </tr>
+                  );
+                })}
+                {detail.invites.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="admin-table__empty">
+                      這個群組沒有邀請碼
                     </td>
                   </tr>
                 )}

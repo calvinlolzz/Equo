@@ -96,9 +96,20 @@ export type AdminGroupMemberRecord = {
   balance_minor: number;
 };
 
+export type AdminGroupInviteRecord = {
+  id: string;
+  max_uses: number;
+  use_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  created_by_name: string | null;
+};
+
 export type AdminGroupDetailRecord = {
   group: AdminGroupDetailGroupRecord;
   members: AdminGroupMemberRecord[];
+  invites: AdminGroupInviteRecord[];
 };
 
 export type AdminExpensePayerRecord = {

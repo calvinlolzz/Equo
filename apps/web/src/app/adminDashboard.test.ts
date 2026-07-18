@@ -10,6 +10,8 @@ import {
   formatDate,
   formatDateTime,
   formatExpenseAmount,
+  inviteStatus,
+  inviteStatusLabel,
   overviewTiles,
   storageTiles,
   pageInfo,
@@ -215,5 +217,44 @@ describe("storageTiles", () => {
     expect(orphan?.value).toBe("3");
     expect(orphan?.danger).toBe(true);
     expect(orphan?.hint).toBe("占用 488 KB");
+  });
+});
+
+describe("inviteStatus", () => {
+  const now = Date.parse("2026-07-18T00:00:00.000Z");
+  const base = {
+    id: "inv1",
+    max_uses: 5,
+    use_count: 0,
+    expires_at: null,
+    revoked_at: null,
+    created_at: "2026-07-01T00:00:00.000Z",
+    created_by_name: "Alice",
+  };
+
+  test("a fresh, unexpired, unused invite is live", () => {
+    expect(inviteStatus(base, now)).toBe("live");
+  });
+
+  test("revoked wins over every other state", () => {
+    expect(
+      inviteStatus({ ...base, revoked_at: "2026-07-10T00:00:00.000Z", use_count: 99, expires_at: "2020-01-01T00:00:00.000Z" }, now),
+    ).toBe("revoked");
+  });
+
+  test("expiry beats exhausted uses", () => {
+    expect(inviteStatus({ ...base, expires_at: "2026-07-17T00:00:00.000Z", use_count: 99 }, now)).toBe("expired");
+  });
+
+  test("use_count reaching max_uses is used up", () => {
+    expect(inviteStatus({ ...base, use_count: 5 }, now)).toBe("used_up");
+    expect(inviteStatus({ ...base, use_count: 4 }, now)).toBe("live");
+  });
+
+  test("labels every status in zh-TW", () => {
+    expect(inviteStatusLabel("live")).toBe("有效");
+    expect(inviteStatusLabel("revoked")).toBe("已撤銷");
+    expect(inviteStatusLabel("expired")).toBe("已過期");
+    expect(inviteStatusLabel("used_up")).toBe("已用完");
   });
 });
