@@ -370,6 +370,15 @@
   font-size: 15px;
 }
 
+.admin-subheading--spaced {
+  margin-top: 24px;
+}
+
+.admin-tile--danger {
+  border-color: #f0c0bc;
+  background: #fdf3f2;
+}
+
 .admin-user-card__body {
   flex: 1;
   min-width: 0;
@@ -777,6 +786,11 @@
   .admin-badge {
     background: #2c3037;
     color: #a2a7b0;
+  }
+
+  .admin-tile--danger {
+    border-color: #6b3531;
+    background: #2a1e1d;
   }
 
   .admin-amount--negative {

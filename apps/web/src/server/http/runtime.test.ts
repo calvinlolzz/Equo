@@ -110,6 +110,7 @@ function makeClient(): PostgrestClient {
     },
     rpc: (fn, args) => {
       if (fn === "admin_console_role") return "owner";
+      if (fn === "admin_console_storage") return { object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 };
       if (fn === "admin_console_groups") return { total: 1, groups: [groupRow] };
       if (fn === "admin_console_group_detail") return { group: groupRow, members: [ownerMember] };
       if (fn === "admin_console_group_expenses") {
@@ -396,6 +397,28 @@ describe("createHttpRuntime", () => {
     expect(response.body).not.toHaveProperty("members");
     expect(response.body).not.toHaveProperty("expenses");
     expect(response.body).not.toHaveProperty("balances");
+  });
+
+  test("routes the admin storage stats endpoint", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/admin/storage",
+      headers: { authorization: "Bearer google-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ object_count: 13, orphan_count: 0 });
   });
 
   test("routes the admin group listing, detail, and expense drill-down to distinct handlers", async () => {

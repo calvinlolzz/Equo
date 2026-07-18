@@ -40,6 +40,7 @@ import {
   adminListUsersRoute,
   adminMeRoute,
   adminOverviewRoute,
+  adminStorageRoute,
   adminSetFeedbackStatusRoute,
   adminSetGroupArchivedRoute,
   adminSetGroupDeletedRoute,
@@ -459,6 +460,15 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "GET /api/v1/admin/overview",
       async handle(request) {
         const result = await adminOverviewRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/storage$/,
+      label: "GET /api/v1/admin/storage",
+      async handle(request) {
+        const result = await adminStorageRoute(routeOptions(options, request));
         return jsonResponse(result.status, result.body);
       },
     },

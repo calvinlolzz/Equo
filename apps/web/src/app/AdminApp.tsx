@@ -13,6 +13,7 @@ import {
   type AdminGroupListPage,
   type AdminMeSummary,
   type AdminOverviewSummary,
+  type AdminStorageSummary,
   type AdminUserDetail,
   type AdminUserListPage,
   type ApiClientError,
@@ -32,6 +33,7 @@ import {
   pageInfo,
   payerSummary,
   shareTypeLabel,
+  storageTiles,
 } from "./adminDashboard";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
@@ -161,6 +163,7 @@ export function AdminApp() {
 
 function OverviewPanel({ client }: { client: EquoApiClient }) {
   const [overview, setOverview] = useState<AdminOverviewSummary | null>(null);
+  const [storage, setStorage] = useState<AdminStorageSummary | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -172,6 +175,16 @@ function OverviewPanel({ client }: { client: EquoApiClient }) {
       })
       .catch(() => {
         if (!cancelled) setError("總覽載入失敗，請重新整理。");
+      });
+    // Storage is supplementary: load it separately so a storage hiccup never
+    // blocks the core metrics. A failure just leaves the section out.
+    client
+      .adminStorage()
+      .then((result) => {
+        if (!cancelled) setStorage(result);
+      })
+      .catch(() => {
+        /* non-fatal: overview still renders without the storage tiles */
       });
     return () => {
       cancelled = true;
@@ -192,6 +205,24 @@ function OverviewPanel({ client }: { client: EquoApiClient }) {
           </article>
         ))}
       </div>
+
+      {storage && (
+        <>
+          <h3 className="admin-subheading admin-subheading--spaced">儲存空間</h3>
+          <div className="admin-tiles">
+            {storageTiles(storage).map((tile) => (
+              <article
+                key={tile.key}
+                className={tile.danger ? "admin-tile admin-tile--danger" : "admin-tile"}
+              >
+                <p className="admin-tile__label">{tile.label}</p>
+                <p className="admin-tile__value">{tile.value}</p>
+                {tile.hint && <p className="admin-tile__hint">{tile.hint}</p>}
+              </article>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }

@@ -12,6 +12,7 @@ import type {
   AdminGroupStateResult,
   AdminOverviewRecord,
   AdminRepository,
+  AdminStorageRecord,
   AdminUserDetailRecord,
   AdminUserDisabledResult,
   AdminUserListRecord,
@@ -139,6 +140,20 @@ export async function handleAdminOverview(
 
   const overview = await repository.getOverview();
   return { ok: true, status: 200, body: overview };
+}
+
+export async function handleAdminStorage(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+): Promise<HandlerResult<AdminStorageRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const storage = await repository.getStorage();
+  return { ok: true, status: 200, body: storage };
 }
 
 export async function handleAdminListUsers(

@@ -6,10 +6,12 @@ import {
   expenseCategoryLabel,
   expenseImageUrl,
   expenseKindLabel,
+  formatBytes,
   formatDate,
   formatDateTime,
   formatExpenseAmount,
   overviewTiles,
+  storageTiles,
   pageInfo,
   payerSummary,
   shareTypeLabel,
@@ -172,5 +174,46 @@ describe("formatExpenseAmount", () => {
     expect(formatExpenseAmount(12_000, "TWD")).toBe("$120");
     expect(formatExpenseAmount(0, "TWD")).toBe("$0");
     expect(formatExpenseAmount(null, "TWD")).toBe("—");
+  });
+});
+
+describe("formatBytes", () => {
+  test("scales to binary units and drops the decimal on whole values", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(1024)).toBe("1 KB");
+    expect(formatBytes(861938)).toBe("842 KB");
+    expect(formatBytes(1024 * 1024)).toBe("1 MB");
+    expect(formatBytes(1.4 * 1024 * 1024)).toBe("1.4 MB");
+    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3 GB");
+  });
+
+  test("guards against negative or non-finite sizes", () => {
+    expect(formatBytes(-5)).toBe("0 B");
+    expect(formatBytes(Number.NaN)).toBe("0 B");
+  });
+});
+
+describe("storageTiles", () => {
+  test("with no orphans, the orphan tile is calm and reassuring", () => {
+    const tiles = storageTiles({ object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 });
+    const orphan = tiles.find((t) => t.key === "orphans");
+
+    expect(tiles.map((t) => t.value)).toEqual(["13", "842 KB", "0"]);
+    expect(orphan?.danger).toBe(false);
+    expect(orphan?.hint).toBe("沒有未引用的圖片");
+  });
+
+  test("with orphans, the orphan tile flags danger and reports the wasted size", () => {
+    const orphan = storageTiles({
+      object_count: 20,
+      total_bytes: 2_000_000,
+      orphan_count: 3,
+      orphan_bytes: 500_000,
+    }).find((t) => t.key === "orphans");
+
+    expect(orphan?.value).toBe("3");
+    expect(orphan?.danger).toBe(true);
+    expect(orphan?.hint).toBe("占用 488 KB");
   });
 });

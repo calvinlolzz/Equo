@@ -23,6 +23,15 @@ describe("createSupabaseAdminRepository", () => {
     expect(client.rpcCall("admin_console_role")?.args).toEqual({ p_user_id: "user_1" });
   });
 
+  test("reads bucket stats through the storage RPC, no args", async () => {
+    const client = makeClient({ object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 });
+
+    const result = await createSupabaseAdminRepository(client).getStorage();
+
+    expect(result.object_count).toBe(13);
+    expect(client.rpcCall("admin_console_storage")?.args).toEqual({});
+  });
+
   test("passes search/limit/offset through to the user listing", async () => {
     const client = makeClient({ total: 1, users: [] });
 
