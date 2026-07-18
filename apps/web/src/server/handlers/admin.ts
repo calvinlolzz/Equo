@@ -41,6 +41,19 @@ export function normalizeGroupFilter(filter: string | undefined): AdminGroupFilt
   return (GROUP_FILTERS as readonly string[]).includes(filter ?? "") ? (filter as AdminGroupFilter) : "all";
 }
 
+/**
+ * Route ids reach us as raw path segments, but the admin_console_* RPCs type
+ * their group/user params as uuid. A non-uuid segment makes PostgREST raise
+ * 22P02, which the runtime turns into a 500 - the wrong answer for "look up
+ * this id". Handlers screen the shape first and treat a malformed id as simply
+ * not found, since a value that can't be a uuid can't name a real row.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 function adminForbidden(request_id = "req_admin"): HandlerResult<never> {
   return {
     ok: false,
@@ -168,6 +181,10 @@ export async function handleAdminUserDetail(
     return adminForbidden();
   }
 
+  if (!isUuid(userId)) {
+    return adminNotFound("User not found.");
+  }
+
   const detail = await repository.getUserDetail(userId);
 
   if (!detail) {
@@ -204,6 +221,10 @@ export async function handleAdminGroupDetail(
     return adminForbidden();
   }
 
+  if (!isUuid(groupId)) {
+    return adminNotFound("Group not found.");
+  }
+
   const detail = await repository.getGroupDetail({ id: context.user.id, email: context.user.email }, groupId);
 
   if (!detail) {
@@ -227,6 +248,10 @@ export async function handleAdminListGroupExpenses(
 
   if (!role) {
     return adminForbidden();
+  }
+
+  if (!isUuid(groupId)) {
+    return adminNotFound("Group not found.");
   }
 
   const { limit, offset } = normalizeAdminListQuery(query);
