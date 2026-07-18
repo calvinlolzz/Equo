@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Bug, LayoutDashboard, MessageSquareText, ScrollText, UsersRound, WalletCards } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Bug, LayoutDashboard, MessageSquareText, ScrollText, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
+  type AdminAccountRow,
   type AdminAuditLogPage,
   type AdminErrorPage,
   type AdminExpensePage,
@@ -44,7 +45,7 @@ import { loadSession } from "./sessionStore";
 const PAGE_SIZE = 20;
 
 type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
-type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit";
+type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit" | "admins";
 
 export function AdminApp() {
   const [session] = useState(() => loadSession());
@@ -111,6 +112,11 @@ export function AdminApp() {
     { key: "feedback", label: "回饋", icon: MessageSquareText },
     { key: "errors", label: "錯誤", icon: Bug },
     { key: "audit", label: "稽核", icon: ScrollText },
+    // Managing admins is owner-only; the server enforces it too, this just
+    // hides a tab that would 403 anyway.
+    ...(me?.role === "owner"
+      ? [{ key: "admins" as const, label: "管理員", icon: ShieldCheck }]
+      : []),
   ];
 
   return (
@@ -159,6 +165,7 @@ export function AdminApp() {
         {tab === "feedback" && <FeedbackPanel client={client} />}
         {tab === "errors" && <ErrorsPanel client={client} />}
         {tab === "audit" && <AuditPanel client={client} />}
+        {tab === "admins" && <AdminsPanel client={client} meUserId={me?.user.id ?? ""} />}
       </main>
     </div>
   );
@@ -1449,6 +1456,196 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
             />
           )}
         </>
+      )}
+    </section>
+  );
+}
+
+const ADMIN_ROLE_OPTIONS = [
+  { value: "owner", label: "擁有者" },
+  { value: "admin", label: "管理員" },
+  { value: "support", label: "客服" },
+] as const;
+
+function AdminsPanel({ client, meUserId }: { client: EquoApiClient; meUserId: string }) {
+  const [admins, setAdmins] = useState<AdminAccountRow[] | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyUserId, setBusyUserId] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [addEmail, setAddEmail] = useState("");
+  const [addRole, setAddRole] = useState<string>("support");
+  const [addBusy, setAddBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAdmins(null);
+    setError("");
+    client
+      .adminListAdmins()
+      .then((result) => {
+        if (!cancelled) setAdmins(result.admins);
+      })
+      .catch(() => {
+        if (!cancelled) setError("管理員列表載入失敗。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, reloadKey]);
+
+  function describeError(err: ApiClientError, fallback: string): string {
+    if (err.code === "ADMIN_CONFLICT") return "無法移除或降級最後一位擁有者。";
+    if (err.code === "ADMIN_NOT_FOUND") return "找不到對應的使用者，對方需先登入過 Equo。";
+    if (err.code === "ADMIN_FORBIDDEN") return "只有擁有者能管理管理員。";
+    return fallback;
+  }
+
+  async function changeRole(admin: AdminAccountRow, role: string) {
+    if (role === admin.role || !admin.email) return;
+    setBusyUserId(admin.user_id);
+    setError("");
+    setNotice("");
+    try {
+      await client.adminSetAdminRole(admin.email, role);
+      setNotice(`已將 ${admin.email} 設為${ADMIN_ROLE_OPTIONS.find((o) => o.value === role)?.label ?? role}。`);
+      setReloadKey((key) => key + 1);
+    } catch (err) {
+      setError(describeError(err as ApiClientError, "角色變更失敗，請稍後再試。"));
+    } finally {
+      setBusyUserId("");
+    }
+  }
+
+  async function remove(admin: AdminAccountRow) {
+    const label = admin.email || admin.display_name || admin.user_id;
+    const selfWarning = admin.user_id === meUserId ? "\n\n注意：這會移除你自己的後台權限。" : "";
+    if (!window.confirm(`確定要移除「${label}」的後台權限嗎？${selfWarning}`)) return;
+    setBusyUserId(admin.user_id);
+    setError("");
+    setNotice("");
+    try {
+      await client.adminRemoveAdmin(admin.user_id);
+      setNotice(`已移除 ${label} 的後台權限。`);
+      setReloadKey((key) => key + 1);
+    } catch (err) {
+      setError(describeError(err as ApiClientError, "移除失敗，請稍後再試。"));
+    } finally {
+      setBusyUserId("");
+    }
+  }
+
+  async function addAdmin(event: FormEvent) {
+    event.preventDefault();
+    const email = addEmail.trim();
+    if (!email) return;
+    setAddBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await client.adminSetAdminRole(email, addRole);
+      setNotice(`已新增 ${email}。`);
+      setAddEmail("");
+      setReloadKey((key) => key + 1);
+    } catch (err) {
+      setError(describeError(err as ApiClientError, "新增失敗，請稍後再試。"));
+    } finally {
+      setAddBusy(false);
+    }
+  }
+
+  return (
+    <section aria-label="管理員">
+      <form className="admin-search" onSubmit={addAdmin}>
+        <input
+          type="email"
+          value={addEmail}
+          placeholder="以 email 新增管理員"
+          onChange={(event) => setAddEmail(event.target.value)}
+          aria-label="新增管理員的 email"
+        />
+        <select
+          className="admin-select"
+          value={addRole}
+          aria-label="新管理員角色"
+          onChange={(event) => setAddRole(event.target.value)}
+        >
+          {ADMIN_ROLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button type="submit" disabled={addBusy}>
+          {addBusy ? "新增中…" : "新增"}
+        </button>
+      </form>
+
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+      {!admins && !error && <p className="admin-loading">載入中…</p>}
+
+      {admins && (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>使用者</th>
+                <th>Email</th>
+                <th>角色</th>
+                <th>加入時間</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {admins.map((admin) => {
+                const busy = busyUserId === admin.user_id;
+                return (
+                  <tr key={admin.user_id}>
+                    <td>
+                      {admin.display_name || "—"}
+                      {admin.user_id === meUserId && <span className="admin-badge">你</span>}
+                    </td>
+                    <td>{admin.email ?? <span className="admin-muted">未登入過</span>}</td>
+                    <td>
+                      <select
+                        className="admin-select"
+                        value={admin.role}
+                        disabled={busy || !admin.email}
+                        aria-label={`${admin.email ?? admin.user_id} 的角色`}
+                        onChange={(event) => changeRole(admin, event.target.value)}
+                      >
+                        {ADMIN_ROLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>{formatDate(admin.created_at)}</td>
+                    <td className="admin-table__actions">
+                      <button
+                        type="button"
+                        className="admin-action admin-action--danger"
+                        disabled={busy}
+                        onClick={() => remove(admin)}
+                      >
+                        移除
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {admins.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="admin-table__empty">
+                    尚無管理員
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

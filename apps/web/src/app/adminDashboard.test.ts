@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  adminRoleLabel,
   auditActionLabel,
   auditTargetText,
   describeLastSeen,
@@ -256,5 +257,20 @@ describe("inviteStatus", () => {
     expect(inviteStatusLabel("revoked")).toBe("已撤銷");
     expect(inviteStatusLabel("expired")).toBe("已過期");
     expect(inviteStatusLabel("used_up")).toBe("已用完");
+  });
+});
+
+describe("adminRoleLabel", () => {
+  test("labels known roles in zh-TW and passes unknown ones through", () => {
+    expect(adminRoleLabel("owner")).toBe("擁有者");
+    expect(adminRoleLabel("admin")).toBe("管理員");
+    expect(adminRoleLabel("support")).toBe("客服");
+    expect(adminRoleLabel("future_role")).toBe("future_role");
+  });
+
+  test("labels the new admin.* audit actions", () => {
+    expect(auditActionLabel("admin.grant")).toBe("新增管理員");
+    expect(auditActionLabel("admin.role_change")).toBe("變更管理員角色");
+    expect(auditActionLabel("admin.remove")).toBe("移除管理員");
   });
 });

@@ -4,6 +4,9 @@ import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
 import {
   handleAdminGroupDetail,
+  handleAdminListAdmins,
+  handleAdminRemoveAdmin,
+  handleAdminSetAdminRole,
   handleAdminListAuditLogs,
   handleAdminListErrors,
   handleAdminListFeedback,
@@ -50,6 +53,40 @@ export async function adminOverviewRoute(options: RouteOptions) {
   }
 
   return handleAdminOverview(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminListAdminsRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListAdmins(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminSetAdminRoleRoute(
+  options: RouteOptions,
+  email: string | undefined,
+  role: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetAdminRole(createSupabaseAdminRepository(options.client), auth.context, email, role);
+}
+
+export async function adminRemoveAdminRoute(options: RouteOptions, userId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminRemoveAdmin(createSupabaseAdminRepository(options.client), auth.context, userId);
 }
 
 export async function adminStorageRoute(options: RouteOptions) {

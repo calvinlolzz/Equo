@@ -1,6 +1,7 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
+  AdminAccountRecord,
   AdminAuditLogListRecord,
   AdminErrorListRecord,
   AdminExpenseListRecord,
@@ -55,14 +56,34 @@ export function isUuid(value: string): boolean {
   return UUID_RE.test(value);
 }
 
-function adminForbidden(request_id = "req_admin"): HandlerResult<never> {
+/**
+ * Admin roles are ranked: support (read + feedback triage) < admin (+ the
+ * destructive user/group writes) < owner (+ managing admins). A handler names
+ * the minimum rank it needs; the gate below turns a too-low or absent role into
+ * a 403. The console still hides what a role can't do, but the rank check here
+ * is the actual enforcement - the UI is only a convenience.
+ */
+export const ADMIN_ROLE_RANK: Record<string, number> = {
+  support: 1,
+  admin: 2,
+  owner: 3,
+};
+
+export function adminRoleAtLeast(role: string | null, min: number): boolean {
+  return role !== null && (ADMIN_ROLE_RANK[role] ?? 0) >= min;
+}
+
+function adminForbidden(
+  message = "This account has no admin console access.",
+  request_id = "req_admin",
+): HandlerResult<never> {
   return {
     ok: false,
     status: 403,
     body: {
       error: {
         code: "ADMIN_FORBIDDEN",
-        message: "This account has no admin console access.",
+        message,
         request_id,
       },
     },
@@ -76,6 +97,21 @@ function adminNotFound(message: string, request_id = "req_admin"): HandlerResult
     body: {
       error: {
         code: "ADMIN_NOT_FOUND",
+        message,
+        request_id,
+      },
+    },
+  };
+}
+
+/** 409 for a request that's well-formed but conflicts with an invariant (last owner). */
+function adminConflict(message: string, request_id = "req_admin"): HandlerResult<never> {
+  return {
+    ok: false,
+    status: 409,
+    body: {
+      error: {
+        code: "ADMIN_CONFLICT",
         message,
         request_id,
       },
@@ -167,6 +203,100 @@ export async function handleAdminStorage(
 
   const storage = await repository.getStorage();
   return { ok: true, status: 200, body: storage };
+}
+
+const ADMIN_ROLE_NAMES: readonly string[] = ["owner", "admin", "support"];
+
+export async function handleAdminListAdmins(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+): Promise<HandlerResult<{ admins: AdminAccountRecord[] }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.owner)) {
+    return adminForbidden("Managing admins requires an owner role.");
+  }
+
+  const admins = await repository.listAdmins();
+  return { ok: true, status: 200, body: { admins } };
+}
+
+export async function handleAdminSetAdminRole(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  targetEmail: string | undefined,
+  newRole: string | undefined,
+): Promise<HandlerResult<{ admin: AdminAccountRecord }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.owner)) {
+    return adminForbidden("Managing admins requires an owner role.");
+  }
+
+  const email = (targetEmail ?? "").trim();
+  if (!email || !ADMIN_ROLE_NAMES.includes(newRole ?? "")) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_ADMIN",
+          message: `email is required and role must be one of: ${ADMIN_ROLE_NAMES.join(", ")}`,
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  const result = await repository.setAdminRole(
+    { id: context.user.id, email: context.user.email },
+    email,
+    newRole as string,
+  );
+
+  if (!result.ok) {
+    if (result.error === "USER_NOT_FOUND") {
+      return adminNotFound("No user with that email.");
+    }
+    if (result.error === "LAST_OWNER") {
+      return adminConflict("Cannot demote the last owner.");
+    }
+    // INVALID_ROLE - already screened above, but the RPC double-checks.
+    return {
+      ok: false,
+      status: 400,
+      body: { error: { code: "INVALID_ADMIN", message: "Invalid role.", request_id: "req_admin" } },
+    };
+  }
+
+  return { ok: true, status: 200, body: { admin: result.admin } };
+}
+
+export async function handleAdminRemoveAdmin(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  userId: string,
+): Promise<HandlerResult<{ user_id: string }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.owner)) {
+    return adminForbidden("Managing admins requires an owner role.");
+  }
+
+  if (!isUuid(userId)) {
+    return adminNotFound("Admin not found.");
+  }
+
+  const result = await repository.removeAdmin({ id: context.user.id, email: context.user.email }, userId);
+
+  if (!result.ok) {
+    if (result.error === "NOT_AN_ADMIN") {
+      return adminNotFound("Admin not found.");
+    }
+    return adminConflict("Cannot remove the last owner.");
+  }
+
+  return { ok: true, status: 200, body: { user_id: result.user_id } };
 }
 
 export async function handleAdminListUsers(
@@ -410,8 +540,8 @@ export async function handleAdminSetUserDisabled(
 ): Promise<HandlerResult<AdminUserDisabledResult>> {
   const role = await repository.findAdminRole(context.user.id);
 
-  if (!role) {
-    return adminForbidden();
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
   }
 
   const result = await repository.setUserDisabled(
@@ -435,8 +565,8 @@ export async function handleAdminSetGroupArchived(
 ): Promise<HandlerResult<AdminGroupStateResult>> {
   const role = await repository.findAdminRole(context.user.id);
 
-  if (!role) {
-    return adminForbidden();
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
   }
 
   const result = await repository.setGroupArchived(
@@ -460,8 +590,8 @@ export async function handleAdminSetGroupDeleted(
 ): Promise<HandlerResult<AdminGroupStateResult>> {
   const role = await repository.findAdminRole(context.user.id);
 
-  if (!role) {
-    return adminForbidden();
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
   }
 
   const result = await repository.setGroupDeleted(

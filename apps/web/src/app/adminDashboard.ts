@@ -119,7 +119,21 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "group.delete": "刪除群組",
   "group.restore": "復原群組",
   "group.view": "檢視群組帳目",
+  "admin.grant": "新增管理員",
+  "admin.role_change": "變更管理員角色",
+  "admin.remove": "移除管理員",
 };
+
+const ADMIN_ROLE_LABELS: Record<string, string> = {
+  owner: "擁有者",
+  admin: "管理員",
+  support: "客服",
+};
+
+/** zh-TW label for an app_admins.role; unknown roles pass through raw. */
+export function adminRoleLabel(role: string): string {
+  return ADMIN_ROLE_LABELS[role] ?? role;
+}
 
 /** zh-TW label for an admin_audit_logs action; unknown actions pass through raw. */
 export function auditActionLabel(action: string): string {
