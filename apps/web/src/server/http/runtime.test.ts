@@ -113,6 +113,11 @@ function makeClient(): PostgrestClient {
       if (fn === "admin_console_storage") return { object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 };
       if (fn === "admin_console_groups") return { total: 1, groups: [groupRow] };
       if (fn === "admin_console_group_detail") return { group: groupRow, members: [ownerMember], invites: [] };
+      if (fn === "admin_console_admins") return [{ user_id: "user_alice", email: "alice@example.com", role: "owner" }];
+      if (fn === "admin_console_set_admin_role") {
+        return { ok: true, admin: { user_id: "user_bob", email: args.p_target_email, role: args.p_role } };
+      }
+      if (fn === "admin_console_remove_admin") return { ok: true, user_id: args.p_user_id };
       if (fn === "admin_console_group_expenses") {
         // Echo the flag back so the query-string wiring is visible to the test.
         return { total: 1, expenses: [expenseRow], include_deleted: args.p_include_deleted };
@@ -433,6 +438,41 @@ describe("createHttpRuntime", () => {
 
     expect(audit.body).toMatchObject({ search: "alice", action: "group.delete" });
     expect(errors.body).toMatchObject({ search: "boom" });
+  });
+
+  test("routes the owner-only admin management endpoints (list, set role, remove)", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const headers = { authorization: "Bearer google-token" };
+
+    const list = await runtime.handle({ method: "GET", path: "/api/v1/admin/admins", headers });
+    const set = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/admin/admins",
+      headers,
+      json: { email: "bob@example.com", role: "support" },
+    });
+    const remove = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/admin/admins/11111111-1111-4111-8111-111111111111/remove",
+      headers,
+    });
+
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveProperty("admins");
+    expect(set.status).toBe(200);
+    expect(set.body).toMatchObject({ admin: { email: "bob@example.com", role: "support" } });
+    expect(remove.status).toBe(200);
+    expect(remove.body).toMatchObject({ user_id: "11111111-1111-4111-8111-111111111111" });
   });
 
   test("routes the admin storage stats endpoint", async () => {

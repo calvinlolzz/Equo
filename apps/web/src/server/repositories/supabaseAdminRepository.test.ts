@@ -32,6 +32,39 @@ describe("createSupabaseAdminRepository", () => {
     expect(client.rpcCall("admin_console_storage")?.args).toEqual({});
   });
 
+  test("reads the admin roster with no args", async () => {
+    const client = makeClient([{ user_id: "u1", role: "owner" }]);
+
+    await createSupabaseAdminRepository(client).listAdmins();
+
+    expect(client.rpcCall("admin_console_admins")?.args).toEqual({});
+  });
+
+  test("grants an admin role keyed by email, carrying the actor", async () => {
+    const client = makeClient({ ok: true, admin: {} });
+
+    await createSupabaseAdminRepository(client).setAdminRole(actor, "bob@example.com", "support");
+
+    expect(client.rpcCall("admin_console_set_admin_role")?.args).toEqual({
+      p_actor: "user_admin",
+      p_actor_email: "admin@example.com",
+      p_target_email: "bob@example.com",
+      p_role: "support",
+    });
+  });
+
+  test("removes an admin keyed by user id, carrying the actor", async () => {
+    const client = makeClient({ ok: true, user_id: "user_bob" });
+
+    await createSupabaseAdminRepository(client).removeAdmin(actor, "user_bob");
+
+    expect(client.rpcCall("admin_console_remove_admin")?.args).toEqual({
+      p_actor: "user_admin",
+      p_actor_email: "admin@example.com",
+      p_user_id: "user_bob",
+    });
+  });
+
   test("passes search/limit/offset through to the user listing", async () => {
     const client = makeClient({ total: 1, users: [] });
 

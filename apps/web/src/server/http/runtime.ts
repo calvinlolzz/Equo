@@ -32,6 +32,9 @@ import {
 import { createFeedbackRoute, reportErrorRoute } from "../routes/supportRoutes.js";
 import {
   adminGroupDetailRoute,
+  adminListAdminsRoute,
+  adminRemoveAdminRoute,
+  adminSetAdminRoleRoute,
   adminListAuditLogsRoute,
   adminListErrorsRoute,
   adminListFeedbackRoute,
@@ -470,6 +473,34 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "GET /api/v1/admin/storage",
       async handle(request) {
         const result = await adminStorageRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/admins$/,
+      label: "GET /api/v1/admin/admins",
+      async handle(request) {
+        const result = await adminListAdminsRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/admins$/,
+      label: "POST /api/v1/admin/admins",
+      async handle(request) {
+        const payload = body<{ email?: string; role?: string }>(request);
+        const result = await adminSetAdminRoleRoute(routeOptions(options, request), payload.email, payload.role);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/admins\/([^/]+)\/remove$/,
+      label: "POST /api/v1/admin/admins/:userId/remove",
+      async handle(request, match) {
+        const result = await adminRemoveAdminRoute(routeOptions(options, request), match[1]);
         return jsonResponse(result.status, result.body);
       },
     },

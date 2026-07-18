@@ -1,6 +1,9 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
+  AdminAccountRecord,
   AdminAuditLogListRecord,
+  AdminRemoveResult,
+  AdminSetRoleResult,
   AdminErrorListRecord,
   AdminExpenseListRecord,
   AdminFeedbackListRecord,
@@ -28,6 +31,27 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
     async findAdminRole(userId) {
       const role = await client.rpc<string | null>("admin_console_role", { p_user_id: userId });
       return role ?? null;
+    },
+
+    listAdmins() {
+      return client.rpc<AdminAccountRecord[]>("admin_console_admins", {});
+    },
+
+    setAdminRole(actor, targetEmail, role) {
+      return client.rpc<AdminSetRoleResult>("admin_console_set_admin_role", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_target_email: targetEmail,
+        p_role: role,
+      });
+    },
+
+    removeAdmin(actor, userId) {
+      return client.rpc<AdminRemoveResult>("admin_console_remove_admin", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_user_id: userId,
+      });
     },
 
     getOverview() {

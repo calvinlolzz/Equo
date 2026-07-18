@@ -442,8 +442,32 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify({}),
       });
     },
+    adminListAdmins() {
+      return request<{ admins: AdminAccountRow[] }>("/admin/admins", { method: "GET" });
+    },
+    adminSetAdminRole(email: string, role: string) {
+      return request<{ admin: AdminAccountRow }>("/admin/admins", {
+        method: "POST",
+        body: JSON.stringify({ email, role }),
+      });
+    },
+    adminRemoveAdmin(userId: string) {
+      return request<{ user_id: string }>(`/admin/admins/${userId}/remove`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    },
   };
 }
+
+export type AdminAccountRow = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: string;
+  created_at: string;
+};
 
 export type AdminListOptions = {
   search?: string;

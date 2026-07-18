@@ -221,9 +221,35 @@ export type AdminErrorListRecord = {
   errors: AdminErrorRecord[];
 };
 
+export type AdminRoleName = "owner" | "admin" | "support";
+
+export type AdminAccountRecord = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: string;
+  created_at: string;
+};
+
+/** set/remove return a discriminated result so the handler maps errors to status. */
+export type AdminSetRoleResult =
+  | { ok: true; admin: AdminAccountRecord }
+  | { ok: false; error: "INVALID_ROLE" | "USER_NOT_FOUND" | "LAST_OWNER" };
+
+export type AdminRemoveResult =
+  | { ok: true; user_id: string }
+  | { ok: false; error: "NOT_AN_ADMIN" | "LAST_OWNER" };
+
 export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
+  /** The full admin roster (owner-only feature). Admins are few, so unpaginated. */
+  listAdmins(): Promise<AdminAccountRecord[]>;
+  /** Grant or change an admin's role, keyed by the target's email. */
+  setAdminRole(actor: AdminActor, targetEmail: string, role: string): Promise<AdminSetRoleResult>;
+  /** Revoke an admin, keyed by user id. */
+  removeAdmin(actor: AdminActor, userId: string): Promise<AdminRemoveResult>;
   getOverview(): Promise<AdminOverviewRecord>;
   getStorage(): Promise<AdminStorageRecord>;
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
