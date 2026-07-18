@@ -8,6 +8,15 @@ export type AdminOverviewRecord = {
   expenses_7d: number;
 };
 
+export type AdminStorageRecord = {
+  /** Objects in the equo-images bucket. */
+  object_count: number;
+  total_bytes: number;
+  /** Bucket objects no image-URL column references - a leaked delete. */
+  orphan_count: number;
+  orphan_bytes: number;
+};
+
 export type AdminUserSummaryRecord = {
   id: string;
   email: string;
@@ -205,6 +214,7 @@ export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
   getOverview(): Promise<AdminOverviewRecord>;
+  getStorage(): Promise<AdminStorageRecord>;
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
   getUserDetail(userId: string): Promise<AdminUserDetailRecord | null>;
   listGroups(search: string, limit: number, offset: number, filter: AdminGroupFilter): Promise<AdminGroupListRecord>;

@@ -1,4 +1,4 @@
-import type { AdminExpenseRow, AdminOverviewSummary } from "./apiClient";
+import type { AdminExpenseRow, AdminOverviewSummary, AdminStorageSummary } from "./apiClient";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
@@ -15,6 +15,44 @@ export function overviewTiles(overview: AdminOverviewSummary): OverviewTile[] {
     { key: "new_users", label: "新使用者（7 日）", value: overview.new_users_7d },
     { key: "groups", label: "群組", value: overview.group_count, hint: `近 7 日有記帳 ${overview.active_groups_7d}` },
     { key: "expenses", label: "支出筆數", value: overview.expense_count, hint: `近 7 日新增 ${overview.expenses_7d}` },
+  ];
+}
+
+/**
+ * Human-readable byte size for the storage tiles. Binary units (1024) to match
+ * what Supabase's own dashboard reports, so the numbers reconcile. Caps at GB;
+ * the bucket is nowhere near TB and a made-up unit would just read as a bug.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  // Whole numbers show no decimal (512 KB); fractional show one (1.4 MB).
+  const rounded = value >= 10 || Number.isInteger(value) ? Math.round(value) : Math.round(value * 10) / 10;
+  return `${rounded} ${units[exponent]}`;
+}
+
+export type StorageTile = {
+  key: string;
+  label: string;
+  value: string;
+  hint?: string;
+  /** Orphans are only worth flagging (danger styling) when there are any. */
+  danger?: boolean;
+};
+
+export function storageTiles(storage: AdminStorageSummary): StorageTile[] {
+  return [
+    { key: "objects", label: "圖片物件數", value: storage.object_count.toLocaleString("zh-TW") },
+    { key: "size", label: "儲存總容量", value: formatBytes(storage.total_bytes) },
+    {
+      key: "orphans",
+      label: "孤兒物件",
+      value: storage.orphan_count.toLocaleString("zh-TW"),
+      hint: storage.orphan_count > 0 ? `占用 ${formatBytes(storage.orphan_bytes)}` : "沒有未引用的圖片",
+      danger: storage.orphan_count > 0,
+    },
   ];
 }
 

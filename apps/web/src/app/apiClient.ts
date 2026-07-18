@@ -373,6 +373,9 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminOverview() {
       return request<AdminOverviewSummary>("/admin/overview", { method: "GET" });
     },
+    adminStorage() {
+      return request<AdminStorageSummary>("/admin/storage", { method: "GET" });
+    },
     adminListUsers(options: AdminListOptions = {}) {
       return request<AdminUserListPage>(`/admin/users${adminListQuery(options)}`, { method: "GET" });
     },
@@ -477,6 +480,13 @@ export type AdminOverviewSummary = {
   active_groups_7d: number;
   expense_count: number;
   expenses_7d: number;
+};
+
+export type AdminStorageSummary = {
+  object_count: number;
+  total_bytes: number;
+  orphan_count: number;
+  orphan_bytes: number;
 };
 
 export type AdminUserRow = {

@@ -9,6 +9,7 @@ import type {
   AdminGroupStateResult,
   AdminOverviewRecord,
   AdminRepository,
+  AdminStorageRecord,
   AdminUserDetailRecord,
   AdminUserDisabledResult,
   AdminUserListRecord,
@@ -31,6 +32,10 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
 
     getOverview() {
       return client.rpc<AdminOverviewRecord>("admin_console_overview", {});
+    },
+
+    getStorage() {
+      return client.rpc<AdminStorageRecord>("admin_console_storage", {});
     },
 
     listUsers(search, limit, offset) {

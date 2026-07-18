@@ -13,6 +13,7 @@ import {
   handleAdminSetFeedbackStatus,
   handleAdminMe,
   handleAdminOverview,
+  handleAdminStorage,
   handleAdminSetGroupArchived,
   handleAdminSetGroupDeleted,
   handleAdminSetUserDisabled,
@@ -81,6 +82,9 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async getOverview() {
       return overview;
     },
+    async getStorage() {
+      return { object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 };
+    },
     async listUsers() {
       return { total: 1, users: [userSummary] };
     },
@@ -146,6 +150,7 @@ describe("admin handlers", () => {
       handleAdminListUsers(repository, context),
       handleAdminUserDetail(repository, context, "user_alice"),
       handleAdminListGroups(repository, context),
+      handleAdminStorage(repository, context),
       handleAdminGroupDetail(repository, context, "group_1"),
       handleAdminListGroupExpenses(repository, context, "group_1"),
       handleAdminSetUserDisabled(repository, context, "user_alice", true),
@@ -185,6 +190,13 @@ describe("admin handlers", () => {
 
     expect(result.ok).toBe(true);
     expect(result.body).toEqual(overview);
+  });
+
+  test("admin storage returns the bucket stats", async () => {
+    const result = await handleAdminStorage(makeRepository(), context);
+
+    expect(result.ok).toBe(true);
+    expect(result.body).toEqual({ object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 });
   });
 
   test("list users forwards normalized query params to the repository", async () => {

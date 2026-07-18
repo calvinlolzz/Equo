@@ -12,6 +12,7 @@ import {
   handleAdminListUsers,
   handleAdminMe,
   handleAdminOverview,
+  handleAdminStorage,
   handleAdminSetFeedbackStatus,
   handleAdminSetGroupArchived,
   handleAdminSetGroupDeleted,
@@ -48,6 +49,16 @@ export async function adminOverviewRoute(options: RouteOptions) {
   }
 
   return handleAdminOverview(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminStorageRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminStorage(createSupabaseAdminRepository(options.client), auth.context);
 }
 
 export async function adminListUsersRoute(options: RouteOptions, query: AdminListQuery) {
