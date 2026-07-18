@@ -113,8 +113,10 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       return result ?? null;
     },
 
-    listAuditLogs(limit, offset) {
+    listAuditLogs(search, action, limit, offset) {
       return client.rpc<AdminAuditLogListRecord>("admin_console_audit_logs", {
+        p_search: search,
+        p_action: action,
         p_limit: limit,
         p_offset: offset,
       });
@@ -141,8 +143,9 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       return result ?? null;
     },
 
-    listErrors(limit, offset) {
+    listErrors(search, limit, offset) {
       return client.rpc<AdminErrorListRecord>("admin_console_errors", {
+        p_search: search,
         p_limit: limit,
         p_offset: offset,
       });

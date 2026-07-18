@@ -421,6 +421,36 @@ describe("admin handlers", () => {
     expect((result.body as { total: number }).total).toBe(1);
   });
 
+  test("audit listing forwards the trimmed search and a known action, dropping unknown actions", async () => {
+    let received = { search: "", action: "", limit: 0, offset: 0 };
+    const repository = makeRepository({
+      async listAuditLogs(search, action, limit, offset) {
+        received = { search, action, limit, offset };
+        return { total: 0, logs: [] };
+      },
+    });
+
+    await handleAdminListAuditLogs(repository, context, { search: "  alice  ", action: "group.delete" });
+    expect(received).toMatchObject({ search: "alice", action: "group.delete" });
+
+    // An action outside the known vocabulary collapses to "" (= any), never leaks through.
+    await handleAdminListAuditLogs(repository, context, { action: "sql; drop" });
+    expect(received.action).toBe("");
+  });
+
+  test("error listing forwards the trimmed search to the repository", async () => {
+    let receivedSearch = "?";
+    const repository = makeRepository({
+      async listErrors(search) {
+        receivedSearch = search;
+        return { total: 0, errors: [] };
+      },
+    });
+
+    await handleAdminListErrors(repository, context, { search: "  boom  " });
+    expect(receivedSearch).toBe("boom");
+  });
+
   test("group operations return 404 ADMIN_NOT_FOUND for unknown groups", async () => {
     const repository = makeRepository({
       async setGroupArchived() {

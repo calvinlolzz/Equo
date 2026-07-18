@@ -229,6 +229,16 @@
   color: inherit;
 }
 
+.admin-select {
+  padding: 8px 12px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+}
+
 .admin-search button,
 .admin-pagination button,
 .admin-back {
@@ -809,6 +819,7 @@
 
   .admin-search input,
   .admin-search button,
+  .admin-select,
   .admin-pagination button,
   .admin-back {
     background: #1e2126;

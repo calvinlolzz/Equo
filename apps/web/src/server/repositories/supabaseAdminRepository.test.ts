@@ -129,15 +129,20 @@ describe("createSupabaseAdminRepository", () => {
     await expect(repository.setGroupArchived(actor, "group_1", true)).resolves.toBeNull();
   });
 
-  test("paginated log readers forward limit and offset", async () => {
+  test("paginated log readers forward their search/filter params", async () => {
     const client = makeClient({ total: 0, logs: [] });
     const repository = createSupabaseAdminRepository(client);
 
-    await repository.listAuditLogs(50, 100);
-    expect(client.rpcCall("admin_console_audit_logs")?.args).toEqual({ p_limit: 50, p_offset: 100 });
+    await repository.listAuditLogs("alice", "group.delete", 50, 100);
+    expect(client.rpcCall("admin_console_audit_logs")?.args).toEqual({
+      p_search: "alice",
+      p_action: "group.delete",
+      p_limit: 50,
+      p_offset: 100,
+    });
 
-    await repository.listErrors(10, 0);
-    expect(client.rpcCall("admin_console_errors")?.args).toEqual({ p_limit: 10, p_offset: 0 });
+    await repository.listErrors("boom", 10, 0);
+    expect(client.rpcCall("admin_console_errors")?.args).toEqual({ p_search: "boom", p_limit: 10, p_offset: 0 });
 
     await repository.listFeedback(10, 0, "open");
     expect(client.rpcCall("admin_console_feedback")?.args).toEqual({

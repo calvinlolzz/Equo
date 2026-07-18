@@ -244,7 +244,8 @@ export type AdminRepository = {
   setGroupArchived(actor: AdminActor, groupId: string, archived: boolean): Promise<AdminGroupStateResult | null>;
   /** Soft-delete or restore a group. Returns null when the group does not exist. */
   setGroupDeleted(actor: AdminActor, groupId: string, deleted: boolean): Promise<AdminGroupStateResult | null>;
-  listAuditLogs(limit: number, offset: number): Promise<AdminAuditLogListRecord>;
+  /** search matches admin email or the target name/email; action "" = any. */
+  listAuditLogs(search: string, action: string, limit: number, offset: number): Promise<AdminAuditLogListRecord>;
   /** status "all" lists everything; a specific status filters to it. */
   listFeedback(limit: number, offset: number, status: string): Promise<AdminFeedbackListRecord>;
   /** Returns null when the feedback row does not exist. */
@@ -253,5 +254,6 @@ export type AdminRepository = {
     feedbackId: string,
     status: AdminFeedbackStatus,
   ): Promise<{ id: string; status: string } | null>;
-  listErrors(limit: number, offset: number): Promise<AdminErrorListRecord>;
+  /** search matches message, context, page, or the reporter's email. */
+  listErrors(search: string, limit: number, offset: number): Promise<AdminErrorListRecord>;
 };

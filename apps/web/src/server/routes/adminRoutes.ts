@@ -18,6 +18,7 @@ import {
   handleAdminSetGroupDeleted,
   handleAdminSetUserDisabled,
   handleAdminUserDetail,
+  type AdminAuditLogQuery,
   type AdminExpenseListQuery,
   type AdminFeedbackListQuery,
   type AdminGroupListQuery,
@@ -115,7 +116,7 @@ export async function adminListGroupExpensesRoute(
   return handleAdminListGroupExpenses(createSupabaseAdminRepository(options.client), auth.context, groupId, query);
 }
 
-export async function adminListAuditLogsRoute(options: RouteOptions, query: AdminListQuery) {
+export async function adminListAuditLogsRoute(options: RouteOptions, query: AdminAuditLogQuery) {
   const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {

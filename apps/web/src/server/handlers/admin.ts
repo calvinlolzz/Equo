@@ -285,10 +285,30 @@ export async function handleAdminListGroupExpenses(
   return { ok: true, status: 200, body: page };
 }
 
+/** The admin_audit_logs actions the console knows how to label and filter by. */
+export const AUDIT_ACTIONS: readonly string[] = [
+  "user.disable",
+  "user.enable",
+  "group.archive",
+  "group.unarchive",
+  "group.delete",
+  "group.restore",
+  "group.view",
+];
+
+/** An unknown/absent action means "any", matching the RPC's '' / 'all' handling. */
+export function normalizeAuditActionFilter(action: string | undefined): string {
+  return AUDIT_ACTIONS.includes(action ?? "") ? (action as string) : "";
+}
+
+export type AdminAuditLogQuery = AdminListQuery & {
+  action?: string;
+};
+
 export async function handleAdminListAuditLogs(
   repository: AdminRepository,
   context: AuthenticatedContext,
-  query: AdminListQuery = {},
+  query: AdminAuditLogQuery = {},
 ): Promise<HandlerResult<AdminAuditLogListRecord>> {
   const role = await repository.findAdminRole(context.user.id);
 
@@ -296,8 +316,8 @@ export async function handleAdminListAuditLogs(
     return adminForbidden();
   }
 
-  const { limit, offset } = normalizeAdminListQuery(query);
-  const page = await repository.listAuditLogs(limit, offset);
+  const { search, limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listAuditLogs(search, normalizeAuditActionFilter(query.action), limit, offset);
   return { ok: true, status: 200, body: page };
 }
 
@@ -377,8 +397,8 @@ export async function handleAdminListErrors(
     return adminForbidden();
   }
 
-  const { limit, offset } = normalizeAdminListQuery(query);
-  const page = await repository.listErrors(limit, offset);
+  const { search, limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listErrors(search, limit, offset);
   return { ok: true, status: 200, body: page };
 }
 
