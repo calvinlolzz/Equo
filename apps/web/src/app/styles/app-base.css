@@ -47,6 +47,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at 16% 12%, rgb(var(--brand) / 0.32), transparent 28%),
     radial-gradient(circle at 86% 18%, rgb(var(--gold) / 0.2), transparent 24%),
@@ -75,9 +76,27 @@ select {
   font: inherit;
 }
 
+/* Kill the mobile tap-flash (grey box on iOS Safari, blue on Android Chrome)
+   on every interactive surface — native controls have no such highlight. */
+button,
+a,
+label,
+select,
+input,
+textarea,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
 button {
   border: 0;
   cursor: pointer;
+  /* manipulation removes the ~300ms double-tap-zoom delay so taps register
+     instantly; the callout/select suppressions stop an iOS long-press from
+     popping the text-selection magnifier over a button's label. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 button svg,
@@ -88,6 +107,24 @@ a svg {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+/* Press feedback on touch (there is no :hover on mobile): buttons dip slightly
+   and chips/rows dim the instant a finger lands — how a native control reacts.
+   Instant (no transition) so it never fights the theme-switch transition freeze. */
+.create-submit:active,
+.rail-join-toggle:active,
+.top-bar-icon-button:active,
+.rail-icon-action:active,
+.profile-dot:active {
+  transform: scale(0.97);
+}
+
+.template-chip:active,
+.start-mode:active,
+.group-item:active,
+.group-create-item:active {
+  opacity: 0.72;
 }
 
 input,
@@ -101,8 +138,11 @@ select {
   outline: none;
 }
 
-input:focus,
-select:focus {
+/* :focus-visible (not :focus) so the accent ring appears for keyboard focus and
+   while typing, but never latches after a touch tap on a <select> whose native
+   picker has already closed. */
+input:focus-visible,
+select:focus-visible {
   border-color: rgb(var(--accent) / 0.78);
   box-shadow: 0 0 0 4px rgb(var(--accent) / 0.16);
 }
@@ -142,7 +182,10 @@ label span {
   z-index: 1;
   width: min(1180px, calc(100% - 30px));
   margin: 0 auto;
-  padding: 22px 0 34px;
+  /* Clear the notch/status bar (top) and the landscape sensor housing
+     (left/right) in H5 and installed-PWA standalone. Every env() inset is 0 on
+     non-notched devices, so desktop and portrait phones are unaffected. */
+  padding: calc(22px + env(safe-area-inset-top)) env(safe-area-inset-right) 34px env(safe-area-inset-left);
 }
 
 .top-bar {
@@ -260,6 +303,7 @@ label span {
 
 .create-flow-shell {
   min-height: calc(100vh - 118px);
+  min-height: calc(100dvh - 118px);
   display: grid;
   align-items: start;
   justify-content: center;
@@ -401,6 +445,9 @@ label span {
   min-height: 0;
   max-height: calc(100vh - 132px);
   overflow: auto;
+  /* Stop a fully-scrolled rail (it is the scroll surface inside the mobile left
+     drawer) from chaining the scroll into the page behind the drawer. */
+  overscroll-behavior: contain;
   padding: 20px;
   scrollbar-width: none;
   -ms-overflow-style: none;

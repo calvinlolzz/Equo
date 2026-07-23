@@ -14,6 +14,14 @@
   font-weight: 780;
 }
 
+.mobile-tab-item:active {
+  transform: scale(0.92);
+}
+
+.mobile-tab-center:active {
+  transform: scale(0.94);
+}
+
 .mobile-tab-center {
   position: relative;
   top: -18px;
@@ -71,6 +79,7 @@
 .panel-dialog {
   width: min(520px, 100%);
   max-height: min(760px, calc(100vh - 48px));
+  max-height: min(760px, calc(100dvh - 48px));
   overflow: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -99,6 +108,19 @@
   border-radius: 50%;
   color: rgb(var(--fg) / 0.78);
   background: rgb(var(--surf) / 0.09);
+}
+
+/* Keep the 34px circle but extend the tap target to 44px — this is the primary
+   dismiss control on every dialog, so it must be easy to hit. No layout impact
+   (the ::before is absolute inside the already-absolute button). */
+.dialog-close::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.dialog-close:active {
+  transform: scale(0.92);
 }
 
 /* Drag-to-dismiss affordance for dialog bottom sheets; mobile only (see media query). */
@@ -241,6 +263,10 @@
   text-align: left;
 }
 
+.dialog-option:active {
+  background: rgb(var(--surf) / 0.14);
+}
+
 .dialog-option span {
   display: grid;
   gap: 3px;
@@ -349,8 +375,15 @@
   font-size: 13px;
 }
 
-.record-dialog-row:hover,
-.member-dialog-row:hover {
+@media (hover: hover) {
+  .record-dialog-row:hover,
+  .member-dialog-row:hover {
+    background: rgb(var(--surf) / 0.1);
+  }
+}
+
+.record-dialog-row:active,
+.member-dialog-row:active {
   background: rgb(var(--surf) / 0.1);
 }
 
@@ -417,8 +450,8 @@
 }
 
 .member-icon-action {
-  min-width: 30px;
-  min-height: 30px;
+  min-width: 44px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -464,7 +497,8 @@
   padding: 0 10px;
   color: rgb(var(--fg));
   background: rgba(0, 0, 0, 0.24);
-  font-size: 14px;
+  /* 16px so focusing the rename field never triggers iOS focus-zoom. */
+  font-size: 16px;
   font-weight: 760;
 }
 
@@ -564,6 +598,10 @@
   font-weight: 860;
 }
 
+.danger-action:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .profile-avatar {
   width: 58px;
   height: 58px;
@@ -583,6 +621,9 @@
   display: grid;
   gap: 6px;
   overflow: auto;
+  /* Nested scroller — keep overscroll inside the list instead of chaining into
+     the dialog/page behind it. */
+  overscroll-behavior: contain;
   padding-right: 2px;
 }
 
@@ -610,6 +651,10 @@
   font-size: 13px;
 }
 
+.currency-option:active {
+  opacity: 0.7;
+}
+
 .currency-option.active {
   color: rgb(var(--ink));
   background: rgb(var(--gold));
@@ -618,6 +663,7 @@
 .expense-composer {
   width: min(520px, 100%);
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   display: grid;
   gap: 14px;
   overflow: auto;
@@ -742,7 +788,8 @@
   padding: 0 6px 0 0;
   color: rgb(var(--ink));
   background: transparent;
-  font-size: 15px;
+  /* 16px, not 15 — a <select> below 16px makes iOS zoom the sheet on tap. */
+  font-size: 16px;
   font-weight: 900;
 }
 

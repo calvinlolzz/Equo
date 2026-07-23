@@ -151,8 +151,8 @@
   position: absolute;
   top: 4px;
   right: 4px;
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -176,6 +176,21 @@
 
 .composer-submit-full:disabled {
   opacity: 0.42;
+}
+
+/* Touch press feedback for the composer controls (:disabled never matches
+   :active, so pressed and disabled styling never collide). */
+.composer-submit-full:active:not(:disabled),
+.composer-step-next:active:not(:disabled),
+.composer-step-back:active,
+.composer-mini-action:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.composer-type:active,
+.payer-chip:active,
+.split-mode-option:active {
+  opacity: 0.72;
 }
 
 /* ---- Stepped mobile add-expense flow (phone only; see ExpenseComposerSheet) ---- */
@@ -341,7 +356,7 @@
 }
 
 .composer-mini-action {
-  min-height: 28px;
+  min-height: 36px;
   border-radius: 999px;
   padding: 0 10px;
   color: rgb(var(--ink));
@@ -395,7 +410,7 @@
 }
 
 .split-mode-option {
-  min-height: 26px;
+  min-height: 36px;
   border-radius: 999px;
   padding: 0 10px;
   color: rgb(var(--fg) / 0.66);
@@ -425,6 +440,7 @@
 }
 
 .composer-payer-row-remove {
+  position: relative;
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
@@ -433,6 +449,14 @@
   border-radius: 999px;
   color: rgb(var(--fg) / 0.72);
   background: rgb(var(--surf) / 0.1);
+}
+
+/* 28px chip, ~44px tap target (the split-editor rows are dense, so grow the
+   touch area rather than the visible control). */
+.composer-payer-row-remove::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
 }
 
 .share-percent-cell {
@@ -638,7 +662,15 @@
 @media (max-width: 620px) {
   .app-shell {
     width: min(100% - 20px, 1180px);
-    padding-top: 14px;
+    padding-top: calc(14px + env(safe-area-inset-top));
+  }
+
+  /* Never let a focused field fall below 16px on a phone: iOS auto-zooms the
+     page for any smaller input, which jerks the bottom sheets larger mid-entry. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 
   .top-actions {
@@ -708,7 +740,9 @@
 
   .modal-backdrop {
     align-items: end;
-    padding: 10px;
+    /* Reserve the home-indicator strip so a bottom-sheet dialog's rounded edge
+       and its action buttons never sit under it. */
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
     transition: opacity 240ms ease;
   }
 
@@ -753,6 +787,9 @@
   .expense-composer {
     width: 100%;
     max-height: calc(100dvh - 40px);
+    /* Full-bleed bottom sheet: keep the keypad's bottom row and the 儲存 button
+       clear of the home indicator. */
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
     border-radius: 22px 22px 0 0;
   }
 
@@ -772,6 +809,10 @@
     align-content: start;
     gap: 12px;
     overflow-y: auto;
+    /* This — not the sheet — is the scroll surface of the stepped composer (the
+       sheet is overflow:hidden), so contain overscroll here or it chains to the
+       page behind the sheet. */
+    overscroll-behavior: contain;
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding-bottom: 4px;
@@ -796,6 +837,30 @@
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot.active {
     animation: none;
+  }
+
+  /* Honour the OS "reduce motion" setting: drop the slide/rise entrances and
+     the swipe-out transitions on every overlay (sheets, drawers, dialogs,
+     toast) so they snap in and out — the same courtesy a native app gives.
+     The gesture hooks already skip their close animation under this setting. */
+  .expense-sheet,
+  .flow-dialog,
+  .panel-dialog,
+  .side-drawer-left,
+  .side-drawer-right,
+  .composer-backdrop,
+  .modal-backdrop,
+  .side-drawer-backdrop,
+  .toast-dock {
+    animation: none !important;
+  }
+
+  .expense-sheet,
+  .flow-dialog,
+  .panel-dialog,
+  .side-drawer-left,
+  .side-drawer-right {
+    transition: none !important;
   }
 }
 

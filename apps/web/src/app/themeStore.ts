@@ -20,12 +20,28 @@ export function readStoredTheme(): ThemeMode {
 }
 
 /**
+ * The browser/OS chrome colour (Safari toolbar, Android status bar, PWA title
+ * bar) tracks the ACTIVE in-app theme, not the OS scheme — the day/night mode
+ * is a user toggle persisted in localStorage, independent of
+ * prefers-color-scheme. These are the two --page-1 token values (see
+ * app-base.css) so the chrome always matches the page background.
+ */
+const THEME_COLORS: Record<ThemeMode, string> = { dark: "#07110f", light: "#f2f2f7" };
+
+function syncThemeColorMeta(theme: ThemeMode): void {
+  if (typeof document === "undefined") return;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", THEME_COLORS[theme]);
+}
+
+/**
  * Reflect the theme onto <html>. Dark is the default styling, so it carries no
  * attribute; light sets data-theme="light", which the CSS token overrides key
  * off. Keeping dark attribute-free means the shipped dark UI is untouched.
  */
 export function applyTheme(theme: ThemeMode): void {
   const root = document.documentElement;
+  syncThemeColorMeta(theme);
   // Chromium does not repaint a property that resolves through a custom
   // property when only that custom property changes while the property has an
   // active `transition` — the old resolved colour is held. On a live toggle

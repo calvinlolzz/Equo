@@ -29,6 +29,7 @@ import { MemberListPanel } from "./MemberListPanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
 import { GroupSideNav } from "./GroupSideNav";
+import { useBodyScrollLock } from "./useBodyScrollLock";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
@@ -335,6 +336,14 @@ export function App() {
     if (!cloudStore || !activeGroup) return;
     await Promise.all([cloudStore.refreshGroups(), cloudStore.refreshGroupDetail(activeGroup.id)]);
   });
+
+  // Freeze the page behind any open overlay (sheet / drawer / dialog) so it
+  // can't scroll or rubber-band under the finger — mobile only, where the
+  // overlays are full-bleed and there is no persistent scrollbar to disturb.
+  useBodyScrollLock(
+    isMobileLayout &&
+      (Boolean(dialog) || expenseComposerOpen || feedbackOpen || groupDrawerOpen || settingsDrawerOpen),
+  );
 
   // The logged-in user's own member row within the active group - NOT
   // necessarily the group owner (joined-via-invite members are non-owners).
@@ -1352,8 +1361,20 @@ export function App() {
                       setInviteInputValue(event.target.value);
                       setInviteInputError("");
                     }}
+                    onKeyDown={(event) => {
+                      // Make the keyboard's "Go" key actually join (no <form> to
+                      // submit) — matches the enterKeyHint promise below.
+                      if (event.key === "Enter" && inviteInputValue.trim() && pendingAction !== "joinGroup") {
+                        submitInviteInput();
+                      }
+                    }}
                     placeholder={text.inviteInputPlaceholder}
                     aria-label={text.inviteCode}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck={false}
+                    enterKeyHint="go"
                   />
                 </label>
                 {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
