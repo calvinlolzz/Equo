@@ -265,6 +265,9 @@
   gap: 8px;
   max-width: 190px;
   overflow-x: auto;
+  /* Keep horizontal overscroll inside the chip strip so it can't trigger iOS
+     Safari's back/forward swipe-navigation gesture. */
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -275,6 +278,7 @@
 }
 
 .date-chip {
+  position: relative;
   flex: 0 0 auto;
   width: 38px;
   height: 38px;
@@ -282,6 +286,18 @@
   color: rgb(var(--fg) / 0.72);
   background: rgb(var(--surf) / 0.1);
   font-weight: 820;
+}
+
+/* Keep the 38px dot but stretch the tap target to ~44px so the day chips
+   aren't fiddly to hit on a phone. */
+.date-chip::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+}
+
+.date-chip:active {
+  opacity: 0.7;
 }
 
 .date-chip.active {
@@ -347,6 +363,7 @@
 }
 
 .side-edit-group {
+  position: relative;
   width: 24px;
   height: 24px;
   display: grid;
@@ -355,6 +372,14 @@
   border-radius: 50%;
   color: rgb(var(--fg) / 0.82);
   background: transparent;
+}
+
+/* 24px pencil, ~44px tap target — the visual stays small but the finger area
+   meets the touch minimum. */
+.side-edit-group::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
 }
 
 .side-edit-group:hover {
@@ -399,7 +424,7 @@
 
 .side-archive-action,
 .side-delete-action {
-  min-height: 36px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -466,9 +491,14 @@
      off the main-thread raster path. */
   touch-action: pan-y;
   will-change: transform;
+  /* Contain overscroll so a fully-scrolled drawer doesn't chain to the page
+     behind it. */
+  overscroll-behavior: contain;
   display: grid;
   gap: 16px;
-  padding: 20px;
+  /* Clear the status bar (top) and home indicator (bottom) in standalone PWA.
+     The left drawer sets padding:0 and defers to its inner .group-rail below. */
+  padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
   background: linear-gradient(145deg, rgba(20, 26, 24, 0.98), rgba(8, 12, 11, 0.98));
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
 }
@@ -482,6 +512,9 @@
 
 .side-drawer-right {
   right: 0;
+  /* Clear the landscape sensor housing on the right edge it hugs (top/bottom
+     insets come from the base .side-drawer padding). */
+  padding-right: calc(20px + env(safe-area-inset-right));
   border-radius: 20px 0 0 20px;
   animation: drawer-slide-in-right 220ms ease-out;
 }
@@ -509,6 +542,10 @@
 .side-drawer-left .group-rail {
   max-height: none;
   height: 100%;
+  /* The left drawer has padding:0, so its scrolling rail carries the safe-area
+     insets — status bar (top), home indicator (bottom), and the landscape
+     sensor housing on the left edge it hugs. */
+  padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
 }
 
 .summary-grid {
@@ -537,7 +574,16 @@
   text-align: left;
 }
 
-.expense-record-row:hover {
+/* Hover only for real pointers, so a tap doesn't leave the row latched in the
+   hover style (sticky-hover). Touch gets the :active press state instead. */
+@media (hover: hover) {
+  .expense-record-row:hover {
+    border-color: rgb(var(--accent) / 0.44);
+    background: rgb(var(--accent) / 0.11);
+  }
+}
+
+.expense-record-row:active {
   border-color: rgb(var(--accent) / 0.44);
   background: rgb(var(--accent) / 0.11);
 }
@@ -728,7 +774,17 @@
   backdrop-filter: blur(18px) saturate(1.14);
 }
 
-.pizo-expense-row:hover {
+@media (hover: hover) {
+  .pizo-expense-row:hover {
+    border-color: rgb(var(--accent) / 0.32);
+    background:
+      linear-gradient(145deg, rgb(var(--surf) / 0.14), rgb(var(--surf) / 0.055)),
+      radial-gradient(circle at 12% 6%, rgb(var(--brand) / 0.18), transparent 32%),
+      rgb(var(--card-base) / 0.92);
+  }
+}
+
+.pizo-expense-row:active {
   border-color: rgb(var(--accent) / 0.32);
   background:
     linear-gradient(145deg, rgb(var(--surf) / 0.14), rgb(var(--surf) / 0.055)),
@@ -869,6 +925,18 @@
 .settlement-clear-action:disabled {
   opacity: 0.42;
   cursor: not-allowed;
+}
+
+/* Touch press feedback. :disabled never matches :active, so pressed styling and
+   the disabled dim never collide. */
+.primary-action:active:not(:disabled),
+.secondary-action:active:not(:disabled),
+.settlement-clear-action:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.side-nav-item:active {
+  opacity: 0.82;
 }
 
 .panel-title-row {
