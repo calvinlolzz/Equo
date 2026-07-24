@@ -493,7 +493,7 @@
   will-change: transform;
   /* Contain overscroll so a fully-scrolled drawer doesn't chain to the page
      behind it. */
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   display: grid;
   gap: 16px;
   /* Clear the status bar (top) and home indicator (bottom) in standalone PWA.

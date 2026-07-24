@@ -45,13 +45,15 @@ export function ExpenseDetailDialog({
   onNext?: () => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [viewingImage, setViewingImage] = useState(false);
   const dialogRef = useDialogChrome(onClose);
 
-  // Reset the two-tap delete guard when swiping to a neighbouring expense
-  // (prev/next changes the prop without remounting), so a 確認刪除 armed on one
-  // expense can never carry over and delete a different one.
+  // Reset the two-tap delete guard AND the image lightbox when swiping to a
+  // neighbouring expense (prev/next changes the prop without remounting), so a
+  // 確認刪除 armed on one expense can never carry over and delete a different one.
   useEffect(() => {
     setConfirmingDelete(false);
+    setViewingImage(false);
   }, [expense.id]);
 
   // Horizontal swipe flips between neighbouring expenses (mobile habit:
@@ -112,6 +114,7 @@ export function ExpenseDetailDialog({
   }
 
   return (
+    <>
     <div
       className="modal-backdrop"
       role="presentation"
@@ -133,9 +136,9 @@ export function ExpenseDetailDialog({
         </button>
 
         {!isSettlement && expense.imageUrl ? (
-          <div className="expense-detail-image">
+          <button className="expense-detail-image" type="button" aria-label={detailText.viewImage} onClick={() => setViewingImage(true)}>
             <img src={expense.imageUrl} alt="" />
-          </div>
+          </button>
         ) : null}
 
         <div className="dialog-header">
@@ -268,5 +271,20 @@ export function ExpenseDetailDialog({
         </div>
       </section>
     </div>
+    {viewingImage && expense.imageUrl ? (
+      <div
+        className="image-lightbox"
+        role="dialog"
+        aria-modal="true"
+        aria-label={detailText.title}
+        onClick={() => setViewingImage(false)}
+      >
+        <button className="image-lightbox-close" type="button" aria-label={detailText.closeImage}>
+          <X aria-hidden="true" size={22} />
+        </button>
+        <img src={expense.imageUrl} alt="" />
+      </div>
+    ) : null}
+    </>
   );
 }

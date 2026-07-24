@@ -623,7 +623,7 @@
   overflow: auto;
   /* Nested scroller — keep overscroll inside the list instead of chaining into
      the dialog/page behind it. */
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   padding-right: 2px;
 }
 
@@ -675,7 +675,7 @@
   border-radius: 22px 22px 0 0;
   animation: sheet-rise 260ms ease-out;
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   will-change: transform;
 }
 
