@@ -62,6 +62,21 @@ async function pressBack() {
   });
 }
 
+async function openComposer() {
+  screen.getByRole("button", { name: app.addExpense }).click();
+  return screen.findByRole("dialog", { name: app.addExpense });
+}
+
+/** Taps the composer's numeric keypad, which is the mobile amount step. */
+async function typeAmount(digits: string) {
+  for (const digit of digits) {
+    screen.getByRole("button", { name: digit }).click();
+  }
+  // The keypad writes straight into the amount, so the sheet is dirty as soon
+  // as the effect that reports it up has flushed.
+  await waitFor(() => expect(screen.getByText(new RegExp(digits))).toBeTruthy());
+}
+
 describe("the mobile chrome", () => {
   test("shows the drawer buttons and bottom tab bar, and hides the desktop rail", async () => {
     await landOnGroup();
@@ -151,15 +166,58 @@ describe("the Back button", () => {
     expect(window.location.pathname).toBe("/group/group_1");
   });
 
-  test("closes the expense composer rather than leaving the group", async () => {
+  test("closes an untouched expense composer rather than leaving the group", async () => {
     await landOnGroup();
 
-    screen.getByRole("button", { name: app.addExpense }).click();
-    await screen.findByRole("dialog", { name: app.addExpense });
+    await openComposer();
 
     await pressBack();
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: app.addExpense })).toBeNull());
+    expect(screen.queryByRole("dialog", { name: app.discardExpenseTitle })).toBeNull();
+    expect(window.location.pathname).toBe("/group/group_1");
+  });
+
+  test("asks before throwing away a half-filled expense", async () => {
+    await landOnGroup();
+    await openComposer();
+    await typeAmount("120");
+
+    await pressBack();
+
+    // Still there, with the question on top — Back is far easier to hit by
+    // accident than the backdrop, so it must not silently discard.
+    expect(await screen.findByRole("dialog", { name: app.discardExpenseTitle })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: app.addExpense })).toBeTruthy();
+    expect(window.location.pathname).toBe("/group/group_1");
+  });
+
+  test("繼續編輯 keeps the draft, and a second Back answers it the same way", async () => {
+    await landOnGroup();
+    await openComposer();
+    await typeAmount("120");
+
+    await pressBack();
+    await screen.findByRole("dialog", { name: app.discardExpenseTitle });
+
+    // Back again dismisses the confirm rather than the composer under it.
+    await pressBack();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.discardExpenseTitle })).toBeNull());
+    expect(screen.getByRole("dialog", { name: app.addExpense })).toBeTruthy();
+  });
+
+  test("放棄 closes the composer for good", async () => {
+    await landOnGroup();
+    await openComposer();
+    await typeAmount("120");
+
+    await pressBack();
+    const confirm = await screen.findByRole("dialog", { name: app.discardExpenseTitle });
+    within(confirm).getByRole("button", { name: app.discardExpenseConfirm }).click();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.addExpense })).toBeNull());
+    expect(screen.queryByRole("dialog", { name: app.discardExpenseTitle })).toBeNull();
     expect(window.location.pathname).toBe("/group/group_1");
   });
 

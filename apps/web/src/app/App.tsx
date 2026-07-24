@@ -124,6 +124,10 @@ export function App() {
   // while a mutation is in flight.
   const { pendingAction, actionGuardRef, beginAction, endAction } = useActionGuard();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Reported up by the composer sheet, because the Back button closes it from
+  // out here and never passes through the sheet's own dismiss handlers.
+  const [composerDirty, setComposerDirty] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
@@ -367,7 +371,12 @@ export function App() {
   // overlays are full-bleed and there is no persistent scrollbar to disturb.
   useBodyScrollLock(
     isMobileLayout &&
-      (Boolean(dialog) || expenseComposerOpen || feedbackOpen || groupDrawerOpen || settingsDrawerOpen),
+      (Boolean(dialog) ||
+        expenseComposerOpen ||
+        discardConfirmOpen ||
+        feedbackOpen ||
+        groupDrawerOpen ||
+        settingsDrawerOpen),
   );
 
   /** Dismiss the shared dialog slot, clearing whatever it was showing. */
@@ -375,6 +384,25 @@ export function App() {
     setDialog(null);
     setInfoDialog(null);
     setSelectedExpenseId("");
+  }
+
+  /**
+   * The one way the composer closes without submitting — backdrop, Esc, swipe
+   * and Back all land here — so a half-filled expense can't be thrown away by
+   * a stray gesture. Back makes this matter: it is far easier to hit by
+   * accident than the backdrop ever was.
+   */
+  function requestCloseComposer() {
+    if (composerDirty) {
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    closeExpenseComposer();
+  }
+
+  function discardComposerDraft() {
+    setDiscardConfirmOpen(false);
+    closeExpenseComposer();
   }
 
   // Back / edge-swipe closes the topmost overlay instead of leaving the screen.
@@ -386,7 +414,10 @@ export function App() {
     { open: settingsDrawerOpen, close: () => setSettingsDrawerOpen(false) },
     { open: Boolean(dialog), close: closeDialog },
     { open: dialog === "profile" && infoDialog !== null, close: () => setInfoDialog(null) },
-    { open: expenseComposerOpen, close: closeExpenseComposer },
+    // Back on a dirty composer raises the discard confirm instead of closing;
+    // the confirm then sits above it, so a second Back answers 繼續編輯.
+    { open: expenseComposerOpen, close: requestCloseComposer },
+    { open: discardConfirmOpen, close: () => setDiscardConfirmOpen(false) },
     { open: feedbackOpen, close: () => setFeedbackOpen(false) },
   ]);
 
@@ -1142,10 +1173,37 @@ export function App() {
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
           initialExpense={editingExpense ?? undefined}
-          onClose={closeExpenseComposer}
+          onClose={requestCloseComposer}
+          onDirtyChange={setComposerDirty}
           onSubmit={handleExpenseDraftSubmit}
           onImageError={() => showToast(text.photoError)}
         />
+      ) : null}
+
+      {discardConfirmOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDiscardConfirmOpen(false);
+          }}
+        >
+          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.discardExpenseTitle}>
+            <div className="dialog-header centered">
+              <AlertTriangle aria-hidden="true" size={28} />
+              <h3>{text.discardExpenseTitle}</h3>
+              <p>{text.discardExpenseBody}</p>
+            </div>
+            <div className="dialog-action-row">
+              <button className="secondary-action" type="button" onClick={() => setDiscardConfirmOpen(false)}>
+                {text.discardExpenseCancel}
+              </button>
+              <button className="danger-action" type="button" onClick={discardComposerDraft}>
+                {text.discardExpenseConfirm}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {dialog === "profile" ? (

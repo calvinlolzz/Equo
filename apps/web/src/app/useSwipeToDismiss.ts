@@ -5,6 +5,13 @@ type Options = {
   threshold?: number;
   /** Slide-out duration (ms) before onClose fires. Keep in sync with the CSS `.closing` transition. Default 260. */
   durationMs?: number;
+  /**
+   * Return true to hand `onClose` control immediately instead of animating out
+   * first. For a sheet whose `onClose` may decline to close and put a question
+   * on top instead (the composer's discard confirm): animating would slide the
+   * sheet away and then snap it back under the dialog.
+   */
+  closeInstantly?: () => boolean;
 };
 
 /** The gesture only applies on the mobile bottom-sheet layout; the `.closing` visuals live in the same media query. */
@@ -47,6 +54,10 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
   const node = useRef<HTMLElement | null>(null);
   const detachListener = useRef<(() => void) | null>(null);
   const closeTimer = useRef<number | null>(null);
+  // Read through a ref so requestClose's identity (and every listener keyed to
+  // it) doesn't churn as the caller's condition changes.
+  const closeInstantlyRef = useRef(options.closeInstantly);
+  closeInstantlyRef.current = options.closeInstantly;
 
   /** Imperatively position the sheet. `animate` false = follow finger 1:1; true = let CSS ease it. */
   function applyTransform(y: number, animate: boolean) {
@@ -67,7 +78,7 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
       el.style.transition = "";
       el.style.transform = "";
     }
-    if (matches("(prefers-reduced-motion: reduce)") || !matches(MOBILE_QUERY)) {
+    if (closeInstantlyRef.current?.() || matches("(prefers-reduced-motion: reduce)") || !matches(MOBILE_QUERY)) {
       // Reduced motion, or desktop (the `.closing` animation lives only in the
       // ≤620px media query): close immediately rather than sit through the
       // delay — otherwise Escape on desktop freezes the dialog for durationMs.
