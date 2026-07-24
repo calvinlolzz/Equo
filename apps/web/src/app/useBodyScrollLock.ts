@@ -1,73 +1,38 @@
 import { useLayoutEffect } from "react";
 
 /**
- * Locks background page scroll while `locked` is true — the app scrolls on the
- * window/<body> (`.pizo-home` is `overflow: visible` on mobile), so an open
- * bottom sheet, drawer or dialog would otherwise let the page behind it scroll
- * and rubber-band, one of the most obvious web-vs-native tells.
+ * Locks background page scroll while `locked` is true (an overlay is open on the
+ * mobile layout).
  *
- * Uses the position:fixed technique rather than `overflow: hidden` because iOS
- * Safari ignores `overflow: hidden` on <body> for touch scrolling. The current
- * scroll offset is pinned via `top` and restored on unlock, so opening/closing
- * an overlay never jumps the page. Inner `overflow: auto` scrollers (the sheet
- * body, drawer list, currency list) keep scrolling normally.
+ * Uses `overflow: hidden` on <html>/<body> rather than the position:fixed
+ * technique. Pinning <body> with position:fixed triggers an async iOS viewport
+ * reflow that made the safe-area-padded bottom sheet visibly jump ("上下跳動")
+ * the instant it opened in standalone PWA — and because that reflow is the
+ * browser's, no amount of React timing (useLayoutEffect included) prevents it.
+ * `overflow: hidden` reliably blocks scrolling in the standalone webview and
+ * in-app browsers with NO reflow and no scroll-offset juggling, so there is
+ * nothing to jump; the open sheet's own `overscroll-behavior: none` covers the
+ * rare bleed-through in mobile Safari.
  *
- * Callers gate this to the mobile layout: on desktop, position:fixed on <body>
- * would collapse the scrollbar and shift the centred modal. No-op when
- * unlocked, and SSR/test-safe (guards `document`/`window`).
- *
- * Runs as a LAYOUT effect (before paint): pinning <body> reflows the fixed,
- * safe-area-padded overlay, so doing it after paint (plain useEffect) let the
- * sheet paint once, then jump to its post-lock position — the "上下跳動" seen
- * on open in standalone PWA. Locking before paint means it paints once, settled.
+ * Runs as a layout effect (applied before paint) and is gated to the mobile
+ * layout by the caller (on desktop, hiding root overflow would remove the
+ * scrollbar and shift the centred modal). SSR/test-safe (guards `document`).
  */
 export function useBodyScrollLock(locked: boolean): void {
   useLayoutEffect(() => {
-    if (!locked || typeof document === "undefined" || typeof window === "undefined") return;
+    if (!locked || typeof document === "undefined") return;
 
+    const root = document.documentElement;
     const { body } = document;
-    const scrollY = window.scrollY;
-    // Width the classic (non-overlay) scrollbar was occupying. Removing it via
-    // `overflow: hidden` would otherwise widen the page ~17px and jump it — so
-    // reserve that gutter as padding while locked. 0 on overlay-scrollbar
-    // platforms (most phones), which is exactly where no compensation is needed.
-    const scrollbarGutter = window.innerWidth - document.documentElement.clientWidth;
-    const previous = {
-      position: body.style.position,
-      top: body.style.top,
-      left: body.style.left,
-      right: body.style.right,
-      width: body.style.width,
-      overflow: body.style.overflow,
-      paddingRight: body.style.paddingRight,
-    };
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
 
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
+    root.style.overflow = "hidden";
     body.style.overflow = "hidden";
-    if (scrollbarGutter > 0) body.style.paddingRight = `${scrollbarGutter}px`;
 
     return () => {
-      body.style.position = previous.position;
-      body.style.top = previous.top;
-      body.style.left = previous.left;
-      body.style.right = previous.right;
-      body.style.width = previous.width;
-      body.style.overflow = previous.overflow;
-      body.style.paddingRight = previous.paddingRight;
-      // Restore the pre-lock scroll position. Only when it was non-zero: locking
-      // from the top (the common case) needs no restore, and skipping it avoids
-      // poking window.scrollTo under jsdom where it isn't implemented.
-      if (scrollY > 0) {
-        try {
-          window.scrollTo(0, scrollY);
-        } catch {
-          // window.scrollTo is unimplemented under jsdom — ignore in tests.
-        }
-      }
+      root.style.overflow = previousRootOverflow;
+      body.style.overflow = previousBodyOverflow;
     };
   }, [locked]);
 }
