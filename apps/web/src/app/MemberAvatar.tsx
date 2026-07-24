@@ -21,7 +21,7 @@ export function MemberAvatar({
   className?: string;
 }) {
   if (avatarUrl) {
-    return <img className={className} src={upscaleGoogleAvatar(avatarUrl)} alt="" />;
+    return <img className={className} src={upscaleGoogleAvatar(avatarUrl)} alt="" loading="lazy" decoding="async" />;
   }
 
   return <span className={className}>{initial(name)}</span>;

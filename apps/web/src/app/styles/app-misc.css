@@ -466,9 +466,31 @@
   margin-bottom: 14px;
 }
 
-.feedback-textarea:focus {
+.feedback-textarea:focus-visible {
   outline: none;
   border-color: rgb(var(--accent) / 0.78);
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.16);
+}
+
+.offline-banner {
+  position: fixed;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  max-width: calc(100vw - 32px);
+  padding: 8px 16px;
+  border: 1px solid rgb(var(--gold) / 0.4);
+  border-radius: 999px;
+  background: rgb(var(--card-base) / 0.92);
+  color: rgb(var(--fg));
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
 }
 
 .ptr-indicator {

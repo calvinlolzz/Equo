@@ -26,7 +26,7 @@ export function useArchivedGroups({ cloudStore, showToast, describeError }: UseA
     try {
       setArchivedGroups(await cloudStore.listArchivedGroups());
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeError(error));
     } finally {
       setLoading(false);
     }

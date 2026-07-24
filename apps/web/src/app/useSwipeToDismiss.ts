@@ -67,8 +67,10 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
       el.style.transition = "";
       el.style.transform = "";
     }
-    if (matches("(prefers-reduced-motion: reduce)")) {
-      // No animation preference: close immediately rather than sit through the delay.
+    if (matches("(prefers-reduced-motion: reduce)") || !matches(MOBILE_QUERY)) {
+      // Reduced motion, or desktop (the `.closing` animation lives only in the
+      // ≤620px media query): close immediately rather than sit through the
+      // delay — otherwise Escape on desktop freezes the dialog for durationMs.
       closingRef.current = false;
       onClose();
       return;

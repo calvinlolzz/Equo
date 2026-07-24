@@ -79,7 +79,7 @@ export function useGroupMutations({
         }
       }
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CloudGroupsStore } from "./cloudStore";
+import { describeCloudActionError } from "./describeCloudActionError";
 import type { DialogMode, Group, Member } from "./appTypes";
 import type { ToastAction } from "./useToast";
 import { UI_TEXT } from "./uiText";
@@ -55,7 +56,7 @@ export function useMemberMutations({
       setDialog(null);
       showToast(`${text.addVirtualMember}: ${name}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }
@@ -88,7 +89,7 @@ export function useMemberMutations({
       cancelRenameMember();
       showToast(text.memberRenamed);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }
@@ -115,7 +116,7 @@ export function useMemberMutations({
       showToast(
         code === "MEMBER_HAS_BALANCE"
           ? text.memberHasBalance
-          : `${text.cloudSyncFailedPrefix}${(error as Error).message}`,
+          : describeCloudActionError(error),
       );
     } finally {
       endAction();

@@ -40,7 +40,7 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
             <span className="group-item-row">
               {group.coverImageUrl ? (
                 <span className="group-item-thumb">
-                  <img src={group.coverImageUrl} alt="" />
+                  <img src={group.coverImageUrl} alt="" loading="lazy" decoding="async" />
                 </span>
               ) : (
                 <span className="group-item-thumb placeholder" aria-hidden="true" />

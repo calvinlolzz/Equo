@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CloudGroupsStore } from "./cloudStore";
+import { describeCloudActionError } from "./describeCloudActionError";
 import type { DialogMode, Group } from "./appTypes";
 import type { StoredSession } from "./sessionStore";
 import type { ToastAction } from "./useToast";
@@ -95,7 +96,7 @@ export function useInviteFlow({
       cloudInviteGroupIdRef.current = activeGroup.id;
       setCloudInviteToken(token);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       setCloudInviteLoading(false);
     }

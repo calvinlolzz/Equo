@@ -81,7 +81,10 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
       el.style.transition = "";
       el.style.transform = "";
     }
-    if (matches("(prefers-reduced-motion: reduce)")) {
+    if (matches("(prefers-reduced-motion: reduce)") || !matches(MOBILE_QUERY)) {
+      // Reduced motion, or desktop (the `.closing` animation is ≤620px-only):
+      // close immediately instead of sitting through the delay (Escape on
+      // desktop would otherwise freeze the drawer for durationMs).
       closingRef.current = false;
       onClose();
       return;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createApiClient, type ExpenseSummary } from "./apiClient";
 import { dateKey } from "./appDates";
 import type { CloudGroupsStore } from "./cloudStore";
+import { describeCloudActionError } from "./describeCloudActionError";
 import type { DialogMode, Expense, Group, Member } from "./appTypes";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -112,7 +113,7 @@ export function useExpenseComposer({
       setEditingExpense(null);
       showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     }
   }
 
@@ -133,7 +134,7 @@ export function useExpenseComposer({
         onAction: () => restoreExpense(groupId, groupCurrency, expense),
       });
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     }
   }
 
@@ -149,7 +150,7 @@ export function useExpenseComposer({
       recordCloudActivity(groupId, `${text.undoRestored}: ${expense.title}`);
       showToast(text.undoRestored);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }
@@ -161,7 +162,7 @@ export function useExpenseComposer({
     try {
       await cloudStore.loadMoreExpenses(activeGroup.id);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }

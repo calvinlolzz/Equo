@@ -707,3 +707,44 @@ label span {
 :root[data-theme="light"] .hero-donut-ring::before {
   background: var(--page-1);
 }
+
+/* Light-mode contrast (WCAG AA). Secondary/muted text uses rgb(var(--fg) / a)
+   at a≈0.4–0.58 — fine in dark mode (near-white --fg on a dark page ≈ 5:1) but
+   below the 4.5:1 floor in light mode, where dark-indigo --fg composited over
+   white surfaces lands at ≈3:1. Low alpha over white can't reach AA no matter
+   the hue, so raise the floor for CONTENT text to 0.72 in light mode only
+   (dark mode keeps its tuned values). Decorative uses — dividers, disabled
+   affordances — are intentionally left out. */
+:root[data-theme="light"] .profile-identity-email,
+:root[data-theme="light"] .profile-tab:not(.active),
+:root[data-theme="light"] .profile-account-info small:not(.profile-status-linked),
+:root[data-theme="light"] .expense-detail-person small,
+:root[data-theme="light"] .expense-detail-stat-grid span,
+:root[data-theme="light"] .expense-detail-source-line,
+:root[data-theme="light"] .settlement-more-line,
+:root[data-theme="light"] .settlement-history-time,
+:root[data-theme="light"] .hero-balance-row small,
+:root[data-theme="light"] .hero-donut-ring span,
+:root[data-theme="light"] .soft-tab:not(.active),
+:root[data-theme="light"] .section-title-row span,
+:root[data-theme="light"] .section-title-row .text-action,
+:root[data-theme="light"] .spending-date-row span,
+:root[data-theme="light"] .side-group-name span,
+:root[data-theme="light"] .group-item-text span,
+:root[data-theme="light"] .expense-record-main small,
+:root[data-theme="light"] .pizo-expense-row .expense-record-main small,
+:root[data-theme="light"] .panel-title-row span,
+:root[data-theme="light"] .panel-stat-grid span,
+:root[data-theme="light"] .dialog-list-title,
+:root[data-theme="light"] .dialog-option small,
+:root[data-theme="light"] .archived-dialog-row small,
+:root[data-theme="light"] .record-dialog-row small,
+:root[data-theme="light"] .member-dialog-row small,
+:root[data-theme="light"] .invite-link-box span,
+:root[data-theme="light"] .category-legend em,
+:root[data-theme="light"] .mobile-tab-item,
+:root[data-theme="light"] .empty-copy,
+:root[data-theme="light"] .composer-step-count,
+:root[data-theme="light"] .composer-section-head small {
+  color: rgb(var(--fg) / 0.72);
+}

@@ -36,13 +36,13 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
           <p>{"\u5148\u9078\u64c7\u8981\u505a\u7684\u4e8b\uff0c\u518d\u9032\u5165\u7fa4\u7d44\u5167\u8655\u7406\u6210\u54e1\u3001\u652f\u51fa\u8207\u6e05\u511f\u3002"}</p>
         </div>
 
-        <div className="start-mode-picker" aria-label="Start mode">
+        <div className="start-mode-picker" role="group" aria-label={"開始方式"}>
           {[
             ["create", text.createGroup],
             ["join", text.joinGroup],
             ["continue", text.continueGroup],
           ].map(([id, label]) => (
-            <button className={startMode === id ? "start-mode active" : "start-mode"} type="button" key={id} onClick={() => onSetStartMode(id as StartMode)}>
+            <button className={startMode === id ? "start-mode active" : "start-mode"} type="button" key={id} aria-pressed={startMode === id} onClick={() => onSetStartMode(id as StartMode)}>
               {label}
             </button>
           ))}
@@ -53,12 +53,13 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
             <div className="panel-title-row">
               <h2>{text.createGroup}</h2>
             </div>
-            <div className="template-grid" aria-label="Templates">
+            <div className="template-grid" role="group" aria-label={"範本"}>
               {templates.map((template) => (
                 <button
                   className={selectedTemplate === template.id ? "template-chip active" : "template-chip"}
                   type="button"
                   key={template.id}
+                  aria-pressed={selectedTemplate === template.id}
                   onClick={() => onSelectTemplate(template)}
                 >
                   {template.label}
@@ -105,7 +106,7 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
                     <span className="group-item-row">
                       {group.coverImageUrl ? (
                         <span className="group-item-thumb">
-                          <img src={group.coverImageUrl} alt="" />
+                          <img src={group.coverImageUrl} alt="" loading="lazy" decoding="async" />
                         </span>
                       ) : (
                         <span className="group-item-thumb placeholder" aria-hidden="true" />

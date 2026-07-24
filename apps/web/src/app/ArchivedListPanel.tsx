@@ -29,7 +29,7 @@ export function ArchivedListPanel({ archivedGroups, loading, unarchivingGroupId,
             <div className="archived-dialog-row" key={group.id}>
               {group.coverImageUrl ? (
                 <span className="record-dialog-thumb">
-                  <img src={group.coverImageUrl} alt="" />
+                  <img src={group.coverImageUrl} alt="" loading="lazy" decoding="async" />
                 </span>
               ) : (
                 <span className="record-dialog-icon">

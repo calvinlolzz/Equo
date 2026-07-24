@@ -68,7 +68,7 @@ export function GroupSideNav({
         </button>
       </div>
       <div className="side-group-card">
-        <div className="side-cover">{coverImageUrl ? <img src={coverImageUrl} alt="" /> : null}</div>
+        <div className="side-cover">{coverImageUrl ? <img src={coverImageUrl} alt="" loading="lazy" decoding="async" /> : null}</div>
         <div className="side-group-name">
           <div className="side-group-title-row">
             <h2>{groupName}</h2>
