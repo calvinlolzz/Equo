@@ -764,14 +764,22 @@
 
   .flow-dialog {
     width: 100%;
-    max-height: calc(100dvh - 40px);
+    /* Subtract the safe-area insets: in standalone PWA (viewport-fit=cover) the
+       viewport runs under the status bar, so a full-height bottom sheet would
+       push its top — and the swipe-to-close drag handle — up behind the status
+       bar / Dynamic Island where it can't be reached. */
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     border-radius: 18px 18px 14px 14px;
   }
 
   .panel-dialog {
     width: 100%;
-    max-height: calc(100dvh - 40px);
+    /* Subtract the safe-area insets: in standalone PWA (viewport-fit=cover) the
+       viewport runs under the status bar, so a full-height bottom sheet would
+       push its top — and the swipe-to-close drag handle — up behind the status
+       bar / Dynamic Island where it can't be reached. */
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
 
   .flow-dialog,
@@ -797,7 +805,11 @@
 
   .expense-composer {
     width: 100%;
-    max-height: calc(100dvh - 40px);
+    /* Subtract the safe-area insets: in standalone PWA (viewport-fit=cover) the
+       viewport runs under the status bar, so a full-height bottom sheet would
+       push its top — and the swipe-to-close drag handle — up behind the status
+       bar / Dynamic Island where it can't be reached. */
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     /* Full-bleed bottom sheet: keep the keypad's bottom row and the 儲存 button
        clear of the home indicator. */
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
