@@ -29,7 +29,6 @@ export const ACTION_ICON_NAMES = {
 export const PROFILE_ICON_NAMES = {
   editName: "Pencil",
   logout: "LogOut",
-  appleAccount: "Apple",
   switchTheme: "Contrast",
   languageSetting: "Globe",
   privacyPolicy: "Lock",
