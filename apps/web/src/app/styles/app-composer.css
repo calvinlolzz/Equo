@@ -735,22 +735,22 @@
   }
 
   .composer-backdrop {
-    /* Small (stable) viewport height — see .modal-backdrop below. */
+    /* Dynamic (visible) viewport height — see .modal-backdrop below. */
     height: 100vh;
-    height: 100svh;
+    height: 100dvh;
     padding: 0;
   }
 
   .modal-backdrop {
     align-items: end;
-    /* Use the SMALL viewport (svh), which is the URL-bar-SHOWN height and does
-       NOT change as Safari hides/shows its bar on scroll. A `position: fixed;
-       inset: 0` backdrop otherwise resolves to the large (URL-bar-hidden)
-       viewport, and `dvh` grows mid-scroll — both push the sheet around: the
-       drag handle off-screen (see #31) or the bottom row "jumping down" as the
-       bar hides. A fixed svh keeps the whole sheet stable and on-screen. */
+    /* Constrain to the DYNAMIC (visible) viewport. A `position: fixed; inset: 0`
+       backdrop otherwise resolves to the large layout viewport (under the status
+       bar / behind Safari's bars), pushing a tall sheet's top off-screen or its
+       bottom behind Safari's bottom toolbar. `dvh` tracks exactly the area
+       between the browser's bars, so the sheet fills the visible space with no
+       clipping. (The "往下跳" bounce is handled by overscroll-behavior: none.) */
     height: 100vh;
-    height: 100svh;
+    height: 100dvh;
     /* Reserve the home-indicator strip so a bottom-sheet dialog's rounded edge
        and its action buttons never sit under it. */
     padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
@@ -768,7 +768,7 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     border-radius: 18px 18px 14px 14px;
   }
@@ -779,7 +779,7 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
 
   .flow-dialog,
@@ -812,7 +812,7 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     /* Full-bleed bottom sheet: keep the keypad's bottom row and the 儲存 button
        clear of the home indicator. */
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
