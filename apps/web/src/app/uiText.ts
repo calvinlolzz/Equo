@@ -135,6 +135,7 @@ export const UI_TEXT = {
     cloudSyncFailedPrefix: "同步失敗：",
     networkError: "網路連線失敗，請確認網路後再試一次。",
     serverError: "伺服器暫時無法回應，請稍後再試。",
+    rateLimited: "操作太頻繁了，請稍等一下再試。",
     offlineNotice: "目前離線，資料可能不是最新",
     cloudInviteJoinedPrefix: "已加入群組：",
     sessionExpired: "登入已過期，請重新登入。",

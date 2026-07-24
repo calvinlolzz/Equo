@@ -42,3 +42,20 @@ export function getCookieValue(request: HttpRuntimeRequest, name: string): strin
 export function getAuthToken(request: HttpRuntimeRequest): string {
   return getBearerToken(request) || getCookieValue(request, "equo_session");
 }
+
+/**
+ * The caller's address, for rate-limit buckets.
+ *
+ * Reads the FIRST entry of x-forwarded-for. On Vercel the platform edge sets
+ * that header itself and any client-supplied value is replaced, so the leading
+ * entry is the real peer rather than something a caller can choose. Empty when
+ * the header is absent (local dev, tests) - never fabricate an address, because
+ * a placeholder would put every anonymous caller in one shared bucket and let
+ * one of them lock out the rest.
+ */
+export function getClientIp(request: HttpRuntimeRequest): string {
+  const forwarded = request.headers["x-forwarded-for"] ?? request.headers["X-Forwarded-For"];
+  if (!forwarded) return "";
+
+  return forwarded.split(",")[0]?.trim() ?? "";
+}
