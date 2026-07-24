@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
+import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -22,6 +23,11 @@ type FeedbackDialogProps = {
 /** 意見回饋 bottom sheet - type chips + free-form message, submitted to /api/v1/feedback. */
 export function FeedbackDialog({ onClose, onSubmit }: FeedbackDialogProps) {
   const swipe = useSwipeToDismiss(onClose);
+  const chromeRef = useDialogChrome(swipe.requestClose);
+  const dialogRef = useMemo(
+    () => mergeRefs<HTMLElement>(swipe.dragProps.ref, chromeRef),
+    [swipe.dragProps.ref, chromeRef],
+  );
   const [type, setType] = useState<FeedbackType>("problem");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -50,6 +56,7 @@ export function FeedbackDialog({ onClose, onSubmit }: FeedbackDialogProps) {
         aria-modal="true"
         aria-label={text.feedbackTitle}
         {...swipe.dragProps}
+        ref={dialogRef}
       >
         <div className="dialog-drag-handle" aria-hidden="true" />
         <button className="dialog-close" type="button" aria-label={text.cancel} onClick={onClose}>
@@ -66,6 +73,7 @@ export function FeedbackDialog({ onClose, onSubmit }: FeedbackDialogProps) {
             <button
               key={option.value}
               type="button"
+              aria-pressed={type === option.value}
               className={type === option.value ? "feedback-type-chip active" : "feedback-type-chip"}
               onClick={() => setType(option.value)}
             >

@@ -28,10 +28,3 @@ export function assertSameCurrency(values: Money[]): CurrencyCode {
 
   return first;
 }
-
-export function sumMoney(values: Money[]): Money {
-  const currency = assertSameCurrency(values);
-  const amount_minor = values.reduce((total, value) => total + value.amount_minor, 0);
-
-  return { amount_minor, currency };
-}

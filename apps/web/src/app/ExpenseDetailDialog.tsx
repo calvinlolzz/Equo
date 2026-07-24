@@ -1,5 +1,6 @@
-import { useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
+import { useDialogChrome } from "./useDialogChrome";
 import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
 import { formatAmount } from "./formatAmount";
@@ -44,6 +45,14 @@ export function ExpenseDetailDialog({
   onNext?: () => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const dialogRef = useDialogChrome(onClose);
+
+  // Reset the two-tap delete guard when swiping to a neighbouring expense
+  // (prev/next changes the prop without remounting), so a 確認刪除 armed on one
+  // expense can never carry over and delete a different one.
+  useEffect(() => {
+    setConfirmingDelete(false);
+  }, [expense.id]);
 
   // Horizontal swipe flips between neighbouring expenses (mobile habit:
   // swipe left = next, swipe right = previous). Vertical-leaning drags are
@@ -115,6 +124,7 @@ export function ExpenseDetailDialog({
         role="dialog"
         aria-modal="true"
         aria-label={dialogTitle}
+        ref={dialogRef}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >

@@ -16,6 +16,7 @@ import {
 } from "./expenseShareSplit";
 import { MemberAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
+import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -179,6 +180,11 @@ export function ExpenseComposerSheet({
 
   // Mobile drag-to-dismiss for the bottom sheet.
   const { closing: composerClosing, requestClose, dragProps } = useSwipeToDismiss(onClose);
+  const chromeRef = useDialogChrome(requestClose);
+  const sheetRef = useMemo(
+    () => mergeRefs<HTMLElement>(dragProps.ref, chromeRef),
+    [dragProps.ref, chromeRef],
+  );
 
   // Stepped flow on phones: one field group per step (amount -> details ->
   // payer -> split), mirroring the app demo. Wider layouts keep the single
@@ -562,6 +568,7 @@ export function ExpenseComposerSheet({
             <button
               className={composerSplitMode === "equal" ? "split-mode-option active" : "split-mode-option"}
               type="button"
+              aria-pressed={composerSplitMode === "equal"}
               onClick={() => selectSplitMode("equal")}
             >
               {text.splitEvenly}
@@ -569,6 +576,7 @@ export function ExpenseComposerSheet({
             <button
               className={composerSplitMode === "amount" ? "split-mode-option active" : "split-mode-option"}
               type="button"
+              aria-pressed={composerSplitMode === "amount"}
               onClick={() => selectSplitMode("amount")}
             >
               {text.splitByAmount}
@@ -576,6 +584,7 @@ export function ExpenseComposerSheet({
             <button
               className={composerSplitMode === "percent" ? "split-mode-option active" : "split-mode-option"}
               type="button"
+              aria-pressed={composerSplitMode === "percent"}
               onClick={() => selectSplitMode("percent")}
             >
               {text.splitByPercent}
@@ -923,6 +932,7 @@ export function ExpenseComposerSheet({
         aria-modal="true"
         aria-label={text.addExpense}
         {...dragProps}
+        ref={sheetRef}
       >
         <div className="sheet-drag-handle" aria-hidden="true" />
         <div className="composer-header">

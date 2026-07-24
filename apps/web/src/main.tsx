@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./app/App.css";
 import { App } from "./app/App";
+import { ErrorBoundary } from "./app/ErrorBoundary";
 import { installErrorReporter } from "./app/errorReporter";
 import { GlassBackground } from "./app/GlassBackground";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
@@ -37,13 +38,17 @@ installErrorReporter(isAdminPath ? "admin" : "web");
 createRoot(root).render(
   <React.StrictMode>
     {isAdminPath ? (
-      <Suspense fallback={null}>
-        <AdminApp />
-      </Suspense>
+      <ErrorBoundary source="admin">
+        <Suspense fallback={null}>
+          <AdminApp />
+        </Suspense>
+      </ErrorBoundary>
     ) : (
       <>
         <GlassBackground />
-        <App />
+        <ErrorBoundary source="web">
+          <App />
+        </ErrorBoundary>
       </>
     )}
   </React.StrictMode>,

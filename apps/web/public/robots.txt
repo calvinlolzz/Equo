@@ -1,0 +1,9 @@
+# Equo — login-walled app. Allow the landing page; keep crawlers out of the
+# app shell routes, the operator console, the API, and invite links (which
+# carry tokens). The canonical tag in index.html consolidates to the root.
+User-agent: *
+Allow: /$
+Disallow: /group/
+Disallow: /admin
+Disallow: /api/
+Disallow: /*invite

@@ -30,6 +30,8 @@ import { RecordsPanel } from "./RecordsPanel";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
 import { GroupSideNav } from "./GroupSideNav";
 import { useBodyScrollLock } from "./useBodyScrollLock";
+import { mergeRefs, useDialogChrome } from "./useDialogChrome";
+import { useOnlineStatus } from "./useOnlineStatus";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
@@ -127,6 +129,25 @@ export function App() {
   // slid in from (left drawer <- swipe left, right drawer -> swipe right).
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
   const settingsDrawerSwipe = useSwipeToDismissX("right", () => setSettingsDrawerOpen(false));
+
+  // Modal focus/keyboard contract (Esc, focus-trap, focus-return) for the three
+  // in-file overlays. Each chrome ref is merged with the gesture ref and
+  // memoised so it doesn't detach/reattach the node every render.
+  const dialogChromeRef = useDialogChrome(dialogSwipe.requestClose);
+  const dialogRef = useMemo(
+    () => mergeRefs<HTMLElement>(dialogSwipe.dragProps.ref, dialogChromeRef),
+    [dialogSwipe.dragProps.ref, dialogChromeRef],
+  );
+  const groupDrawerChromeRef = useDialogChrome(groupDrawerSwipe.requestClose);
+  const groupDrawerRef = useMemo(
+    () => mergeRefs<HTMLElement>(groupDrawerSwipe.dragProps.ref, groupDrawerChromeRef),
+    [groupDrawerSwipe.dragProps.ref, groupDrawerChromeRef],
+  );
+  const settingsDrawerChromeRef = useDialogChrome(settingsDrawerSwipe.requestClose);
+  const settingsDrawerRef = useMemo(
+    () => mergeRefs<HTMLElement>(settingsDrawerSwipe.dragProps.ref, settingsDrawerChromeRef),
+    [settingsDrawerSwipe.dragProps.ref, settingsDrawerChromeRef],
+  );
   const isMobileLayout = useIsMobileLayout();
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
   const { cloudActivities, recordCloudActivity } = useCloudActivities();
@@ -344,6 +365,8 @@ export function App() {
     isMobileLayout &&
       (Boolean(dialog) || expenseComposerOpen || feedbackOpen || groupDrawerOpen || settingsDrawerOpen),
   );
+
+  const online = useOnlineStatus();
 
   // The logged-in user's own member row within the active group - NOT
   // necessarily the group owner (joined-via-invite members are non-owners).
@@ -595,7 +618,7 @@ export function App() {
       );
       showToast(`${text.clearDebt}: ${fromMember.name} → ${toMember.name}`);
     } catch (error) {
-      showToast(`${text.cloudSyncFailedPrefix}${(error as Error).message}`);
+      showToast(describeCloudActionError(error));
     } finally {
       endAction();
     }
@@ -660,6 +683,11 @@ export function App() {
 
   return (
     <main className="app-shell">
+      {!online ? (
+        <div className="offline-banner" role="status" aria-live="polite">
+          {text.offlineNotice}
+        </div>
+      ) : null}
       {pullStatus !== "idle" ? (
         <div className="ptr-indicator" role="status" aria-live="polite">
           {pullStatus === "refreshing" ? "重新整理中…" : pullStatus === "armed" ? "放開以重新整理" : "下拉重新整理"}
@@ -749,7 +777,7 @@ export function App() {
 
           {groupDrawerOpen ? (
             <div className={groupDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) groupDrawerSwipe.requestClose(); }}>
-              <div className={groupDrawerSwipe.closing ? "side-drawer side-drawer-left closing" : "side-drawer side-drawer-left"} role="dialog" aria-modal="true" aria-label={text.groupList} {...groupDrawerSwipe.dragProps}>
+              <div className={groupDrawerSwipe.closing ? "side-drawer side-drawer-left closing" : "side-drawer side-drawer-left"} role="dialog" aria-modal="true" aria-label={text.groupList} {...groupDrawerSwipe.dragProps} ref={groupDrawerRef}>
                 <GroupRail
                   activeGroup={activeGroup}
                   groups={displayGroups}
@@ -764,6 +792,10 @@ export function App() {
           ) : null}
 
           <section className="group-room pizo-home" aria-label={text.groupHome}>
+            {/* Root the mobile heading outline: the desktop <h1> lives in the
+                group rail, which is inert on mobile, so the workspace would
+                otherwise start at <h2>. */}
+            {isMobileLayout ? <h1 className="visually-hidden">{activeGroup.name}</h1> : null}
             {cloudActiveLoading && !cloudActiveDetail ? (
               <div className="group-home-card glass-panel cloud-loading-skeleton" aria-busy="true">
                 <span className="pulse-dot active" />
@@ -1012,7 +1044,7 @@ export function App() {
 
           {settingsDrawerOpen ? (
             <div className={settingsDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) settingsDrawerSwipe.requestClose(); }}>
-              <div className={settingsDrawerSwipe.closing ? "side-drawer side-drawer-right closing" : "side-drawer side-drawer-right"} role="dialog" aria-modal="true" aria-label={text.groupManage} {...settingsDrawerSwipe.dragProps}>
+              <div className={settingsDrawerSwipe.closing ? "side-drawer side-drawer-right closing" : "side-drawer side-drawer-right"} role="dialog" aria-modal="true" aria-label={text.groupManage} {...settingsDrawerSwipe.dragProps} ref={settingsDrawerRef}>
                 {activeGroup ? (
               <GroupSideNav
                 groupName={activeGroup.name}
@@ -1148,6 +1180,7 @@ export function App() {
             aria-modal="true"
             aria-label={text.groupHome}
             {...dialogSwipe.dragProps}
+            ref={dialogRef}
           >
             <div className="dialog-drag-handle" aria-hidden="true" />
             <button className="dialog-close" type="button" aria-label={text.cancel} onClick={() => setDialog(null)}>
@@ -1204,7 +1237,7 @@ export function App() {
                 </div>
                 <label className="group-edit-cover" aria-label={text.coverImage}>
                   {groupCoverDataUrl || groupCoverUrl ? (
-                    <img src={groupCoverDataUrl || groupCoverUrl} alt="" />
+                    <img src={groupCoverDataUrl || groupCoverUrl} alt="" loading="lazy" decoding="async" />
                   ) : (
                     <span>
                       <Pencil aria-hidden="true" size={22} />

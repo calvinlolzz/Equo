@@ -15,5 +15,14 @@ export function describeCloudActionError(error: unknown): string {
   if (code === "FORBIDDEN") {
     return text.ownerOnlyAction;
   }
+  // Network/server failures carry an untranslated technical message ("Failed to
+  // fetch", an HTML gateway page, ...). Map the codes the api client tags to
+  // friendly localized copy instead of leaking the raw string into the toast.
+  if (code === "NETWORK_ERROR") {
+    return text.networkError;
+  }
+  if (code === "SERVER_ERROR") {
+    return text.serverError;
+  }
   return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
 }

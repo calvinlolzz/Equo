@@ -24,7 +24,15 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       await Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
       const cache = await caches.open(CACHE_NAME);
-      await cache.add("/");
+      // Guard the shell precache: if the device is offline at activate (or "/"
+      // returns non-200), a rejection here must NOT abort clients.claim() or
+      // leave the caches deleted with open tabs uncontrolled. The navigate
+      // handler re-caches "/" on the next successful load.
+      try {
+        await cache.add("/");
+      } catch {
+        // Ignore — shell will be cached on the next online navigation.
+      }
       await self.clients.claim();
     })(),
   );
@@ -51,7 +59,25 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match("/").then((cached) => cached ?? fetch(request))),
+      (async () => {
+        try {
+          const response = await fetch(request);
+          // Stale-while-revalidate the offline shell: keep the cached "/" in
+          // step with the latest deploy instead of frozen at first install.
+          // Only cache genuine HTML — a direct navigation to /robots.txt,
+          // /icons/*.png, /site.webmanifest, etc. is also mode:"navigate" and
+          // must never be stored as the app shell.
+          const isHtml = (response.headers.get("content-type") || "").includes("text/html");
+          if (response && response.ok && isHtml) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put("/", copy)).catch(() => {});
+          }
+          return response;
+        } catch {
+          const cached = await caches.match("/");
+          return cached ?? fetch(request);
+        }
+      })(),
     );
   }
 });

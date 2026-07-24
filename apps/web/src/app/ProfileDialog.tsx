@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, X, Apple } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
+import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -79,6 +80,11 @@ export function ProfileDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
   const swipe = useSwipeToDismiss(onClose);
+  const chromeRef = useDialogChrome(swipe.requestClose);
+  const dialogRef = useMemo(
+    () => mergeRefs<HTMLElement>(swipe.dragProps.ref, chromeRef),
+    [swipe.dragProps.ref, chromeRef],
+  );
 
   async function handleAvatarPick(file: File | null) {
     if (!file) return;
@@ -115,6 +121,7 @@ export function ProfileDialog({
         aria-modal="true"
         aria-label={text.title}
         {...swipe.dragProps}
+        ref={dialogRef}
       >
         <div className="dialog-drag-handle" aria-hidden="true" />
         <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={onClose}>

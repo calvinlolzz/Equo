@@ -133,12 +133,27 @@ export type EquoApiClient = ReturnType<typeof createApiClient>;
 export type ApiClientError = Error & { code?: string };
 
 async function readJson<T>(response: Response): Promise<T> {
-  const payload = await response.json();
+  // A 5xx / gateway timeout can return an HTML error page or an empty body, so
+  // response.json() throws an opaque SyntaxError ("Unexpected token '<'") that
+  // would otherwise surface raw in the UI. Parse defensively and tag a code the
+  // localizer (describeCloudActionError) can turn into friendly copy.
+  let payload: { error?: { message?: string; code?: string } } | null = null;
+  let parseFailed = false;
+  try {
+    payload = await response.json();
+  } catch {
+    parseFailed = true;
+  }
 
   if (!response.ok) {
-    const message = payload?.error?.message ?? "Request failed";
-    const error: ApiClientError = new Error(message);
-    error.code = payload?.error?.code;
+    const error: ApiClientError = new Error(payload?.error?.message ?? "Request failed");
+    error.code = payload?.error?.code ?? (response.status >= 500 ? "SERVER_ERROR" : undefined);
+    throw error;
+  }
+
+  if (parseFailed) {
+    const error: ApiClientError = new Error("Malformed server response");
+    error.code = "SERVER_ERROR";
     throw error;
   }
 
@@ -164,11 +179,21 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
       ...(init.headers as Record<string, string> | undefined),
     };
 
-    const response = await fetcher(`${baseUrl}${path}`, {
-      ...init,
-      credentials: "same-origin",
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetcher(`${baseUrl}${path}`, {
+        ...init,
+        credentials: "same-origin",
+        headers,
+      });
+    } catch (cause) {
+      // fetch() rejects (TypeError "Failed to fetch" / "Load failed") only on a
+      // network-level failure — offline, DNS, CORS, connection reset. Tag it so
+      // the UI shows "網路連線失敗" instead of the raw browser string.
+      const error: ApiClientError = new Error(cause instanceof Error ? cause.message : "Network request failed");
+      error.code = "NETWORK_ERROR";
+      throw error;
+    }
 
     return readJson<T>(response);
   }

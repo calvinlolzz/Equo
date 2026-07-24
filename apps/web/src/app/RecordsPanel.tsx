@@ -73,7 +73,7 @@ export function RecordsPanel({
                   <button className="record-dialog-row" type="button" key={expense.id} onClick={() => onOpenExpense(expense.id)}>
                     {expense.imageUrl ? (
                       <span className="record-dialog-thumb">
-                        <img src={expense.imageUrl} alt="" />
+                        <img src={expense.imageUrl} alt="" loading="lazy" decoding="async" />
                       </span>
                     ) : (
                       <span className="record-dialog-icon">
