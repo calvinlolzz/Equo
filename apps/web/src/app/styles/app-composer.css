@@ -735,22 +735,22 @@
   }
 
   .composer-backdrop {
-    /* Track the dynamic (visible) viewport — see .modal-backdrop below. */
+    /* Small (stable) viewport height — see .modal-backdrop below. */
     height: 100vh;
-    height: 100dvh;
+    height: 100svh;
     padding: 0;
   }
 
   .modal-backdrop {
     align-items: end;
-    /* Anchor the bottom sheet to the VISIBLE viewport bottom. A
-       `position: fixed; inset: 0` backdrop otherwise resolves to the large
-       (URL-bar-hidden) viewport — and once body scroll-lock pins <body>, a tall
-       sheet anchored to that bottom pushes its top + drag handle off-screen, so
-       the records/analysis sheets couldn't be swiped down to close. An explicit
-       dynamic-viewport height keeps the whole sheet, handle included, on-screen. */
+    /* Use the SMALL viewport (svh), which is the URL-bar-SHOWN height and does
+       NOT change as Safari hides/shows its bar on scroll. A `position: fixed;
+       inset: 0` backdrop otherwise resolves to the large (URL-bar-hidden)
+       viewport, and `dvh` grows mid-scroll — both push the sheet around: the
+       drag handle off-screen (see #31) or the bottom row "jumping down" as the
+       bar hides. A fixed svh keeps the whole sheet stable and on-screen. */
     height: 100vh;
-    height: 100dvh;
+    height: 100svh;
     /* Reserve the home-indicator strip so a bottom-sheet dialog's rounded edge
        and its action buttons never sit under it. */
     padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
@@ -768,7 +768,7 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     border-radius: 18px 18px 14px 14px;
   }
@@ -779,12 +779,15 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
 
   .flow-dialog,
   .panel-dialog {
-    overscroll-behavior: contain;
+    /* `none` (not `contain`): also suppresses the iOS rubber-band bounce at the
+       ends, so scrolling to the bottom doesn't spring the last row (the
+       "往下跳" jump). Chaining to the page behind is still blocked. */
+    overscroll-behavior: none;
     transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform;
   }
@@ -809,7 +812,7 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     /* Full-bleed bottom sheet: keep the keypad's bottom row and the 儲存 button
        clear of the home indicator. */
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
@@ -835,7 +838,7 @@
     /* This — not the sheet — is the scroll surface of the stepped composer (the
        sheet is overflow:hidden), so contain overscroll here or it chains to the
        page behind the sheet. */
-    overscroll-behavior: contain;
+    overscroll-behavior: none;
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding-bottom: 4px;

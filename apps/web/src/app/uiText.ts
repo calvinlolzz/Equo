@@ -239,5 +239,7 @@ export const UI_TEXT = {
     settlementTitle: "清償轉帳",
     from: "付款方",
     to: "收款方",
+    viewImage: "查看原圖",
+    closeImage: "關閉圖片",
   },
 } as const;

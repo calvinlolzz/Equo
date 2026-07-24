@@ -447,7 +447,7 @@ label span {
   overflow: auto;
   /* Stop a fully-scrolled rail (it is the scroll surface inside the mobile left
      drawer) from chaining the scroll into the page behind the drawer. */
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   padding: 20px;
   scrollbar-width: none;
   -ms-overflow-style: none;

@@ -222,17 +222,68 @@
 }
 
 .expense-detail-image {
+  display: block;
+  width: 100%;
+  padding: 0;
   border-radius: 16px;
   overflow: hidden;
-  max-height: 220px;
+  max-height: 240px;
+  background: rgb(var(--surf) / 0.1);
+  cursor: zoom-in;
 }
 
 .expense-detail-image img {
   display: block;
   width: 100%;
   height: 100%;
-  max-height: 220px;
-  object-fit: cover;
+  max-height: 240px;
+  /* contain, not cover: show the whole receipt rather than a cropped slice
+     (the cropped thumbnail looked bad and cut off the receipt). */
+  object-fit: contain;
+}
+
+.expense-detail-image:active {
+  opacity: 0.85;
+}
+
+/* The X sits over the (optional) receipt image at the top of the sheet, so give
+   it a solid dark chip that stays visible and tappable over any photo. */
+.expense-detail-dialog .dialog-close {
+  z-index: 2;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Full-screen tap-to-close viewer for the receipt original. */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.92);
+  animation: backdrop-fade-in 180ms ease-out;
+}
+
+.image-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .expense-detail-settlement-row {
