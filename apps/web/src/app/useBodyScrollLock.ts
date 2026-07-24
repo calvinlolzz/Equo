@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 /**
  * Locks background page scroll while `locked` is true — the app scrolls on the
@@ -15,9 +15,14 @@ import { useEffect } from "react";
  * Callers gate this to the mobile layout: on desktop, position:fixed on <body>
  * would collapse the scrollbar and shift the centred modal. No-op when
  * unlocked, and SSR/test-safe (guards `document`/`window`).
+ *
+ * Runs as a LAYOUT effect (before paint): pinning <body> reflows the fixed,
+ * safe-area-padded overlay, so doing it after paint (plain useEffect) let the
+ * sheet paint once, then jump to its post-lock position — the "上下跳動" seen
+ * on open in standalone PWA. Locking before paint means it paints once, settled.
  */
 export function useBodyScrollLock(locked: boolean): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!locked || typeof document === "undefined" || typeof window === "undefined") return;
 
     const { body } = document;

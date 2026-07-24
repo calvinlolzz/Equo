@@ -788,6 +788,10 @@
        ends, so scrolling to the bottom doesn't spring the last row (the
        "往下跳" jump). Chaining to the page behind is still blocked. */
     overscroll-behavior: none;
+    /* Clean slide-up entrance, matching the composer sheet. The base
+       `dialog-rise` (a centred-dialog rise with scale(0.98)) nudges the bottom
+       edge as it scales, which reads as an up/down jitter on a bottom sheet. */
+    animation: sheet-rise 260ms cubic-bezier(0.22, 1, 0.36, 1);
     transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform;
   }
