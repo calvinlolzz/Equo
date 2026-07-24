@@ -45,7 +45,9 @@ export function useDialogChrome(onClose: () => void) {
       }
       if (!node.contains(document.activeElement)) {
         const first = node.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-        (first ?? node).focus?.();
+        // preventScroll: focusing inside a mid-animation bottom sheet must not
+        // scroll the viewport/sheet (which could jump a tall sheet out of view).
+        (first ?? node).focus?.({ preventScroll: true });
       }
     } else {
       nodeRef.current = null;

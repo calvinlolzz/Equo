@@ -735,11 +735,22 @@
   }
 
   .composer-backdrop {
+    /* Track the dynamic (visible) viewport — see .modal-backdrop below. */
+    height: 100vh;
+    height: 100dvh;
     padding: 0;
   }
 
   .modal-backdrop {
     align-items: end;
+    /* Anchor the bottom sheet to the VISIBLE viewport bottom. A
+       `position: fixed; inset: 0` backdrop otherwise resolves to the large
+       (URL-bar-hidden) viewport — and once body scroll-lock pins <body>, a tall
+       sheet anchored to that bottom pushes its top + drag handle off-screen, so
+       the records/analysis sheets couldn't be swiped down to close. An explicit
+       dynamic-viewport height keeps the whole sheet, handle included, on-screen. */
+    height: 100vh;
+    height: 100dvh;
     /* Reserve the home-indicator strip so a bottom-sheet dialog's rounded edge
        and its action buttons never sit under it. */
     padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
