@@ -5,6 +5,7 @@ import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { InfoDialogMode } from "./appTypes";
+import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -329,15 +330,46 @@ export function ProfileDialog({
             if (event.target === event.currentTarget) onOpenInfoDialog(null);
           }}
         >
-          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={infoDialog === "privacy" ? text.privacyPolicy : text.termsOfService}>
-            <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={() => onOpenInfoDialog(null)}>
-              <X aria-hidden="true" size={18} />
-            </button>
-            <div className="dialog-header">
-              <h3>{infoDialog === "privacy" ? text.privacyPolicy : text.termsOfService}</h3>
-              <p>{infoDialog === "privacy" ? text.privacyPolicyBody : text.termsOfServiceBody}</p>
-            </div>
-          </section>
+          {(() => {
+            const doc = infoDialog === "privacy" ? PRIVACY_POLICY : TERMS_OF_SERVICE;
+            return (
+              <section className="flow-dialog glass-panel legal-dialog" role="dialog" aria-modal="true" aria-label={doc.title}>
+                <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={() => onOpenInfoDialog(null)}>
+                  <X aria-hidden="true" size={18} />
+                </button>
+                <div className="dialog-header">
+                  <h3>{doc.title}</h3>
+                  <p className="legal-updated">{doc.updated}</p>
+                </div>
+                <div className="legal-scroll">
+                  <p className="legal-intro">{doc.intro}</p>
+                  {doc.sections.map((section) => (
+                    <section className="legal-section" key={section.heading}>
+                      <h4>{section.heading}</h4>
+                      {section.paragraphs?.map((paragraph) => (
+                        <p key={paragraph}>{paragraph}</p>
+                      ))}
+                      {section.bullets ? (
+                        <ul>
+                          {section.bullets.map((bullet) => (
+                            <li key={bullet}>{bullet}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {section.callout ? (
+                        <div className="legal-callout">
+                          <span className="legal-callout-tag">{section.callout.tag}</span>
+                          {section.callout.paragraphs.map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
         </div>
       ) : null}
     </div>

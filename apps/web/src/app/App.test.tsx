@@ -330,6 +330,29 @@ describe("deleting the account", () => {
   });
 });
 
+describe("the legal documents", () => {
+  test("opening the privacy policy shows the real content, not a placeholder", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    (await screen.findByLabelText(UI_TEXT.app.profile)).click();
+    (await screen.findByText(UI_TEXT.profile.otherTab)).click();
+    (await screen.findByText(UI_TEXT.profile.privacyPolicy)).click();
+
+    const doc = await screen.findByRole("dialog", { name: UI_TEXT.profile.privacyPolicy });
+    // A real section from legalContent, and specifically the deletion promise —
+    // proves the structured content is wired, not the old 準備中 stub.
+    expect(within(doc).getByText("已刪除的使用者", { exact: false })).toBeTruthy();
+    expect(within(doc).queryByText(/準備中/)).toBeNull();
+  });
+});
+
 describe("the Back button", () => {
   /** jsdom traverses history asynchronously and fires popstate on a later task. */
   async function pressBack() {

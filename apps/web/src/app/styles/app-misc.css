@@ -187,6 +187,108 @@
   background: rgb(233 83 83 / 0.08);
 }
 
+/* Privacy / terms reader. The document is long, so the sheet caps its height
+   and scrolls the body while the header stays put. */
+.legal-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: min(760px, calc(100dvh - 48px));
+}
+
+.legal-updated {
+  color: rgb(var(--fg) / 0.5);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.legal-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 4px;
+  padding-right: 4px;
+}
+
+.legal-intro {
+  color: rgb(var(--fg) / 0.72);
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.legal-section {
+  margin-top: 20px;
+}
+
+.legal-section h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 800;
+  color: rgb(var(--fg));
+}
+
+.legal-section p {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: rgb(var(--fg) / 0.72);
+}
+
+.legal-section ul {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+
+.legal-section li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: rgb(var(--fg) / 0.72);
+}
+
+.legal-section li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.72em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgb(var(--accent));
+  opacity: 0.75;
+}
+
+.legal-callout {
+  margin: 8px 0 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--surf) / 0.14);
+  border-left: 3px solid rgb(var(--accent));
+  background: rgb(var(--surf) / 0.06);
+}
+
+.legal-callout p {
+  margin: 0 0 6px;
+  color: rgb(var(--fg) / 0.82);
+}
+
+.legal-callout p:last-child {
+  margin: 0;
+}
+
+.legal-callout-tag {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: rgb(var(--accent));
+}
+
 .info-subdialog-backdrop {
   z-index: 60;
 }

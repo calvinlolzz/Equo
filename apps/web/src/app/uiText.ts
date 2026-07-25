@@ -227,8 +227,6 @@ export const UI_TEXT = {
     feedbackEntry: "意見回饋",
     privacyPolicy: "隱私權政策",
     termsOfService: "服務條款",
-    privacyPolicyBody: "官方文件準備中，我們會盡快提供完整的隱私權政策內容。",
-    termsOfServiceBody: "官方文件準備中，我們會盡快提供完整的服務條款內容。",
     deleteAccount: "刪除帳號",
     deleteAccountConfirmTitle: "確定要刪除帳號嗎？",
     deleteAccountConfirmBody: "這會永久刪除你的帳號與個人資料，且無法復原。你在共用群組裡的分帳記錄會保留給其他成員，但會顯示為「已刪除的使用者」。",
