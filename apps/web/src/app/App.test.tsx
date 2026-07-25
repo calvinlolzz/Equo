@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { UI_TEXT } from "./uiText";
@@ -270,6 +270,63 @@ describe("signing out", () => {
     expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
     // Back at the root, so a reload does not try to open a group we just left.
     expect(window.location.pathname).toBe("/");
+  });
+});
+
+describe("deleting the account", () => {
+  test("confirms, calls DELETE /me, and returns to the login wall", async () => {
+    signIn();
+    const api = fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "DELETE /me", body: { ok: true } },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    // Profile → 其他設定 tab → 刪除帳號 (danger row lives on the other tab).
+    (await screen.findByLabelText(UI_TEXT.app.profile)).click();
+    (await screen.findByText(UI_TEXT.profile.otherTab)).click();
+    (await screen.findByText(UI_TEXT.profile.deleteAccount)).click();
+
+    // A confirm stands between the tap and the irreversible call.
+    const confirm = await screen.findByRole("dialog", { name: UI_TEXT.profile.deleteAccountConfirmTitle });
+    expect(api.calls).not.toContain("DELETE /me");
+
+    within(confirm).getByText(UI_TEXT.profile.deleteAccountConfirmAction).click();
+
+    // The account is gone: back at the wall, local session cleared, and the
+    // request actually went out.
+    expect(await screen.findByText(UI_TEXT.login.googleLogin)).toBeTruthy();
+    expect(api.calls).toContain("DELETE /me");
+    expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+  test("a blocked deletion (last admin owner) keeps the user signed in with a message", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      {
+        route: "DELETE /me",
+        status: 409,
+        body: { error: { code: "ACCOUNT_DELETE_BLOCKED", message: "blocked", request_id: "req_account_delete" } },
+      },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    (await screen.findByLabelText(UI_TEXT.app.profile)).click();
+    (await screen.findByText(UI_TEXT.profile.otherTab)).click();
+    (await screen.findByText(UI_TEXT.profile.deleteAccount)).click();
+    const confirm = await screen.findByRole("dialog", { name: UI_TEXT.profile.deleteAccountConfirmTitle });
+    within(confirm).getByText(UI_TEXT.profile.deleteAccountConfirmAction).click();
+
+    // Still signed in (no login wall), and told why in localized copy.
+    expect(await screen.findByText(UI_TEXT.app.accountDeleteBlocked)).toBeTruthy();
+    expect(window.localStorage.getItem(SESSION_KEY)).not.toBeNull();
   });
 });
 

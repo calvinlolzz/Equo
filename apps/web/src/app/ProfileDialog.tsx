@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, X, Apple } from "lucide-react";
+import { AlertTriangle, Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X, Apple } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -53,6 +53,7 @@ export function ProfileDialog({
   onSave,
   onToast,
   onLogout,
+  onDeleteAccount,
   onFeedback,
 }: {
   profile: ProfileData;
@@ -68,6 +69,12 @@ export function ProfileDialog({
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
   onLogout: () => void;
+  /**
+   * Erase the account (DELETE /me). Resolves once the request is done; App
+   * tears the session down on success and toasts on failure. This dialog only
+   * owns the two-step confirm and the in-flight spinner.
+   */
+  onDeleteAccount: () => Promise<void>;
   onFeedback: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
@@ -76,6 +83,8 @@ export function ProfileDialog({
   const [avatarDataUrl, setAvatarDataUrl] = useState(initialAvatarDataUrl);
   const [editingName, setEditingName] = useState(false);
   const [infoDialog, setInfoDialog] = useState<"privacy" | "terms" | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
@@ -244,6 +253,16 @@ export function ProfileDialog({
               <FileText aria-hidden="true" size={19} />
               <span>{text.termsOfService}</span>
             </button>
+            {isLoggedIn ? (
+              <button
+                className="profile-other-row profile-other-row-danger"
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Trash2 aria-hidden="true" size={19} />
+                <span>{text.deleteAccount}</span>
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -258,6 +277,53 @@ export function ProfileDialog({
           </div>
         ) : null}
       </section>
+
+      {confirmingDelete ? (
+        <div
+          className="modal-backdrop info-subdialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deletingAccount) setConfirmingDelete(false);
+          }}
+        >
+          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.deleteAccountConfirmTitle}>
+            <div className="dialog-header centered">
+              <AlertTriangle aria-hidden="true" size={28} />
+              <h3>{text.deleteAccountConfirmTitle}</h3>
+              <p>{text.deleteAccountConfirmBody}</p>
+            </div>
+            <div className="dialog-action-row">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deletingAccount}
+              >
+                {appText.cancel}
+              </button>
+              <button
+                className="danger-action"
+                type="button"
+                disabled={deletingAccount}
+                onClick={async () => {
+                  // Guard the whole await: onDeleteAccount unmounts this dialog
+                  // on success (session torn down), and on failure App toasts —
+                  // either way the button must not fire twice.
+                  if (deletingAccount) return;
+                  setDeletingAccount(true);
+                  try {
+                    await onDeleteAccount();
+                  } finally {
+                    setDeletingAccount(false);
+                  }
+                }}
+              >
+                {deletingAccount ? text.deletingAccount : text.deleteAccountConfirmAction}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {infoDialog ? (
         <div

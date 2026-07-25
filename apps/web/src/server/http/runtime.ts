@@ -57,6 +57,7 @@ import {
   replaceExpenseRoute,
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
+import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
@@ -354,6 +355,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
       async handle(request) {
         const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
         return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/me$/,
+      label: "DELETE /api/v1/me",
+      async handle(request) {
+        const result = await deleteMyAccountRoute(routeOptions(options, request));
+        const response = jsonResponse(result.status, result.body);
+        // Success carries a Set-Cookie clearing the session — merge it in like
+        // the auth routes do.
+        return "headers" in result && result.headers
+          ? { ...response, headers: { ...response.headers, ...result.headers } }
+          : response;
       },
     },
     {

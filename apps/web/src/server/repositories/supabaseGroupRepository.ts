@@ -114,6 +114,25 @@ export async function findUserAuthState(
   return optionalRow(rows);
 }
 
+export type DeleteAccountResult = {
+  ok: boolean;
+  reason?: string;
+  groups_reassigned?: number;
+  groups_deleted?: number;
+  memberships_anonymized?: number;
+};
+
+/**
+ * Erase the caller's account (DELETE /api/v1/me). All the entanglement with
+ * other people's ledgers is handled inside the delete_my_account RPC in one
+ * transaction — see the migration. Returns {ok:false, reason} for the one
+ * business refusal (last admin-console owner) rather than throwing, so the
+ * route can map it to a specific 4xx instead of a 500.
+ */
+export async function deleteMyAccount(client: PostgrestClient, userId: string): Promise<DeleteAccountResult> {
+  return client.rpc<DeleteAccountResult>("delete_my_account", { p_user: userId });
+}
+
 /**
  * Self-scoped avatar update (PATCH /api/v1/me/avatar). Mirrors the value into
  * profiles.avatar_url so the two tables never drift.
