@@ -1,4 +1,3 @@
-import { Apple } from "lucide-react";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.login;
@@ -30,12 +29,10 @@ export function LoginScreen({
   loading,
   errorMessage,
   onGoogleLogin,
-  onAppleLogin,
 }: {
   loading?: boolean;
   errorMessage?: string;
   onGoogleLogin: () => void;
-  onAppleLogin: () => void;
 }) {
   return (
     <section className="login-screen">
@@ -58,11 +55,6 @@ export function LoginScreen({
             <button className="login-google-button" type="button" onClick={onGoogleLogin}>
               <GoogleLogo />
               {text.googleLogin}
-            </button>
-            <button className="login-apple-button" type="button" aria-disabled="true" onClick={onAppleLogin}>
-              <Apple aria-hidden="true" size={18} />
-              {text.appleLogin}
-              <small>{text.appleComingSoon}</small>
             </button>
           </div>
         )}

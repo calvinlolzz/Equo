@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, X, Apple } from "lucide-react";
+import { Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
+import type { InfoDialogMode } from "./appTypes";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -49,6 +50,8 @@ export function ProfileDialog({
   profile,
   displayAvatarUrl,
   session,
+  infoDialog,
+  onOpenInfoDialog,
   onClose,
   onSave,
   onToast,
@@ -64,6 +67,12 @@ export function ProfileDialog({
    */
   displayAvatarUrl?: string;
   session: StoredSession | null;
+  /**
+   * The privacy/terms sheet stacked on this dialog. Owned by App.tsx so the
+   * Back button can close it on its own — see useOverlayHistory.
+   */
+  infoDialog: InfoDialogMode;
+  onOpenInfoDialog: (info: InfoDialogMode) => void;
   onClose: () => void;
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
@@ -75,7 +84,6 @@ export function ProfileDialog({
   const initialAvatarDataUrl = displayAvatarUrl ?? profile.avatarDataUrl ?? "";
   const [avatarDataUrl, setAvatarDataUrl] = useState(initialAvatarDataUrl);
   const [editingName, setEditingName] = useState(false);
-  const [infoDialog, setInfoDialog] = useState<"privacy" | "terms" | null>(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
@@ -209,18 +217,6 @@ export function ProfileDialog({
                 {text.unlinkAccount}
               </button>
             </div>
-            <div className="profile-account-row">
-              <span className="profile-account-icon">
-                <Apple aria-hidden="true" size={20} />
-              </span>
-              <span className="profile-account-info">
-                <strong>{text.appleAccount}</strong>
-                <small>{text.notLinked}</small>
-              </span>
-              <button className="profile-link-action" type="button" onClick={() => onToast(text.appleLinkToast)}>
-                {text.linkAccount}
-              </button>
-            </div>
           </div>
         ) : (
           <div className="profile-other-list">
@@ -236,11 +232,11 @@ export function ProfileDialog({
               <MessageSquareText aria-hidden="true" size={19} />
               <span>{text.feedbackEntry}</span>
             </button>
-            <button className="profile-other-row" type="button" onClick={() => setInfoDialog("privacy")}>
+            <button className="profile-other-row" type="button" onClick={() => onOpenInfoDialog("privacy")}>
               <Lock aria-hidden="true" size={19} />
               <span>{text.privacyPolicy}</span>
             </button>
-            <button className="profile-other-row" type="button" onClick={() => setInfoDialog("terms")}>
+            <button className="profile-other-row" type="button" onClick={() => onOpenInfoDialog("terms")}>
               <FileText aria-hidden="true" size={19} />
               <span>{text.termsOfService}</span>
             </button>
@@ -264,11 +260,11 @@ export function ProfileDialog({
           className="modal-backdrop info-subdialog-backdrop"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setInfoDialog(null);
+            if (event.target === event.currentTarget) onOpenInfoDialog(null);
           }}
         >
           <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={infoDialog === "privacy" ? text.privacyPolicy : text.termsOfService}>
-            <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={() => setInfoDialog(null)}>
+            <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={() => onOpenInfoDialog(null)}>
               <X aria-hidden="true" size={18} />
             </button>
             <div className="dialog-header">

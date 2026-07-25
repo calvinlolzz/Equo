@@ -32,6 +32,7 @@ import { GroupSideNav } from "./GroupSideNav";
 import { useBodyScrollLock } from "./useBodyScrollLock";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { useOnlineStatus } from "./useOnlineStatus";
+import { useOverlayHistory } from "./useOverlayHistory";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
@@ -47,7 +48,7 @@ import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { resolveRootLanding } from "./resolveRootLanding";
-import type { DialogMode, Group, Member, StartMode } from "./appTypes";
+import type { DialogMode, InfoDialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { saveSession, type StoredSession } from "./sessionStore";
@@ -109,9 +110,12 @@ export function App() {
   const [startMode, setStartMode] = useState<StartMode>("create");
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
   const [dialog, setDialog] = useState<DialogMode>(null);
+  // The privacy/terms sheet that stacks on top of the profile dialog. Lifted out
+  // of ProfileDialog so it can be a layer of its own in the Back-button stack.
+  const [infoDialog, setInfoDialog] = useState<InfoDialogMode>(null);
   // Swipe-to-dismiss for the shared bottom-sheet dialog shell (records /
   // analysis / members / etc.). Kept mounted across open/close cycles.
-  const dialogSwipe = useSwipeToDismiss(() => setDialog(null));
+  const dialogSwipe = useSwipeToDismiss(() => closeDialog());
   const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
   // The double-submit guard for every mutation control (see useActionGuard /
@@ -120,6 +124,10 @@ export function App() {
   // while a mutation is in flight.
   const { pendingAction, actionGuardRef, beginAction, endAction } = useActionGuard();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Reported up by the composer sheet, because the Back button closes it from
+  // out here and never passes through the sheet's own dismiss handlers.
+  const [composerDirty, setComposerDirty] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
@@ -363,8 +371,55 @@ export function App() {
   // overlays are full-bleed and there is no persistent scrollbar to disturb.
   useBodyScrollLock(
     isMobileLayout &&
-      (Boolean(dialog) || expenseComposerOpen || feedbackOpen || groupDrawerOpen || settingsDrawerOpen),
+      (Boolean(dialog) ||
+        expenseComposerOpen ||
+        discardConfirmOpen ||
+        feedbackOpen ||
+        groupDrawerOpen ||
+        settingsDrawerOpen),
   );
+
+  /** Dismiss the shared dialog slot, clearing whatever it was showing. */
+  function closeDialog() {
+    setDialog(null);
+    setInfoDialog(null);
+    setSelectedExpenseId("");
+  }
+
+  /**
+   * The one way the composer closes without submitting — backdrop, Esc, swipe
+   * and Back all land here — so a half-filled expense can't be thrown away by
+   * a stray gesture. Back makes this matter: it is far easier to hit by
+   * accident than the backdrop ever was.
+   */
+  function requestCloseComposer() {
+    if (composerDirty) {
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    closeExpenseComposer();
+  }
+
+  function discardComposerDraft() {
+    setDiscardConfirmOpen(false);
+    closeExpenseComposer();
+  }
+
+  // Back / edge-swipe closes the topmost overlay instead of leaving the screen.
+  // Ordered bottom of the stack to top: a drawer is what a dialog opens over,
+  // the info sheet sits on top of the profile dialog, and the composer and the
+  // feedback sheet are the last things opened over anything else.
+  useOverlayHistory([
+    { open: groupDrawerOpen, close: () => setGroupDrawerOpen(false) },
+    { open: settingsDrawerOpen, close: () => setSettingsDrawerOpen(false) },
+    { open: Boolean(dialog), close: closeDialog },
+    { open: dialog === "profile" && infoDialog !== null, close: () => setInfoDialog(null) },
+    // Back on a dirty composer raises the discard confirm instead of closing;
+    // the confirm then sits above it, so a second Back answers 繼續編輯.
+    { open: expenseComposerOpen, close: requestCloseComposer },
+    { open: discardConfirmOpen, close: () => setDiscardConfirmOpen(false) },
+    { open: feedbackOpen, close: () => setFeedbackOpen(false) },
+  ]);
 
   const online = useOnlineStatus();
 
@@ -675,7 +730,6 @@ export function App() {
           loading={authLoading}
           errorMessage={authError || undefined}
           onGoogleLogin={startGoogleLogin}
-          onAppleLogin={() => showToast(`${UI_TEXT.login.appleLogin}${UI_TEXT.login.appleComingSoon}`)}
         />
       </main>
     );
@@ -1119,10 +1173,37 @@ export function App() {
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
           initialExpense={editingExpense ?? undefined}
-          onClose={closeExpenseComposer}
+          onClose={requestCloseComposer}
+          onDirtyChange={setComposerDirty}
           onSubmit={handleExpenseDraftSubmit}
           onImageError={() => showToast(text.photoError)}
         />
+      ) : null}
+
+      {discardConfirmOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDiscardConfirmOpen(false);
+          }}
+        >
+          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.discardExpenseTitle}>
+            <div className="dialog-header centered">
+              <AlertTriangle aria-hidden="true" size={28} />
+              <h3>{text.discardExpenseTitle}</h3>
+              <p>{text.discardExpenseBody}</p>
+            </div>
+            <div className="dialog-action-row">
+              <button className="secondary-action" type="button" onClick={() => setDiscardConfirmOpen(false)}>
+                {text.discardExpenseCancel}
+              </button>
+              <button className="danger-action" type="button" onClick={discardComposerDraft}>
+                {text.discardExpenseConfirm}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {dialog === "profile" ? (
@@ -1130,12 +1211,14 @@ export function App() {
           profile={profile}
           displayAvatarUrl={displayAvatarUrl ?? undefined}
           session={session}
-          onClose={() => setDialog(null)}
+          infoDialog={infoDialog}
+          onOpenInfoDialog={setInfoDialog}
+          onClose={closeDialog}
           onSave={saveProfile}
           onToast={showToast}
           onLogout={signOut}
           onFeedback={() => {
-            setDialog(null);
+            closeDialog();
             setFeedbackOpen(true);
           }}
         />
@@ -1147,10 +1230,7 @@ export function App() {
         <ExpenseDetailDialog
           expense={selectedExpense}
           members={members}
-          onClose={() => {
-            setDialog(null);
-            setSelectedExpenseId("");
-          }}
+          onClose={closeDialog}
           onEdit={openExpenseEdit}
           onDelete={deleteExpense}
           onPrev={
@@ -1171,7 +1251,7 @@ export function App() {
           className={dialogSwipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setDialog(null);
+            if (event.target === event.currentTarget) closeDialog();
           }}
         >
           <section
@@ -1183,7 +1263,7 @@ export function App() {
             ref={dialogRef}
           >
             <div className="dialog-drag-handle" aria-hidden="true" />
-            <button className="dialog-close" type="button" aria-label={text.cancel} onClick={() => setDialog(null)}>
+            <button className="dialog-close" type="button" aria-label={text.cancel} onClick={closeDialog}>
               <X aria-hidden="true" size={18} />
             </button>
 
