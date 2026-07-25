@@ -61,6 +61,7 @@ import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/sett
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
+import { enforceRateLimit } from "./rateLimit.js";
 
 type RuntimeOptions = {
   client: PostgrestClient;
@@ -639,6 +640,21 @@ export function createHttpRuntime(options: RuntimeOptions) {
   return {
     routes,
     async handle(request: HttpRuntimeRequest): Promise<HttpRuntimeResponse> {
+      // Before routing, so an unknown path costs an attacker the same budget as
+      // a real one and probing can't be used to sidestep the cap.
+      const limit = await enforceRateLimit(
+        { client: options.client, sessionSecret: options.sessionSecret, now: options.now },
+        request,
+      );
+
+      if (!limit.allowed) {
+        const response = errorResponse(429, "RATE_LIMITED", "Too many requests. Try again shortly.", "req_rate_limited");
+        return {
+          ...response,
+          headers: { ...response.headers, "retry-after": String(limit.retryAfterSeconds) },
+        };
+      }
+
       const route = routes.find((candidate) => {
         return candidate.method === request.method && request.path.match(candidate.pattern);
       });
