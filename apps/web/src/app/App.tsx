@@ -475,6 +475,26 @@ export function App() {
     }
   }
 
+  /**
+   * Erase the account, then tear the session down locally. The server has
+   * already cleared the equo_session cookie and removed the user row (so the
+   * next request would 401 anyway); signOut() drops the local session + cloud
+   * cache and returns to the login wall, which unmounts the profile dialog.
+   * On failure nothing is torn down and the dialog stays open with a toast.
+   */
+  async function handleDeleteAccount() {
+    if (!session) return;
+    try {
+      await createApiClient().deleteMyAccount();
+      signOut();
+      showToast(text.accountDeleted);
+    } catch (error) {
+      // Stay on the (still-open) confirm dialog and say what went wrong; the
+      // dialog's own finally clears its spinner so the user can retry or cancel.
+      showToast(describeCloudActionError(error));
+    }
+  }
+
   useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
 
   useEffect(() => {
@@ -1217,6 +1237,7 @@ export function App() {
           onSave={saveProfile}
           onToast={showToast}
           onLogout={signOut}
+          onDeleteAccount={handleDeleteAccount}
           onFeedback={() => {
             closeDialog();
             setFeedbackOpen(true);

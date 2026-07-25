@@ -30,5 +30,10 @@ export function describeCloudActionError(error: unknown): string {
   if (code === "RATE_LIMITED") {
     return text.rateLimited;
   }
+  // Last admin-console owner tried to delete their account (409 from
+  // DELETE /me) — a specific, actionable message, not the generic failure.
+  if (code === "ACCOUNT_DELETE_BLOCKED") {
+    return text.accountDeleteBlocked;
+  }
   return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
 }

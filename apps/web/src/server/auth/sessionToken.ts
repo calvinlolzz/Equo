@@ -109,3 +109,13 @@ export function createSessionCookie(token: string, now = Date.now()): string {
 export function sessionExpiresAt(now = Date.now()): string {
   return new Date(now + SESSION_TTL_MS).toISOString();
 }
+
+/**
+ * An immediately-expiring equo_session cookie, for the server to send when a
+ * session must end server-side — currently account deletion. Same attributes
+ * as createSessionCookie so the browser overwrites the live cookie rather than
+ * setting a second one; Max-Age=0 clears it.
+ */
+export function clearSessionCookie(): string {
+  return "equo_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+}

@@ -179,6 +179,14 @@
   font-weight: 800;
 }
 
+/* Account deletion: destructive, so it reads red and sits apart from the
+   neutral rows above it. */
+.profile-other-row-danger {
+  margin-top: 6px;
+  color: #e95353;
+  background: rgb(233 83 83 / 0.08);
+}
+
 .info-subdialog-backdrop {
   z-index: 60;
 }

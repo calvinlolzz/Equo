@@ -134,6 +134,7 @@ function makeClient(): PostgrestClient {
           previous: { ...expenseRow, image_url: null },
         };
       }
+      if (fn === "delete_my_account") return { ok: true, groups_reassigned: 0, groups_deleted: 0, memberships_anonymized: 1 };
       if (fn === "create_expense") return expenseRow;
       if (fn === "soft_delete_expense") return { ...expenseRow, version: 2 };
       if (fn === "accept_invite") return { group: groupRow, member: ownerMember, claimed: false };
@@ -292,6 +293,30 @@ describe("createHttpRuntime", () => {
     });
 
     expect(response.status).toBe(201);
+  });
+
+  test("routes DELETE /api/v1/me to account deletion and forwards the cookie clear", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "DELETE",
+      path: "/api/v1/me",
+      headers: { authorization: "Bearer google-alice" },
+    });
+
+    expect(response.status).toBe(200);
+    // The set-cookie from the route survives the runtime's header merge, so the
+    // browser's live session cookie is cleared.
+    expect(response.headers["set-cookie"]).toContain("Max-Age=0");
   });
 
   test("routes authenticated group list requests", async () => {

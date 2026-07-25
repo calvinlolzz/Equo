@@ -31,6 +31,11 @@ export const errorCodes = [
   "MALFORMED_REQUEST",
   /** Too many requests in the window. Carries a Retry-After header. */
   "RATE_LIMITED",
+  /**
+   * A well-formed account-deletion request that can't proceed yet — currently
+   * only "you are the last admin-console owner; hand it over first".
+   */
+  "ACCOUNT_DELETE_BLOCKED",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];
