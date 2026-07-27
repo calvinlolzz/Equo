@@ -134,6 +134,22 @@ describe("the settings drawer", () => {
 });
 
 describe("the bottom tab bar", () => {
+  test("marks the current destination, and moves the mark as you navigate", async () => {
+    await landOnGroup();
+
+    // Nothing open: home is where you are.
+    expect(screen.getByRole("button", { name: app.navHome })).toHaveProperty("ariaCurrent", "page");
+    expect(screen.getByRole("button", { name: app.navRecords }).getAttribute("aria-current")).toBeNull();
+
+    screen.getByRole("button", { name: app.navRecords }).click();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: app.navRecords }).getAttribute("aria-current")).toBe("page"),
+    );
+    // ...and only one tab is ever marked.
+    expect(screen.getByRole("button", { name: app.navHome }).getAttribute("aria-current")).toBeNull();
+  });
+
   test("opens the records panel", async () => {
     await landOnGroup();
 

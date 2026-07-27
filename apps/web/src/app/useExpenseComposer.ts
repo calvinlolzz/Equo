@@ -7,6 +7,7 @@ import type { DialogMode, Expense, Group, Member } from "./appTypes";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import { expenseToDraft } from "./expenseUndo";
+import { haptic } from "./haptics";
 import { formatAmount } from "./formatAmount";
 import type { StoredSession } from "./sessionStore";
 import type { ToastAction } from "./useToast";
@@ -111,6 +112,7 @@ export function useExpenseComposer({
       );
       setExpenseComposerOpen(false);
       setEditingExpense(null);
+      haptic("success");
       showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
     } catch (error) {
       showToast(describeCloudActionError(error));
@@ -129,6 +131,7 @@ export function useExpenseComposer({
       recordCloudActivity(groupId, `${text.deleteExpense}: ${expense.title}`);
       setDialog(null);
       setSelectedExpenseId("");
+      haptic("warning");
       showToast(`${text.deleteExpense}: ${expense.title}`, {
         label: text.undo,
         onAction: () => restoreExpense(groupId, groupCurrency, expense),

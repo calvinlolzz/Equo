@@ -389,6 +389,132 @@ label span {
   min-height: 120px;
 }
 
+/* Group-home skeleton. Shapes trace the real card so nothing jumps when the
+   data arrives - see GroupHomeSkeleton.tsx. */
+.skeleton-card {
+  display: grid;
+  gap: 18px;
+}
+
+.skeleton-line,
+.skeleton-avatar,
+.skeleton-donut,
+.skeleton-action {
+  display: block;
+  border-radius: 8px;
+  /* Two stops of the same surface tint: visible on both themes without
+     hard-coding a grey that only works on one. */
+  background: linear-gradient(
+    90deg,
+    rgb(var(--surf) / 0.08) 25%,
+    rgb(var(--surf) / 0.16) 37%,
+    rgb(var(--surf) / 0.08) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-sheen 1.4s ease-in-out infinite;
+}
+
+.skeleton-title-row {
+  display: grid;
+  gap: 8px;
+}
+
+.skeleton-line {
+  height: 12px;
+  width: 100%;
+}
+
+.skeleton-line-title {
+  height: 20px;
+  width: 45%;
+}
+
+.skeleton-line-sub {
+  width: 65%;
+}
+
+.skeleton-line.short {
+  width: 55%;
+}
+
+.skeleton-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.skeleton-hero-left {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.skeleton-avatar-stack {
+  display: flex;
+  gap: 6px;
+}
+
+.skeleton-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.skeleton-avatar.small {
+  width: 26px;
+  height: 26px;
+}
+
+.skeleton-balance-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skeleton-donut {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.skeleton-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.skeleton-action {
+  height: 44px;
+  border-radius: 14px;
+}
+
+@keyframes skeleton-sheen {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* The sheen is decoration, not information - hold it still and let the shapes
+   alone carry the "loading" meaning. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line,
+  .skeleton-avatar,
+  .skeleton-donut,
+  .skeleton-action {
+    animation: none;
+    background: rgb(var(--surf) / 0.12);
+  }
+}
+
 .template-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -742,7 +868,9 @@ label span {
 :root[data-theme="light"] .member-dialog-row small,
 :root[data-theme="light"] .invite-link-box span,
 :root[data-theme="light"] .category-legend em,
-:root[data-theme="light"] .mobile-tab-item,
+/* :not(.active) is load-bearing — this readability override otherwise wins over
+   the selected-tab colour and flattens the bottom nav's only state cue. */
+:root[data-theme="light"] .mobile-tab-item:not(.active),
 :root[data-theme="light"] .empty-copy,
 :root[data-theme="light"] .composer-step-count,
 :root[data-theme="light"] .composer-section-head small {
