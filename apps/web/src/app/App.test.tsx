@@ -2,6 +2,7 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
+import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
 
 beforeEach(() => {
@@ -236,6 +237,26 @@ describe("coming back from the OAuth redirect", () => {
     expect(await screen.findByText(UI_TEXT.app.accountDisabled)).toBeTruthy();
     expect(screen.getByText(UI_TEXT.login.googleLogin)).toBeTruthy();
     expect(window.localStorage.getItem(SESSION_KEY)).toBeNull();
+  });
+
+  test("a shared group link survives the login round-trip", async () => {
+    // Someone is sent /group/group_2, isn't signed in, and comes back from
+    // Supabase at the bare origin. Before the pending-route stash they landed
+    // on their most-recent group (group_1) instead of the one they were sent.
+    window.history.replaceState(null, "", "/group/group_2");
+    stashPendingRoute();
+    arriveWithFragment("#access_token=supabase-jwt&token_type=bearer");
+
+    fakeApi([
+      { route: "POST /auth/supabase", body: supabaseSession },
+      { route: "GET /groups", body: { groups: [group(), group({ id: "group_2", name: "室友開銷" })] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "GET /groups/group_2", body: groupDetail({ group: group({ id: "group_2", name: "室友開銷" }) }) },
+    ]);
+
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_2"));
   });
 
   test("an OAuth error in the fragment is surfaced rather than swallowed", async () => {

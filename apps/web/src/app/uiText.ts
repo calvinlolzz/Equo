@@ -232,8 +232,6 @@ export const UI_TEXT = {
     googleAccount: "Google 帳號",
     linked: "已連結",
     unlinkAccount: "解除綁定",
-    switchTheme: "切換主題",
-    switchThemeToast: "目前僅提供深色主題",
     languageSetting: "語言設定",
     languageToast: "目前僅提供繁體中文",
     feedbackEntry: "意見回饋",

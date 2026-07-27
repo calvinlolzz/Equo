@@ -18,6 +18,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { clearShortcutParam, readShortcutAction, type ShortcutAction } from "./appShortcuts";
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
@@ -52,6 +53,7 @@ import { resolveActiveTab } from "./resolveActiveTab";
 import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
+import { clearPendingRoute, readPendingRoute } from "./pendingRoute";
 import { resolveRootLanding } from "./resolveRootLanding";
 import type { DialogMode, InfoDialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
@@ -511,6 +513,33 @@ export function App() {
 
   useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
 
+  /**
+   * PWA home-screen shortcuts (`/?shortcut=…`, see site.webmanifest).
+   *
+   * 加入群組 opens as soon as there is a session. 新增支出 has to wait for a
+   * group to be resolved — the composer needs one — so it fires on the first
+   * render where activeGroup is set. The param is cleared once consumed so a
+   * reload doesn't reopen the sheet.
+   */
+  const shortcutRef = useRef<ShortcutAction | null>(readShortcutAction(window.location.search));
+
+  useEffect(() => {
+    if (!session || !shortcutRef.current) return;
+
+    if (shortcutRef.current === "join") {
+      shortcutRef.current = null;
+      clearShortcutParam();
+      setDialog("inviteInput");
+      return;
+    }
+    if (shortcutRef.current === "add-expense" && activeGroup) {
+      shortcutRef.current = null;
+      clearShortcutParam();
+      openExpenseComposer();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, activeGroup]);
+
   useEffect(() => {
     if (!session) return;
     if (!cloudState || cloudState.loadingGroups) return;
@@ -521,6 +550,21 @@ export function App() {
       // above cleared loadingGroups); a null landing means zero groups, so
       // fall through to the StartFlow empty state. Once forwarded, the route
       // is no longer empty, so this branch won't re-fire (no redirect loop).
+      // A deep link that went through the login wall lands here at the bare
+      // origin - honour it before falling back to the most-recent group, or
+      // the recipient of a shared link ends up somewhere they weren't sent.
+      const pendingId = readPendingRoute();
+      if (pendingId) {
+        if (cloudGroups.some((group) => group.id === pendingId)) {
+          clearPendingRoute();
+          openGroup(pendingId, "replace");
+          return;
+        }
+        // Only give up on it once there is a real list to have missed it in:
+        // this effect also runs before the groups arrive, and clearing on that
+        // pass would drop the link before it ever had a chance to match.
+        if (cloudGroups.length > 0) clearPendingRoute();
+      }
       const landingId = resolveRootLanding(cloudGroups);
       if (landingId) {
         openGroup(landingId, "replace");
@@ -589,16 +633,6 @@ export function App() {
   function selectGroup(group: Group) {
     openGroup(group.id);
     setGroupDrawerOpen(false);
-  }
-
-  function updateActiveCurrency(currency: string) {
-    if (!activeGroup || activeGroup.currency === currency) {
-      setDialog(null);
-      return;
-    }
-
-    setDialog(null);
-    showToast(text.cloudCurrencyUnsupported);
   }
 
   function openMemberList() {
@@ -684,10 +718,6 @@ export function App() {
       setDialog("analysisPanel");
       return;
     }
-    if (id === "currency") {
-      setDialog("currencyPanel");
-      return;
-    }
     showToast(text.groupHome);
   }
 
@@ -742,7 +772,6 @@ export function App() {
     dialog === "archivedList" ||
     dialog === "inviteMembers" ||
     dialog === "memberList" ||
-    dialog === "currencyPanel" ||
     dialog === "recordsPanel" ||
     dialog === "analysisPanel";
 
@@ -1115,7 +1144,6 @@ export function App() {
             {activeGroup ? (
               <GroupSideNav
                 groupName={activeGroup.name}
-                groupCurrency={activeGroup.currency}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
                 isOwner={isCurrentMemberOwner}
@@ -1134,7 +1162,6 @@ export function App() {
                 {activeGroup ? (
               <GroupSideNav
                 groupName={activeGroup.name}
-                groupCurrency={activeGroup.currency}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
                 isOwner={isCurrentMemberOwner}
@@ -1400,27 +1427,6 @@ export function App() {
               </>
             ) : null}
 
-            {dialog === "currencyPanel" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.currency}</h3>
-                  <p>{"\u9078\u64c7\u9019\u500b\u7fa4\u7d44\u7684\u9810\u8a2d\u5e63\u5225\u3002"}</p>
-                </div>
-                <div className="currency-list" aria-label={text.currency}>
-                  {currencyOptions.map((currency) => (
-                    <button
-                      className={currency.code === activeGroup?.currency ? "currency-option active" : "currency-option"}
-                      type="button"
-                      key={currency.code}
-                      onClick={() => updateActiveCurrency(currency.code)}
-                    >
-                      <span>{currency.label}</span>
-                      <strong>{currency.code}</strong>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : null}
 
             {dialog === "recordsPanel" ? (
               <RecordsPanel

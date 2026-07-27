@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X } from "lucide-react";
+import { AlertTriangle, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -230,10 +230,6 @@ export function ProfileDialog({
           </div>
         ) : (
           <div className="profile-other-list">
-            <button className="profile-other-row" type="button" onClick={() => onToast(text.switchThemeToast)}>
-              <Contrast aria-hidden="true" size={19} />
-              <span>{text.switchTheme}</span>
-            </button>
             <button className="profile-other-row" type="button" onClick={() => onToast(text.languageToast)}>
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>

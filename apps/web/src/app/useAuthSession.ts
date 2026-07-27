@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createApiClient } from "./apiClient";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
+import { stashPendingRoute } from "./pendingRoute";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import { UI_TEXT } from "./uiText";
@@ -121,6 +122,9 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
       return;
     }
 
+    // The redirect comes back at the bare origin, so remember the group the
+    // visitor was trying to reach before the path is thrown away.
+    stashPendingRoute();
     window.location.href = buildAuthorizeUrl(supabaseUrl, window.location.origin);
   }
 

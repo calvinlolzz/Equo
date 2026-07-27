@@ -40,7 +40,6 @@ describe("app iconography", () => {
     expect(PROFILE_ICON_NAMES).toEqual({
       editName: "Pencil",
       logout: "LogOut",
-      switchTheme: "Contrast",
       languageSetting: "Globe",
       privacyPolicy: "Lock",
       termsOfService: "FileText",
