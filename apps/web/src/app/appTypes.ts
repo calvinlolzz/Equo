@@ -129,3 +129,10 @@ export type DialogMode =
   | "profile"
   | "expenseDetail"
   | null;
+
+/**
+ * The read-only info sheet stacked on top of the profile dialog (null = none).
+ * Owned by App.tsx rather than ProfileDialog so it can take its own place in
+ * the Back-button stack — see useOverlayHistory.
+ */
+export type InfoDialogMode = "privacy" | "terms" | null;

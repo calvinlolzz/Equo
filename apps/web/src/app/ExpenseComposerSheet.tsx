@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronRight, Delete, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
 import { convertToGroupAmountMinor } from "./expenseCurrency";
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
+import { isComposerDirty, type ComposerSnapshot } from "./expenseComposerDirty";
 import { buildExpenseEditPrefill, type ComposerSplitMode } from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { formatAmount, formatAmountInputDisplay, stripAmountInput } from "./formatAmount";
@@ -123,6 +124,7 @@ export function ExpenseComposerSheet({
   currencyOptions,
   initialExpense,
   onClose,
+  onDirtyChange,
   onSubmit,
   onImageError,
 }: {
@@ -130,7 +132,18 @@ export function ExpenseComposerSheet({
   groupCurrency: string;
   currencyOptions: Array<{ code: string; label: string }>;
   initialExpense?: Expense;
+  /**
+   * Asks to close. May decline and put the discard confirm up instead — see
+   * onDirtyChange — so this sheet never animates itself away on the way out.
+   */
   onClose: () => void;
+  /**
+   * Reports whether closing would throw work away, so the owner can put a
+   * confirm in front of every close path it controls (including the Back
+   * button, which never passes through this component). Always reports clean
+   * on unmount, so a discarded draft can't leave the flag stuck on.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
   onSubmit: (draft: ExpenseDraft) => void | Promise<void>;
   onImageError?: () => void;
 }) {
@@ -178,8 +191,50 @@ export function ExpenseComposerSheet({
   // tick the click handler runs, closing that race.
   const composerSubmittingRef = useRef(false);
 
+  // "Has this sheet been touched?", against the values it opened with. The ref
+  // keeps its first-render argument forever, so the baseline is exactly the
+  // seeded state above — no second copy of the seeding rules to drift out of
+  // step with them.
+  const snapshot: ComposerSnapshot = {
+    mode: composerMode,
+    category: composerCategory,
+    dateTime: composerDateTime,
+    currency: composerCurrency,
+    exchangeRate: composerExchangeRate,
+    title: composerTitle,
+    amount: composerAmount,
+    payerId: composerPayerId,
+    transferToId: composerTransferToId,
+    shareIds: composerShareIds,
+    splitMode: composerSplitMode,
+    shareAmounts: composerShareAmounts,
+    sharePercents: composerSharePercents,
+    payerRows: composerPayerRows,
+    imageDataUrl: composerImageDataUrl,
+    imageUrl: composerImageUrl,
+    note: composerNote,
+  };
+  const initialSnapshot = useRef(snapshot).current;
+  // A submit in flight is on its way to being saved, so it is not unsaved work
+  // — without this the success path would trip the discard confirm on its way
+  // out.
+  const dirty = !composerSubmitting && isComposerDirty(initialSnapshot, snapshot);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
   // Mobile drag-to-dismiss for the bottom sheet.
-  const { closing: composerClosing, requestClose, dragProps } = useSwipeToDismiss(onClose);
+  const { closing: composerClosing, requestClose, dragProps } = useSwipeToDismiss(onClose, {
+    // With unsaved work, onClose raises the discard confirm rather than
+    // closing. Sliding out first would put an empty screen behind that dialog
+    // and then snap the sheet back when the user chooses 繼續編輯.
+    closeInstantly: () => dirty,
+  });
   const chromeRef = useDialogChrome(requestClose);
   const sheetRef = useMemo(
     () => mergeRefs<HTMLElement>(dragProps.ref, chromeRef),

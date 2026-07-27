@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, X, Apple } from "lucide-react";
+import { AlertTriangle, Contrast, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
+import type { InfoDialogMode } from "./appTypes";
+import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
@@ -49,10 +51,13 @@ export function ProfileDialog({
   profile,
   displayAvatarUrl,
   session,
+  infoDialog,
+  onOpenInfoDialog,
   onClose,
   onSave,
   onToast,
   onLogout,
+  onDeleteAccount,
   onFeedback,
 }: {
   profile: ProfileData;
@@ -64,10 +69,22 @@ export function ProfileDialog({
    */
   displayAvatarUrl?: string;
   session: StoredSession | null;
+  /**
+   * The privacy/terms sheet stacked on this dialog. Owned by App.tsx so the
+   * Back button can close it on its own — see useOverlayHistory.
+   */
+  infoDialog: InfoDialogMode;
+  onOpenInfoDialog: (info: InfoDialogMode) => void;
   onClose: () => void;
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
   onLogout: () => void;
+  /**
+   * Erase the account (DELETE /me). Resolves once the request is done; App
+   * tears the session down on success and toasts on failure. This dialog only
+   * owns the two-step confirm and the in-flight spinner.
+   */
+  onDeleteAccount: () => Promise<void>;
   onFeedback: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
@@ -75,7 +92,8 @@ export function ProfileDialog({
   const initialAvatarDataUrl = displayAvatarUrl ?? profile.avatarDataUrl ?? "";
   const [avatarDataUrl, setAvatarDataUrl] = useState(initialAvatarDataUrl);
   const [editingName, setEditingName] = useState(false);
-  const [infoDialog, setInfoDialog] = useState<"privacy" | "terms" | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
@@ -209,18 +227,6 @@ export function ProfileDialog({
                 {text.unlinkAccount}
               </button>
             </div>
-            <div className="profile-account-row">
-              <span className="profile-account-icon">
-                <Apple aria-hidden="true" size={20} />
-              </span>
-              <span className="profile-account-info">
-                <strong>{text.appleAccount}</strong>
-                <small>{text.notLinked}</small>
-              </span>
-              <button className="profile-link-action" type="button" onClick={() => onToast(text.appleLinkToast)}>
-                {text.linkAccount}
-              </button>
-            </div>
           </div>
         ) : (
           <div className="profile-other-list">
@@ -236,14 +242,24 @@ export function ProfileDialog({
               <MessageSquareText aria-hidden="true" size={19} />
               <span>{text.feedbackEntry}</span>
             </button>
-            <button className="profile-other-row" type="button" onClick={() => setInfoDialog("privacy")}>
+            <button className="profile-other-row" type="button" onClick={() => onOpenInfoDialog("privacy")}>
               <Lock aria-hidden="true" size={19} />
               <span>{text.privacyPolicy}</span>
             </button>
-            <button className="profile-other-row" type="button" onClick={() => setInfoDialog("terms")}>
+            <button className="profile-other-row" type="button" onClick={() => onOpenInfoDialog("terms")}>
               <FileText aria-hidden="true" size={19} />
               <span>{text.termsOfService}</span>
             </button>
+            {isLoggedIn ? (
+              <button
+                className="profile-other-row profile-other-row-danger"
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Trash2 aria-hidden="true" size={19} />
+                <span>{text.deleteAccount}</span>
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -259,23 +275,101 @@ export function ProfileDialog({
         ) : null}
       </section>
 
+      {confirmingDelete ? (
+        <div
+          className="modal-backdrop info-subdialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deletingAccount) setConfirmingDelete(false);
+          }}
+        >
+          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.deleteAccountConfirmTitle}>
+            <div className="dialog-header centered">
+              <AlertTriangle aria-hidden="true" size={28} />
+              <h3>{text.deleteAccountConfirmTitle}</h3>
+              <p>{text.deleteAccountConfirmBody}</p>
+            </div>
+            <div className="dialog-action-row">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deletingAccount}
+              >
+                {appText.cancel}
+              </button>
+              <button
+                className="danger-action"
+                type="button"
+                disabled={deletingAccount}
+                onClick={async () => {
+                  // Guard the whole await: onDeleteAccount unmounts this dialog
+                  // on success (session torn down), and on failure App toasts —
+                  // either way the button must not fire twice.
+                  if (deletingAccount) return;
+                  setDeletingAccount(true);
+                  try {
+                    await onDeleteAccount();
+                  } finally {
+                    setDeletingAccount(false);
+                  }
+                }}
+              >
+                {deletingAccount ? text.deletingAccount : text.deleteAccountConfirmAction}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {infoDialog ? (
         <div
           className="modal-backdrop info-subdialog-backdrop"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setInfoDialog(null);
+            if (event.target === event.currentTarget) onOpenInfoDialog(null);
           }}
         >
-          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={infoDialog === "privacy" ? text.privacyPolicy : text.termsOfService}>
-            <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={() => setInfoDialog(null)}>
-              <X aria-hidden="true" size={18} />
-            </button>
-            <div className="dialog-header">
-              <h3>{infoDialog === "privacy" ? text.privacyPolicy : text.termsOfService}</h3>
-              <p>{infoDialog === "privacy" ? text.privacyPolicyBody : text.termsOfServiceBody}</p>
-            </div>
-          </section>
+          {(() => {
+            const doc = infoDialog === "privacy" ? PRIVACY_POLICY : TERMS_OF_SERVICE;
+            return (
+              <section className="flow-dialog glass-panel legal-dialog" role="dialog" aria-modal="true" aria-label={doc.title}>
+                <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={() => onOpenInfoDialog(null)}>
+                  <X aria-hidden="true" size={18} />
+                </button>
+                <div className="dialog-header">
+                  <h3>{doc.title}</h3>
+                  <p className="legal-updated">{doc.updated}</p>
+                </div>
+                <div className="legal-scroll">
+                  <p className="legal-intro">{doc.intro}</p>
+                  {doc.sections.map((section) => (
+                    <section className="legal-section" key={section.heading}>
+                      <h4>{section.heading}</h4>
+                      {section.paragraphs?.map((paragraph) => (
+                        <p key={paragraph}>{paragraph}</p>
+                      ))}
+                      {section.bullets ? (
+                        <ul>
+                          {section.bullets.map((bullet) => (
+                            <li key={bullet}>{bullet}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {section.callout ? (
+                        <div className="legal-callout">
+                          <span className="legal-callout-tag">{section.callout.tag}</span>
+                          {section.callout.paragraphs.map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
         </div>
       ) : null}
     </div>

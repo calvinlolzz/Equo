@@ -24,5 +24,16 @@ export function describeCloudActionError(error: unknown): string {
   if (code === "SERVER_ERROR") {
     return text.serverError;
   }
+  // The rate limiter's 429. Distinct from serverError on purpose: nothing is
+  // broken and retrying in a moment will work, so the copy says to wait rather
+  // than implying an outage.
+  if (code === "RATE_LIMITED") {
+    return text.rateLimited;
+  }
+  // Last admin-console owner tried to delete their account (409 from
+  // DELETE /me) — a specific, actionable message, not the generic failure.
+  if (code === "ACCOUNT_DELETE_BLOCKED") {
+    return text.accountDeleteBlocked;
+  }
   return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
 }

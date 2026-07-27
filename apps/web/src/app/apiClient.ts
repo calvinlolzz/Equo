@@ -362,6 +362,11 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify(payload),
       });
     },
+    deleteMyAccount() {
+      return request<{ ok: true }>("/me", {
+        method: "DELETE",
+      });
+    },
     calculateSettlement(groupId: string) {
       return request<{
         settlement: { id: string; settlement_version: number; status: string };

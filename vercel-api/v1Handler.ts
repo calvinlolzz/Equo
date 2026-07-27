@@ -115,6 +115,10 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
       Authorization: headerValue(request.headers.Authorization),
       cookie: headerValue(request.headers.cookie),
       Cookie: headerValue(request.headers.Cookie),
+      // Rate-limit buckets for anonymous callers are keyed by address. Vercel's
+      // edge sets this itself and overwrites anything the client sent, so the
+      // leading entry is the real peer.
+      "x-forwarded-for": headerValue(request.headers["x-forwarded-for"]),
     },
     query: request.query,
     json: request.body,

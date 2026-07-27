@@ -57,10 +57,12 @@ import {
   replaceExpenseRoute,
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
+import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
+import { enforceRateLimit } from "./rateLimit.js";
 
 type RuntimeOptions = {
   client: PostgrestClient;
@@ -357,6 +359,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
       },
     },
     {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/me$/,
+      label: "DELETE /api/v1/me",
+      async handle(request) {
+        const result = await deleteMyAccountRoute(routeOptions(options, request));
+        const response = jsonResponse(result.status, result.body);
+        // Success carries a Set-Cookie clearing the session — merge it in like
+        // the auth routes do.
+        return "headers" in result && result.headers
+          ? { ...response, headers: { ...response.headers, ...result.headers } }
+          : response;
+      },
+    },
+    {
       method: "PUT",
       pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses\/([^/]+)$/,
       label: "PUT /api/v1/groups/:groupId/expenses/:expenseId",
@@ -639,6 +655,21 @@ export function createHttpRuntime(options: RuntimeOptions) {
   return {
     routes,
     async handle(request: HttpRuntimeRequest): Promise<HttpRuntimeResponse> {
+      // Before routing, so an unknown path costs an attacker the same budget as
+      // a real one and probing can't be used to sidestep the cap.
+      const limit = await enforceRateLimit(
+        { client: options.client, sessionSecret: options.sessionSecret, now: options.now },
+        request,
+      );
+
+      if (!limit.allowed) {
+        const response = errorResponse(429, "RATE_LIMITED", "Too many requests. Try again shortly.", "req_rate_limited");
+        return {
+          ...response,
+          headers: { ...response.headers, "retry-after": String(limit.retryAfterSeconds) },
+        };
+      }
+
       const route = routes.find((candidate) => {
         return candidate.method === request.method && request.path.match(candidate.pattern);
       });

@@ -134,6 +134,7 @@ function makeClient(): PostgrestClient {
           previous: { ...expenseRow, image_url: null },
         };
       }
+      if (fn === "delete_my_account") return { ok: true, groups_reassigned: 0, groups_deleted: 0, memberships_anonymized: 1 };
       if (fn === "create_expense") return expenseRow;
       if (fn === "soft_delete_expense") return { ...expenseRow, version: 2 };
       if (fn === "accept_invite") return { group: groupRow, member: ownerMember, claimed: false };
@@ -292,6 +293,30 @@ describe("createHttpRuntime", () => {
     });
 
     expect(response.status).toBe(201);
+  });
+
+  test("routes DELETE /api/v1/me to account deletion and forwards the cookie clear", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+    });
+
+    const response = await runtime.handle({
+      method: "DELETE",
+      path: "/api/v1/me",
+      headers: { authorization: "Bearer google-alice" },
+    });
+
+    expect(response.status).toBe(200);
+    // The set-cookie from the route survives the runtime's header merge, so the
+    // browser's live session cookie is cleared.
+    expect(response.headers["set-cookie"]).toContain("Max-Age=0");
   });
 
   test("routes authenticated group list requests", async () => {
@@ -833,5 +858,76 @@ describe("createHttpRuntime", () => {
     });
 
     expect(capturedToken).toBe("google-token");
+  });
+});
+
+/**
+ * The limiter is wired in ahead of routing, so these go through the real
+ * runtime rather than calling enforceRateLimit directly - the point is that a
+ * blocked request never reaches its handler at all. Policy and identity rules
+ * are covered in rateLimitPolicy.test.ts / rateLimit.test.ts.
+ */
+describe("rate limiting", () => {
+  function overLimitClient(): PostgrestClient {
+    const client = makeClient();
+    return { ...client, async rpc<T>(fn: string) {
+      if (fn === "consume_rate_limit") return { allowed: false, retry_after: 37 } as T;
+      throw new Error(`Unexpected rpc ${fn}`);
+    } };
+  }
+
+  test("answers 429 with Retry-After once a write is over the limit", async () => {
+    const runtime = createHttpRuntime({
+      client: overLimitClient(),
+      storage: makeStorage(),
+      verifier: async () => null,
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/errors",
+      headers: { "x-forwarded-for": "203.0.113.9" },
+      json: { message: "boom" },
+    });
+
+    expect(response.status).toBe(429);
+    expect((response.body as { error: { code: string } }).error.code).toBe("RATE_LIMITED");
+    // Without this the client has no idea how long to wait, and a well-behaved
+    // one degenerates into the same tight loop as a hostile one.
+    expect(response.headers["retry-after"]).toBe("37");
+  });
+
+  test("blocks before the handler runs, so an unknown path costs the same budget", async () => {
+    const runtime = createHttpRuntime({
+      client: overLimitClient(),
+      storage: makeStorage(),
+      verifier: async () => null,
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/not-a-real-route",
+      headers: { "x-forwarded-for": "203.0.113.9" },
+      json: {},
+    });
+
+    // 429, not 404: probing for endpoints must not be a way to spend nothing.
+    expect(response.status).toBe(429);
+  });
+
+  test("leaves reads alone even when the counter would refuse", async () => {
+    const runtime = createHttpRuntime({
+      client: overLimitClient(),
+      storage: makeStorage(),
+      verifier: async () => null,
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/unknown",
+      headers: { "x-forwarded-for": "203.0.113.9" },
+    });
+
+    expect(response.status).toBe(404);
   });
 });
