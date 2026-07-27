@@ -145,10 +145,14 @@ export function createHttpRuntime(options: RuntimeOptions) {
         return { ...response, headers: { ...response.headers, ...result.headers } };
       },
     },
-    {
-      method: "GET",
+    // GET and HEAD both answer the health probe. Uptime monitors (UptimeRobot,
+    // and load balancers generally) default to HEAD, and a GET-only health
+    // endpoint 404s under exactly the tool meant to watch it. Same status and
+    // headers; the platform drops the body for a HEAD response on its own.
+    ...(["GET", "HEAD"] as const).map((method) => ({
+      method,
       pattern: /^\/api\/v1\/health$/,
-      label: "GET /api/v1/health",
+      label: `${method} /api/v1/health`,
       async handle() {
         const result = await healthRoute({ client: options.client, now: options.now });
         const response = jsonResponse(result.status, result.body);
@@ -156,7 +160,7 @@ export function createHttpRuntime(options: RuntimeOptions) {
         // a stale "ok" through an outage.
         return { ...response, headers: { ...response.headers, "cache-control": "no-store" } };
       },
-    },
+    })),
     {
       method: "GET",
       pattern: /^\/api\/v1\/groups$/,

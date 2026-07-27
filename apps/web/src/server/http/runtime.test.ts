@@ -955,6 +955,26 @@ describe("health", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
   });
 
+  test("answers a HEAD probe too - the method uptime monitors default to", async () => {
+    resetHealthCache();
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async () => null,
+    });
+
+    // UptimeRobot (and load balancers) send HEAD by default. A GET-only health
+    // route 404s under exactly the tool meant to watch it.
+    const response = await runtime.handle({
+      method: "HEAD" as "GET",
+      path: "/api/v1/health",
+      headers: {},
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
   test("answers 503 when the database is unreachable", async () => {
     resetHealthCache();
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
