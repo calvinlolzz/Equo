@@ -30,8 +30,12 @@ jobs:
     steps:
       - name: Install PostgreSQL 17 client
         # The server is Postgres 17; pg_dump refuses to dump a server newer than
-        # itself, and the runner ships an older client. Pin the major version to
-        # the server's rather than trusting whatever the image happens to have.
+        # itself, and the runner ships an older client (16). Installing
+        # postgresql-client-17 drops its binaries in a versioned dir that is NOT
+        # ahead of the stock /usr/bin/pg_dump on PATH, so `pg_dump` still
+        # resolves to 16 unless we prepend the 17 bindir — put it on GITHUB_PATH
+        # so every later step gets the 17 client, and verify against the exact
+        # binary (not whatever PATH currently points at).
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
@@ -41,7 +45,8 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends postgresql-client-17
-          pg_dump --version
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Dump and encrypt
         env:
