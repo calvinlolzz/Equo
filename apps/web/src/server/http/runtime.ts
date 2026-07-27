@@ -58,6 +58,7 @@ import {
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
+import { healthRoute } from "../routes/healthRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
@@ -142,6 +143,18 @@ export function createHttpRuntime(options: RuntimeOptions) {
         );
         const response = jsonResponse(result.status, result.body);
         return { ...response, headers: { ...response.headers, ...result.headers } };
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/health$/,
+      label: "GET /api/v1/health",
+      async handle() {
+        const result = await healthRoute({ client: options.client, now: options.now });
+        const response = jsonResponse(result.status, result.body);
+        // Monitors poll this constantly; never let a CDN or the browser serve
+        // a stale "ok" through an outage.
+        return { ...response, headers: { ...response.headers, "cache-control": "no-store" } };
       },
     },
     {

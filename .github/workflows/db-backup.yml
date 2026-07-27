@@ -1,0 +1,94 @@
+name: Database backup
+
+# Why this exists: the Supabase project is on the free plan, which has NO
+# automated backups — an accidental delete or a corrupt write is permanent.
+# This takes a nightly logical dump, encrypts it, and keeps it as a workflow
+# artifact until there is a reason to pay for Supabase PITR.
+#
+# Useful side effect: free-tier projects are paused after ~7 days of
+# inactivity, and this connects daily. Treat that as a bonus, not a guarantee.
+
+on:
+  schedule:
+    # 18:30 UTC = 02:30 Asia/Taipei — after the day's activity, before morning.
+    - cron: "30 18 * * *"
+  # So a backup can be taken on demand before anything risky (a migration, a
+  # destructive fix) rather than waiting for the next night.
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Install PostgreSQL 17 client
+        # The server is Postgres 17; pg_dump refuses to dump a server newer than
+        # itself, and the runner ships an older client. Pin the major version to
+        # the server's rather than trusting whatever the image happens to have.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
+
+      - name: Dump and encrypt
+        env:
+          # Supabase → Project Settings → Database → Connection string (URI).
+          # Use the SESSION pooler or the direct connection; the transaction
+          # pooler does not support the statements pg_dump issues.
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ] || [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo "::error::SUPABASE_DB_URL and BACKUP_PASSPHRASE must both be set as repository secrets."
+            exit 1
+          fi
+
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "stamp=$STAMP" >> "$GITHUB_ENV"
+
+          # --no-owner/--no-privileges so the dump restores into a fresh project
+          # without Supabase's internal roles existing. Schema + data for the
+          # app's own schema only; auth.* is Supabase-managed and is not ours to
+          # restore. Errors are fatal (pipefail) so a partial dump can never be
+          # uploaded and mistaken for a good one.
+          pg_dump "$SUPABASE_DB_URL" \
+            --schema=public \
+            --no-owner \
+            --no-privileges \
+            --format=plain \
+            --file="equo-$STAMP.sql"
+
+          # Symmetric AES-256. The artifact is only visible to repo
+          # collaborators, but it is every user's financial data — it should not
+          # sit in CI storage as plaintext.
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+            --passphrase "$BACKUP_PASSPHRASE" \
+            --output "equo-$STAMP.sql.gpg" \
+            "equo-$STAMP.sql"
+
+          rm -f "equo-$STAMP.sql"
+          ls -lh "equo-$STAMP.sql.gpg"
+
+      - name: Upload encrypted dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: equo-db-${{ env.stamp }}
+          path: equo-*.sql.gpg
+          # Longer than the default 90 days is not possible on the free plan;
+          # 30 keeps storage small while still covering "we broke it last week".
+          retention-days: 30
+          if-no-files-found: error
