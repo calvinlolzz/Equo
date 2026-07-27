@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import { Analytics } from "@vercel/analytics/react";
 import "./app/App.css";
 import { App } from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
@@ -49,6 +50,12 @@ createRoot(root).render(
         <ErrorBoundary source="web">
           <App />
         </ErrorBoundary>
+        {/* Page-view analytics. Serves its script and beacon from the app's own
+            origin (/_vercel/insights/*), so the CSP's `self` script-src and
+            connect-src already allow it — no policy change needed. Cookieless
+            and no cross-site tracking, which is what the privacy policy says.
+            Only on the user-facing app; the operator console isn't measured. */}
+        <Analytics />
       </>
     )}
   </React.StrictMode>,

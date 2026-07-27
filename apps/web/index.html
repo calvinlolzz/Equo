@@ -7,24 +7,35 @@
     <meta name="description" content="Equo 讓你和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。" />
     <link rel="canonical" href="https://equo-mu.vercel.app/" />
 
-    <!-- Open Graph / social share cards (crawlers require absolute image URLs).
-         The 512² icon is an interim square image — swap in a 1200×630 og image
-         and switch twitter:card to summary_large_image when one exists. -->
+    <!-- Open Graph / social share cards. Crawlers require ABSOLUTE image URLs,
+         and most of them never re-fetch, so the dimensions are declared too.
+         Equo spreads by people dropping a group link into a chat — this card is
+         what they see, so it is a real 1200×630 image, not the square icon. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Equo" />
     <meta property="og:title" content="Equo — 輕鬆分帳" />
     <meta property="og:description" content="和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。" />
     <meta property="og:url" content="https://equo-mu.vercel.app/" />
-    <meta property="og:image" content="https://equo-mu.vercel.app/icons/equo-icon-512.png" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://equo-mu.vercel.app/icons/equo-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Equo — 和朋友、室友、旅伴輕鬆分帳" />
+    <meta property="og:locale" content="zh_TW" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Equo — 輕鬆分帳" />
     <meta name="twitter:description" content="和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。" />
-    <meta name="twitter:image" content="https://equo-mu.vercel.app/icons/equo-icon-512.png" />
+    <meta name="twitter:image" content="https://equo-mu.vercel.app/icons/equo-og.png" />
+    <meta name="twitter:image:alt" content="Equo — 和朋友、室友、旅伴輕鬆分帳" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='116' fill='%230c1613'/%3E%3Cpath d='M233 365 A111 111 0 0 1 233 147' fill='none' stroke='%236de2b8' stroke-width='54' stroke-linecap='round'/%3E%3Cpath d='M279 147 A111 111 0 0 1 279 365' fill='none' stroke='%23ffd67a' stroke-width='54' stroke-linecap='round'/%3E%3C/svg%3E" />
     <link rel="icon" type="image/svg+xml" href="/icons/equo-icon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#07110f" />
-    <link rel="apple-touch-icon" href="/icons/equo-icon-512.png" />
+    <!-- iOS ignores the manifest's icons and reads this one; 180² is the size
+         it actually wants (a 512² gets downscaled on every home screen). -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/equo-apple-touch-180.png" />
+    <!-- The standards-track name; Chrome warns that the apple-* one below is
+         deprecated, but iOS Safari still only honours its own, so both stay. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Equo" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

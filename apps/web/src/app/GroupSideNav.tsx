@@ -1,7 +1,6 @@
 import {
   Archive,
   ChartNoAxesColumn,
-  CircleDollarSign,
   History,
   House,
   Pencil,
@@ -15,7 +14,6 @@ const text = UI_TEXT.app;
 
 export const sideNavItems: Array<{ id: string; label: string; icon: LucideIcon }> = [
   { id: "home", label: text.groupHome, icon: House },
-  { id: "currency", label: text.currency, icon: CircleDollarSign },
   { id: "records", label: text.records, icon: History },
   { id: "analysis", label: text.analysis, icon: ChartNoAxesColumn },
   { id: "members", label: text.members, icon: UserRound },
@@ -23,7 +21,6 @@ export const sideNavItems: Array<{ id: string; label: string; icon: LucideIcon }
 
 type GroupSideNavProps = {
   groupName: string;
-  groupCurrency: string;
   coverImageUrl?: string | null;
   memberCount: number;
   isOwner: boolean;
@@ -39,7 +36,6 @@ type GroupSideNavProps = {
 /** The group side navigation (profile dot, group card, nav list, owner danger actions) - rendered in both the desktop rail and the mobile settings drawer. */
 export function GroupSideNav({
   groupName,
-  groupCurrency,
   coverImageUrl,
   memberCount,
   isOwner,
@@ -105,7 +101,7 @@ export function GroupSideNav({
               }}
             >
               <Icon aria-hidden="true" size={19} />
-              {item.id === "currency" ? `${item.label} ${groupCurrency}` : item.label}
+              {item.label}
             </button>
           );
         })}

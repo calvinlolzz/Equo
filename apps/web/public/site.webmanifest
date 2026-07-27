@@ -1,11 +1,15 @@
 {
-  "name": "Equo",
+  "name": "Equo — 輕鬆分帳",
   "short_name": "Equo",
+  "description": "和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#07110f",
   "theme_color": "#07110f",
   "lang": "zh-Hant",
+  "categories": ["finance", "productivity", "utilities"],
   "icons": [
     {
       "src": "/icons/equo-icon.svg",
@@ -13,10 +17,52 @@
       "type": "image/svg+xml"
     },
     {
+      "src": "/icons/equo-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
       "src": "/icons/equo-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/equo-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/narrow.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "登入後即可建立群組、記帳分帳"
+    },
+    {
+      "src": "/screenshots/wide.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Equo 在桌面瀏覽器上的樣子"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "新增支出",
+      "short_name": "記一筆",
+      "description": "開啟最近的群組並直接開始記帳",
+      "url": "/?shortcut=add-expense"
+    },
+    {
+      "name": "加入群組",
+      "short_name": "加入",
+      "description": "用邀請碼加入朋友的群組",
+      "url": "/?shortcut=join"
     }
   ]
 }
