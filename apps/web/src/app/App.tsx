@@ -28,7 +28,11 @@ import { describeCloudActionError } from "./describeCloudActionError";
 import { MemberListPanel } from "./MemberListPanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
+import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
+import { InstallHint } from "./InstallHint";
+import { useInstallPrompt } from "./useInstallPrompt";
 import { GroupSideNav } from "./GroupSideNav";
+import { haptic } from "./haptics";
 import { useBodyScrollLock } from "./useBodyScrollLock";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { useOnlineStatus } from "./useOnlineStatus";
@@ -44,6 +48,7 @@ import { LoginScreen } from "./LoginScreen";
 import { MemberAvatar } from "./MemberAvatar";
 import { ProfileDialog } from "./ProfileDialog";
 import { isGroupOwner } from "./isGroupOwner";
+import { resolveActiveTab } from "./resolveActiveTab";
 import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -421,6 +426,15 @@ export function App() {
     { open: feedbackOpen, close: () => setFeedbackOpen(false) },
   ]);
 
+  // Which bottom tab reads as selected. Derived, not stored: three of the tabs
+  // open the shared sheet rather than navigating, so the dialog IS the state.
+  const activeTab = resolveActiveTab(dialog);
+
+  // "Add to home screen". Only offered on the phone layout, and only once the
+  // user actually has a group open — asking someone to install the app before
+  // they have used it is how a prompt gets dismissed forever on reflex.
+  const install = useInstallPrompt();
+
   const online = useOnlineStatus();
 
   // The logged-in user's own member row within the active group - NOT
@@ -691,6 +705,7 @@ export function App() {
         activeGroup.id,
         `${text.clearDebt}: ${fromMember.name} → ${toMember.name} ${formatAmount(amountMinor, activeGroup.currency)}`,
       );
+      haptic("success");
       showToast(`${text.clearDebt}: ${fromMember.name} → ${toMember.name}`);
     } catch (error) {
       showToast(describeCloudActionError(error));
@@ -811,9 +826,7 @@ export function App() {
 
       {!activeGroup && (!cloudState || cloudState.loadingGroups) ? (
         <section className="workspace-grid">
-          <div className="group-home-card glass-panel cloud-loading-skeleton" aria-busy="true">
-            <span className="pulse-dot active" />
-          </div>
+          <GroupHomeSkeleton />
         </section>
       ) : !activeGroup ? (
         <StartFlow
@@ -870,11 +883,10 @@ export function App() {
                 group rail, which is inert on mobile, so the workspace would
                 otherwise start at <h2>. */}
             {isMobileLayout ? <h1 className="visually-hidden">{activeGroup.name}</h1> : null}
-            {cloudActiveLoading && !cloudActiveDetail ? (
-              <div className="group-home-card glass-panel cloud-loading-skeleton" aria-busy="true">
-                <span className="pulse-dot active" />
-              </div>
+            {isMobileLayout ? (
+              <InstallHint state={install.state} onInstall={install.promptInstall} onDismiss={install.dismiss} />
             ) : null}
+            {cloudActiveLoading && !cloudActiveDetail ? <GroupHomeSkeleton /> : null}
             <article className="group-home-card glass-panel" id="group-home">
               <div className="home-title-row">
                 <div>
@@ -1151,11 +1163,12 @@ export function App() {
 
           <nav className="mobile-tab-bar" aria-label={text.groupHome} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined}>
             <button
-              className="mobile-tab-item"
+              className={activeTab === "home" ? "mobile-tab-item active" : "mobile-tab-item"}
               type="button"
               aria-label={text.navHome}
+              aria-current={activeTab === "home" ? "page" : undefined}
               onClick={() => {
-                setDialog(null);
+                closeDialog();
                 closeExpenseComposer();
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
@@ -1163,7 +1176,13 @@ export function App() {
               <House aria-hidden="true" size={20} />
               <span>{text.navHome}</span>
             </button>
-            <button className="mobile-tab-item" type="button" aria-label={text.navRecords} onClick={() => setDialog("recordsPanel")}>
+            <button
+              className={activeTab === "records" ? "mobile-tab-item active" : "mobile-tab-item"}
+              type="button"
+              aria-label={text.navRecords}
+              aria-current={activeTab === "records" ? "page" : undefined}
+              onClick={() => setDialog("recordsPanel")}
+            >
               <History aria-hidden="true" size={20} />
               <span>{text.navRecords}</span>
             </button>
@@ -1175,11 +1194,23 @@ export function App() {
             >
               <Plus aria-hidden="true" size={26} />
             </button>
-            <button className="mobile-tab-item" type="button" aria-label={text.navAnalysis} onClick={() => setDialog("analysisPanel")}>
+            <button
+              className={activeTab === "analysis" ? "mobile-tab-item active" : "mobile-tab-item"}
+              type="button"
+              aria-label={text.navAnalysis}
+              aria-current={activeTab === "analysis" ? "page" : undefined}
+              onClick={() => setDialog("analysisPanel")}
+            >
               <ChartNoAxesColumn aria-hidden="true" size={20} />
               <span>{text.navAnalysis}</span>
             </button>
-            <button className="mobile-tab-item" type="button" aria-label={text.navMembers} onClick={openMemberList}>
+            <button
+              className={activeTab === "members" ? "mobile-tab-item active" : "mobile-tab-item"}
+              type="button"
+              aria-label={text.navMembers}
+              aria-current={activeTab === "members" ? "page" : undefined}
+              onClick={openMemberList}
+            >
               <UserRound aria-hidden="true" size={20} />
               <span>{text.navMembers}</span>
             </button>

@@ -289,6 +289,70 @@
   color: rgb(var(--accent));
 }
 
+/* Add-to-home-screen hint. Sits inline at the top of the group screen rather
+   than floating over it: a dismissible suggestion, not an interruption. */
+.install-hint {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgb(var(--surf) / 0.14);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgb(var(--surf) / 0.07);
+}
+
+.install-hint-body {
+  display: grid;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.install-hint-body strong {
+  font-size: 14px;
+  font-weight: 820;
+  color: rgb(var(--fg));
+}
+
+.install-hint-body small {
+  color: rgb(var(--fg) / 0.6);
+  font-size: 12px;
+}
+
+/* The iOS route names two toolbar icons, so they sit on the text baseline. */
+.install-hint-steps {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.install-hint-action {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 9px 16px;
+  color: rgb(var(--accent-fg));
+  background: rgb(var(--accent));
+  font-size: 13px;
+  font-weight: 880;
+}
+
+.install-hint-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: rgb(var(--fg) / 0.55);
+  background: transparent;
+}
+
+.install-hint-action:active,
+.install-hint-close:active {
+  transform: scale(0.94);
+}
+
 .info-subdialog-backdrop {
   z-index: 60;
 }

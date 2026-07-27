@@ -148,6 +148,7 @@ export const UI_TEXT = {
     restoreGroup: "還原群組",
     restoredGroupPrefix: "已還原群組：",
     noArchivedGroups: "目前沒有已封存的群組",
+    loadingGroup: "載入群組中…",
     creatingGroup: "建立中…",
     savingChanges: "儲存中…",
     processing: "處理中…",
@@ -175,6 +176,17 @@ export const UI_TEXT = {
     loggingIn: "登入中…",
     missingSupabaseUrl: "尚未設定登入服務",
     oauthErrorPrefix: "登入失敗：",
+  },
+  install: {
+    title: "把 Equo 加到主畫面",
+    benefit: "像 App 一樣全螢幕開啟，記帳更快。",
+    action: "加入",
+    dismiss: "不用了",
+    // iOS Safari has no install API — these are the literal taps, with the
+    // share and add-to-home icons rendered inline so they can be recognised
+    // in the actual Safari toolbar.
+    iosStepShare: "點下方的分享",
+    iosStepAdd: "，再選「加入主畫面」",
   },
   currencies: {
     twd: "新台幣",

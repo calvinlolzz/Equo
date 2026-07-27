@@ -14,6 +14,31 @@
   font-weight: 780;
 }
 
+/* Selected tab. Colour alone is a weak signal at this size (and unusable for
+   anyone who can't distinguish it), so the icon also lifts and the label goes
+   heavier — three cues for one state. */
+.mobile-tab-item.active {
+  color: rgb(var(--accent));
+}
+
+.mobile-tab-item.active span {
+  font-weight: 880;
+}
+
+.mobile-tab-item.active svg {
+  transform: translateY(-1px) scale(1.08);
+}
+
+.mobile-tab-item svg {
+  transition: transform 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-tab-item svg {
+    transition: none;
+  }
+}
+
 .mobile-tab-item:active {
   transform: scale(0.92);
 }
