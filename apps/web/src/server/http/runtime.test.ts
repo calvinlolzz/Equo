@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createHttpRuntime } from "./runtime.js";
 import { createFakePostgrest } from "../db/fakePostgrest.js";
+import { resetHealthCache } from "../routes/healthRoutes.js";
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
@@ -929,5 +930,48 @@ describe("rate limiting", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("health", () => {
+  test("answers 200 without any credentials, and forbids caching", async () => {
+    resetHealthCache();
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async () => null,
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/health",
+      headers: {},
+    });
+
+    // No session: an uptime monitor cannot log in.
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: "ok", database: "ok" });
+    // A cached "ok" served through an outage is worse than no monitoring.
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  test("answers 503 when the database is unreachable", async () => {
+    resetHealthCache();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = makeClient();
+    const runtime = createHttpRuntime({
+      client: { ...client, async select() { throw new Error("connection refused"); } },
+      storage: makeStorage(),
+      verifier: async () => null,
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/health",
+      headers: {},
+    });
+
+    expect(response.status).toBe(503);
+    logged.mockRestore();
   });
 });
