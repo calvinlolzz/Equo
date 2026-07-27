@@ -190,6 +190,29 @@ describe("coming back from the OAuth redirect", () => {
     expect(window.localStorage.getItem(SESSION_KEY)).toContain("user_alice");
   });
 
+  test("lands on the group the user was invited to, not their most recent one", async () => {
+    // The shared-link case: someone opens /group/group_2, hits the login wall,
+    // and the OAuth redirect returns to the bare origin. Without the stash they
+    // would be forwarded to group_1 (newest) and never see the link's group.
+    window.localStorage.setItem("equo.clean.pending_route", "/group/group_2");
+    arriveWithFragment("#access_token=supabase-jwt&token_type=bearer");
+    fakeApi([
+      { route: "POST /auth/supabase", body: supabaseSession },
+      {
+        route: "GET /groups",
+        body: { groups: [group(), group({ id: "group_2", name: "室友開銷" })] },
+      },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "GET /groups/group_2", body: groupDetail({ group: group({ id: "group_2", name: "室友開銷" }) }) },
+    ]);
+
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_2"));
+    // Consumed, so the next login doesn't reopen it.
+    expect(window.localStorage.getItem("equo.clean.pending_route")).toBeNull();
+  });
+
   test("strips the access token out of the URL", async () => {
     // Deliberately a user with NO groups, so nothing navigates afterwards. With a
     // group, the route change replaceState()s a path-only URL and clears the hash

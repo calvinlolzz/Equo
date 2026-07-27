@@ -5,6 +5,7 @@ import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { InfoDialogMode } from "./appTypes";
+import type { ThemeMode } from "./themeStore";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
 import type { StoredSession } from "./sessionStore";
@@ -53,6 +54,8 @@ export function ProfileDialog({
   session,
   infoDialog,
   onOpenInfoDialog,
+  theme,
+  onToggleTheme,
   onClose,
   onSave,
   onToast,
@@ -75,6 +78,14 @@ export function ProfileDialog({
    */
   infoDialog: InfoDialogMode;
   onOpenInfoDialog: (info: InfoDialogMode) => void;
+  /**
+   * Day/night, shared with the top bar's quick toggle. The settings row shows
+   * which mode is on and flips it - the same state, two entry points, because
+   * a settings list is where people look for a setting even when a shortcut
+   * exists elsewhere.
+   */
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   onClose: () => void;
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
@@ -230,14 +241,23 @@ export function ProfileDialog({
           </div>
         ) : (
           <div className="profile-other-list">
-            <button className="profile-other-row" type="button" onClick={() => onToast(text.switchThemeToast)}>
+            <button
+              className="profile-other-row"
+              type="button"
+              onClick={onToggleTheme}
+              aria-pressed={theme === "light"}
+            >
               <Contrast aria-hidden="true" size={19} />
               <span>{text.switchTheme}</span>
+              <em className="profile-other-value">{theme === "light" ? text.themeLight : text.themeDark}</em>
             </button>
-            <button className="profile-other-row" type="button" onClick={() => onToast(text.languageToast)}>
+            {/* Not a button: there is exactly one language, so a tappable row
+                would be a control that does nothing. State it and move on. */}
+            <div className="profile-other-row profile-other-row-static">
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>
-            </button>
+              <em className="profile-other-value">{text.languageCurrent}</em>
+            </div>
             <button className="profile-other-row" type="button" onClick={onFeedback}>
               <MessageSquareText aria-hidden="true" size={19} />
               <span>{text.feedbackEntry}</span>

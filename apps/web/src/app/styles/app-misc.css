@@ -179,6 +179,27 @@
   font-weight: 800;
 }
 
+/* Settings rows carry their current value on the right, so the list answers
+   "what is it set to" without being tapped. */
+.profile-other-row span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-other-value {
+  flex: 0 0 auto;
+  color: rgb(var(--fg) / 0.55);
+  font-size: 13px;
+  font-weight: 760;
+  font-style: normal;
+}
+
+/* The language row is informational, not a control — it must not look or
+   behave tappable. */
+.profile-other-row-static {
+  cursor: default;
+}
+
 /* Account deletion: destructive, so it reads red and sits apart from the
    neutral rows above it. */
 .profile-other-row-danger {

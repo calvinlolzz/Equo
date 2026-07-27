@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createApiClient } from "./apiClient";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
+import { stashPendingRoute, takePendingRoute } from "./pendingRoute";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
 import { UI_TEXT } from "./uiText";
@@ -74,7 +75,13 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
     const parsed = parseOAuthFragment(window.location.hash);
     if (!parsed) return;
 
-    window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    // Strip the token from the URL, and while rewriting it anyway, put the user
+    // back on the group they were opening before they were sent off to log in
+    // (the redirect always returns to the bare origin). The routing effect in
+    // App.tsx reads the path afterwards, so restoring it here is enough.
+    const pendingRoute = takePendingRoute();
+    const restoredPath = pendingRoute || window.location.pathname;
+    window.history.replaceState(null, document.title, restoredPath + window.location.search);
 
     if ("error" in parsed) {
       setAuthError(`${UI_TEXT.login.oauthErrorPrefix}${parsed.error}`);
@@ -121,6 +128,10 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
       return;
     }
 
+    // The redirect comes back to the bare origin, so remember the deep link
+    // first — otherwise someone opening a shared /group/:id link lands on their
+    // most recent group instead of the one they were sent.
+    stashPendingRoute();
     window.location.href = buildAuthorizeUrl(supabaseUrl, window.location.origin);
   }
 

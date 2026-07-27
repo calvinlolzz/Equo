@@ -117,7 +117,6 @@ export type DialogMode =
   | "editGroup"
   | "inviteMembers"
   | "inviteInput"
-  | "currencyPanel"
   | "recordsPanel"
   | "analysisPanel"
   | "memberActions"

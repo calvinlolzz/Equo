@@ -415,6 +415,14 @@
   background: rgb(var(--gold));
 }
 
+/* The currency line reports the group's fixed base currency — informational,
+   so it must not read as a tappable row. */
+.side-nav-item-static {
+  color: rgb(var(--fg) / 0.6);
+  background: rgb(var(--surf) / 0.04);
+  cursor: default;
+}
+
 .side-danger-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

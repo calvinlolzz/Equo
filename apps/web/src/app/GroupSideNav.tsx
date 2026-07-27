@@ -94,6 +94,21 @@ export function GroupSideNav({
       <nav className="side-nav-list" aria-label={text.groupHome}>
         {sideNavItems.map((item) => {
           const Icon = item.icon;
+
+          // The group's base currency is fixed at creation (every group is
+          // TWD) and changing it would mean re-denominating every stored
+          // amount - so this line reports the currency instead of pretending
+          // to be a picker that then refuses. Per-expense foreign currency
+          // still works, in the composer.
+          if (item.id === "currency") {
+            return (
+              <div className="side-nav-item side-nav-item-static" key={item.id}>
+                <Icon aria-hidden="true" size={19} />
+                {`${item.label} ${groupCurrency}`}
+              </div>
+            );
+          }
+
           return (
             <button
               className={item.id === "home" ? "side-nav-item active" : "side-nav-item"}
@@ -105,7 +120,7 @@ export function GroupSideNav({
               }}
             >
               <Icon aria-hidden="true" size={19} />
-              {item.id === "currency" ? `${item.label} ${groupCurrency}` : item.label}
+              {item.label}
             </button>
           );
         })}

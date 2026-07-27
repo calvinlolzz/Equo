@@ -591,15 +591,6 @@ export function App() {
     setGroupDrawerOpen(false);
   }
 
-  function updateActiveCurrency(currency: string) {
-    if (!activeGroup || activeGroup.currency === currency) {
-      setDialog(null);
-      return;
-    }
-
-    setDialog(null);
-    showToast(text.cloudCurrencyUnsupported);
-  }
 
   function openMemberList() {
     if (!activeGroup) return;
@@ -684,10 +675,6 @@ export function App() {
       setDialog("analysisPanel");
       return;
     }
-    if (id === "currency") {
-      setDialog("currencyPanel");
-      return;
-    }
     showToast(text.groupHome);
   }
 
@@ -742,7 +729,6 @@ export function App() {
     dialog === "archivedList" ||
     dialog === "inviteMembers" ||
     dialog === "memberList" ||
-    dialog === "currencyPanel" ||
     dialog === "recordsPanel" ||
     dialog === "analysisPanel";
 
@@ -1264,6 +1250,8 @@ export function App() {
           session={session}
           infoDialog={infoDialog}
           onOpenInfoDialog={setInfoDialog}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onClose={closeDialog}
           onSave={saveProfile}
           onToast={showToast}
@@ -1396,28 +1384,6 @@ export function App() {
                   <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "editGroup"} onClick={updateActiveGroup}>
                     {pendingAction === "editGroup" ? text.savingChanges : text.save}
                   </button>
-                </div>
-              </>
-            ) : null}
-
-            {dialog === "currencyPanel" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.currency}</h3>
-                  <p>{"\u9078\u64c7\u9019\u500b\u7fa4\u7d44\u7684\u9810\u8a2d\u5e63\u5225\u3002"}</p>
-                </div>
-                <div className="currency-list" aria-label={text.currency}>
-                  {currencyOptions.map((currency) => (
-                    <button
-                      className={currency.code === activeGroup?.currency ? "currency-option active" : "currency-option"}
-                      type="button"
-                      key={currency.code}
-                      onClick={() => updateActiveCurrency(currency.code)}
-                    >
-                      <span>{currency.label}</span>
-                      <strong>{currency.code}</strong>
-                    </button>
-                  ))}
                 </div>
               </>
             ) : null}
