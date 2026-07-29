@@ -48,6 +48,7 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
       apiClient: createApiClient(),
       onSessionExpired: handleSessionExpired,
       userId: session.user.id,
+      onWriteDropped: () => showToast(text.offlineWriteDropped),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user.id]);
@@ -62,6 +63,31 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
     if (!cloudStore) return;
     cloudStore.refreshGroups().catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudStore]);
+
+  /**
+   * Drain anything recorded while offline. Three triggers, because no single
+   * one is reliable: mount covers "the app was closed before the network came
+   * back", the online event covers a live reconnect, and visibilitychange
+   * covers waking a backgrounded PWA on a device that never fired an online
+   * event. flushPendingWrites is re-entrancy guarded, so overlapping triggers
+   * are harmless.
+   */
+  useEffect(() => {
+    if (!cloudStore) return;
+    const flush = () => {
+      cloudStore.flushPendingWrites().catch(() => {});
+    };
+    const flushIfVisible = () => {
+      if (document.visibilityState === "visible") flush();
+    };
+    flush();
+    window.addEventListener("online", flush);
+    document.addEventListener("visibilitychange", flushIfVisible);
+    return () => {
+      window.removeEventListener("online", flush);
+      document.removeEventListener("visibilitychange", flushIfVisible);
+    };
   }, [cloudStore]);
 
   /**

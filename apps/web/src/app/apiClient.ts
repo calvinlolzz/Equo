@@ -132,6 +132,21 @@ export type EquoApiClient = ReturnType<typeof createApiClient>;
 
 export type ApiClientError = Error & { code?: string };
 
+/**
+ * The request never reached the server, as opposed to reaching it and being
+ * rejected. Keyed on the code `request` tags fetch() rejections with, plus
+ * navigator.onLine for the case where the browser knows it is offline -
+ * never on the message, which is a browser-specific string.
+ *
+ * The distinction decides whether a failed write is queued for retry
+ * (see offlineQueue.ts) or surfaced as an error, so it must not guess.
+ */
+export function isNetworkError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "NETWORK_ERROR") return true;
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   // A 5xx / gateway timeout can return an HTML error page or an empty body, so
   // response.json() throws an opaque SyntaxError ("Unexpected token '<'") that
@@ -406,6 +421,12 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminStorage() {
       return request<AdminStorageSummary>("/admin/storage", { method: "GET" });
     },
+    adminTrends(days: number) {
+      return request<AdminTrendsSummary>(`/admin/trends?days=${days}`, { method: "GET" });
+    },
+    adminHealth() {
+      return request<AdminHealthSummary>("/admin/health", { method: "GET" });
+    },
     adminListUsers(options: AdminListOptions = {}) {
       return request<AdminUserListPage>(`/admin/users${adminListQuery(options)}`, { method: "GET" });
     },
@@ -547,6 +568,28 @@ export type AdminStorageSummary = {
   total_bytes: number;
   orphan_count: number;
   orphan_bytes: number;
+};
+
+export type AdminTrendPoint = {
+  /** YYYY-MM-DD in Asia/Taipei. Days with no activity are present as zeros. */
+  day: string;
+  new_users: number;
+  active_users: number;
+  new_groups: number;
+  expenses: number;
+};
+
+export type AdminTrendsSummary = {
+  days: number;
+  points: AdminTrendPoint[];
+};
+
+export type AdminHealthSummary = {
+  /** null until the backup workflow has recorded its first success. */
+  backup: { last_success_at: string; detail: Record<string, unknown> } | null;
+  rate_limit: { active_buckets: number; blocked_24h: number };
+  errors: { last_24h: number; last_7d: number; latest_at: string | null };
+  feedback: { open: number };
 };
 
 export type AdminUserRow = {

@@ -87,6 +87,20 @@ jobs:
 
           rm -f "equo-$STAMP.sql"
           ls -lh "equo-$STAMP.sql.gpg"
+          echo "backup_bytes=$(stat -c %s "equo-$STAMP.sql.gpg")" >> "$GITHUB_ENV"
+
+      # Tell the database the backup ran. The admin console's health card reads
+      # ops_heartbeats and shows how long ago this was - which is the only way
+      # anyone finds out that a scheduled job quietly stopped firing. Recorded
+      # after the dump and encryption succeed (pipefail aborts the step above
+      # otherwise), so a stale timestamp always means a real failure.
+      - name: Record backup heartbeat
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+            "select public.record_ops_heartbeat('db_backup', jsonb_build_object('bytes', ${{ env.backup_bytes }}::bigint, 'artifact', 'equo-db-${{ env.stamp }}', 'run_id', '${{ github.run_id }}'));"
 
       - name: Upload encrypted dump
         uses: actions/upload-artifact@v4

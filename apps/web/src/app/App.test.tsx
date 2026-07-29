@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { ExpenseSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
@@ -447,5 +448,123 @@ describe("the toast", () => {
     // were treated as expiry, both of these would flip.
     expect(screen.queryByText(UI_TEXT.login.googleLogin)).toBeNull();
     expect(window.localStorage.getItem(SESSION_KEY)).toContain("user_alice");
+  });
+});
+
+describe("searching the records panel", () => {
+  function expenseRow(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
+    return {
+      id: "expense_1",
+      group_id: "group_1",
+      title: "拉麵",
+      kind: "expense",
+      category: "food",
+      amount_minor: 120000,
+      currency: "TWD",
+      expense_date: "2026-07-04",
+      created_at: "2026-07-04T10:00:00.000Z",
+      version: 1,
+      client_request_id: "seed_1",
+      expense_payments: [
+        { payer_member_id: "member_alice", amount_minor: 120000, currency: "TWD" },
+      ],
+      expense_shares: [{ member_id: "member_alice", share_type: "fixed", amount_minor: 120000 }],
+      ...overrides,
+    };
+  }
+
+  const taxi = expenseRow({
+    id: "expense_2",
+    title: "計程車",
+    category: "transport",
+    amount_minor: 25000,
+    expense_date: "2026-07-06",
+    client_request_id: "seed_2",
+    expense_payments: [
+      { payer_member_id: "member_alice", amount_minor: 25000, currency: "TWD" },
+    ],
+    expense_shares: [{ member_id: "member_alice", share_type: "fixed", amount_minor: 25000 }],
+  });
+
+  async function openRecords() {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      {
+        route: "GET /groups/group_1",
+        body: groupDetail({ expenses: [expenseRow(), taxi], expense_count: 2, spend_total_minor: 145000 }),
+      },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    // 支出記錄 and 近期活動 both offer 查看全部 for the same sheet; scope to the
+    // records section so the test does not depend on their order.
+    const records = await screen.findByRole("region", { name: UI_TEXT.app.records });
+    within(records).getByText(UI_TEXT.app.viewAll).click();
+    return await screen.findByLabelText("搜尋支出");
+  }
+
+  test("typing a title narrows the list to the matching entry", async () => {
+    const search = await openRecords();
+
+    fireEvent.change(search, { target: { value: "計程" } });
+
+    const rows = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"));
+    expect(rows.some((row) => row.textContent?.includes("計程車"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("拉麵"))).toBe(false);
+  });
+
+  test("searching by the amount as shown on screen finds the row", async () => {
+    const search = await openRecords();
+
+    // $1,200 is stored as 120000 minor - the user types what they can see.
+    fireEvent.change(search, { target: { value: "1200" } });
+
+    expect(screen.getByText("符合 1 筆・$1,200")).toBeTruthy();
+  });
+
+  test("a search with no matches says so and can be cleared back to the full list", async () => {
+    const search = await openRecords();
+
+    fireEvent.change(search, { target: { value: "壽司" } });
+    expect(screen.getByText("沒有符合的紀錄")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("清除篩選"));
+
+    await waitFor(() => expect(screen.queryByText("沒有符合的紀錄")).toBeNull());
+    expect(screen.getAllByText("計程車").length).toBeGreaterThan(0);
+  });
+});
+
+describe("recording an expense with no connection", () => {
+  test("the entry is kept, shown as 待送出, and counted in the offline banner", async () => {
+    signIn();
+    // POST /groups/group_1/expenses is deliberately absent: an unlisted route
+    // makes fetch reject, which is exactly what an unreachable server looks
+    // like to apiClient (NETWORK_ERROR).
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    (await screen.findAllByLabelText(UI_TEXT.app.addExpense))[0].click();
+    const composer = await screen.findByRole("dialog", { name: UI_TEXT.app.addExpense });
+    fireEvent.change(within(composer).getByLabelText(UI_TEXT.app.title), { target: { value: "便當" } });
+    fireEvent.change(within(composer).getByLabelText(UI_TEXT.app.amount), { target: { value: "150" } });
+    // 新增支出 is both the sheet's title and its submit label, so pick the
+    // button that actually submits.
+    const submit = within(composer)
+      .getAllByRole("button", { name: UI_TEXT.composerSubmit.addExpense })
+      .find((button) => button.className.includes("composer-submit"));
+    fireEvent.click(submit as HTMLElement);
+
+    // Recorded, not lost: the banner counts it and the composer closed as if
+    // the save had succeeded - which, from the user's side, it did.
+    expect(await screen.findByText(`1${UI_TEXT.app.offlinePendingSuffix}`)).toBeTruthy();
+    expect(await screen.findByText("便當")).toBeTruthy();
   });
 });

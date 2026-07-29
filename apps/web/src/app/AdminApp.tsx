@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Bug, LayoutDashboard, MessageSquareText, ScrollText, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
@@ -12,14 +12,23 @@ import {
   type AdminGroupDetail,
   type AdminGroupFilterOption,
   type AdminGroupListPage,
+  type AdminHealthSummary,
   type AdminMeSummary,
   type AdminOverviewSummary,
   type AdminStorageSummary,
+  type AdminTrendsSummary,
   type AdminUserDetail,
   type AdminUserListPage,
   type ApiClientError,
   type EquoApiClient,
 } from "./apiClient";
+import {
+  adminCsvFileName,
+  buildAdminExpensesCsv,
+  buildAdminGroupsCsv,
+  buildAdminUsersCsv,
+  downloadCsv,
+} from "./adminCsv";
 import {
   auditActionLabel,
   auditActionOptions,
@@ -31,6 +40,7 @@ import {
   formatDate,
   formatDateTime,
   formatExpenseAmount,
+  healthTiles,
   inviteStatus,
   inviteStatusLabel,
   overviewTiles,
@@ -38,11 +48,60 @@ import {
   payerSummary,
   shareTypeLabel,
   storageTiles,
+  trendChart,
+  TREND_METRICS,
+  type TrendMetric,
 } from "./adminDashboard";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
 
 const PAGE_SIZE = 20;
+
+/** The server caps a list page at 100; exports walk pages at that size. */
+const EXPORT_PAGE_SIZE = 100;
+
+/**
+ * Hard stop on an export. Nothing here is meant to be a bulk data pipe, and a
+ * runaway loop against a table that grew unexpectedly is the failure mode
+ * worth preventing - the file says when it was truncated.
+ */
+const EXPORT_MAX_ROWS = 5_000;
+
+/**
+ * Walk a paginated admin list until everything (up to EXPORT_MAX_ROWS) is
+ * collected. Exports have to cover the whole table, not the 20 rows on screen -
+ * an export that silently matches the current page is worse than none, because
+ * it looks complete.
+ */
+async function fetchAllPages<T>(
+  fetchPage: (offset: number, limit: number) => Promise<{ total: number; rows: T[] }>,
+): Promise<T[]> {
+  const collected: T[] = [];
+
+  for (let offset = 0; offset < EXPORT_MAX_ROWS; offset += EXPORT_PAGE_SIZE) {
+    const { total, rows } = await fetchPage(offset, EXPORT_PAGE_SIZE);
+    collected.push(...rows);
+    if (rows.length === 0 || collected.length >= total) break;
+  }
+
+  return collected.slice(0, EXPORT_MAX_ROWS);
+}
+
+function todayKey(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** The 匯出 CSV button every list panel shows above its table. */
+function ExportButton({ busy, onExport }: { busy: boolean; onExport: () => void }) {
+  return (
+    <button type="button" className="admin-export" disabled={busy} onClick={onExport}>
+      <Download aria-hidden="true" size={14} />
+      {busy ? "匯出中…" : "匯出 CSV"}
+    </button>
+  );
+}
 
 type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
 type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit" | "admins";
@@ -171,9 +230,71 @@ export function AdminApp() {
   );
 }
 
+const TREND_WINDOWS = [7, 30, 90] as const;
+
+/**
+ * The growth chart: one metric, one window, drawn as a filled sparkline.
+ *
+ * Hand-rolled SVG rather than a charting library - this is four polylines over
+ * at most 90 points, and a chart dependency would be most of the admin bundle.
+ */
+function TrendChartCard({ trends }: { trends: AdminTrendsSummary }) {
+  const [metric, setMetric] = useState<TrendMetric>("expenses");
+  const chart = useMemo(() => trendChart(trends.points, metric), [trends.points, metric]);
+
+  return (
+    <section className="admin-trend" aria-label="趨勢">
+      <div className="admin-trend__head">
+        <div className="admin-trend__chips" role="group" aria-label="趨勢指標">
+          {TREND_METRICS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={metric === option.key ? "admin-chip admin-chip--active" : "admin-chip"}
+              aria-pressed={metric === option.key}
+              onClick={() => setMetric(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="admin-trend__total">
+          <strong>{chart.total.toLocaleString("zh-TW")}</strong>
+          <span>{`／${trends.days} 日`}</span>
+          {chart.changePct !== null && (
+            <em className={chart.changePct < 0 ? "admin-delta admin-delta--down" : "admin-delta"}>
+              {chart.changePct >= 0 ? `▲ ${chart.changePct}%` : `▼ ${Math.abs(chart.changePct)}%`}
+            </em>
+          )}
+        </p>
+      </div>
+
+      <svg
+        className="admin-trend__svg"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${TREND_METRICS.find((option) => option.key === metric)?.label}趨勢，共 ${chart.total} 筆`}
+      >
+        <polygon className="admin-trend__area" points={`0,100 ${chart.polyline} 100,100`} />
+        <polyline className="admin-trend__line" points={chart.polyline} />
+      </svg>
+
+      <div className="admin-trend__axis">
+        <span>{chart.labels[0] ?? ""}</span>
+        <span>{`峰值 ${chart.max.toLocaleString("zh-TW")}`}</span>
+        <span>{chart.labels[chart.labels.length - 1] ?? ""}</span>
+      </div>
+    </section>
+  );
+}
+
 function OverviewPanel({ client }: { client: EquoApiClient }) {
   const [overview, setOverview] = useState<AdminOverviewSummary | null>(null);
   const [storage, setStorage] = useState<AdminStorageSummary | null>(null);
+  const [trends, setTrends] = useState<AdminTrendsSummary | null>(null);
+  const [trendDays, setTrendDays] = useState<number>(30);
+  const [health, setHealth] = useState<AdminHealthSummary | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -186,8 +307,9 @@ function OverviewPanel({ client }: { client: EquoApiClient }) {
       .catch(() => {
         if (!cancelled) setError("總覽載入失敗，請重新整理。");
       });
-    // Storage is supplementary: load it separately so a storage hiccup never
-    // blocks the core metrics. A failure just leaves the section out.
+    // Storage, health and trends are supplementary: each loads separately so a
+    // hiccup in one never blocks the core metrics. A failure leaves that
+    // section out rather than blanking the page.
     client
       .adminStorage()
       .then((result) => {
@@ -196,10 +318,33 @@ function OverviewPanel({ client }: { client: EquoApiClient }) {
       .catch(() => {
         /* non-fatal: overview still renders without the storage tiles */
       });
+    client
+      .adminHealth()
+      .then((result) => {
+        if (!cancelled) setHealth(result);
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
     return () => {
       cancelled = true;
     };
   }, [client]);
+
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .adminTrends(trendDays)
+      .then((result) => {
+        if (!cancelled) setTrends(result);
+      })
+      .catch(() => {
+        if (!cancelled) setTrends(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, trendDays]);
 
   if (error) return <p className="admin-error">{error}</p>;
   if (!overview) return <p className="admin-loading">載入中…</p>;
@@ -215,6 +360,42 @@ function OverviewPanel({ client }: { client: EquoApiClient }) {
           </article>
         ))}
       </div>
+
+      <div className="admin-subheading-row admin-subheading--spaced">
+        <h3 className="admin-subheading">趨勢</h3>
+        <div className="admin-trend__windows" role="group" aria-label="時間範圍">
+          {TREND_WINDOWS.map((days) => (
+            <button
+              key={days}
+              type="button"
+              className={trendDays === days ? "admin-chip admin-chip--active" : "admin-chip"}
+              aria-pressed={trendDays === days}
+              onClick={() => setTrendDays(days)}
+            >
+              {`${days} 日`}
+            </button>
+          ))}
+        </div>
+      </div>
+      {trends ? <TrendChartCard trends={trends} /> : <p className="admin-loading">載入中…</p>}
+
+      {health && (
+        <>
+          <h3 className="admin-subheading admin-subheading--spaced">系統狀態</h3>
+          <div className="admin-tiles">
+            {healthTiles(health, Date.now()).map((tile) => (
+              <article key={tile.key} className={`admin-tile admin-tile--${tile.tone}`}>
+                <p className="admin-tile__label">
+                  <span className={`admin-dot admin-dot--${tile.tone}`} aria-hidden="true" />
+                  {tile.label}
+                </p>
+                <p className="admin-tile__value">{tile.value}</p>
+                <p className="admin-tile__hint">{tile.hint}</p>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
 
       {storage && (
         <>
@@ -249,6 +430,23 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
   const [offset, setOffset] = useState(0);
   const [state, setState] = useState<ListState<AdminUserListPage>>({ page: null, loading: true, error: "" });
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  /** Exports every user matching the current search, not just this page. */
+  async function exportUsers() {
+    setExporting(true);
+    try {
+      const users = await fetchAllPages(async (offset, limit) => {
+        const page = await client.adminListUsers({ search, limit, offset });
+        return { total: page.total, rows: page.users };
+      });
+      downloadCsv(adminCsvFileName("使用者", todayKey()), buildAdminUsersCsv(users));
+    } catch {
+      setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -291,6 +489,7 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
           aria-label="搜尋使用者"
         />
         <button type="submit">搜尋</button>
+        <ExportButton busy={exporting} onExport={exportUsers} />
       </form>
 
       {state.error && <p className="admin-error">{state.error}</p>}
@@ -671,6 +870,27 @@ function GroupExpensesSection({
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [state, setState] = useState<ListState<AdminExpensePage>>({ page: null, loading: true, error: "" });
   const [selected, setSelected] = useState<AdminExpenseRow | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  /** The group's whole ledger, honouring the 顯示已刪除 toggle. */
+  async function exportExpenses() {
+    setExporting(true);
+    try {
+      const expenses = await fetchAllPages(async (pageOffset, limit) => {
+        const page = await client.adminListGroupExpenses(group.id, {
+          limit,
+          offset: pageOffset,
+          includeDeleted,
+        });
+        return { total: page.total, rows: page.expenses };
+      });
+      downloadCsv(adminCsvFileName(`${group.name}-帳目`, todayKey()), buildAdminExpensesCsv(expenses));
+    } catch {
+      setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -705,6 +925,7 @@ function GroupExpensesSection({
           />
           顯示已刪除（{group.deleted_expense_count} 筆）
         </label>
+        <ExportButton busy={exporting} onExport={exportExpenses} />
       </div>
 
       {state.error && <p className="admin-error">{state.error}</p>}
@@ -911,6 +1132,23 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
   const [busyGroupId, setBusyGroupId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  /** Exports every group matching the current search AND filter. */
+  async function exportGroups() {
+    setExporting(true);
+    try {
+      const groups = await fetchAllPages(async (pageOffset, limit) => {
+        const page = await client.adminListGroups({ search, limit, offset: pageOffset, filter });
+        return { total: page.total, rows: page.groups };
+      });
+      downloadCsv(adminCsvFileName("群組", todayKey()), buildAdminGroupsCsv(groups));
+    } catch {
+      setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -988,6 +1226,7 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
           aria-label="搜尋群組"
         />
         <button type="submit">搜尋</button>
+        <ExportButton busy={exporting} onExport={exportGroups} />
       </form>
 
       <div className="admin-chips" role="group" aria-label="群組篩選">

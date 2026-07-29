@@ -42,8 +42,10 @@ import {
   adminListGroupsRoute,
   adminListUsersRoute,
   adminMeRoute,
+  adminHealthRoute,
   adminOverviewRoute,
   adminStorageRoute,
+  adminTrendsRoute,
   adminSetFeedbackStatusRoute,
   adminSetGroupArchivedRoute,
   adminSetGroupDeletedRoute,
@@ -497,6 +499,24 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "GET /api/v1/admin/overview",
       async handle(request) {
         const result = await adminOverviewRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/trends$/,
+      label: "GET /api/v1/admin/trends",
+      async handle(request) {
+        const result = await adminTrendsRoute(routeOptions(options, request), queryParam(request, "days"));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/health$/,
+      label: "GET /api/v1/admin/health",
+      async handle(request) {
+        const result = await adminHealthRoute(routeOptions(options, request));
         return jsonResponse(result.status, result.body);
       },
     },

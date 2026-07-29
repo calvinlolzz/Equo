@@ -4,6 +4,8 @@ import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
 import {
   handleAdminGroupDetail,
+  handleAdminHealth,
+  handleAdminTrends,
   handleAdminListAdmins,
   handleAdminRemoveAdmin,
   handleAdminSetAdminRole,
@@ -53,6 +55,26 @@ export async function adminOverviewRoute(options: RouteOptions) {
   }
 
   return handleAdminOverview(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminTrendsRoute(options: RouteOptions, days: string | undefined) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminTrends(createSupabaseAdminRepository(options.client), auth.context, days);
+}
+
+export async function adminHealthRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminHealth(createSupabaseAdminRepository(options.client), auth.context);
 }
 
 export async function adminListAdminsRoute(options: RouteOptions) {

@@ -8,6 +8,42 @@ export type AdminOverviewRecord = {
   expenses_7d: number;
 };
 
+/** One day of the growth series. Days with no activity come back as zeros, never as gaps. */
+export type AdminTrendPointRecord = {
+  /** YYYY-MM-DD, bucketed in Asia/Taipei. */
+  day: string;
+  new_users: number;
+  /** Users whose last-seen timestamp falls on this day. */
+  active_users: number;
+  new_groups: number;
+  expenses: number;
+};
+
+export type AdminTrendsRecord = {
+  /** The window actually returned, after the server clamped the request. */
+  days: number;
+  points: AdminTrendPointRecord[];
+};
+
+export type AdminHealthRecord = {
+  /** null until the backup workflow has recorded its first success. */
+  backup: { last_success_at: string; detail: Record<string, unknown> } | null;
+  rate_limit: {
+    /** Buckets counted within the last hour - live traffic, not all time. */
+    active_buckets: number;
+    blocked_24h: number;
+  };
+  errors: {
+    last_24h: number;
+    last_7d: number;
+    latest_at: string | null;
+  };
+  feedback: {
+    /** app_feedback rows still in the 'new' status. */
+    open: number;
+  };
+};
+
 export type AdminStorageRecord = {
   /** Objects in the equo-images bucket. */
   object_count: number;
@@ -251,6 +287,10 @@ export type AdminRepository = {
   /** Revoke an admin, keyed by user id. */
   removeAdmin(actor: AdminActor, userId: string): Promise<AdminRemoveResult>;
   getOverview(): Promise<AdminOverviewRecord>;
+  /** Daily counts for the last `days` days (clamped server-side to 1..180). */
+  getTrends(days: number): Promise<AdminTrendsRecord>;
+  /** Backup freshness, rate-limiter activity, error volume - the ops card. */
+  getHealth(): Promise<AdminHealthRecord>;
   getStorage(): Promise<AdminStorageRecord>;
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
   getUserDetail(userId: string): Promise<AdminUserDetailRecord | null>;
