@@ -1074,3 +1074,72 @@
 .admin-search .admin-export {
   margin-left: auto;
 }
+
+/* Dark-theme overrides for the trend chart, health tones and export button.
+   A second dark block rather than folding these into the one above: it has to
+   come AFTER the light .admin-tile--warn/--bad rules, which share their
+   specificity with the base .admin-tile and would otherwise win on source
+   order and punch white cards into the dark console. */
+@media (prefers-color-scheme: dark) {
+  .admin-trend {
+    background: #1e2126;
+    border-color: #2c3037;
+  }
+
+  .admin-trend__total span,
+  .admin-trend__axis {
+    color: #a2a7b0;
+  }
+
+  .admin-trend__line {
+    stroke: #7aa2f7;
+  }
+
+  .admin-trend__area {
+    fill: rgba(122, 162, 247, 0.18);
+  }
+
+  .admin-delta {
+    color: #6bd39a;
+  }
+
+  .admin-delta--down {
+    color: #ef8a84;
+  }
+
+  .admin-tile--warn {
+    border-color: #6b5a31;
+    background: #2a2418;
+  }
+
+  .admin-tile--bad {
+    border-color: #6b3531;
+    background: #2a1e1d;
+  }
+
+  .admin-dot {
+    background: #6e747d;
+  }
+
+  .admin-dot--ok {
+    background: #6bd39a;
+  }
+
+  .admin-dot--warn {
+    background: #e0b354;
+  }
+
+  .admin-dot--bad {
+    background: #ef8a84;
+  }
+
+  .admin-export {
+    background: #1e2126;
+    border-color: #2c3037;
+    color: #e6e8eb;
+  }
+
+  .admin-export:hover:not(:disabled) {
+    background: #262a30;
+  }
+}
