@@ -568,3 +568,93 @@ describe("recording an expense with no connection", () => {
     expect(await screen.findByText("便當")).toBeTruthy();
   });
 });
+
+describe("repeating an expense", () => {
+  const lunch: ExpenseSummary = {
+    id: "expense_1",
+    group_id: "group_1",
+    title: "週末採買",
+    kind: "expense",
+    category: "food",
+    amount_minor: 90000,
+    currency: "TWD",
+    expense_date: "2026-07-04",
+    created_at: "2026-07-04T10:00:00.000Z",
+    version: 1,
+    client_request_id: "seed_1",
+    note: "全聯",
+    expense_payments: [{ payer_member_id: "member_alice", amount_minor: 90000, currency: "TWD" }],
+    expense_shares: [{ member_id: "member_alice", share_type: "fixed", amount_minor: 90000 }],
+  };
+
+  async function openDetail() {
+    signIn();
+    const api = fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      {
+        route: "GET /groups/group_1",
+        body: groupDetail({ expenses: [lunch], expense_count: 1, spend_total_minor: 90000 }),
+      },
+      { route: "POST /groups/group_1/expenses", body: { expense: { ...lunch, id: "expense_2" } } },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    const records = await screen.findByRole("region", { name: UI_TEXT.app.records });
+    within(records).getByText(UI_TEXT.app.viewAll).click();
+    // Wait for the panel itself, not just for some button to exist.
+    await screen.findByLabelText("搜尋支出");
+    const row = screen.getAllByRole("button").find((node) => node.className.includes("record-dialog-row"));
+    fireEvent.click(row as HTMLElement);
+    await screen.findByRole("dialog", { name: UI_TEXT.expenseDetail.title });
+    return api;
+  }
+
+  test("reopens the entry prefilled and saves it as a new expense, leaving the original alone", async () => {
+    const api = await openDetail();
+
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.duplicateExpense }));
+
+    // The composer opens in create mode - the title carried over, the submit
+    // button says 新增支出 rather than 儲存變更.
+    const composer = await screen.findByRole("dialog", { name: UI_TEXT.app.addExpense });
+    expect((within(composer).getByLabelText(UI_TEXT.app.title) as HTMLInputElement).value).toBe("週末採買");
+    const submit = within(composer)
+      .getAllByRole("button", { name: UI_TEXT.composerSubmit.addExpense })
+      .find((button) => button.className.includes("composer-submit"));
+    fireEvent.click(submit as HTMLElement);
+
+    // A POST, not a PUT: duplicating must never overwrite what it copied.
+    await waitFor(() => expect(api.calls).toContain("POST /groups/group_1/expenses"));
+    expect(api.calls.some((call) => call.startsWith("PUT "))).toBe(false);
+  });
+
+  test("is not offered for a settlement", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      {
+        route: "GET /groups/group_1",
+        body: groupDetail({
+          // The wire kind is "transfer"; the app maps it to a settlement.
+          expenses: [{ ...lunch, kind: "transfer", title: "清償", transfer_to_member_id: "member_bob" }],
+          expense_count: 1,
+          spend_total_minor: 0,
+        }),
+      },
+    ]);
+
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    const records = await screen.findByRole("region", { name: UI_TEXT.app.records });
+    within(records).getByText(UI_TEXT.app.viewAll).click();
+    // Wait for the panel itself, not just for some button to exist.
+    await screen.findByLabelText("搜尋支出");
+    const row = screen.getAllByRole("button").find((node) => node.className.includes("record-dialog-row"));
+    fireEvent.click(row as HTMLElement);
+
+    await screen.findByRole("dialog", { name: UI_TEXT.expenseDetail.settlementTitle });
+    // "再轉一次" is not a shortcut anyone wants next to a balance.
+    expect(screen.queryByRole("button", { name: UI_TEXT.app.duplicateExpense })).toBeNull();
+  });
+});

@@ -174,8 +174,21 @@ describe("createSupabaseAdminRepository", () => {
       p_offset: 100,
     });
 
-    await repository.listErrors("boom", 10, 0);
-    expect(client.rpcCall("admin_console_errors")?.args).toEqual({ p_search: "boom", p_limit: 10, p_offset: 0 });
+    await repository.listErrors("boom", "fp_1", 10, 0);
+    expect(client.rpcCall("admin_console_errors")?.args).toEqual({
+      p_search: "boom",
+      p_fingerprint: "fp_1",
+      p_limit: 10,
+      p_offset: 0,
+    });
+
+    await repository.listErrorGroups("boom", "open", 10, 0);
+    expect(client.rpcCall("admin_console_error_groups")?.args).toEqual({
+      p_search: "boom",
+      p_status: "open",
+      p_limit: 10,
+      p_offset: 0,
+    });
 
     await repository.listFeedback(10, 0, "open");
     expect(client.rpcCall("admin_console_feedback")?.args).toEqual({

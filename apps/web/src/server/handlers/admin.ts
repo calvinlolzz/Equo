@@ -3,6 +3,8 @@ import type { AuthenticatedContext } from "../auth/session.js";
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
+  AdminErrorGroupListRecord,
+  AdminErrorGroupStatus,
   AdminErrorListRecord,
   AdminExpenseListRecord,
   AdminFeedbackListRecord,
@@ -469,6 +471,7 @@ export const AUDIT_ACTIONS: readonly string[] = [
   "group.delete",
   "group.restore",
   "group.view",
+  "error.status",
 ];
 
 /** An unknown/absent action means "any", matching the RPC's '' / 'all' handling. */
@@ -561,10 +564,38 @@ export async function handleAdminSetFeedbackStatus(
   return { ok: true, status: 200, body: result };
 }
 
+const ERROR_GROUP_STATUSES: readonly AdminErrorGroupStatus[] = ["open", "resolved"];
+
+/** An unknown/absent status means "any", matching the RPC's ''/'all' handling. */
+export function normalizeErrorStatusFilter(status: string | undefined): string {
+  return (ERROR_GROUP_STATUSES as readonly string[]).includes(status ?? "") ? (status as string) : "all";
+}
+
+export type AdminErrorListQuery = AdminListQuery & {
+  status?: string;
+  fingerprint?: string;
+};
+
+export async function handleAdminListErrorGroups(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  query: AdminErrorListQuery = {},
+): Promise<HandlerResult<AdminErrorGroupListRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const { search, limit, offset } = normalizeAdminListQuery(query);
+  const page = await repository.listErrorGroups(search, normalizeErrorStatusFilter(query.status), limit, offset);
+  return { ok: true, status: 200, body: page };
+}
+
 export async function handleAdminListErrors(
   repository: AdminRepository,
   context: AuthenticatedContext,
-  query: AdminListQuery = {},
+  query: AdminErrorListQuery = {},
 ): Promise<HandlerResult<AdminErrorListRecord>> {
   const role = await repository.findAdminRole(context.user.id);
 
@@ -573,8 +604,47 @@ export async function handleAdminListErrors(
   }
 
   const { search, limit, offset } = normalizeAdminListQuery(query);
-  const page = await repository.listErrors(search, limit, offset);
+  const page = await repository.listErrors(search, (query.fingerprint ?? "").trim(), limit, offset);
   return { ok: true, status: 200, body: page };
+}
+
+export async function handleAdminSetErrorGroupStatus(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  fingerprint: string,
+  status: string | undefined,
+): Promise<HandlerResult<{ fingerprint: string; status: string }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  if (!(ERROR_GROUP_STATUSES as readonly string[]).includes(status ?? "")) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "MALFORMED_REQUEST",
+          message: `status must be one of: ${ERROR_GROUP_STATUSES.join(", ")}`,
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  const result = await repository.setErrorGroupStatus(
+    { id: context.user.id, email: context.user.email },
+    fingerprint,
+    status as AdminErrorGroupStatus,
+  );
+
+  if (!result) {
+    return adminNotFound("Error group not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
 }
 
 export async function handleAdminSetUserDisabled(

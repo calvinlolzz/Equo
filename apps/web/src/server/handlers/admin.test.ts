@@ -6,6 +6,7 @@ import {
   handleAdminGroupDetail,
   handleAdminListGroupExpenses,
   handleAdminListAuditLogs,
+  handleAdminListErrorGroups,
   handleAdminListErrors,
   handleAdminListFeedback,
   handleAdminListGroups,
@@ -24,7 +25,9 @@ import {
   handleAdminListAdmins,
   handleAdminSetAdminRole,
   handleAdminRemoveAdmin,
+  handleAdminSetErrorGroupStatus,
   normalizeAdminListQuery,
+  normalizeErrorStatusFilter,
   normalizeGroupFilter,
 } from "./admin.js";
 
@@ -170,6 +173,12 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async listErrors() {
       return { total: 0, errors: [] };
     },
+    async listErrorGroups() {
+      return { total: 0, groups: [] };
+    },
+    async setErrorGroupStatus(_actor, fingerprint, status) {
+      return { fingerprint, status };
+    },
     ...overrides,
   };
 }
@@ -200,6 +209,8 @@ describe("admin handlers", () => {
       handleAdminListFeedback(repository, context),
       handleAdminSetFeedbackStatus(repository, context, "feedback_1", "done"),
       handleAdminListErrors(repository, context),
+      handleAdminListErrorGroups(repository, context),
+      handleAdminSetErrorGroupStatus(repository, context, "fp_1", "resolved"),
       handleAdminListAdmins(repository, context),
       handleAdminSetAdminRole(repository, context, "x@example.com", "admin"),
       handleAdminRemoveAdmin(repository, context, "11111111-1111-4111-8111-111111111111"),
@@ -506,6 +517,81 @@ describe("admin handlers", () => {
 
     await handleAdminListErrors(repository, context, { search: "  boom  " });
     expect(receivedSearch).toBe("boom");
+  });
+
+  test("error listing scopes to one group when a fingerprint is given", async () => {
+    let received = "?";
+    const repository = makeRepository({
+      async listErrors(_search, fingerprint) {
+        received = fingerprint;
+        return { total: 0, errors: [] };
+      },
+    });
+
+    await handleAdminListErrors(repository, context, { fingerprint: " fp_1 " });
+    expect(received).toBe("fp_1");
+
+    await handleAdminListErrors(repository, context, {});
+    // Empty means "every group", not "a group whose fingerprint is the empty
+    // string" - the RPC treats it as no filter.
+    expect(received).toBe("");
+  });
+
+  test("an unknown error status filter falls back to all rather than matching nothing", () => {
+    expect(normalizeErrorStatusFilter("open")).toBe("open");
+    expect(normalizeErrorStatusFilter("resolved")).toBe("resolved");
+    expect(normalizeErrorStatusFilter("wishful")).toBe("all");
+    expect(normalizeErrorStatusFilter(undefined)).toBe("all");
+  });
+
+  test("error groups forward the normalized search and status", async () => {
+    let received: { search: string; status: string } = { search: "?", status: "?" };
+    const repository = makeRepository({
+      async listErrorGroups(search, status) {
+        received = { search, status };
+        return { total: 0, groups: [] };
+      },
+    });
+
+    await handleAdminListErrorGroups(repository, context, { search: "  boom  ", status: "resolved" });
+    expect(received).toEqual({ search: "boom", status: "resolved" });
+  });
+
+  test("marking an error group refuses a status outside the vocabulary", async () => {
+    const result = await handleAdminSetErrorGroupStatus(makeRepository(), context, "fp_1", "ignored");
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(400);
+    expect((result.body as { error: { code: string } }).error.code).toBe("MALFORMED_REQUEST");
+  });
+
+  test("marking an error group that no log row produces is a 404", async () => {
+    const repository = makeRepository({
+      async setErrorGroupStatus() {
+        return null;
+      },
+    });
+
+    const result = await handleAdminSetErrorGroupStatus(repository, context, "fp_gone", "resolved");
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(404);
+    expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_NOT_FOUND");
+  });
+
+  test("marking an error group passes the authenticated actor, never a request value", async () => {
+    let receivedActor = { id: "?", email: "?" };
+    const repository = makeRepository({
+      async setErrorGroupStatus(actor, fingerprint, status) {
+        receivedActor = actor;
+        return { fingerprint, status };
+      },
+    });
+
+    const result = await handleAdminSetErrorGroupStatus(repository, context, "fp_1", "resolved");
+
+    expect(result.ok).toBe(true);
+    expect(receivedActor).toEqual({ id: "user_admin", email: "admin@example.com" });
   });
 
   test("group operations return 404 ADMIN_NOT_FOUND for unknown groups", async () => {

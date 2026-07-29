@@ -5,6 +5,8 @@ import {
   createApiClient,
   type AdminAccountRow,
   type AdminAuditLogPage,
+  type AdminErrorGroupPage,
+  type AdminErrorGroupRow,
   type AdminErrorPage,
   type AdminExpensePage,
   type AdminExpenseRow,
@@ -34,6 +36,8 @@ import {
   auditActionOptions,
   auditTargetText,
   describeLastSeen,
+  errorGroupStatusLabel,
+  errorSourceLabel,
   expenseCategoryLabel,
   expenseImageUrl,
   expenseKindLabel,
@@ -52,10 +56,18 @@ import {
   TREND_METRICS,
   type TrendMetric,
 } from "./adminDashboard";
+import {
+  ADMIN_PAGE_SIZE,
+  routeOffset,
+  TREND_WINDOWS,
+  type AdminRoute,
+  type AdminTab,
+} from "./adminRoute";
+import { useAdminRoute } from "./useAdminRoute";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = ADMIN_PAGE_SIZE;
 
 /** The server caps a list page at 100; exports walk pages at that size. */
 const EXPORT_PAGE_SIZE = 100;
@@ -104,7 +116,17 @@ function ExportButton({ busy, onExport }: { busy: boolean; onExport: () => void 
 }
 
 type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
-type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit" | "admins";
+
+/**
+ * What every list panel needs to read and change the address bar. The panels
+ * are controlled by the URL rather than by their own state, so a reload, a
+ * Back press and a pasted link all land on the same screen.
+ */
+type PanelProps = {
+  client: EquoApiClient;
+  route: AdminRoute;
+  onNavigate: (patch: Partial<AdminRoute>) => void;
+};
 
 export function AdminApp() {
   const [session] = useState(() => loadSession());
@@ -113,7 +135,7 @@ export function AdminApp() {
   );
   const [access, setAccess] = useState<AccessState>(session ? "checking" : "no-session");
   const [me, setMe] = useState<AdminMeSummary | null>(null);
-  const [tab, setTab] = useState<AdminTab>("overview");
+  const [route, navigate] = useAdminRoute();
 
   useEffect(() => {
     if (!client) return;
@@ -164,6 +186,11 @@ export function AdminApp() {
     );
   }
 
+  // A hand-typed ?tab=admins from a non-owner would render a panel whose every
+  // request 403s. The server is still the enforcement point; this just keeps
+  // the screen honest about what the account can reach.
+  const tab: AdminTab = route.tab === "admins" && me?.role !== "owner" ? "overview" : route.tab;
+
   const navItems: Array<{ key: AdminTab; label: string; icon: typeof LayoutDashboard }> = [
     { key: "overview", label: "總覽", icon: LayoutDashboard },
     { key: "users", label: "使用者", icon: UsersRound },
@@ -200,7 +227,7 @@ export function AdminApp() {
                 key={item.key}
                 type="button"
                 className={tab === item.key ? "admin-nav__item admin-nav__item--active" : "admin-nav__item"}
-                onClick={() => setTab(item.key)}
+                onClick={() => navigate({ tab: item.key })}
               >
                 <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
                 <span>{item.label}</span>
@@ -218,19 +245,17 @@ export function AdminApp() {
       </aside>
 
       <main className="admin-main">
-        {tab === "overview" && <OverviewPanel client={client} />}
-        {tab === "users" && <UsersPanel client={client} />}
-        {tab === "groups" && <GroupsPanel client={client} />}
-        {tab === "feedback" && <FeedbackPanel client={client} />}
-        {tab === "errors" && <ErrorsPanel client={client} />}
-        {tab === "audit" && <AuditPanel client={client} />}
+        {tab === "overview" && <OverviewPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "feedback" && <FeedbackPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "errors" && <ErrorsPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "audit" && <AuditPanel client={client} route={route} onNavigate={navigate} />}
         {tab === "admins" && <AdminsPanel client={client} meUserId={me?.user.id ?? ""} />}
       </main>
     </div>
   );
 }
-
-const TREND_WINDOWS = [7, 30, 90] as const;
 
 /**
  * The growth chart: one metric, one window, drawn as a filled sparkline.
@@ -289,11 +314,11 @@ function TrendChartCard({ trends }: { trends: AdminTrendsSummary }) {
   );
 }
 
-function OverviewPanel({ client }: { client: EquoApiClient }) {
+function OverviewPanel({ client, route, onNavigate }: PanelProps) {
   const [overview, setOverview] = useState<AdminOverviewSummary | null>(null);
   const [storage, setStorage] = useState<AdminStorageSummary | null>(null);
   const [trends, setTrends] = useState<AdminTrendsSummary | null>(null);
-  const [trendDays, setTrendDays] = useState<number>(30);
+  const trendDays = route.days;
   const [health, setHealth] = useState<AdminHealthSummary | null>(null);
   const [error, setError] = useState("");
 
@@ -370,7 +395,7 @@ function OverviewPanel({ client }: { client: EquoApiClient }) {
               type="button"
               className={trendDays === days ? "admin-chip admin-chip--active" : "admin-chip"}
               aria-pressed={trendDays === days}
-              onClick={() => setTrendDays(days)}
+              onClick={() => onNavigate({ days })}
             >
               {`${days} 日`}
             </button>
@@ -424,13 +449,21 @@ type ListState<T> = {
   error: string;
 };
 
-function UsersPanel({ client }: { client: EquoApiClient }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [offset, setOffset] = useState(0);
+function UsersPanel({ client, route, onNavigate }: PanelProps) {
+  // The typing buffer is the one piece of list state that stays local - the URL
+  // carries what was actually searched for, not every keystroke on the way
+  // there. It re-syncs whenever the route changes underneath (Back, or a
+  // pasted link).
+  const [searchInput, setSearchInput] = useState(route.search);
+  const search = route.search;
+  const offset = routeOffset(route);
+  const selectedUserId = route.userId;
   const [state, setState] = useState<ListState<AdminUserListPage>>({ page: null, loading: true, error: "" });
-  const [selectedUserId, setSelectedUserId] = useState("");
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    setSearchInput(route.search);
+  }, [route.search]);
 
   /** Exports every user matching the current search, not just this page. */
   async function exportUsers() {
@@ -465,7 +498,7 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
   }, [client, search, offset]);
 
   if (selectedUserId) {
-    return <UserDetailPanel client={client} userId={selectedUserId} onBack={() => setSelectedUserId("")} />;
+    return <UserDetailPanel client={client} route={route} onNavigate={onNavigate} />;
   }
 
   const now = Date.now();
@@ -477,8 +510,7 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
         className="admin-search"
         onSubmit={(event) => {
           event.preventDefault();
-          setOffset(0);
-          setSearch(searchInput.trim());
+          onNavigate({ search: searchInput.trim() });
         }}
       >
         <input
@@ -512,7 +544,7 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
               </thead>
               <tbody>
                 {state.page.users.map((user) => (
-                  <tr key={user.id} className="admin-table__row" onClick={() => setSelectedUserId(user.id)}>
+                  <tr key={user.id} className="admin-table__row" onClick={() => onNavigate({ userId: user.id })}>
                     <td>{user.display_name || "—"}</td>
                     <td>{user.email}</td>
                     <td className="admin-table__num">{user.group_count}</td>
@@ -536,8 +568,8 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
             <Pagination
               info={info}
               total={state.page.total}
-              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
-              onNext={() => setOffset(offset + PAGE_SIZE)}
+              onPrev={() => onNavigate({ page: Math.max(route.page - 1, 1) })}
+              onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
         </>
@@ -546,19 +578,12 @@ function UsersPanel({ client }: { client: EquoApiClient }) {
   );
 }
 
-function UserDetailPanel({
-  client,
-  userId,
-  onBack,
-}: {
-  client: EquoApiClient;
-  userId: string;
-  onBack: () => void;
-}) {
+function UserDetailPanel({ client, route, onNavigate }: PanelProps) {
+  const userId = route.userId;
+  const selectedGroupId = route.groupId;
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
-  const [selectedGroupId, setSelectedGroupId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -603,14 +628,14 @@ function UserDetailPanel({
         client={client}
         groupId={selectedGroupId}
         backLabel="回使用者詳情"
-        onBack={() => setSelectedGroupId("")}
+        onBack={() => onNavigate({ groupId: "" })}
       />
     );
   }
 
   return (
     <section aria-label="使用者詳情">
-      <button type="button" className="admin-back" onClick={onBack}>
+      <button type="button" className="admin-back" onClick={() => onNavigate({ userId: "" })}>
         ← 回使用者列表
       </button>
 
@@ -664,7 +689,7 @@ function UserDetailPanel({
               </thead>
               <tbody>
                 {detail.groups.map((group) => (
-                  <tr key={group.id} className="admin-table__row" onClick={() => setSelectedGroupId(group.id)}>
+                  <tr key={group.id} className="admin-table__row" onClick={() => onNavigate({ groupId: group.id })}>
                     <td>{group.name}</td>
                     <td>{group.role === "owner" ? "擁有者" : "成員"}</td>
                     <td className="admin-table__num">{group.member_count}</td>
@@ -1123,16 +1148,20 @@ function groupStatusLabel(group: { archived_at: string | null; deleted_at: strin
   return "使用中";
 }
 
-function GroupsPanel({ client }: { client: EquoApiClient }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<AdminGroupFilterOption>("all");
-  const [offset, setOffset] = useState(0);
+function GroupsPanel({ client, route, onNavigate }: PanelProps) {
+  const [searchInput, setSearchInput] = useState(route.search);
+  const search = route.search;
+  const filter: AdminGroupFilterOption = route.filter;
+  const offset = routeOffset(route);
+  const selectedGroupId = route.groupId;
   const [state, setState] = useState<ListState<AdminGroupListPage>>({ page: null, loading: true, error: "" });
   const [busyGroupId, setBusyGroupId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [selectedGroupId, setSelectedGroupId] = useState("");
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    setSearchInput(route.search);
+  }, [route.search]);
 
   /** Exports every group matching the current search AND filter. */
   async function exportGroups() {
@@ -1197,7 +1226,7 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
         groupId={selectedGroupId}
         backLabel="回群組列表"
         onBack={() => {
-          setSelectedGroupId("");
+          onNavigate({ groupId: "" });
           // The detail's own actions don't write, but coming back from a group
           // that was archived/deleted elsewhere shouldn't show a stale row.
           setReloadKey((key) => key + 1);
@@ -1214,8 +1243,7 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
         className="admin-search"
         onSubmit={(event) => {
           event.preventDefault();
-          setOffset(0);
-          setSearch(searchInput.trim());
+          onNavigate({ search: searchInput.trim() });
         }}
       >
         <input
@@ -1235,10 +1263,7 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
             key={chip.key}
             type="button"
             className={filter === chip.key ? "admin-chip admin-chip--active" : "admin-chip"}
-            onClick={() => {
-              setOffset(0);
-              setFilter(chip.key);
-            }}
+            onClick={() => onNavigate({ filter: chip.key })}
           >
             {chip.label}
           </button>
@@ -1285,7 +1310,7 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
                         )}
                       </td>
                       <td className="admin-table__actions">
-                        <button type="button" className="admin-action" onClick={() => setSelectedGroupId(group.id)}>
+                        <button type="button" className="admin-action" onClick={() => onNavigate({ groupId: group.id })}>
                           查看
                         </button>
                         {group.deleted_at ? (
@@ -1337,8 +1362,8 @@ function GroupsPanel({ client }: { client: EquoApiClient }) {
             <Pagination
               info={info}
               total={state.page.total}
-              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
-              onNext={() => setOffset(offset + PAGE_SIZE)}
+              onPrev={() => onNavigate({ page: Math.max(route.page - 1, 1) })}
+              onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
         </>
@@ -1367,9 +1392,9 @@ const FEEDBACK_STATUS_LABELS: Record<string, string> = {
   done: "已完成",
 };
 
-function FeedbackPanel({ client }: { client: EquoApiClient }) {
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [offset, setOffset] = useState(0);
+function FeedbackPanel({ client, route, onNavigate }: PanelProps) {
+  const statusFilter = route.status;
+  const offset = routeOffset(route);
   const [state, setState] = useState<ListState<AdminFeedbackPage>>({ page: null, loading: true, error: "" });
   const [busyId, setBusyId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -1412,10 +1437,7 @@ function FeedbackPanel({ client }: { client: EquoApiClient }) {
             key={chip.key}
             type="button"
             className={statusFilter === chip.key ? "admin-chip admin-chip--active" : "admin-chip"}
-            onClick={() => {
-              setOffset(0);
-              setStatusFilter(chip.key);
-            }}
+            onClick={() => onNavigate({ status: chip.key })}
           >
             {chip.label}
           </button>
@@ -1485,8 +1507,8 @@ function FeedbackPanel({ client }: { client: EquoApiClient }) {
             <Pagination
               info={info}
               total={state.page.total}
-              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
-              onNext={() => setOffset(offset + PAGE_SIZE)}
+              onPrev={() => onNavigate({ page: Math.max(route.page - 1, 1) })}
+              onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
         </>
@@ -1495,17 +1517,41 @@ function FeedbackPanel({ client }: { client: EquoApiClient }) {
   );
 }
 
-function ErrorsPanel({ client }: { client: EquoApiClient }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [offset, setOffset] = useState(0);
-  const [state, setState] = useState<ListState<AdminErrorPage>>({ page: null, loading: true, error: "" });
+const ERROR_STATUS_CHIPS = [
+  { key: "all", label: "全部" },
+  { key: "open", label: "未處理" },
+  { key: "resolved", label: "已處理" },
+] as const;
+
+/**
+ * Errors, collapsed.
+ *
+ * One row per distinct error rather than per occurrence: a single bad release
+ * used to fill every page with the same message, which is exactly when the
+ * page stops being read. The row carries the two numbers that decide whether
+ * something matters - how often, and to how many people - and a status, so a
+ * handled problem can be put away instead of scrolling forever.
+ */
+function ErrorsPanel({ client, route, onNavigate }: PanelProps) {
+  const [searchInput, setSearchInput] = useState(route.search);
+  const [state, setState] = useState<ListState<AdminErrorGroupPage>>({ page: null, loading: true, error: "" });
+  const [busyFingerprint, setBusyFingerprint] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const offset = routeOffset(route);
 
   useEffect(() => {
+    setSearchInput(route.search);
+  }, [route.search]);
+
+  useEffect(() => {
+    // The drill-down owns the screen and fetches its own occurrences; loading
+    // the grouped list behind it would be a wasted round-trip on every open.
+    if (route.fingerprint) return;
+
     let cancelled = false;
     setState((current) => ({ ...current, loading: true, error: "" }));
     client
-      .adminListErrors({ search, limit: PAGE_SIZE, offset })
+      .adminListErrorGroups({ search: route.search, status: route.status, limit: PAGE_SIZE, offset })
       .then((page) => {
         if (!cancelled) setState({ page, loading: false, error: "" });
       })
@@ -1515,9 +1561,31 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
     return () => {
       cancelled = true;
     };
-  }, [client, search, offset]);
+  }, [client, route.search, route.status, route.fingerprint, offset, reloadKey]);
 
-  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.errors.length) : null;
+  async function updateStatus(group: AdminErrorGroupRow, status: "open" | "resolved") {
+    setBusyFingerprint(group.fingerprint);
+    try {
+      await client.adminSetErrorGroupStatus(group.fingerprint, status);
+      setReloadKey((key) => key + 1);
+    } catch {
+      setState((current) => ({ ...current, error: "狀態更新失敗，請稍後再試。" }));
+    } finally {
+      setBusyFingerprint("");
+    }
+  }
+
+  if (route.fingerprint) {
+    return (
+      <ErrorGroupPanel
+        client={client}
+        fingerprint={route.fingerprint}
+        onBack={() => onNavigate({ fingerprint: "" })}
+      />
+    );
+  }
+
+  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.groups.length) : null;
 
   return (
     <section aria-label="錯誤日誌">
@@ -1525,8 +1593,7 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
         className="admin-search"
         onSubmit={(event) => {
           event.preventDefault();
-          setOffset(0);
-          setSearch(searchInput.trim());
+          onNavigate({ search: searchInput.trim() });
         }}
       >
         <input
@@ -1539,6 +1606,167 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
         <button type="submit">搜尋</button>
       </form>
 
+      <div className="admin-chips" role="group" aria-label="錯誤狀態篩選">
+        {ERROR_STATUS_CHIPS.map((chip) => (
+          <button
+            key={chip.key}
+            type="button"
+            className={route.status === chip.key ? "admin-chip admin-chip--active" : "admin-chip"}
+            onClick={() => onNavigate({ status: chip.key })}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
+      {state.error && <p className="admin-error">{state.error}</p>}
+      {state.loading && <p className="admin-loading">載入中…</p>}
+
+      {state.page && !state.loading && (
+        <>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>錯誤</th>
+                  <th>來源</th>
+                  <th className="admin-table__num">次數</th>
+                  <th className="admin-table__num">人數</th>
+                  <th>首次</th>
+                  <th>最近</th>
+                  <th>狀態</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.page.groups.map((group) => {
+                  const busy = busyFingerprint === group.fingerprint;
+                  return (
+                    <tr key={group.fingerprint}>
+                      <td className="admin-table__message" title={group.sample_message}>
+                        {group.sample_message}
+                        {group.last_page && <span className="admin-table__submeta">{group.last_page}</span>}
+                      </td>
+                      <td>{errorSourceLabel(group.source)}</td>
+                      <td className="admin-table__num">{group.occurrences.toLocaleString("zh-TW")}</td>
+                      <td className="admin-table__num">{group.user_count.toLocaleString("zh-TW")}</td>
+                      <td>{formatDateTime(group.first_seen)}</td>
+                      <td>{formatDateTime(group.last_seen)}</td>
+                      <td>
+                        {group.status === "resolved" ? (
+                          <span className="admin-badge" title={group.status_updated_by ?? undefined}>
+                            {errorGroupStatusLabel(group.status)}
+                          </span>
+                        ) : (
+                          errorGroupStatusLabel(group.status)
+                        )}
+                      </td>
+                      <td className="admin-table__actions">
+                        <button
+                          type="button"
+                          className="admin-action"
+                          onClick={() => onNavigate({ fingerprint: group.fingerprint })}
+                        >
+                          查看
+                        </button>
+                        {group.status === "resolved" ? (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={() => updateStatus(group, "open")}
+                          >
+                            重開
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={() => updateStatus(group, "resolved")}
+                          >
+                            標記已處理
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {state.page.groups.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="admin-table__empty">
+                      {route.search || route.status !== "all" ? "沒有符合的錯誤記錄" : "沒有錯誤記錄——很好！"}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {info && (
+            <Pagination
+              info={info}
+              total={state.page.total}
+              onPrev={() => onNavigate({ page: Math.max(route.page - 1, 1) })}
+              onNext={() => onNavigate({ page: route.page + 1 })}
+            />
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The occurrences behind one group: the same flat list the console always had,
+ * scoped to a single fingerprint. This is where the per-report detail lives -
+ * who hit it, on which page, with what context.
+ */
+function ErrorGroupPanel({
+  client,
+  fingerprint,
+  onBack,
+}: {
+  client: EquoApiClient;
+  fingerprint: string;
+  onBack: () => void;
+}) {
+  const [state, setState] = useState<ListState<AdminErrorPage>>({ page: null, loading: true, error: "" });
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    client
+      .adminListErrors({ fingerprint, limit: PAGE_SIZE, offset })
+      .then((page) => {
+        if (!cancelled) setState({ page, loading: false, error: "" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ page: null, loading: false, error: "錯誤紀錄載入失敗。" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, fingerprint, offset]);
+
+  const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.errors.length) : null;
+  const sample = state.page?.errors[0];
+
+  return (
+    <section aria-label="錯誤詳情">
+      <button type="button" className="admin-back" onClick={onBack}>
+        ← 回錯誤列表
+      </button>
+
+      {sample && (
+        <article className="admin-error-card">
+          <h2 className="admin-error-card__message">{sample.message}</h2>
+          <p className="admin-error-card__meta">
+            {errorSourceLabel(sample.source)}・共 {(state.page?.total ?? 0).toLocaleString("zh-TW")} 次
+          </p>
+        </article>
+      )}
+
       {state.error && <p className="admin-error">{state.error}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
@@ -1550,8 +1778,8 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
                 <tr>
                   <th>時間</th>
                   <th>使用者</th>
-                  <th>來源</th>
                   <th>訊息</th>
+                  <th>內容</th>
                   <th>頁面</th>
                 </tr>
               </thead>
@@ -1560,9 +1788,11 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
                   <tr key={item.id}>
                     <td>{formatDateTime(item.created_at)}</td>
                     <td>{item.user_email ?? "—"}</td>
-                    <td>{item.source === "admin" ? "後台" : "前台"}</td>
-                    <td className="admin-table__message" title={item.context ?? item.message}>
+                    <td className="admin-table__message" title={item.message}>
                       {item.message}
+                    </td>
+                    <td className="admin-table__message" title={item.context ?? undefined}>
+                      {item.context ?? "—"}
                     </td>
                     <td>{item.page ?? "—"}</td>
                   </tr>
@@ -1570,7 +1800,7 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
                 {state.page.errors.length === 0 && (
                   <tr>
                     <td colSpan={5} className="admin-table__empty">
-                      {search ? "沒有符合的錯誤記錄" : "沒有錯誤記錄——很好！"}
+                      這個錯誤已經沒有紀錄了
                     </td>
                   </tr>
                 )}
@@ -1591,12 +1821,16 @@ function ErrorsPanel({ client }: { client: EquoApiClient }) {
   );
 }
 
-function AuditPanel({ client }: { client: EquoApiClient }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [action, setAction] = useState("");
-  const [offset, setOffset] = useState(0);
+function AuditPanel({ client, route, onNavigate }: PanelProps) {
+  const [searchInput, setSearchInput] = useState(route.search);
+  const search = route.search;
+  const action = route.action;
+  const offset = routeOffset(route);
   const [state, setState] = useState<ListState<AdminAuditLogPage>>({ page: null, loading: true, error: "" });
+
+  useEffect(() => {
+    setSearchInput(route.search);
+  }, [route.search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1622,8 +1856,7 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
         className="admin-search"
         onSubmit={(event) => {
           event.preventDefault();
-          setOffset(0);
-          setSearch(searchInput.trim());
+          onNavigate({ search: searchInput.trim() });
         }}
       >
         <input
@@ -1637,10 +1870,7 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
           className="admin-select"
           value={action}
           aria-label="篩選動作"
-          onChange={(event) => {
-            setOffset(0);
-            setAction(event.target.value);
-          }}
+          onChange={(event) => onNavigate({ action: event.target.value })}
         >
           <option value="">全部動作</option>
           {auditActionOptions().map((option) => (
@@ -1690,8 +1920,8 @@ function AuditPanel({ client }: { client: EquoApiClient }) {
             <Pagination
               info={info}
               total={state.page.total}
-              onPrev={() => setOffset(Math.max(offset - PAGE_SIZE, 0))}
-              onNext={() => setOffset(offset + PAGE_SIZE)}
+              onPrev={() => onNavigate({ page: Math.max(route.page - 1, 1) })}
+              onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
         </>

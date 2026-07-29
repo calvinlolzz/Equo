@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronRight, Delete, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
+import { createApiClient, type ExchangeRatesResponse } from "./apiClient";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
-import { convertToGroupAmountMinor } from "./expenseCurrency";
+import { convertToGroupAmountMinor, readLastCurrency, writeLastCurrency } from "./expenseCurrency";
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
+import { formatExchangeRate, loadCrossRate } from "./exchangeRates";
 import { isComposerDirty, type ComposerSnapshot } from "./expenseComposerDirty";
-import { buildExpenseEditPrefill, type ComposerSplitMode } from "./expenseEditPrefill";
+import {
+  buildExpenseDuplicatePrefill,
+  buildExpenseEditPrefill,
+  type ComposerSplitMode,
+} from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { formatAmount, formatAmountInputDisplay, stripAmountInput } from "./formatAmount";
 import {
@@ -118,20 +124,37 @@ export type ExpenseDraft = {
 
 type PayerRow = { key: number; payerId: string; amount: string };
 
+/** The composer's own reach for the daily rates; overridable so tests never hit the network. */
+function defaultFetchExchangeRates(base: string): Promise<ExchangeRatesResponse> {
+  return createApiClient().getExchangeRates(base);
+}
+
 export function ExpenseComposerSheet({
   members,
+  groupId = "",
   groupCurrency,
   currencyOptions,
   initialExpense,
+  duplicating = false,
   onClose,
   onDirtyChange,
   onSubmit,
   onImageError,
+  fetchExchangeRates = defaultFetchExchangeRates,
 }: {
   members: Member[];
+  /** Scopes the "last currency used here" memory. Empty disables it (tests, previews). */
+  groupId?: string;
   groupCurrency: string;
   currencyOptions: Array<{ code: string; label: string }>;
   initialExpense?: Expense;
+  /**
+   * Open initialExpense as the starting point for a NEW entry rather than an
+   * edit of that one: same split, payers and note, today's date, no receipt
+   * photo. The submit path is unchanged - the owner decides create vs. replace
+   * by whether it is holding an editing expense.
+   */
+  duplicating?: boolean;
   /**
    * Asks to close. May decline and put the discard confirm up instead — see
    * onDirtyChange — so this sheet never animates itself away on the way out.
@@ -146,19 +169,38 @@ export function ExpenseComposerSheet({
   onDirtyChange?: (dirty: boolean) => void;
   onSubmit: (draft: ExpenseDraft) => void | Promise<void>;
   onImageError?: () => void;
+  fetchExchangeRates?: (base: string) => Promise<ExchangeRatesResponse>;
 }) {
   const editPrefill = useMemo(
-    () => (initialExpense ? buildExpenseEditPrefill(initialExpense, groupCurrency) : null),
+    () =>
+      initialExpense
+        ? duplicating
+          ? buildExpenseDuplicatePrefill(initialExpense, groupCurrency, new Date().toISOString())
+          : buildExpenseEditPrefill(initialExpense, groupCurrency)
+        : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+  // Only a real edit replaces an existing expense. A duplicate is seeded from
+  // one but saves as new, so it takes the create labels and the auto rate.
+  const isEditing = Boolean(initialExpense) && !duplicating;
   const [composerMode, setComposerMode] = useState<ComposerMode>(editPrefill?.mode ?? "expense");
   const [composerCategory, setComposerCategory] = useState<string>(editPrefill?.category ?? "general");
   const [composerDateTime, setComposerDateTime] = useState<string>(() =>
     toLocalDateTimeInputValue(editPrefill?.dateTimeIso ?? new Date().toISOString()),
   );
-  const [composerCurrency, setComposerCurrency] = useState<string>(editPrefill?.currency ?? groupCurrency);
+  // Seeded, not assigned later: the dirty baseline is this first render's
+  // state, so a remembered currency must be in place before it is captured or
+  // closing an untouched sheet would raise the discard confirm.
+  const [composerCurrency, setComposerCurrency] = useState<string>(() => {
+    if (editPrefill) return editPrefill.currency;
+    const remembered = readLastCurrency(groupId);
+    return currencyOptions.some((option) => option.code === remembered) ? remembered : groupCurrency;
+  });
   const [composerExchangeRate, setComposerExchangeRate] = useState<string>(editPrefill?.exchangeRate ?? "1");
+  /** Publication date of an auto-filled rate; empty once the user types their own. */
+  const [autoRateDate, setAutoRateDate] = useState<string>("");
+  const manualRateRef = useRef(false);
   const [composerTitle, setComposerTitle] = useState<string>(editPrefill?.title ?? "");
   const [composerAmount, setComposerAmount] = useState(editPrefill?.amount ?? "");
   const [composerPayerId, setComposerPayerId] = useState(editPrefill?.payerId ?? members[0]?.id ?? "");
@@ -214,11 +256,14 @@ export function ExpenseComposerSheet({
     imageUrl: composerImageUrl,
     note: composerNote,
   };
-  const initialSnapshot = useRef(snapshot).current;
+  // Mutable on purpose: an auto-filled exchange rate is not the user's work,
+  // so applying one moves the baseline with it (see the auto-rate effect
+  // below). Everything else keeps the open-time values forever.
+  const initialSnapshot = useRef(snapshot);
   // A submit in flight is on its way to being saved, so it is not unsaved work
   // — without this the success path would trip the discard confirm on its way
   // out.
-  const dirty = !composerSubmitting && isComposerDirty(initialSnapshot, snapshot);
+  const dirty = !composerSubmitting && isComposerDirty(initialSnapshot.current, snapshot);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -280,6 +325,47 @@ export function ExpenseComposerSheet({
   }
 
   const composerNeedsExchangeRate = composerCurrency !== groupCurrency;
+
+  /**
+   * Pre-fill 匯率 from the daily reference rates whenever a foreign currency is
+   * picked. Nobody standing at a till wants to go look this up, and the number
+   * that used to sit there was a hardcoded 1 - silently wrong for every
+   * foreign-currency expense someone forgot to correct.
+   *
+   * Never touches an edit: that rate is the historical one the split was
+   * computed from. Never overrides a rate the user typed, and applying one
+   * moves the dirty baseline, because a value the sheet filled in by itself is
+   * not work worth putting a discard confirm in front of.
+   */
+  useEffect(() => {
+    if (isEditing || !composerNeedsExchangeRate || manualRateRef.current) return;
+
+    let cancelled = false;
+    loadCrossRate({
+      base: groupCurrency,
+      from: composerCurrency,
+      to: groupCurrency,
+      fetchRates: fetchExchangeRates,
+    })
+      .then((result) => {
+        if (cancelled || !result || manualRateRef.current) return;
+        const formatted = formatExchangeRate(result.rate);
+        if (!formatted) return;
+        setComposerExchangeRate(formatted);
+        initialSnapshot.current = { ...initialSnapshot.current, exchangeRate: formatted };
+        setAutoRateDate(result.date);
+      })
+      .catch(() => {
+        // Every failure mode already resolves to null inside loadCrossRate;
+        // this is belt-and-braces so a rejected promise can never surface as
+        // an unhandled rejection while someone is mid-expense.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [composerCurrency, composerNeedsExchangeRate, fetchExchangeRates, groupCurrency, isEditing]);
+
   const composerTotalAmountMinor = composerNeedsExchangeRate
     ? convertToGroupAmountMinor({ amount: composerAmount, exchangeRate: composerExchangeRate })
     : Math.round((Number(composerAmount) || 0) * 100);
@@ -344,7 +430,7 @@ export function ExpenseComposerSheet({
   const composerSubmitState = getComposerSubmitState({
     mode: composerMode,
     canSubmit,
-    isEditing: Boolean(initialExpense),
+    isEditing,
   });
   const composerPayer = members.find((member) => member.id === composerPayerId) ?? members[0];
   const composerTransferTo = members.find((member) => member.id === composerTransferToId) ?? null;
@@ -493,6 +579,10 @@ export function ExpenseComposerSheet({
     composerSubmittingRef.current = true;
     setComposerSubmitting(true);
     try {
+      // Written before the await, because the owner unmounts this sheet on
+      // success. Creates only: fixing the currency on a months-old expense
+      // says nothing about what the next new one should default to.
+      if (!isEditing) writeLastCurrency(groupId, composerCurrency);
       await onSubmit(draft);
     } finally {
       composerSubmittingRef.current = false;
@@ -820,7 +910,13 @@ export function ExpenseComposerSheet({
       <select
         className="composer-currency-select"
         value={composerCurrency}
-        onChange={(event) => setComposerCurrency(event.target.value)}
+        onChange={(event) => {
+          setComposerCurrency(event.target.value);
+          // A rate typed for the old currency means nothing for the new one,
+          // so the auto fill takes over again from here.
+          manualRateRef.current = false;
+          setAutoRateDate("");
+        }}
         aria-label={text.currency}
       >
         {currencyOptions.map((currency) => (
@@ -844,10 +940,15 @@ export function ExpenseComposerSheet({
       <div className="composer-exchange-row">
         <span>
           1 {composerCurrency} → {groupCurrency}
+          {autoRateDate ? <small className="composer-exchange-source">{`${text.exchangeRateAuto} ${autoRateDate.slice(5)}`}</small> : null}
         </span>
         <input
           value={composerExchangeRate}
-          onChange={(event) => setComposerExchangeRate(event.target.value)}
+          onChange={(event) => {
+            manualRateRef.current = true;
+            setAutoRateDate("");
+            setComposerExchangeRate(event.target.value);
+          }}
           inputMode="decimal"
           aria-label={text.exchangeRateLabel}
         />

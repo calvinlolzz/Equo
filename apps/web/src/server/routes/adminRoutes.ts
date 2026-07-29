@@ -10,7 +10,9 @@ import {
   handleAdminRemoveAdmin,
   handleAdminSetAdminRole,
   handleAdminListAuditLogs,
+  handleAdminListErrorGroups,
   handleAdminListErrors,
+  handleAdminSetErrorGroupStatus,
   handleAdminListFeedback,
   handleAdminListGroupExpenses,
   handleAdminListGroups,
@@ -24,6 +26,7 @@ import {
   handleAdminSetUserDisabled,
   handleAdminUserDetail,
   type AdminAuditLogQuery,
+  type AdminErrorListQuery,
   type AdminExpenseListQuery,
   type AdminFeedbackListQuery,
   type AdminGroupListQuery,
@@ -205,7 +208,17 @@ export async function adminSetFeedbackStatusRoute(options: RouteOptions, feedbac
   return handleAdminSetFeedbackStatus(createSupabaseAdminRepository(options.client), auth.context, feedbackId, status);
 }
 
-export async function adminListErrorsRoute(options: RouteOptions, query: AdminListQuery) {
+export async function adminListErrorGroupsRoute(options: RouteOptions, query: AdminErrorListQuery) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListErrorGroups(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminListErrorsRoute(options: RouteOptions, query: AdminErrorListQuery) {
   const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
@@ -213,6 +226,25 @@ export async function adminListErrorsRoute(options: RouteOptions, query: AdminLi
   }
 
   return handleAdminListErrors(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminSetErrorGroupStatusRoute(
+  options: RouteOptions,
+  fingerprint: string,
+  status: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetErrorGroupStatus(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    fingerprint,
+    status,
+  );
 }
 
 export async function adminSetUserDisabledRoute(options: RouteOptions, userId: string, disabled: boolean) {

@@ -250,11 +250,38 @@ export type AdminErrorRecord = {
   context: string | null;
   page: string | null;
   created_at: string;
+  /** The group this occurrence belongs to (see error_log_fingerprint). */
+  fingerprint: string;
 };
 
 export type AdminErrorListRecord = {
   total: number;
   errors: AdminErrorRecord[];
+};
+
+/** app_error_group_status.status vocabulary (from its check constraint). */
+export type AdminErrorGroupStatus = "open" | "resolved";
+
+/** One distinct error, collapsed across every occurrence of it. */
+export type AdminErrorGroupRecord = {
+  fingerprint: string;
+  source: string;
+  /** The most recent wording seen for this group. */
+  sample_message: string;
+  last_page: string | null;
+  occurrences: number;
+  /** Distinct signed-in reporters; signed-out reports add nothing to it. */
+  user_count: number;
+  first_seen: string;
+  last_seen: string;
+  status: AdminErrorGroupStatus;
+  status_updated_at: string | null;
+  status_updated_by: string | null;
+};
+
+export type AdminErrorGroupListRecord = {
+  total: number;
+  groups: AdminErrorGroupRecord[];
 };
 
 export type AdminRoleName = "owner" | "admin" | "support";
@@ -331,6 +358,26 @@ export type AdminRepository = {
     feedbackId: string,
     status: AdminFeedbackStatus,
   ): Promise<{ id: string; status: string } | null>;
-  /** search matches message, context, page, or the reporter's email. */
-  listErrors(search: string, limit: number, offset: number): Promise<AdminErrorListRecord>;
+  /**
+   * Distinct errors rather than occurrences. search filters the underlying
+   * rows before grouping (so the counts describe the filtered set); status
+   * "all" lists everything.
+   */
+  listErrorGroups(
+    search: string,
+    status: string,
+    limit: number,
+    offset: number,
+  ): Promise<AdminErrorGroupListRecord>;
+  /**
+   * The flat occurrence list. search matches message, context, page, or the
+   * reporter's email; a non-empty fingerprint scopes it to one group.
+   */
+  listErrors(search: string, fingerprint: string, limit: number, offset: number): Promise<AdminErrorListRecord>;
+  /** Mark a group handled (or reopen it). Returns null for a fingerprint no log row produces. */
+  setErrorGroupStatus(
+    actor: AdminActor,
+    fingerprint: string,
+    status: AdminErrorGroupStatus,
+  ): Promise<{ fingerprint: string; status: string } | null>;
 };

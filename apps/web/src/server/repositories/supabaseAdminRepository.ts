@@ -4,6 +4,7 @@ import type {
   AdminAuditLogListRecord,
   AdminRemoveResult,
   AdminSetRoleResult,
+  AdminErrorGroupListRecord,
   AdminErrorListRecord,
   AdminExpenseListRecord,
   AdminFeedbackListRecord,
@@ -177,12 +178,35 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       return result ?? null;
     },
 
-    listErrors(search, limit, offset) {
-      return client.rpc<AdminErrorListRecord>("admin_console_errors", {
+    listErrorGroups(search, status, limit, offset) {
+      return client.rpc<AdminErrorGroupListRecord>("admin_console_error_groups", {
         p_search: search,
+        p_status: status,
         p_limit: limit,
         p_offset: offset,
       });
+    },
+
+    listErrors(search, fingerprint, limit, offset) {
+      return client.rpc<AdminErrorListRecord>("admin_console_errors", {
+        p_search: search,
+        p_fingerprint: fingerprint,
+        p_limit: limit,
+        p_offset: offset,
+      });
+    },
+
+    async setErrorGroupStatus(actor, fingerprint, status) {
+      const result = await client.rpc<{ fingerprint: string; status: string } | null>(
+        "admin_console_set_error_group_status",
+        {
+          p_actor: actor.id,
+          p_actor_email: actor.email,
+          p_fingerprint: fingerprint,
+          p_status: status,
+        },
+      );
+      return result ?? null;
     },
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
-import { Pencil, Trash2, X } from "lucide-react";
+import { CopyPlus, Pencil, Trash2, X } from "lucide-react";
 import { useDialogChrome } from "./useDialogChrome";
 import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
@@ -30,6 +30,7 @@ export function ExpenseDetailDialog({
   members,
   onClose,
   onEdit,
+  onDuplicate,
   onDelete,
   onPrev,
   onNext,
@@ -38,6 +39,12 @@ export function ExpenseDetailDialog({
   members: Member[];
   onClose: () => void;
   onEdit: (expense: Expense) => void;
+  /**
+   * Reopen this entry as a new one. Absent for settlements — a 清償 records a
+   * transfer that happened once, and "do it again" is not a shortcut anyone
+   * wants one tap away from a balance.
+   */
+  onDuplicate?: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
   /** Swipe-right target (previous/newer expense in the list). Absent = at the edge. */
   onPrev?: () => void;
@@ -80,6 +87,7 @@ export function ExpenseDetailDialog({
   }
   const isSettlement = expense.kind === "settlement";
   const isIncome = expense.kind === "income";
+  const canDuplicate = !isSettlement && Boolean(onDuplicate);
   const payer = members.find((member) => member.id === expense.payerId);
   const recipient = members.find(
     (member) => member.id === (expense.transferToMemberId ?? expense.shareMemberIds[0]),
@@ -259,11 +267,17 @@ export function ExpenseDetailDialog({
           </div>
         ) : null}
 
-        <div className="dialog-action-row">
+        <div className={canDuplicate ? "dialog-action-row dialog-action-row--three" : "dialog-action-row"}>
           <button className="secondary-action" type="button" onClick={() => onEdit(expense)}>
             <Pencil aria-hidden="true" size={16} />
             {text.editExpenseAction}
           </button>
+          {canDuplicate && onDuplicate ? (
+            <button className="secondary-action" type="button" onClick={() => onDuplicate(expense)}>
+              <CopyPlus aria-hidden="true" size={16} />
+              {text.duplicateExpense}
+            </button>
+          ) : null}
           <button className="danger-action" type="button" onClick={handleDeleteClick}>
             <Trash2 aria-hidden="true" size={16} />
             {confirmingDelete ? text.confirmDelete : text.deleteExpense}
