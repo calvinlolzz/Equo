@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createApiClient, type ExpenseSummary } from "./apiClient";
+import { createApiClient, isNetworkError, type ExpenseSummary } from "./apiClient";
 import { dateKey } from "./appDates";
 import type { CloudGroupsStore } from "./cloudStore";
 import { describeCloudActionError } from "./describeCloudActionError";
@@ -90,10 +90,15 @@ export function useExpenseComposer({
       try {
         const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "expense", draft.imageDataUrl);
         finalDraft = { ...draft, imageUrl: uploadedUrl, imageDataUrl: undefined };
-      } catch {
+      } catch (error) {
         setBusy(false);
-        showToast(text.imageUploadFailed);
-        return;
+        // Unreachable network, not a rejected upload: keep the data URL on the
+        // draft and let cloudStore queue it - the photo is uploaded on flush,
+        // just before the expense itself. Any other failure still aborts.
+        if (!isNetworkError(error)) {
+          showToast(text.imageUploadFailed);
+          return;
+        }
       }
       setBusy(false);
     }

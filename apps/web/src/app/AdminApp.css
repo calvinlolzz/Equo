@@ -921,3 +921,156 @@
     }
   }
 }
+
+/* ============================================================
+   Trend chart (總覽 → 趨勢).
+   Hand-rolled SVG: four series over at most 90 points does not justify a
+   charting dependency in a bundle this small.
+   ============================================================ */
+
+.admin-trend {
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 18px 20px 14px;
+}
+
+.admin-trend__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.admin-trend__chips,
+.admin-trend__windows {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-trend__total {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.admin-trend__total strong {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.admin-trend__total span {
+  color: #5b6069;
+  font-size: 12px;
+}
+
+.admin-delta {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f7a4d;
+}
+
+.admin-delta--down {
+  color: #b3261e;
+}
+
+/* preserveAspectRatio="none" stretches the 100x100 viewBox to this box, so the
+   polyline maths stays in plain percentages. vector-effect keeps the stroke an
+   even 2px instead of being stretched with it. */
+.admin-trend__svg {
+  display: block;
+  width: 100%;
+  height: 140px;
+  overflow: visible;
+}
+
+.admin-trend__line {
+  fill: none;
+  stroke: #2f6feb;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.admin-trend__area {
+  fill: rgba(47, 111, 235, 0.12);
+  stroke: none;
+}
+
+.admin-trend__axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  color: #5b6069;
+  font-size: 11px;
+}
+
+/* ============================================================
+   Health card tones + export button.
+   ============================================================ */
+
+.admin-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: #9aa0a6;
+}
+
+.admin-dot--ok {
+  background: #1f7a4d;
+}
+
+.admin-dot--warn {
+  background: #b9770e;
+}
+
+.admin-dot--bad {
+  background: #b3261e;
+}
+
+.admin-tile--warn {
+  border-color: #ecd7a8;
+  background: #fdfaf2;
+}
+
+.admin-tile--bad {
+  border-color: #f0c0bc;
+  background: #fdf3f2;
+}
+
+.admin-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.admin-export:hover:not(:disabled) {
+  background: #f4f5f7;
+}
+
+.admin-export:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Pushes the export button to the right edge of the search row, away from 搜尋. */
+.admin-search .admin-export {
+  margin-left: auto;
+}

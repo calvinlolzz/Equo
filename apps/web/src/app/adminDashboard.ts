@@ -1,4 +1,11 @@
-import type { AdminGroupInvite, AdminExpenseRow, AdminOverviewSummary, AdminStorageSummary } from "./apiClient";
+import type {
+  AdminGroupInvite,
+  AdminExpenseRow,
+  AdminHealthSummary,
+  AdminOverviewSummary,
+  AdminStorageSummary,
+  AdminTrendPoint,
+} from "./apiClient";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
@@ -52,6 +59,122 @@ export function storageTiles(storage: AdminStorageSummary): StorageTile[] {
       value: storage.orphan_count.toLocaleString("zh-TW"),
       hint: storage.orphan_count > 0 ? `占用 ${formatBytes(storage.orphan_bytes)}` : "沒有未引用的圖片",
       danger: storage.orphan_count > 0,
+    },
+  ];
+}
+
+/** The trend metrics the overview chart can plot, in the order the chips show them. */
+export const TREND_METRICS = [
+  { key: "new_users", label: "新使用者" },
+  { key: "active_users", label: "活躍使用者" },
+  { key: "expenses", label: "記帳筆數" },
+  { key: "new_groups", label: "新群組" },
+] as const;
+
+export type TrendMetric = (typeof TREND_METRICS)[number]["key"];
+
+export type TrendChart = {
+  values: number[];
+  labels: string[];
+  max: number;
+  total: number;
+  /**
+   * Percent change of the most recent half of the window against the half
+   * before it, rounded, or null when the earlier half is all zeros (there is
+   * no meaningful "up 400%" from a base of nothing).
+   */
+  changePct: number | null;
+  /** `x,y` pairs for an SVG polyline in a 100x100 viewBox, oldest first. */
+  polyline: string;
+};
+
+/**
+ * Turn a trend series into everything the chart needs to draw.
+ *
+ * The y-scale is pinned to 0 rather than to the minimum: a series wobbling
+ * between 18 and 20 drawn min-to-max looks like a crisis, and the whole point
+ * of the chart is to show real movement. A flat series sits on the mid-line
+ * instead of collapsing onto the axis, so "nothing is happening" still reads
+ * as a line.
+ */
+export function trendChart(points: AdminTrendPoint[], metric: TrendMetric): TrendChart {
+  const values = points.map((point) => point[metric]);
+  const labels = points.map((point) => point.day);
+  const max = values.reduce((highest, value) => Math.max(highest, value), 0);
+  const total = values.reduce((sum, value) => sum + value, 0);
+
+  const half = Math.floor(values.length / 2);
+  const earlier = values.slice(0, half).reduce((sum, value) => sum + value, 0);
+  const recent = values.slice(half).reduce((sum, value) => sum + value, 0);
+  const changePct = half === 0 || earlier === 0 ? null : Math.round(((recent - earlier) / earlier) * 100);
+
+  const step = values.length > 1 ? 100 / (values.length - 1) : 0;
+  const polyline = values
+    .map((value, index) => {
+      const x = values.length > 1 ? index * step : 50;
+      const y = max === 0 ? 50 : 100 - (value / max) * 100;
+      return `${round2(x)},${round2(y)}`;
+    })
+    .join(" ");
+
+  return { values, labels, max, total, changePct, polyline };
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export type HealthTile = {
+  key: string;
+  label: string;
+  value: string;
+  hint: string;
+  /** "ok" | "warn" | "bad" - drives the dot colour, nothing else. */
+  tone: "ok" | "warn" | "bad";
+};
+
+/** A backup older than this has probably stopped running, not just run late. */
+const BACKUP_STALE_HOURS = 36;
+
+/**
+ * The ops card. Each tile answers one question that currently requires opening
+ * a different dashboard: did last night's backup run, is the rate limiter
+ * turning anyone away, is the app throwing errors, is feedback piling up.
+ */
+export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTile[] {
+  const backupAgeHours = health.backup ? (nowMs - Date.parse(health.backup.last_success_at)) / 3_600_000 : null;
+  const backupBytes = Number(health.backup?.detail?.bytes ?? 0);
+
+  return [
+    {
+      key: "backup",
+      label: "最近備份",
+      value: health.backup ? describeLastSeen(health.backup.last_success_at, nowMs) : "從未",
+      hint: backupBytes > 0 ? formatBytes(backupBytes) : "每日 02:30 排程",
+      // No heartbeat at all is not "unknown" - it means nothing has ever
+      // confirmed a backup exists, which is the worst of the three states.
+      tone: backupAgeHours === null ? "bad" : backupAgeHours > BACKUP_STALE_HOURS ? "warn" : "ok",
+    },
+    {
+      key: "errors",
+      label: "前端錯誤（24 小時）",
+      value: health.errors.last_24h.toLocaleString("zh-TW"),
+      hint: `7 日 ${health.errors.last_7d.toLocaleString("zh-TW")}`,
+      tone: health.errors.last_24h === 0 ? "ok" : health.errors.last_24h < 10 ? "warn" : "bad",
+    },
+    {
+      key: "rate_limit",
+      label: "被限流（24 小時）",
+      value: health.rate_limit.blocked_24h.toLocaleString("zh-TW"),
+      hint: `目前計數中 ${health.rate_limit.active_buckets}`,
+      tone: health.rate_limit.blocked_24h === 0 ? "ok" : "warn",
+    },
+    {
+      key: "feedback",
+      label: "未處理回饋",
+      value: health.feedback.open.toLocaleString("zh-TW"),
+      hint: health.feedback.open > 0 ? "在「回饋」分頁處理" : "都看完了",
+      tone: health.feedback.open === 0 ? "ok" : "warn",
     },
   ];
 }

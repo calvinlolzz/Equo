@@ -14,6 +14,9 @@ import {
   handleAdminMe,
   handleAdminOverview,
   handleAdminStorage,
+  handleAdminTrends,
+  handleAdminHealth,
+  resolveTrendDays,
   handleAdminSetGroupArchived,
   handleAdminSetGroupDeleted,
   handleAdminSetUserDisabled,
@@ -106,6 +109,20 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async getStorage() {
       return { object_count: 13, total_bytes: 861938, orphan_count: 0, orphan_bytes: 0 };
     },
+    async getTrends(days) {
+      return {
+        days,
+        points: [{ day: "2026-07-29", new_users: 1, active_users: 2, new_groups: 0, expenses: 4 }],
+      };
+    },
+    async getHealth() {
+      return {
+        backup: { last_success_at: "2026-07-29T02:30:00.000Z", detail: { bytes: 1024 } },
+        rate_limit: { active_buckets: 0, blocked_24h: 0 },
+        errors: { last_24h: 0, last_7d: 0, latest_at: null },
+        feedback: { open: 1 },
+      };
+    },
     async listUsers() {
       return { total: 1, users: [userSummary] };
     },
@@ -172,6 +189,8 @@ describe("admin handlers", () => {
       handleAdminUserDetail(repository, context, "user_alice"),
       handleAdminListGroups(repository, context),
       handleAdminStorage(repository, context),
+      handleAdminTrends(repository, context, "30"),
+      handleAdminHealth(repository, context),
       handleAdminGroupDetail(repository, context, "group_1"),
       handleAdminListGroupExpenses(repository, context, "group_1"),
       handleAdminSetUserDisabled(repository, context, "user_alice", true),
@@ -191,6 +210,20 @@ describe("admin handlers", () => {
       expect(result.status).toBe(403);
       expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_FORBIDDEN");
     }
+  });
+
+  test("trends returns the requested window", async () => {
+    const result = await handleAdminTrends(makeRepository(), context, "90");
+
+    expect(result.ok).toBe(true);
+    expect((result.body as { days: number }).days).toBe(90);
+  });
+
+  test("health returns the ops card payload", async () => {
+    const result = await handleAdminHealth(makeRepository(), context);
+
+    expect(result.ok).toBe(true);
+    expect(result.body).toMatchObject({ feedback: { open: 1 } });
   });
 
   test("admin me returns the caller identity with their admin role", async () => {
@@ -639,5 +672,21 @@ describe("normalizeAdminListQuery", () => {
       limit: ADMIN_LIST_DEFAULT_LIMIT,
       offset: 0,
     });
+  });
+});
+
+describe("resolveTrendDays", () => {
+  test("accepts the windows the console offers", () => {
+    expect(resolveTrendDays("7")).toBe(7);
+    expect(resolveTrendDays("30")).toBe(30);
+    expect(resolveTrendDays("90")).toBe(90);
+  });
+
+  test("anything else falls back to 30 rather than being clamped", () => {
+    // An arbitrary p_days is a free knob for scanning the whole history, so
+    // unknown values are not honoured at all.
+    for (const raw of [undefined, "", "abc", "0", "-1", "365", "31", "1e9"]) {
+      expect(resolveTrendDays(raw)).toBe(30);
+    }
   });
 });

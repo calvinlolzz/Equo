@@ -439,6 +439,16 @@ export function App() {
 
   const online = useOnlineStatus();
 
+  // Expense writes recorded while the network was unreachable and not yet sent
+  // (see offlineQueue.ts). Counted across every group, not just the open one:
+  // "你還有 N 筆沒送出" is only reassuring if it means all of them.
+  const pendingWriteCount = cloudState?.pendingWrites.length ?? 0;
+  const flushingWrites = Boolean(cloudState?.flushingWrites);
+  const pendingWriteIds = useMemo(
+    () => new Set((cloudState?.pendingWrites ?? []).map((write) => write.expenseId)),
+    [cloudState?.pendingWrites],
+  );
+
   // The logged-in user's own member row within the active group - NOT
   // necessarily the group owner (joined-via-invite members are non-owners).
   // See resolveCurrentMember.ts for the matching/fallback rules.
@@ -801,9 +811,16 @@ export function App() {
 
   return (
     <main className="app-shell">
-      {!online ? (
+      {!online || pendingWriteCount > 0 ? (
         <div className="offline-banner" role="status" aria-live="polite">
-          {text.offlineNotice}
+          {!online ? text.offlineNotice : flushingWrites ? text.offlineSyncing : ""}
+          {pendingWriteCount > 0 ? (
+            <span className="offline-banner__pending">
+              {!online ? "・" : null}
+              {pendingWriteCount}
+              {text.offlinePendingSuffix}
+            </span>
+          ) : null}
         </div>
       ) : null}
       {pullStatus !== "idle" ? (
@@ -1434,10 +1451,12 @@ export function App() {
                 totalExpenseMinor={totalExpenseMinor}
                 currency={activeGroup?.currency ?? "TWD"}
                 expenses={expenses}
+                members={members}
                 activities={activities}
                 canLoadMoreExpenses={canLoadMoreExpenses}
                 loadingMoreExpenses={loadingMoreExpenses}
                 pendingAction={pendingAction}
+                pendingWriteIds={pendingWriteIds}
                 onLoadMore={handleLoadMoreExpenses}
                 onExportCsv={handleExportCsv}
                 onOpenExpense={openExpenseDetail}

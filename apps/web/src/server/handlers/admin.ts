@@ -11,9 +11,11 @@ import type {
   AdminGroupFilter,
   AdminGroupListRecord,
   AdminGroupStateResult,
+  AdminHealthRecord,
   AdminOverviewRecord,
   AdminRepository,
   AdminStorageRecord,
+  AdminTrendsRecord,
   AdminUserDetailRecord,
   AdminUserDisabledResult,
   AdminUserListRecord,
@@ -189,6 +191,49 @@ export async function handleAdminOverview(
 
   const overview = await repository.getOverview();
   return { ok: true, status: 200, body: overview };
+}
+
+/** Trend windows the console offers. Anything else falls back to 30. */
+const TREND_WINDOWS: readonly number[] = [7, 30, 90];
+const DEFAULT_TREND_DAYS = 30;
+
+/**
+ * The requested window, or 30. Restricted to the console's own options rather
+ * than clamped to a range: an arbitrary p_days is a free knob for scanning the
+ * whole users/expenses history, and nothing needs 137 days.
+ */
+export function resolveTrendDays(raw: string | undefined): number {
+  const parsed = Number(raw);
+  return TREND_WINDOWS.includes(parsed) ? parsed : DEFAULT_TREND_DAYS;
+}
+
+export async function handleAdminTrends(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  days: string | undefined,
+): Promise<HandlerResult<AdminTrendsRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const trends = await repository.getTrends(resolveTrendDays(days));
+  return { ok: true, status: 200, body: trends };
+}
+
+export async function handleAdminHealth(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+): Promise<HandlerResult<AdminHealthRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const health = await repository.getHealth();
+  return { ok: true, status: 200, body: health };
 }
 
 export async function handleAdminStorage(

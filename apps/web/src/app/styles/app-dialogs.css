@@ -921,3 +921,175 @@
 .spend-chart-value {
   fill: rgb(var(--fg) / 0.92);
 }
+
+/* ============================================================
+   Records panel search + filter bar.
+   Sits between the stat grid and the expense list. Everything here filters
+   the LOADED window only (see expenseFilter.ts) - the summary line says so
+   whenever more pages exist.
+   ============================================================ */
+
+.records-filter {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 2px;
+}
+
+.records-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgb(var(--surf) / 0.12);
+  border-radius: 12px;
+  padding: 0 8px;
+  background: rgb(var(--surf) / 0.07);
+  color: rgb(var(--fg) / 0.55);
+}
+
+.records-search:focus-within {
+  border-color: rgb(var(--accent) / 0.7);
+  box-shadow: 0 0 0 3px rgb(var(--accent) / 0.14);
+}
+
+.records-search input {
+  min-width: 0;
+  height: 40px;
+  border: none;
+  background: none;
+  color: rgb(var(--fg));
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.records-search input:focus-visible {
+  outline: none;
+}
+
+/* Safari renders its own clear affordance on type="search"; ours is the
+   only one that matches the rest of the sheet. */
+.records-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.records-search__clear,
+.records-filter__toggle {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: rgb(var(--fg) / 0.6);
+  background: rgb(var(--surf) / 0.09);
+}
+
+.records-filter__toggle.is-open {
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+}
+
+.records-chip-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.records-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.records-chip {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--surf) / 0.12);
+  border-radius: 999px;
+  color: rgb(var(--fg) / 0.66);
+  background: rgb(var(--surf) / 0.06);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.records-chip.is-active {
+  border-color: transparent;
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+}
+
+.records-filter__advanced {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.records-filter__advanced label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.records-filter__advanced span {
+  color: rgb(var(--fg) / 0.5);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.records-filter__advanced select,
+.records-filter__advanced input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 8px;
+  border: 1px solid rgb(var(--surf) / 0.12);
+  border-radius: 10px;
+  color: rgb(var(--fg));
+  background: rgb(var(--surf) / 0.07);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.records-filter__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgb(var(--fg) / 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.records-filter__summary small {
+  display: block;
+  color: rgb(var(--fg) / 0.45);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+/* 待送出: an expense recorded offline that has not reached the server yet. */
+.record-pending-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: rgb(var(--ink));
+  background: rgb(var(--gold) / 0.85);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  vertical-align: middle;
+}
+
+.offline-banner__pending {
+  white-space: nowrap;
+}
+
+:root[data-theme="light"] .records-chip:not(.is-active) {
+  color: rgb(var(--fg) / 0.7);
+  background: rgb(var(--surf) / 0.05);
+}
+
+:root[data-theme="light"] .records-search,
+:root[data-theme="light"] .records-filter__advanced select,
+:root[data-theme="light"] .records-filter__advanced input {
+  background: rgb(var(--card-base) / 0.7);
+}

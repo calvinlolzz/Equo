@@ -1,5 +1,12 @@
 import type { CreateGroupRequest } from "../contracts/schemas";
-import { createApiClient, type ArchivedGroupSummary, type BalanceSummary, type EquoApiClient, type GroupDetail } from "./apiClient";
+import {
+  createApiClient,
+  isNetworkError,
+  type ArchivedGroupSummary,
+  type BalanceSummary,
+  type EquoApiClient,
+  type GroupDetail,
+} from "./apiClient";
 import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
 import {
   draftToExpense,
@@ -9,7 +16,6 @@ import {
   toGroup,
   toGroupUiData,
   toMembers,
-  toSettlementTransferRequest,
 } from "./cloudAdapters";
 import type { Expense, Group, Member } from "./appTypes";
 import {
@@ -20,6 +26,17 @@ import {
   type GroupDetailAggregates,
 } from "./detailAggregates";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
+import {
+  appendWrite,
+  applyQueuedWrites,
+  findWrite,
+  isLocalExpenseId,
+  loadQueue,
+  newLocalExpenseId,
+  removeWrite,
+  saveQueue,
+  type QueuedWrite,
+} from "./offlineQueue";
 
 function emptyAggregates(): GroupDetailAggregates {
   return { expenseCount: 0, spendTotalMinor: 0, spendByDay: [], spendByCategory: [], memberDayShares: [] };
@@ -51,6 +68,10 @@ export type CloudGroupsState = {
   loadingGroupIds: Record<string, boolean>;
   /** Busy flags for loadMoreExpenses, keyed by groupId - see the records panel's 載入更多 button. */
   loadingMoreExpenseIds: Record<string, boolean>;
+  /** Expense writes made while the network was unreachable, waiting to be sent - see offlineQueue.ts. */
+  pendingWrites: QueuedWrite[];
+  /** True while flushPendingWrites is draining the queue. */
+  flushingWrites: boolean;
 };
 
 export type ApiClientLike = Pick<
@@ -110,6 +131,8 @@ function initialState(userId?: string, cacheStorage?: CacheStorage): CloudGroups
     loadingGroups: false,
     loadingGroupIds: {},
     loadingMoreExpenseIds: {},
+    pendingWrites: userId ? loadQueue(userId, cacheStorage) : [],
+    flushingWrites: false,
   };
 }
 
@@ -128,6 +151,13 @@ export type CreateCloudGroupsStoreOptions = {
   userId?: string;
   /** Injectable storage for tests; defaults to window.localStorage. */
   cacheStorage?: CacheStorage;
+  /**
+   * A queued offline write the server refused outright (validation, permission,
+   * the group was deleted meanwhile). It is dropped rather than retried forever,
+   * so the UI has to be able to say so - otherwise the entry just disappears on
+   * the next resync with no explanation.
+   */
+  onWriteDropped?: (write: QueuedWrite, error: unknown) => void;
 };
 
 /**
@@ -152,10 +182,17 @@ export type CreateCloudGroupsStoreOptions = {
  * fake api client (mirroring apiClient.test.ts) without any DOM/React
  * testing dependency. React components bind to it via subscribe().
  */
-export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, cacheStorage }: CreateCloudGroupsStoreOptions) {
+export function createCloudGroupsStore({
+  apiClient,
+  onSessionExpired,
+  userId,
+  cacheStorage,
+  onWriteDropped,
+}: CreateCloudGroupsStoreOptions) {
   let state = initialState(userId, cacheStorage);
   const listeners = new Set<() => void>();
   let persistTimeout: ReturnType<typeof setTimeout> | null = null;
+  let flushing = false;
 
   /** Debounced (~300ms) write-through of {groups, groupDetails} to the cloud cache. */
   function schedulePersist() {
@@ -278,6 +315,139 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     });
   }
 
+  /**
+   * Patch the cached detail with a single queued write, using the exact same
+   * fold applyQueuedWrites runs after a background refresh. Sharing the math
+   * is the point: the row and the totals the user sees the instant they hit
+   * 儲存 offline must survive a resync unchanged.
+   */
+  function applyWriteLocally(write: QueuedWrite) {
+    const current = state.groupDetails[write.groupId];
+    if (!current) return;
+    patchGroupDetail(write.groupId, applyQueuedWrites(current, [write]));
+  }
+
+  function persistQueue(writes: QueuedWrite[]): boolean {
+    if (!userId) return false;
+    if (!saveQueue(userId, writes, cacheStorage)) return false;
+    setState({ pendingWrites: writes });
+    return true;
+  }
+
+  /**
+   * Queue a write and echo it into the cache. Returns false when it could not
+   * be written down (no user, or localStorage is full - a queued receipt photo
+   * is the realistic cause), in which case the caller must surface the original
+   * failure rather than tell the user it is safely waiting to send.
+   */
+  function queueWrite(write: QueuedWrite): boolean {
+    if (!persistQueue(appendWrite(state.pendingWrites, write))) return false;
+    applyWriteLocally(write);
+    return true;
+  }
+
+  function dequeueWrite(expenseId: string) {
+    persistQueue(removeWrite(state.pendingWrites, expenseId));
+  }
+
+  /**
+   * Rewrite one cached expense row in place. Used after a queued write lands:
+   * a create's local- id has to become the real id (nothing server-side would
+   * recognise the local one, so a later edit or delete would 404), and a queued
+   * receipt photo's inline data URL becomes the uploaded URL.
+   */
+  function patchCachedExpense(groupId: string, expenseId: string, patch: Partial<Expense>) {
+    const current = state.groupDetails[groupId];
+    if (!current) return;
+    patchGroupDetail(groupId, {
+      expenses: current.expenses.map((expense) => (expense.id === expenseId ? { ...expense, ...patch } : expense)),
+    });
+  }
+
+  /** Send one queued write. Throws on failure so the caller can tell apart "still offline" from "rejected". */
+  async function sendQueuedWrite(write: QueuedWrite) {
+    if (write.kind === "delete") {
+      await apiClient.deleteExpense(write.groupId, write.expenseId, { client_request_id: write.clientRequestId });
+      return;
+    }
+
+    let request = write.request;
+    let uploadedImageUrl: string | undefined;
+    if (write.imageDataUrl) {
+      const { image } = await apiClient.uploadGroupImage(write.groupId, {
+        client_request_id: crypto.randomUUID(),
+        kind: "expense",
+        data_url: write.imageDataUrl,
+      });
+      uploadedImageUrl = image.url;
+      request = { ...request, image_url: image.url };
+    }
+
+    if (write.kind === "replace") {
+      await apiClient.replaceExpense(write.groupId, write.expenseId, request);
+      if (uploadedImageUrl) {
+        patchCachedExpense(write.groupId, write.expenseId, { imageUrl: uploadedImageUrl });
+      }
+      return;
+    }
+
+    const { expense } = await apiClient.createExpense(write.groupId, request);
+    patchCachedExpense(write.groupId, write.expenseId, {
+      id: expense.id,
+      ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}),
+    });
+  }
+
+  /**
+   * Drain the queue oldest-first. Stops at the first network failure (still
+   * offline - everything stays queued for the next attempt) and drops any write
+   * the server actively rejects, because replaying a rejected write forever
+   * would wedge every entry behind it.
+   *
+   * The frozen request payloads carry their original client_request_id, and
+   * create/replace/delete are all idempotent on it server-side, so a retry
+   * after an ambiguous failure returns the original row instead of duplicating.
+   */
+  async function flushPendingWrites() {
+    if (flushing) return;
+    if (state.pendingWrites.length === 0) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+    flushing = true;
+    setState({ flushingWrites: true });
+    const touchedGroupIds = new Set<string>();
+
+    try {
+      while (state.pendingWrites.length > 0) {
+        const write = state.pendingWrites[0];
+        try {
+          await sendQueuedWrite(write);
+        } catch (error) {
+          if (isNetworkError(error)) return;
+          if (isUnauthenticatedError(error)) {
+            onSessionExpired();
+            return;
+          }
+          onWriteDropped?.(write, error);
+        }
+        dequeueWrite(write.expenseId);
+        touchedGroupIds.add(write.groupId);
+      }
+    } finally {
+      flushing = false;
+      setState({ flushingWrites: false });
+      // Re-sync what the flush touched: any dropped write left the cache showing
+      // something the server never accepted, and even the happy path benefits
+      // from server-authoritative aggregates after a batch of offline edits.
+      if (touchedGroupIds.size > 0) {
+        refreshGroups().catch(() => {});
+        touchedGroupIds.forEach((groupId) => {
+          refreshGroupDetail(groupId).catch(() => {});
+        });
+      }
+    }
+  }
+
   async function refreshGroups() {
     setState({ loadingGroups: true });
     try {
@@ -294,7 +464,10 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     setGroupLoading(groupId, true);
     try {
       const detail: GroupDetail = await apiClient.getGroupDetail(groupId);
-      const data = toGroupUiData(detail);
+      // Server truth knows nothing about writes still sitting in the queue, so
+      // replay them on top - otherwise a background refresh makes every offline
+      // entry blink out of existence until the flush lands.
+      const data = applyQueuedWrites(toGroupUiData(detail), state.pendingWrites);
       setState({ groupDetails: { ...state.groupDetails, [groupId]: data } });
       return data;
     } catch (error) {
@@ -445,11 +618,36 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     }
   }
 
-  async function addExpense(groupId: string, draft: ExpenseDraft, groupCurrency: string) {
+  /**
+   * Add an expense, falling back to the offline queue when the request never
+   * reaches the server. The request payload is built once, up front, and the
+   * queued copy keeps its client_request_id - so the retry after reconnect is
+   * the same idempotent request, not a second expense.
+   */
+  async function addExpense(
+    groupId: string,
+    draft: ExpenseDraft,
+    groupCurrency: string,
+    expenseKind?: Expense["kind"],
+  ) {
+    const request = toCreateExpenseRequest(draft, groupCurrency);
     try {
-      const { expense } = await apiClient.createExpense(groupId, toCreateExpenseRequest(draft, groupCurrency));
-      applyNewExpense(groupId, draftToExpense(draft, expense));
+      const { expense } = await apiClient.createExpense(groupId, request);
+      applyNewExpense(groupId, draftToExpense(draft, expense, expenseKind));
     } catch (error) {
+      if (isNetworkError(error) && !isUnauthenticatedError(error)) {
+        const queued = queueWrite({
+          kind: "create",
+          groupId,
+          expenseId: newLocalExpenseId(),
+          queuedAt: new Date().toISOString(),
+          request,
+          draft: { ...draft, imageDataUrl: undefined },
+          expenseKind,
+          imageDataUrl: draft.imageDataUrl,
+        });
+        if (queued) return;
+      }
       resyncInBackground(groupId);
       handleError(error);
     }
@@ -470,12 +668,31 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
    * refetch.
    */
   async function editExpense(groupId: string, expenseId: string, draft: ExpenseDraft, groupCurrency: string) {
-    try {
-      const { expense } = await apiClient.replaceExpense(
+    const request = toCreateExpenseRequest(draft, groupCurrency);
+
+    const queueEdit = () =>
+      queueWrite({
+        kind: "replace",
         groupId,
         expenseId,
-        toCreateExpenseRequest(draft, groupCurrency),
-      );
+        queuedAt: new Date().toISOString(),
+        request,
+        draft: { ...draft, imageDataUrl: undefined },
+        imageDataUrl: draft.imageDataUrl,
+      });
+
+    // An expense that has never reached the server has no id to PUT against.
+    // The edit folds into its pending create instead (see appendWrite), which
+    // is also why this path never touches the network, online or not.
+    if (isLocalExpenseId(expenseId)) {
+      if (queueEdit()) return;
+      const error: Error & { code?: string } = new Error("Offline write could not be saved");
+      error.code = "NETWORK_ERROR";
+      throw error;
+    }
+
+    try {
+      const { expense } = await apiClient.replaceExpense(groupId, expenseId, request);
       const current = state.groupDetails[groupId];
       if (current) {
         const nextExpense = draftToExpense(draft, expense);
@@ -499,14 +716,29 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
         });
       }
     } catch (error) {
+      if (isNetworkError(error) && !isUnauthenticatedError(error) && queueEdit()) return;
       resyncInBackground(groupId);
       handleError(error);
     }
   }
 
   async function deleteExpense(groupId: string, expenseId: string) {
+    const clientRequestId = crypto.randomUUID();
+
+    const queueDelete = () =>
+      queueWrite({ kind: "delete", groupId, expenseId, queuedAt: new Date().toISOString(), clientRequestId });
+
+    // Deleting something that never reached the server just retracts its
+    // pending create - appendWrite drops both, and no request is ever made.
+    if (isLocalExpenseId(expenseId)) {
+      if (queueDelete()) return;
+      const error: Error & { code?: string } = new Error("Offline write could not be saved");
+      error.code = "NETWORK_ERROR";
+      throw error;
+    }
+
     try {
-      await apiClient.deleteExpense(groupId, expenseId, { client_request_id: crypto.randomUUID() });
+      await apiClient.deleteExpense(groupId, expenseId, { client_request_id: clientRequestId });
       const current = state.groupDetails[groupId];
       if (current) {
         const removedExpense = current.expenses.find((expense) => expense.id === expenseId);
@@ -522,20 +754,17 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
         });
       }
     } catch (error) {
+      if (isNetworkError(error) && !isUnauthenticatedError(error) && queueDelete()) return;
       resyncInBackground(groupId);
       handleError(error);
     }
   }
 
-  async function settleTransfer(groupId: string, fromId: string, toId: string, amountMinor: number, currency: string) {
-    try {
-      const { expense } = await apiClient.createExpense(groupId, toSettlementTransferRequest(fromId, toId, amountMinor, currency));
-      const draft = settlementTransferToDraft(fromId, toId, amountMinor);
-      applyNewExpense(groupId, draftToExpense(draft, expense, "settlement"));
-    } catch (error) {
-      resyncInBackground(groupId);
-      handleError(error);
-    }
+  function settleTransfer(groupId: string, fromId: string, toId: string, amountMinor: number, currency: string) {
+    // Routed through addExpense so a settlement made offline queues exactly
+    // like any other entry; toSettlementTransferRequest's payload is what
+    // toCreateExpenseRequest produces for this draft.
+    return addExpense(groupId, settlementTransferToDraft(fromId, toId, amountMinor), currency, "settlement");
   }
 
   /**
@@ -647,6 +876,8 @@ export function createCloudGroupsStore({ apiClient, onSessionExpired, userId, ca
     deleteExpense,
     loadMoreExpenses,
     settleTransfer,
+    flushPendingWrites,
+    hasPendingWrite: (expenseId: string) => Boolean(findWrite(state.pendingWrites, expenseId)),
     createInvite,
     acceptInvite,
     uploadGroupImage,
