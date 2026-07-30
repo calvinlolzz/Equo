@@ -107,7 +107,10 @@ export async function createExpenseRoute(
       request,
     );
 
-    return { ok: true, status: 201, body: { expense } };
+    // actorUserId rides along so the caller can fan out notifications without
+    // verifying the session a second time. Not part of the HTTP body - the
+    // runtime reads it off the result and drops it.
+    return { ok: true, status: 201, body: { expense }, actorUserId: auth.context.user.id };
   } catch (error) {
     return writeErrorResponse(error, request.client_request_id);
   }

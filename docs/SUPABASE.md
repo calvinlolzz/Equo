@@ -78,6 +78,27 @@ GOOGLE_OAUTH_CLIENT_ID=你的 OAuth client ID
 SESSION_SECRET=夠長的隨機字串
 ```
 
+**推播通知（選填，少了只是不發通知，API 不受影響）：**
+
+```text
+VAPID_PUBLIC_KEY=base64url 公鑰（87 字元）
+VAPID_PRIVATE_KEY=base64url 私鑰（43 字元）
+VAPID_SUBJECT=mailto:你的信箱      # 選填，預設用站台網址
+```
+
+兩把都設才會啟用：只設公鑰的話 UI 會讓人打開開關、卻永遠收不到通知，所以
+`readVapidKeys()` 要求成對出現，否則整個功能維持關閉（`GET /api/v1/push/public-key`
+會回 `{"enabled": false}`，前端就顯示「這個站台尚未啟用通知」）。
+
+金鑰是一組 P-256 keypair，自己產、不需要任何第三方服務：
+
+```bash
+node -e "const{generateKeyPairSync}=require('crypto');const{publicKey,privateKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'});const s=publicKey.export({type:'spki',format:'der'});const k=privateKey.export({type:'pkcs8',format:'der'});console.log('VAPID_PUBLIC_KEY=',s.subarray(s.length-65).toString('base64url'));console.log('VAPID_PRIVATE_KEY=',k.subarray(36,68).toString('base64url'))"
+```
+
+公鑰會被送到瀏覽器（本來就是公開的一半），私鑰只存在伺服器端。**換掉這組金鑰會讓所有既有
+訂閱失效**，使用者要重新開啟通知，所以不要隨手輪替。
+
 **前端 build 需要（就這一個）：**
 
 ```text
