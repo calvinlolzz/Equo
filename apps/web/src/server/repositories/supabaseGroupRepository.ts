@@ -229,17 +229,37 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
         return [];
       }
 
-      return client.select<GroupRecord>(
-        "groups",
-        query(
-          columns(GROUP_COLUMNS),
-          inList("id", groupIds),
-          isNull("archived_at"),
-          isNull("deleted_at"),
-          order("updated_at.desc,created_at.desc"),
-          limit(GROUP_LIST_LIMIT),
+      const [groups, unread] = await Promise.all([
+        client.select<GroupRecord>(
+          "groups",
+          query(
+            columns(GROUP_COLUMNS),
+            inList("id", groupIds),
+            isNull("archived_at"),
+            isNull("deleted_at"),
+            order("updated_at.desc,created_at.desc"),
+            limit(GROUP_LIST_LIMIT),
+          ),
         ),
-      );
+        // Decorating the list rather than a second endpoint: the badge is only
+        // ever wanted next to the row it belongs to, and a separate request
+        // would mean the list can render with the dots missing.
+        client.rpc<Array<{ group_id: string; unread_count: number }>>("group_unread_counts", {
+          p_user: context.user.id,
+        }),
+      ]);
+
+      const unreadByGroupId = new Map((unread ?? []).map((row) => [row.group_id, row.unread_count]));
+
+      return groups.map((group) => ({ ...group, unread_count: unreadByGroupId.get(group.id) ?? 0 }));
+    },
+
+    async markGroupRead(context: AuthenticatedContext, groupId: string) {
+      const result = await client.rpc<{ group_id: string; last_read_at: string } | null>("mark_group_read", {
+        p_user: context.user.id,
+        p_group_id: groupId,
+      });
+      return result ?? null;
     },
 
     async listArchivedGroups(context: AuthenticatedContext) {

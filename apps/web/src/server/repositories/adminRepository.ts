@@ -37,6 +37,13 @@ export type AdminHealthRecord = {
     last_24h: number;
     last_7d: number;
     latest_at: string | null;
+    /**
+     * Distinct errors from the last 30 days still marked open. The unit an
+     * inbox needs - "312 occurrences" says nothing about whether anyone has
+     * looked at them. Optional so a console deployed ahead of the migration
+     * that adds it renders without the tile rather than crashing.
+     */
+    open_groups?: number;
   };
   feedback: {
     /** app_feedback rows still in the 'new' status. */

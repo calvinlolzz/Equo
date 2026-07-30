@@ -10,6 +10,7 @@ import {
   handleGetGroupDetail,
   handleListArchivedGroups,
   handleListGroups,
+  handleMarkGroupRead,
   handleRemoveGroupMember,
   handleRenameGroupMember,
   handleUnarchiveGroup,
@@ -29,6 +30,9 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
   return {
     async listGroups() {
       return [{ id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" }];
+    },
+    async markGroupRead(_context, groupId) {
+      return { group_id: groupId, last_read_at: "2026-07-30T00:00:00.000Z" };
     },
     async listArchivedGroups() {
       return [
@@ -225,6 +229,26 @@ describe("group handlers", () => {
     expect(result.ok && result.body).toMatchObject({
       groups: [{ id: "group_1", name: "Tokyo Trip" }],
     });
+  });
+
+  test("marking a group read reports what was stamped", async () => {
+    const result = await handleMarkGroupRead(makeRepository(), context, "group_1", "req_read");
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({ group_id: "group_1" });
+  });
+
+  test("marking a group read is forbidden for a non-member, not a silent success", async () => {
+    const repository = makeRepository({
+      async markGroupRead() {
+        return null;
+      },
+    });
+
+    const result = await handleMarkGroupRead(repository, context, "group_x", "req_read");
+
+    expect(result.status).toBe(403);
+    expect(!result.ok && result.body.error.code).toBe("FORBIDDEN");
   });
 
   test("lists archived groups for the current user", async () => {

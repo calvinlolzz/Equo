@@ -26,6 +26,7 @@ import {
   handleGetGroupDetail,
   handleListArchivedGroups,
   handleListGroups,
+  handleMarkGroupRead,
   handleRemoveGroupMember,
   handleRenameGroupMember,
   handleUnarchiveGroup,
@@ -60,6 +61,16 @@ export async function listGroupsRoute(options: RouteOptions) {
   }
 
   return handleListGroups(createSupabaseGroupRepository(options.client), auth.context);
+}
+
+export async function markGroupReadRoute(options: RouteOptions, groupId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleMarkGroupRead(createSupabaseGroupRepository(options.client), auth.context, groupId);
 }
 
 export async function listArchivedGroupsRoute(options: RouteOptions) {

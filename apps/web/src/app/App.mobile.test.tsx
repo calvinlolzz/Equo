@@ -159,7 +159,9 @@ describe("the bottom tab bar", () => {
     // the records panel, so finding it inside that dialog proves the tab wired
     // through to the right panel.
     const panel = await screen.findByRole("dialog", { name: app.groupHome });
-    expect(within(panel).getByText(app.exportCsv)).toBeTruthy();
+    // findBy, not getBy: the panel's own chunk is lazy (see App.tsx), so the
+    // dialog frame is on screen a tick before its contents are.
+    expect(await within(panel).findByText(app.exportCsv)).toBeTruthy();
   });
 });
 

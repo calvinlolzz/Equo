@@ -141,6 +141,211 @@
   color: #ffffff;
 }
 
+/* ⌘K trigger. Looks like a search field rather than a button because that is
+   what it opens, and because a keyboard shortcut nobody can see is a shortcut
+   nobody uses. */
+.admin-palette-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #8a8f98;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-palette-trigger:hover {
+  border-color: #b9bfc7;
+  color: #5b6069;
+}
+
+.admin-palette-trigger span {
+  flex: 1;
+}
+
+.admin-palette-trigger kbd {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid #e3e6ea;
+  border-radius: 4px;
+}
+
+/* Backlog count on a nav item. */
+.admin-nav__badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #b3261e;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-nav__item--active .admin-nav__badge {
+  background: #ffffff;
+  color: #1c1f23;
+}
+
+/* ---- Inbox ---- */
+
+.admin-inbox {
+  margin-bottom: 22px;
+}
+
+.admin-inbox__clear {
+  margin: 0;
+  color: #5b6069;
+}
+
+.admin-inbox__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-inbox__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid #e3e6ea;
+  border-radius: 10px;
+  background: #ffffff;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Non-actionable rows (a stale backup) are spans, not buttons. */
+span.admin-inbox__item {
+  cursor: default;
+}
+
+button.admin-inbox__item:hover {
+  border-color: #b9bfc7;
+}
+
+.admin-inbox__count {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-inbox__item--warn {
+  border-color: #e6cf9a;
+  background: #fdf8ec;
+}
+
+.admin-inbox__item--bad {
+  border-color: #f0c0bc;
+  background: #fdf3f2;
+}
+
+/* ---- Command palette ---- */
+
+.admin-palette {
+  width: min(560px, 100%);
+  padding: 0;
+  overflow: hidden;
+}
+
+.admin-palette__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef0f3;
+  color: #8a8f98;
+}
+
+.admin-palette__search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  /* Not `inherit`: the row is dimmed for the icon and the 搜尋中 label, and
+     the text being typed should not be. */
+  color: #1c1f23;
+  font-size: 15px;
+}
+
+.admin-palette__status {
+  font-size: 12px;
+}
+
+.admin-palette__list {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.admin-palette__heading {
+  margin: 8px 8px 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #8a8f98;
+}
+
+.admin-palette__item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-palette__item--active {
+  background: #eef0f3;
+}
+
+.admin-palette__label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-palette__hint {
+  flex: 1;
+  min-width: 0;
+  color: #8a8f98;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-palette__empty {
+  padding: 18px 10px;
+  text-align: center;
+  color: #8a8f98;
+}
+
 .admin-sidebar__footer {
   margin-top: auto;
   padding: 12px 10px 0;
@@ -801,9 +1006,45 @@
   .admin-group-card,
   .admin-modal__panel,
   .admin-table-wrap,
+  .admin-palette-trigger,
+  .admin-inbox__item,
   .admin-sidebar {
     background: #1e2126;
     border-color: #2c3037;
+  }
+
+  /* The two attention states keep their tint in dark mode; without this they
+     collapse into the same neutral card as everything else and the inbox stops
+     saying which one is worse. */
+  .admin-inbox__item--warn {
+    border-color: #6b5a31;
+    background: #2a2419;
+  }
+
+  .admin-inbox__item--bad {
+    border-color: #6b3531;
+    background: #2a1e1d;
+  }
+
+  .admin-palette__search {
+    border-bottom-color: #2c3037;
+  }
+
+  .admin-palette__search input {
+    color: #e6e8eb;
+  }
+
+  .admin-palette__item--active {
+    background: #262a30;
+  }
+
+  .admin-palette-trigger kbd {
+    border-color: #2c3037;
+  }
+
+  .admin-nav__item--active .admin-nav__badge {
+    background: #16181c;
+    color: #e6e8eb;
   }
 
   .admin-gate__link,
@@ -838,6 +1079,10 @@
   .admin-modal__subheading,
   .admin-table__submeta,
   .admin-error-card__meta,
+  .admin-inbox__clear,
+  .admin-palette__heading,
+  .admin-palette__hint,
+  .admin-palette__empty,
   .admin-user-card__email {
     color: #a2a7b0;
   }

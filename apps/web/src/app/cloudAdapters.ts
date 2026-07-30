@@ -30,6 +30,11 @@ export function toGroup(summary: GroupSummary): Group {
     name: summary.name,
     currency: summary.currency,
     coverImageUrl: summary.cover_image_url ?? undefined,
+    // Only spread when the server sent one. Absent means "this payload does
+    // not know" (a detail read, a create response) rather than "zero unread",
+    // so a group written back from one of those cannot silently clear a badge
+    // the list had put there.
+    ...(summary.unread_count === undefined ? {} : { unreadCount: summary.unread_count }),
   };
 }
 

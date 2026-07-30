@@ -16,6 +16,12 @@ export type GroupRecord = {
   currency: string;
   owner_member_id: string;
   cover_image_url?: string | null;
+  /**
+   * Entries recorded by somebody else since the caller last opened this group.
+   * Only listGroups fills it in - every other read leaves it undefined, since
+   * "unread" is a property of a row in a list, not of the group itself.
+   */
+  unread_count?: number;
 };
 
 export type ArchivedGroupRecord = {
@@ -105,6 +111,14 @@ export type GroupDetailRecord = {
 
 export type GroupRepository = {
   listGroups(context: AuthenticatedContext): Promise<GroupRecord[]>;
+  /**
+   * Stamp "the caller has now seen this group", clearing its unread count.
+   * Returns null when they are not an active member of it.
+   */
+  markGroupRead(
+    context: AuthenticatedContext,
+    groupId: string,
+  ): Promise<{ group_id: string; last_read_at: string } | null>;
   listArchivedGroups(context: AuthenticatedContext): Promise<ArchivedGroupRecord[]>;
   listMembers(groupId: string): Promise<GroupMemberRecord[]>;
   getGroupDetail(context: AuthenticatedContext, groupId: string): Promise<GroupDetailRecord | null>;

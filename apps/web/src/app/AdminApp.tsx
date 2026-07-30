@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, Search, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
@@ -45,6 +45,7 @@ import {
   formatDateTime,
   formatExpenseAmount,
   healthTiles,
+  inboxItems,
   inviteStatus,
   inviteStatusLabel,
   overviewTiles,
@@ -58,11 +59,13 @@ import {
 } from "./adminDashboard";
 import {
   ADMIN_PAGE_SIZE,
+  ADMIN_TAB_LABELS,
   routeOffset,
   TREND_WINDOWS,
   type AdminRoute,
   type AdminTab,
 } from "./adminRoute";
+import { AdminCommandPalette } from "./AdminCommandPalette";
 import { useAdminRoute } from "./useAdminRoute";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
@@ -136,6 +139,41 @@ export function AdminApp() {
   const [access, setAccess] = useState<AccessState>(session ? "checking" : "no-session");
   const [me, setMe] = useState<AdminMeSummary | null>(null);
   const [route, navigate] = useAdminRoute();
+  // Loaded once here rather than inside the overview, because the sidebar
+  // badges need the same numbers and a second request for them would be the
+  // same data twice.
+  const [health, setHealth] = useState<AdminHealthSummary | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    if (!client) return;
+    let cancelled = false;
+    client
+      .adminHealth()
+      .then((result) => {
+        if (!cancelled) setHealth(result);
+      })
+      .catch(() => {
+        // Non-fatal: the console works without its badges.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  // ⌘K anywhere in the console, Ctrl+K off a Mac. Bound on the window rather
+  // than a container so it works with focus anywhere, including inside a
+  // panel's own search box.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!client) return;
@@ -191,18 +229,18 @@ export function AdminApp() {
   // the screen honest about what the account can reach.
   const tab: AdminTab = route.tab === "admins" && me?.role !== "owner" ? "overview" : route.tab;
 
-  const navItems: Array<{ key: AdminTab; label: string; icon: typeof LayoutDashboard }> = [
-    { key: "overview", label: "總覽", icon: LayoutDashboard },
-    { key: "users", label: "使用者", icon: UsersRound },
-    { key: "groups", label: "群組", icon: WalletCards },
-    { key: "feedback", label: "回饋", icon: MessageSquareText },
-    { key: "errors", label: "錯誤", icon: Bug },
-    { key: "audit", label: "稽核", icon: ScrollText },
+  const navItems: Array<{ key: AdminTab; icon: typeof LayoutDashboard; badge?: number }> = [
+    { key: "overview", icon: LayoutDashboard },
+    { key: "users", icon: UsersRound },
+    { key: "groups", icon: WalletCards },
+    // The two tabs with a queue behind them carry their backlog in the nav, so
+    // nobody has to open them to find out there is nothing to do.
+    { key: "feedback", icon: MessageSquareText, badge: health?.feedback.open },
+    { key: "errors", icon: Bug, badge: health?.errors.open_groups },
+    { key: "audit", icon: ScrollText },
     // Managing admins is owner-only; the server enforces it too, this just
     // hides a tab that would 403 anyway.
-    ...(me?.role === "owner"
-      ? [{ key: "admins" as const, label: "管理員", icon: ShieldCheck }]
-      : []),
+    ...(me?.role === "owner" ? [{ key: "admins" as const, icon: ShieldCheck }] : []),
   ];
 
   return (
@@ -218,6 +256,12 @@ export function AdminApp() {
           </span>
         </div>
 
+        <button className="admin-palette-trigger" type="button" onClick={() => setPaletteOpen(true)}>
+          <Search aria-hidden="true" size={15} />
+          <span>快速搜尋</span>
+          <kbd>⌘K</kbd>
+        </button>
+
         <nav className="admin-nav" aria-label="後台功能">
           <p className="admin-nav__section">平台</p>
           {navItems.map((item) => {
@@ -230,7 +274,8 @@ export function AdminApp() {
                 onClick={() => navigate({ tab: item.key })}
               >
                 <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
-                <span>{item.label}</span>
+                <span>{ADMIN_TAB_LABELS[item.key]}</span>
+                {item.badge ? <span className="admin-nav__badge">{item.badge > 99 ? "99+" : item.badge}</span> : null}
               </button>
             );
           })}
@@ -245,7 +290,9 @@ export function AdminApp() {
       </aside>
 
       <main className="admin-main">
-        {tab === "overview" && <OverviewPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "overview" && (
+          <OverviewPanel client={client} route={route} onNavigate={navigate} health={health} />
+        )}
         {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} />}
         {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} />}
         {tab === "feedback" && <FeedbackPanel client={client} route={route} onNavigate={navigate} />}
@@ -253,6 +300,15 @@ export function AdminApp() {
         {tab === "audit" && <AuditPanel client={client} route={route} onNavigate={navigate} />}
         {tab === "admins" && <AdminsPanel client={client} meUserId={me?.user.id ?? ""} />}
       </main>
+
+      {paletteOpen && (
+        <AdminCommandPalette
+          client={client}
+          canManageAdmins={me?.role === "owner"}
+          onNavigate={navigate}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -314,12 +370,11 @@ function TrendChartCard({ trends }: { trends: AdminTrendsSummary }) {
   );
 }
 
-function OverviewPanel({ client, route, onNavigate }: PanelProps) {
+function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { health: AdminHealthSummary | null }) {
   const [overview, setOverview] = useState<AdminOverviewSummary | null>(null);
   const [storage, setStorage] = useState<AdminStorageSummary | null>(null);
   const [trends, setTrends] = useState<AdminTrendsSummary | null>(null);
   const trendDays = route.days;
-  const [health, setHealth] = useState<AdminHealthSummary | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -342,14 +397,6 @@ function OverviewPanel({ client, route, onNavigate }: PanelProps) {
       })
       .catch(() => {
         /* non-fatal: overview still renders without the storage tiles */
-      });
-    client
-      .adminHealth()
-      .then((result) => {
-        if (!cancelled) setHealth(result);
-      })
-      .catch(() => {
-        /* non-fatal */
       });
     return () => {
       cancelled = true;
@@ -374,8 +421,43 @@ function OverviewPanel({ client, route, onNavigate }: PanelProps) {
   if (error) return <p className="admin-error">{error}</p>;
   if (!overview) return <p className="admin-loading">載入中…</p>;
 
+  const inbox = health ? inboxItems(health, Date.now()) : [];
+
   return (
     <section aria-label="總覽">
+      {health && (
+        <section className="admin-inbox" aria-label="今天要處理">
+          <h3 className="admin-subheading">今天要處理</h3>
+          {inbox.length === 0 ? (
+            <p className="admin-inbox__clear">沒有待處理的事。</p>
+          ) : (
+            <ul className="admin-inbox__list">
+              {inbox.map((item) => {
+                const target = item.route;
+                return (
+                <li key={item.key}>
+                  {target ? (
+                    <button
+                      type="button"
+                      className={`admin-inbox__item admin-inbox__item--${item.tone}`}
+                      onClick={() => onNavigate({ tab: target.tab, status: target.status })}
+                    >
+                      <span className="admin-inbox__count">{item.count}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ) : (
+                    <span className={`admin-inbox__item admin-inbox__item--${item.tone}`}>
+                      <span>{item.label}</span>
+                    </span>
+                  )}
+                </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
       <div className="admin-tiles">
         {overviewTiles(overview).map((tile) => (
           <article key={tile.key} className="admin-tile">

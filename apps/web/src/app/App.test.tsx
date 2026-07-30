@@ -658,3 +658,67 @@ describe("repeating an expense", () => {
     expect(screen.queryByRole("button", { name: UI_TEXT.app.duplicateExpense })).toBeNull();
   });
 });
+
+describe("unread badges on the group list", () => {
+  const tokyo = group();
+  const osaka = group({ id: "group_2", name: "大阪旅行" });
+
+  function signInWithUnread(unread: number) {
+    signIn();
+    return fakeApi([
+      {
+        route: "GET /groups",
+        body: { groups: [{ ...tokyo, unread_count: 0 }, { ...osaka, unread_count: unread }] },
+      },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "GET /groups/group_2", body: groupDetail({ group: osaka }) },
+      { route: "POST /groups/group_2/read", body: { group_id: "group_2", last_read_at: "2026-07-30T00:00:00.000Z" } },
+    ]);
+  }
+
+  test("a group somebody else added to shows how many entries are new", async () => {
+    signInWithUnread(3);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    const osakaRow = within(rail).getByText("大阪旅行").closest("button") as HTMLElement;
+
+    expect(within(osakaRow).getByText("3")).toBeTruthy();
+    // The group being looked at is not badged - it is about to be read.
+    const tokyoRow = within(rail).getByText("東京旅行").closest("button") as HTMLElement;
+    expect(within(tokyoRow).queryByText("0")).toBeNull();
+  });
+
+  test("opening the group clears the badge and tells the server", async () => {
+    const api = signInWithUnread(3);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    fireEvent.click(within(rail).getByText("大阪旅行").closest("button") as HTMLElement);
+
+    await waitFor(() => expect(api.calls).toContain("POST /groups/group_2/read"));
+    // Cleared locally too, without waiting for the next list refresh.
+    await waitFor(() => expect(within(rail).queryByText("3")).toBeNull());
+  });
+
+  test("a failed mark-read still clears the badge for this visit", async () => {
+    signIn();
+    // No POST route: fetch rejects, which is what an unreachable server looks
+    // like to the api client.
+    fakeApi([
+      { route: "GET /groups", body: { groups: [{ ...tokyo, unread_count: 0 }, { ...osaka, unread_count: 2 }] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "GET /groups/group_2", body: groupDetail({ group: osaka }) },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    fireEvent.click(within(rail).getByText("大阪旅行").closest("button") as HTMLElement);
+
+    // No toast, no stuck badge: this is a nicety, not the user's data.
+    await waitFor(() => expect(within(rail).queryByText("2")).toBeNull());
+  });
+});

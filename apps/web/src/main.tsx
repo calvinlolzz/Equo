@@ -5,7 +5,6 @@ import "./app/App.css";
 import { App } from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { installErrorReporter } from "./app/errorReporter";
-import { GlassBackground } from "./app/GlassBackground";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { initTheme } from "./app/themeStore";
 
@@ -24,6 +23,15 @@ if (!root) {
 // backdrop entirely.
 const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 const AdminApp = React.lazy(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
+
+// The animated backdrop is decoration: a WebGL shader that nobody interacts
+// with and that the app is fully usable without. Loading it in the entry chunk
+// meant the first screen waited on it; as a lazy sibling it arrives a beat
+// later behind an already-interactive page, and the CSS gradient underneath
+// covers the gap.
+const GlassBackground = React.lazy(() =>
+  import("./app/GlassBackground").then((module) => ({ default: module.GlassBackground })),
+);
 
 // Apply the persisted day/night theme to <html> before first paint (no flash).
 // The admin console keeps its own dark styling, so skip theming there.
@@ -46,7 +54,9 @@ createRoot(root).render(
       </ErrorBoundary>
     ) : (
       <>
-        <GlassBackground />
+        <Suspense fallback={null}>
+          <GlassBackground />
+        </Suspense>
         <ErrorBoundary source="web">
           <App />
         </ErrorBoundary>
