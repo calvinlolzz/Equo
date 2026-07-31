@@ -75,6 +75,34 @@ export function decodeVapidKey(base64Url: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/**
+ * Resolve `promise`, or give up after `ms` and answer null.
+ *
+ * Exists for `navigator.serviceWorker.ready`, which is a promise that resolves
+ * when a worker becomes active and OTHERWISE NEVER SETTLES - it does not
+ * reject, it does not time out. Awaiting it bare means a registration that
+ * silently failed (a private window, a blocked SW, a botched update) leaves the
+ * switch spinning forever with nothing on screen to explain it.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), ms);
+    }),
+  ]);
+}
+
+/** How long to wait for an active service worker before treating it as absent. */
+export const SERVICE_WORKER_READY_TIMEOUT_MS = 8_000;
+
+export function readyServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return Promise.resolve(null);
+  }
+  return withTimeout(navigator.serviceWorker.ready, SERVICE_WORKER_READY_TIMEOUT_MS);
+}
+
 export type SerializedSubscription = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
@@ -121,7 +149,7 @@ export async function detectPushSubscriptionState({
   fetchPublicKey,
   support = detectPushSupport(),
   permission = typeof Notification === "undefined" ? "default" : Notification.permission,
-  getSubscription = async () => (await navigator.serviceWorker.ready).pushManager.getSubscription(),
+  getSubscription = async () => (await readyServiceWorker())?.pushManager.getSubscription() ?? null,
 }: {
   fetchPublicKey: () => Promise<{ enabled: boolean; public_key?: string }>;
   support?: PushSupport;

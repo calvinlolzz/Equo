@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { describePushState, detectPushSubscriptionState, type PushState } from "./pushNotifications";
+import {
+  describePushState,
+  detectPushSubscriptionState,
+  withTimeout,
+  type PushState,
+} from "./pushNotifications";
 
 const enabledKey = async () => ({ enabled: true, public_key: "BEYD" });
 
@@ -97,5 +102,18 @@ describe("describePushState", () => {
   test("the blocked and iPhone cases explain what to do about it", () => {
     expect(describePushState("denied")).toContain("設定");
     expect(describePushState("needs-install")).toContain("主畫面");
+  });
+});
+
+describe("withTimeout", () => {
+  test("passes the value through when it arrives in time", async () => {
+    await expect(withTimeout(Promise.resolve("ready"), 50)).resolves.toBe("ready");
+  });
+
+  test("gives up on a promise that never settles", async () => {
+    // navigator.serviceWorker.ready is exactly this: it resolves when a worker
+    // activates and otherwise never settles - no rejection, no timeout. Awaiting
+    // it bare is what leaves the switch spinning forever.
+    await expect(withTimeout(new Promise(() => {}), 10)).resolves.toBeNull();
   });
 });

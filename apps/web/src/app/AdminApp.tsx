@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, Search, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
@@ -129,6 +129,13 @@ type PanelProps = {
   client: EquoApiClient;
   route: AdminRoute;
   onNavigate: (patch: Partial<AdminRoute>) => void;
+  /**
+   * "Something I just did changed a backlog count." Re-reads the health
+   * payload the sidebar badges and the overview inbox are drawn from, so
+   * clearing the last piece of feedback empties its badge on the spot rather
+   * than at the next full page load.
+   */
+  onCountsChanged?: () => void;
 };
 
 export function AdminApp() {
@@ -145,21 +152,17 @@ export function AdminApp() {
   const [health, setHealth] = useState<AdminHealthSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  useEffect(() => {
+  const reloadHealth = useCallback(() => {
     if (!client) return;
-    let cancelled = false;
     client
       .adminHealth()
-      .then((result) => {
-        if (!cancelled) setHealth(result);
-      })
+      .then(setHealth)
       .catch(() => {
         // Non-fatal: the console works without its badges.
       });
-    return () => {
-      cancelled = true;
-    };
   }, [client]);
+
+  useEffect(reloadHealth, [reloadHealth]);
 
   // ⌘K anywhere in the console, Ctrl+K off a Mac. Bound on the window rather
   // than a container so it works with focus anywhere, including inside a
@@ -295,8 +298,12 @@ export function AdminApp() {
         )}
         {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} />}
         {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} />}
-        {tab === "feedback" && <FeedbackPanel client={client} route={route} onNavigate={navigate} />}
-        {tab === "errors" && <ErrorsPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "feedback" && (
+          <FeedbackPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
+        )}
+        {tab === "errors" && (
+          <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
+        )}
         {tab === "audit" && <AuditPanel client={client} route={route} onNavigate={navigate} />}
         {tab === "admins" && <AdminsPanel client={client} meUserId={me?.user.id ?? ""} />}
       </main>
@@ -1474,7 +1481,7 @@ const FEEDBACK_STATUS_LABELS: Record<string, string> = {
   done: "已完成",
 };
 
-function FeedbackPanel({ client, route, onNavigate }: PanelProps) {
+function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProps) {
   const statusFilter = route.status;
   const offset = routeOffset(route);
   const [state, setState] = useState<ListState<AdminFeedbackPage>>({ page: null, loading: true, error: "" });
@@ -1502,6 +1509,7 @@ function FeedbackPanel({ client, route, onNavigate }: PanelProps) {
     try {
       await client.adminSetFeedbackStatus(feedbackId, status);
       setReloadKey((key) => key + 1);
+      onCountsChanged?.();
     } catch {
       setState((current) => ({ ...current, error: "狀態更新失敗，請稍後再試。" }));
     } finally {
@@ -1614,7 +1622,7 @@ const ERROR_STATUS_CHIPS = [
  * something matters - how often, and to how many people - and a status, so a
  * handled problem can be put away instead of scrolling forever.
  */
-function ErrorsPanel({ client, route, onNavigate }: PanelProps) {
+function ErrorsPanel({ client, route, onNavigate, onCountsChanged }: PanelProps) {
   const [searchInput, setSearchInput] = useState(route.search);
   const [state, setState] = useState<ListState<AdminErrorGroupPage>>({ page: null, loading: true, error: "" });
   const [busyFingerprint, setBusyFingerprint] = useState("");
@@ -1650,6 +1658,7 @@ function ErrorsPanel({ client, route, onNavigate }: PanelProps) {
     try {
       await client.adminSetErrorGroupStatus(group.fingerprint, status);
       setReloadKey((key) => key + 1);
+      onCountsChanged?.();
     } catch {
       setState((current) => ({ ...current, error: "狀態更新失敗，請稍後再試。" }));
     } finally {
