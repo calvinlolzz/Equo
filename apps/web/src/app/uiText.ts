@@ -14,6 +14,7 @@ export const UI_TEXT = {
     analysis: "分析",
     members: "群組成員",
     groupList: "群組列表",
+    unreadEntries: "筆新記錄",
     refresh: "重新整理",
     createGroup: "建立群組",
     joinGroup: "加入群組",

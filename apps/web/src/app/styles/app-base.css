@@ -694,6 +694,46 @@ label span {
   min-width: 0;
 }
 
+/* "N 筆新的" on a group row. Pushed to the right edge by margin-left:auto so
+   it sits opposite the name however long the name is. Uses --gold rather than
+   a red: nothing here is an error, it is "there is something to look at", and
+   gold is already this app's attention colour. */
+.group-item-unread {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 22px;
+  padding: 0 7px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(var(--gold));
+  color: rgb(var(--ink));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Same signal on the mobile top bar, where the group list is behind a drawer.
+   Positioned against the button, which needs a containing block for it. */
+.top-bar-icon-button {
+  position: relative;
+}
+
+.top-bar-unread-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(var(--gold));
+  /* Reads as a dot on the button rather than a smudge on whatever is behind it. */
+  box-shadow: 0 0 0 2px var(--page-1);
+}
+
 .group-item-text span {
   color: rgb(var(--fg) / 0.58);
   font-size: 13px;

@@ -179,6 +179,66 @@ export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTi
   ];
 }
 
+export type InboxItem = {
+  key: string;
+  label: string;
+  /** How many of them, or null for a condition with no count (a stale backup). */
+  count: number | null;
+  /** Where to go to deal with it; null when there is nowhere in the console to go. */
+  route: { tab: "feedback" | "errors"; status: string } | null;
+  tone: "warn" | "bad";
+};
+
+/**
+ * "What needs a person today", derived from the same health payload the tiles
+ * use.
+ *
+ * The tiles answer "is everything fine" and are always all four present; this
+ * answers "what do I do now" and is empty on a good day - which is the point.
+ * Nothing here is new data: it is the difference between a dashboard you read
+ * and a list you work through.
+ */
+export function inboxItems(health: AdminHealthSummary, nowMs: number): InboxItem[] {
+  const items: InboxItem[] = [];
+
+  if (health.feedback.open > 0) {
+    items.push({
+      key: "feedback",
+      label: "未處理回饋",
+      count: health.feedback.open,
+      route: { tab: "feedback", status: "new" },
+      tone: "warn",
+    });
+  }
+
+  const openErrorGroups = health.errors.open_groups ?? 0;
+  if (openErrorGroups > 0) {
+    items.push({
+      key: "errors",
+      label: "未處理錯誤",
+      count: openErrorGroups,
+      // Distinct errors, not occurrences: ten of one bug is one thing to fix.
+      route: { tab: "errors", status: "open" },
+      tone: openErrorGroups >= 5 ? "bad" : "warn",
+    });
+  }
+
+  const backupAgeHours = health.backup ? (nowMs - Date.parse(health.backup.last_success_at)) / 3_600_000 : null;
+  if (backupAgeHours === null || backupAgeHours > BACKUP_STALE_HOURS) {
+    items.push({
+      key: "backup",
+      label: backupAgeHours === null ? "從未成功備份" : "備份已逾時",
+      count: null,
+      // Fixed in GitHub Actions, not in here - so no link to a tab that cannot
+      // do anything about it.
+      route: null,
+      tone: "bad",
+    });
+  }
+
+  return items;
+}
+
 export type PageInfo = {
   page: number;
   pageCount: number;

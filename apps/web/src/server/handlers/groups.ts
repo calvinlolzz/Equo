@@ -163,6 +163,32 @@ export async function handleListGroups(repository: GroupRepository, context: Aut
   } satisfies HandlerResult<unknown>;
 }
 
+/**
+ * "I have looked at this group" — clears its unread badge for this caller only.
+ *
+ * Membership is enforced inside the RPC (it updates rows keyed by the
+ * authenticated user id), so a caller naming somebody else's group gets the
+ * same 403 as any other non-member rather than silently clearing nothing.
+ */
+export async function handleMarkGroupRead(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  request_id = "req_unknown",
+) {
+  const result = await repository.markGroupRead(context, groupId);
+
+  if (!result) {
+    return forbidden(request_id);
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    body: result,
+  } satisfies HandlerResult<unknown>;
+}
+
 export async function handleListArchivedGroups(repository: GroupRepository, context: AuthenticatedContext) {
   const groups = await repository.listArchivedGroups(context);
 

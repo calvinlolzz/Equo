@@ -94,6 +94,7 @@ export type ApiClientLike = Pick<
   | "deleteExpense"
   | "uploadGroupImage"
   | "listExpensesPage"
+  | "markGroupRead"
 >;
 
 function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
@@ -457,6 +458,31 @@ export function createCloudGroupsStore({
       handleError(error);
     } finally {
       setState({ loadingGroups: false });
+    }
+  }
+
+  /**
+   * "I have seen this group" — clears its badge here and on the caller's other
+   * devices.
+   *
+   * Deliberately silent on failure: an unread dot that lingers one refresh
+   * longer is not worth a toast, and this fires from opening a group, where an
+   * error message would be about something the user did not ask for. The local
+   * count is cleared either way, so the badge never outlives the visit that
+   * cleared it even when the request is what failed.
+   */
+  async function markGroupRead(groupId: string): Promise<void> {
+    const target = state.groups.find((group) => group.id === groupId);
+    if (!target || !target.unreadCount) return;
+
+    setState({
+      groups: state.groups.map((group) => (group.id === groupId ? { ...group, unreadCount: 0 } : group)),
+    });
+
+    try {
+      await apiClient.markGroupRead(groupId);
+    } catch {
+      // Next refreshGroups re-reads the server's truth.
     }
   }
 
@@ -862,6 +888,7 @@ export function createCloudGroupsStore({
     subscribe,
     refreshGroups,
     refreshGroupDetail,
+    markGroupRead,
     createGroup,
     renameGroup,
     addVirtualMember,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChartNoAxesColumn,
@@ -23,12 +23,9 @@ import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
 import { dateKey, formatActivityTime, lastEightDays } from "./appDates";
-import { AnalysisPanel } from "./AnalysisPanel";
-import { ArchivedListPanel } from "./ArchivedListPanel";
 import { describeCloudActionError } from "./describeCloudActionError";
 import { MemberListPanel } from "./MemberListPanel";
-import { RecordsPanel } from "./RecordsPanel";
-import { FeedbackDialog, type FeedbackType } from "./FeedbackDialog";
+import { type FeedbackType } from "./FeedbackDialog";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
 import { InstallHint } from "./InstallHint";
 import { useInstallPrompt } from "./useInstallPrompt";
@@ -42,12 +39,10 @@ import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
-import { ExpenseComposerSheet } from "./ExpenseComposerSheet";
-import { ExpenseDetailDialog } from "./ExpenseDetailDialog";
+import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { MemberAvatar } from "./MemberAvatar";
-import { ProfileDialog } from "./ProfileDialog";
 import { isGroupOwner } from "./isGroupOwner";
 import { resolveActiveTab } from "./resolveActiveTab";
 import { resolveCurrentMember } from "./resolveCurrentMember";
@@ -82,6 +77,50 @@ const templates = [
   { id: "event", label: text.event, defaultName: text.eventName },
 ];
 
+
+/**
+ * Everything below is behind a tap, so none of it belongs in the chunk that
+ * has to arrive before the app can paint. Splitting these out is worth roughly
+ * a third of the entry bundle, most of it the composer.
+ *
+ * Each render site gets its own <Suspense fallback={null}>: they are overlays
+ * over a screen that is already there, so "nothing yet" is the correct
+ * intermediate state - a spinner would flash for a chunk that is usually
+ * already warm (see prefetchOverlayChunks).
+ */
+const AnalysisPanel = lazy(() => import("./AnalysisPanel").then((m) => ({ default: m.AnalysisPanel })));
+const ArchivedListPanel = lazy(() => import("./ArchivedListPanel").then((m) => ({ default: m.ArchivedListPanel })));
+const ExpenseComposerSheet = lazy(() =>
+  import("./ExpenseComposerSheet").then((m) => ({ default: m.ExpenseComposerSheet })),
+);
+const ExpenseDetailDialog = lazy(() =>
+  import("./ExpenseDetailDialog").then((m) => ({ default: m.ExpenseDetailDialog })),
+);
+const FeedbackDialog = lazy(() => import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })));
+const ProfileDialog = lazy(() => import("./ProfileDialog").then((m) => ({ default: m.ProfileDialog })));
+const RecordsPanel = lazy(() => import("./RecordsPanel").then((m) => ({ default: m.RecordsPanel })));
+
+/**
+ * Warm the two chunks a user reaches for first, once the browser is idle.
+ *
+ * Without this, splitting the composer out would trade 46KB off the critical
+ * path for a stall on the 記一筆 tap - which is the one interaction this app
+ * exists for. Fetching it after first paint costs nothing anybody can see and
+ * makes the tap instant. requestIdleCallback is missing on iOS Safari, hence
+ * the timeout fallback.
+ */
+function prefetchOverlayChunks(): void {
+  const warm = () => {
+    void import("./ExpenseComposerSheet");
+    void import("./ExpenseDetailDialog");
+  };
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(warm, { timeout: 3_000 });
+  } else {
+    window.setTimeout(warm, 1_500);
+  }
+}
 
 const currencyOptions = [
   { code: "TWD", label: UI_TEXT.currencies.twd },
@@ -535,6 +574,10 @@ export function App() {
    */
   const shortcutRef = useRef<ShortcutAction | null>(readShortcutAction(window.location.search));
 
+  // Once, after the first paint: pull the composer's chunk down while nothing
+  // else is competing for the connection.
+  useEffect(prefetchOverlayChunks, []);
+
   useEffect(() => {
     if (!session || !shortcutRef.current) return;
 
@@ -608,6 +651,24 @@ export function App() {
       .catch(() => showToast(`${text.cloudSyncFailedPrefix}${text.groupNotFound}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId, session, cloudStore]);
+
+  // Opening a group counts as reading it. Keyed on the group's unread count as
+  // well as its id, so a refresh that brings in something new while the user
+  // is sitting on the group clears the badge again rather than leaving it lit
+  // on the screen it belongs to. No-ops when the count is already zero.
+  const activeGroupUnread = cloudGroups.find((group) => group.id === activeGroupId)?.unreadCount ?? 0;
+  // The mobile top-bar dot means "another group has something new" — the one
+  // you are looking at is about to be marked read anyway, so counting it would
+  // light the dot for a group already on screen.
+  const otherGroupsUnread = cloudGroups.reduce(
+    (total, group) => (group.id === activeGroupId ? total : total + (group.unreadCount ?? 0)),
+    0,
+  );
+
+  useEffect(() => {
+    if (!cloudStore || !activeGroupId || activeGroupUnread === 0) return;
+    cloudStore.markGroupRead(activeGroupId);
+  }, [activeGroupId, activeGroupUnread, cloudStore]);
 
   // Near-realtime auto-sync: background focus/interval revalidation while
   // logged in. Reads activeGroupId/cloudStore via refs (rather than as
@@ -834,6 +895,10 @@ export function App() {
         {activeGroup ? (
           <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupList} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setGroupDrawerOpen(true)}>
             <Menu aria-hidden="true" size={22} />
+            {/* The drawer is closed by default on mobile, so without this the
+                per-group badges inside it are invisible until you go looking.
+                A dot, not a count: which group it is lives one tap away. */}
+            {otherGroupsUnread > 0 ? <span className="top-bar-unread-dot" aria-hidden="true" /> : null}
           </button>
         ) : null}
         <button className="brand-mark" type="button" onClick={openHome}>
@@ -1265,6 +1330,7 @@ export function App() {
       )}
 
       {expenseComposerOpen ? (
+        <Suspense fallback={null}>
         <ExpenseComposerSheet
           members={members}
           groupId={activeGroup?.id ?? ""}
@@ -1277,6 +1343,7 @@ export function App() {
           onSubmit={handleExpenseDraftSubmit}
           onImageError={() => showToast(text.photoError)}
         />
+        </Suspense>
       ) : null}
 
       {discardConfirmOpen ? (
@@ -1306,6 +1373,7 @@ export function App() {
       ) : null}
 
       {dialog === "profile" ? (
+        <Suspense fallback={null}>
         <ProfileDialog
           profile={profile}
           displayAvatarUrl={displayAvatarUrl ?? undefined}
@@ -1322,11 +1390,17 @@ export function App() {
             setFeedbackOpen(true);
           }}
         />
+        </Suspense>
       ) : null}
 
-      {feedbackOpen ? <FeedbackDialog onClose={() => setFeedbackOpen(false)} onSubmit={handleFeedbackSubmit} /> : null}
+      {feedbackOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackDialog onClose={() => setFeedbackOpen(false)} onSubmit={handleFeedbackSubmit} />
+        </Suspense>
+      ) : null}
 
       {dialog === "expenseDetail" && selectedExpense ? (
+        <Suspense fallback={null}>
         <ExpenseDetailDialog
           expense={selectedExpense}
           members={members}
@@ -1345,6 +1419,7 @@ export function App() {
               : undefined
           }
         />
+        </Suspense>
       ) : null}
 
       {dialog && dialog !== "profile" && dialog !== "expenseDetail" ? (
@@ -1451,6 +1526,7 @@ export function App() {
 
 
             {dialog === "recordsPanel" ? (
+              <Suspense fallback={null}>
               <RecordsPanel
                 expenseCount={aggregates.expenseCount}
                 totalExpenseMinor={totalExpenseMinor}
@@ -1466,9 +1542,11 @@ export function App() {
                 onExportCsv={handleExportCsv}
                 onOpenExpense={openExpenseDetail}
               />
+              </Suspense>
             ) : null}
 
             {dialog === "analysisPanel" ? (
+              <Suspense fallback={null}>
               <AnalysisPanel
                 totalExpenseMinor={totalExpenseMinor}
                 currency={activeGroup?.currency ?? "TWD"}
@@ -1486,6 +1564,7 @@ export function App() {
                 onSelectDate={setSelectedDateKey}
                 onSettleTransfer={settleTransfer}
               />
+              </Suspense>
             ) : null}
 
             {dialog === "memberActions" ? (
@@ -1648,12 +1727,14 @@ export function App() {
             ) : null}
 
             {dialog === "archivedList" ? (
-              <ArchivedListPanel
-                archivedGroups={archivedGroups}
-                loading={archivedGroupsLoading}
-                unarchivingGroupId={unarchivingGroupId}
-                onUnarchive={unarchiveGroup}
-              />
+              <Suspense fallback={null}>
+                <ArchivedListPanel
+                  archivedGroups={archivedGroups}
+                  loading={archivedGroupsLoading}
+                  unarchivingGroupId={unarchivingGroupId}
+                  onUnarchive={unarchiveGroup}
+                />
+              </Suspense>
             ) : null}
 
             {dialog === "archive" || dialog === "delete" ? (

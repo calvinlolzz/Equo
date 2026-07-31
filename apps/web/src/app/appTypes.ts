@@ -3,6 +3,12 @@ export type Group = {
   name: string;
   currency: string;
   coverImageUrl?: string;
+  /**
+   * Entries somebody else recorded since this user last opened the group.
+   * Only the group LIST carries it (see cloudStore's refreshGroups); a group
+   * read from a detail payload has no unread count of its own.
+   */
+  unreadCount?: number;
 };
 
 export type Member = {

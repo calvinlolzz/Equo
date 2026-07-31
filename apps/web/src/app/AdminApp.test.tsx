@@ -73,7 +73,7 @@ const baseRoutes: AdminRoutes = {
   "GET /admin/health": {
     backup: { last_success_at: "2026-07-30T02:00:00.000Z", detail: {} },
     rate_limit: { active_buckets: 0, blocked_24h: 0 },
-    errors: { last_24h: 0, last_7d: 0, latest_at: null },
+    errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
     feedback: { open: 0 },
   },
   "GET /admin/trends": { days: 30, points: [] },
@@ -290,5 +290,127 @@ describe("the errors tab", () => {
 
     await screen.findByRole("region", { name: "錯誤詳情" });
     expect(urls.some((url) => url.startsWith("GET /admin/error-groups"))).toBe(false);
+  });
+});
+
+describe("the inbox on the overview", () => {
+  const busyHealth = {
+    backup: { last_success_at: "2026-07-30T02:00:00.000Z", detail: {} },
+    rate_limit: { active_buckets: 0, blocked_24h: 0 },
+    errors: { last_24h: 12, last_7d: 40, latest_at: null, open_groups: 2 },
+    feedback: { open: 1 },
+  };
+
+  test("says there is nothing to do when there is nothing to do", async () => {
+    fakeAdminApi(baseRoutes);
+    renderAdmin();
+
+    expect(await screen.findByText("沒有待處理的事。")).toBeTruthy();
+  });
+
+  test("lists the backlog and jumps to the tab already filtered", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/health": busyHealth });
+    renderAdmin();
+
+    fireEvent.click(await screen.findByRole("button", { name: /未處理錯誤/ }));
+
+    // Filtered on arrival: landing on the unfiltered list would mean doing the
+    // filtering again by hand.
+    await waitFor(() => expect(window.location.search).toBe("?tab=errors&status=open"));
+  });
+
+  test("puts the backlog on the sidebar tabs too", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/health": busyHealth });
+    renderAdmin();
+
+    const nav = await screen.findByRole("navigation", { name: "後台功能" });
+    const errorsTab = within(nav).getByRole("button", { name: /錯誤/ });
+
+    expect(within(errorsTab).getByText("2")).toBeTruthy();
+  });
+});
+
+describe("the command palette", () => {
+  test("opens on ⌘K and offers the tabs before anything is typed", async () => {
+    fakeAdminApi(baseRoutes);
+    renderAdmin();
+    await screen.findByRole("region", { name: "總覽" });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    const palette = await screen.findByRole("dialog", { name: "快速搜尋" });
+    expect(within(palette).getByRole("option", { name: "稽核" })).toBeTruthy();
+  });
+
+  test("picking a result lands on that user's page, not just their tab", async () => {
+    fakeAdminApi({
+      ...baseRoutes,
+      "GET /admin/users/user_alice": {
+        user: {
+          id: "user_alice",
+          email: "alice@example.com",
+          display_name: "Alice",
+          avatar_url: null,
+          created_at: "2026-07-01T00:00:00.000Z",
+          last_seen_at: "2026-07-29T00:00:00.000Z",
+          disabled_at: null,
+          group_count: 0,
+          expense_count: 0,
+        },
+        groups: [],
+      },
+    });
+    renderAdmin();
+    await screen.findByRole("region", { name: "總覽" });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const palette = await screen.findByRole("dialog", { name: "快速搜尋" });
+    fireEvent.change(within(palette).getByLabelText("快速搜尋"), { target: { value: "alice" } });
+
+    fireEvent.click(await within(palette).findByRole("option", { name: /Alice/ }));
+
+    await waitFor(() => expect(window.location.search).toBe("?tab=users&user=user_alice"));
+    expect(screen.queryByRole("dialog", { name: "快速搜尋" })).toBeNull();
+  });
+
+  test("Enter runs the highlighted row", async () => {
+    fakeAdminApi(baseRoutes);
+    renderAdmin();
+    await screen.findByRole("region", { name: "總覽" });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const palette = await screen.findByRole("dialog", { name: "快速搜尋" });
+    // Down once from 總覽 = 使用者.
+    fireEvent.keyDown(palette, { key: "ArrowDown" });
+    fireEvent.keyDown(palette, { key: "Enter" });
+
+    await waitFor(() => expect(window.location.search).toBe("?tab=users"));
+  });
+
+  test("Escape closes it without navigating anywhere", async () => {
+    fakeAdminApi(baseRoutes);
+    renderAdmin();
+    await screen.findByRole("region", { name: "總覽" });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const palette = await screen.findByRole("dialog", { name: "快速搜尋" });
+    fireEvent.keyDown(palette, { key: "Escape" });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "快速搜尋" })).toBeNull());
+    expect(window.location.search).toBe("");
+  });
+
+  test("a single character does not go to the server", async () => {
+    const urls = fakeAdminApi(baseRoutes);
+    renderAdmin();
+    await screen.findByRole("region", { name: "總覽" });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const palette = await screen.findByRole("dialog", { name: "快速搜尋" });
+    fireEvent.change(within(palette).getByLabelText("快速搜尋"), { target: { value: "a" } });
+
+    // Says so, rather than claiming nothing matched a search that never ran.
+    expect(await within(palette).findByText("再多輸入一個字開始搜尋")).toBeTruthy();
+    expect(urls.some((url) => url.includes("/admin/users?search=a"))).toBe(false);
   });
 });

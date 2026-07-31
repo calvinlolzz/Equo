@@ -67,6 +67,7 @@ function makeClient(handlers: Parameters<typeof createFakePostgrest>[0] = {}): F
       if (table === "users") return [{ avatar_url: "https://cdn/new.jpg" }];
       return [];
     },
+    rpc: () => [],
     ...handlers,
   });
 }
@@ -153,6 +154,40 @@ describe("createSupabaseGroupRepository", () => {
     // Without this the list comes back in PostgREST's unspecified order and
     // silently stops being sorted by recent activity.
     expect(groupsRead.query).toContain("order=updated_at.desc,created_at.desc");
+  });
+
+  test("decorates each listed group with its unread count, defaulting to zero", async () => {
+    const client = makeClient({ rpc: () => [{ group_id: "group_1", unread_count: 3 }] });
+
+    await expect(createSupabaseGroupRepository(client).listGroups(context)).resolves.toEqual([
+      { ...groupRow, unread_count: 3 },
+    ]);
+    expect(client.rpcCall("group_unread_counts")?.args).toEqual({ p_user: "user_alice" });
+  });
+
+  test("a group the unread RPC says nothing about is read, not undefined", async () => {
+    const client = makeClient({ rpc: () => [] });
+
+    await expect(createSupabaseGroupRepository(client).listGroups(context)).resolves.toEqual([
+      { ...groupRow, unread_count: 0 },
+    ]);
+  });
+
+  test("marking a group read is scoped to the caller's own membership", async () => {
+    const client = makeClient({ rpc: () => ({ group_id: "group_1", last_read_at: "2026-07-30T00:00:00.000Z" }) });
+
+    await createSupabaseGroupRepository(client).markGroupRead(context, "group_1");
+
+    expect(client.rpcCall("mark_group_read")?.args).toEqual({
+      p_user: "user_alice",
+      p_group_id: "group_1",
+    });
+  });
+
+  test("marking a group read collapses a non-member result to null", async () => {
+    const client = makeClient({ rpc: () => null });
+
+    await expect(createSupabaseGroupRepository(client).markGroupRead(context, "group_x")).resolves.toBeNull();
   });
 
   test("skips the groups read entirely when the caller has no memberships", async () => {

@@ -23,6 +23,8 @@ export type GroupSummary = {
   currency: string;
   owner_member_id: string;
   cover_image_url?: string | null;
+  /** Only GET /groups fills this in — see groupRepository's GroupRecord. */
+  unread_count?: number;
 };
 
 export type ArchivedGroupSummary = GroupSummary & {
@@ -267,6 +269,13 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     getGroupDetail(groupId: string) {
       return request<GroupDetail>(`/groups/${groupId}`, {
         method: "GET",
+      });
+    },
+    /** Clears this group's unread badge for the caller. */
+    markGroupRead(groupId: string) {
+      return request<{ group_id: string; last_read_at: string }>(`/groups/${groupId}/read`, {
+        method: "POST",
+        body: JSON.stringify({}),
       });
     },
     updateGroup(groupId: string, payload: UpdateGroupRequest) {
@@ -619,7 +628,13 @@ export type AdminHealthSummary = {
   /** null until the backup workflow has recorded its first success. */
   backup: { last_success_at: string; detail: Record<string, unknown> } | null;
   rate_limit: { active_buckets: number; blocked_24h: number };
-  errors: { last_24h: number; last_7d: number; latest_at: string | null };
+  errors: {
+    last_24h: number;
+    last_7d: number;
+    latest_at: string | null;
+    /** Distinct unresolved errors from the last 30 days; absent before the migration that adds it. */
+    open_groups?: number;
+  };
   feedback: { open: number };
 };
 

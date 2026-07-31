@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { AdminHealthSummary, AdminTrendPoint } from "./apiClient";
-import { healthTiles, trendChart } from "./adminDashboard";
+import { healthTiles, inboxItems, trendChart } from "./adminDashboard";
 
 function points(...values: number[]): AdminTrendPoint[] {
   return values.map((value, index) => ({
@@ -113,5 +113,78 @@ describe("healthTiles", () => {
   test("unread feedback shows where to deal with it", () => {
     expect(tile(makeHealth({ feedback: { open: 2 } }), "feedback")?.tone).toBe("warn");
     expect(tile(makeHealth(), "feedback")?.hint).toBe("都看完了");
+  });
+});
+
+describe("inboxItems", () => {
+  const now = Date.parse("2026-07-30T09:00:00.000Z");
+
+  function makeHealth(overrides: Partial<AdminHealthSummary> = {}): AdminHealthSummary {
+    return {
+      backup: { last_success_at: "2026-07-30T02:30:00.000Z", detail: {} },
+      rate_limit: { active_buckets: 0, blocked_24h: 0 },
+      errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
+      feedback: { open: 0 },
+      ...overrides,
+    };
+  }
+
+  test("a healthy console has an empty list, which is the point", () => {
+    expect(inboxItems(makeHealth(), now)).toEqual([]);
+  });
+
+  test("lists open feedback and unresolved errors with somewhere to go", () => {
+    const items = inboxItems(
+      makeHealth({
+        feedback: { open: 2 },
+        errors: { last_24h: 40, last_7d: 90, latest_at: null, open_groups: 3 },
+      }),
+      now,
+    );
+
+    expect(items).toEqual([
+      { key: "feedback", label: "未處理回饋", count: 2, route: { tab: "feedback", status: "new" }, tone: "warn" },
+      { key: "errors", label: "未處理錯誤", count: 3, route: { tab: "errors", status: "open" }, tone: "warn" },
+    ]);
+  });
+
+  test("counts distinct errors, not occurrences", () => {
+    // 400 reports of one already-resolved bug is not something to do today.
+    const items = inboxItems(
+      makeHealth({ errors: { last_24h: 400, last_7d: 400, latest_at: null, open_groups: 0 } }),
+      now,
+    );
+
+    expect(items).toEqual([]);
+  });
+
+  test("a pile of distinct errors escalates past a warning", () => {
+    const items = inboxItems(
+      makeHealth({ errors: { last_24h: 9, last_7d: 9, latest_at: null, open_groups: 5 } }),
+      now,
+    );
+
+    expect(items[0]?.tone).toBe("bad");
+  });
+
+  test("a stale backup is listed with no link, because it is not fixed in here", () => {
+    const items = inboxItems(
+      makeHealth({ backup: { last_success_at: "2026-07-27T02:30:00.000Z", detail: {} } }),
+      now,
+    );
+
+    expect(items).toEqual([{ key: "backup", label: "備份已逾時", count: null, route: null, tone: "bad" }]);
+  });
+
+  test("never having backed up says so, rather than showing as merely late", () => {
+    expect(inboxItems(makeHealth({ backup: null }), now)[0]?.label).toBe("從未成功備份");
+  });
+
+  test("a console still on the old health payload just omits the error row", () => {
+    // open_groups is absent until its migration lands; that must not read as
+    // "no errors are open" in a crash and must not throw either.
+    const legacy = makeHealth({ errors: { last_24h: 4, last_7d: 9, latest_at: null } });
+
+    expect(inboxItems(legacy, now)).toEqual([]);
   });
 });

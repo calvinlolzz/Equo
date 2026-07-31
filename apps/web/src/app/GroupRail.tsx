@@ -49,6 +49,13 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
                 <strong>{group.name}</strong>
                 <span>{group.currency}</span>
               </span>
+              {group.unreadCount ? (
+                // Counted, not just dotted: "3 筆新的" is a different decision
+                // from "1 筆新的" when you are deciding whether to look now.
+                <span className="group-item-unread" aria-label={`${group.unreadCount} ${text.unreadEntries}`}>
+                  {group.unreadCount > 99 ? "99+" : group.unreadCount}
+                </span>
+              ) : null}
             </span>
           </button>
         ))}

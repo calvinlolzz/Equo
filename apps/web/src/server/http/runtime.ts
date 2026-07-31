@@ -24,6 +24,7 @@ import {
   listArchivedGroupsRoute,
   listGroupsRoute,
   getGroupDetailRoute,
+  markGroupReadRoute,
   removeGroupMemberRoute,
   renameGroupMemberRoute,
   unarchiveGroupRoute,
@@ -204,6 +205,15 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "GET /api/v1/groups/archived",
       async handle(request) {
         const result = await listArchivedGroupsRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/read$/,
+      label: "POST /api/v1/groups/:groupId/read",
+      async handle(request, match) {
+        const result = await markGroupReadRoute(routeOptions(options, request), match[1]);
         return jsonResponse(result.status, result.body);
       },
     },

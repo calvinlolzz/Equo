@@ -18,6 +18,17 @@ export type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" |
 
 const TABS: readonly AdminTab[] = ["overview", "users", "groups", "feedback", "errors", "audit", "admins"];
 
+/** One source of truth for the tab names: the sidebar and the ⌘K palette read the same map. */
+export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
+  overview: "總覽",
+  users: "使用者",
+  groups: "群組",
+  feedback: "回饋",
+  errors: "錯誤",
+  audit: "稽核",
+  admins: "管理員",
+};
+
 const GROUP_FILTERS: readonly AdminGroupFilterOption[] = ["all", "archived", "empty", "deleted"];
 
 const FEEDBACK_STATUSES: readonly string[] = ["all", "new", "reviewing", "done"];
