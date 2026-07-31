@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -7,6 +7,8 @@ import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { InfoDialogMode } from "./appTypes";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
+import { describePushState } from "./pushNotifications";
+import { usePushNotifications } from "./usePushNotifications";
 import type { StoredSession } from "./sessionStore";
 import { UI_TEXT } from "./uiText";
 
@@ -88,6 +90,10 @@ export function ProfileDialog({
   onFeedback: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
+  // Only resolved once the 其他設定 tab is actually on screen: working out
+  // whether this browser is subscribed costs a service-worker wait and a
+  // request, and most opens of this dialog are for the name and avatar.
+  const push = usePushNotifications(tab === "other");
   const [name, setName] = useState(profile.name);
   const initialAvatarDataUrl = displayAvatarUrl ?? profile.avatarDataUrl ?? "";
   const [avatarDataUrl, setAvatarDataUrl] = useState(initialAvatarDataUrl);
@@ -230,6 +236,23 @@ export function ProfileDialog({
           </div>
         ) : (
           <div className="profile-other-list">
+            <div className="profile-other-row profile-push-row">
+              <Bell aria-hidden="true" size={19} />
+              <span className="profile-push-text">
+                <span>{text.pushNotifications}</span>
+                <small>{describePushState(push.state)}</small>
+              </span>
+              {push.state === "on" || push.state === "off" ? (
+                <button
+                  className="profile-link-action"
+                  type="button"
+                  disabled={push.busy}
+                  onClick={() => (push.state === "on" ? push.disable() : push.enable())}
+                >
+                  {push.busy ? text.pushWorking : push.state === "on" ? text.pushDisable : text.pushEnable}
+                </button>
+              ) : null}
+            </div>
             <button className="profile-other-row" type="button" onClick={() => onToast(text.languageToast)}>
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>

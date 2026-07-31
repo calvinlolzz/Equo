@@ -384,6 +384,22 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "GET",
       });
     },
+    /** The VAPID public key, or {enabled:false} when this deployment has push off. */
+    getPushPublicKey() {
+      return request<{ enabled: boolean; public_key?: string }>("/push/public-key", { method: "GET" });
+    },
+    subscribePush(subscription: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent: string }) {
+      return request<{ ok: true }>("/push/subscribe", {
+        method: "POST",
+        body: JSON.stringify(subscription),
+      });
+    },
+    unsubscribePush(endpoint: string) {
+      return request<{ ok: true }>("/push/unsubscribe", {
+        method: "POST",
+        body: JSON.stringify({ endpoint }),
+      });
+    },
     /** Daily reference rates for the composer's 匯率 field, keyed on `base`. */
     getExchangeRates(base: string) {
       return request<ExchangeRatesResponse>(`/exchange-rates?base=${encodeURIComponent(base)}`, {

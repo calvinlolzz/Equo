@@ -179,6 +179,28 @@
   font-weight: 800;
 }
 
+/* The notification row is the only one that is not itself a button: it carries
+   a status line and its own action, so the row stays a container. */
+.profile-push-row {
+  cursor: default;
+}
+
+.profile-push-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-push-text small {
+  color: rgb(var(--fg) / 0.6);
+  font-size: 12px;
+  font-weight: 500;
+  /* Wraps rather than truncating: every one of these lines is an instruction
+     ("iPhone 需先加入主畫面…") that is useless cut in half. */
+  white-space: normal;
+}
+
 /* Account deletion: destructive, so it reads red and sits apart from the
    neutral rows above it. */
 .profile-other-row-danger {

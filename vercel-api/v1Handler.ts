@@ -50,7 +50,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
   const [
     { createHttpRuntime },
     { createGoogleTokenVerifier },
-    { missingRuntimeEnv, readRuntimeEnv },
+    { missingRuntimeEnv, readRuntimeEnv, readVapidKeys },
     { createSupabaseAccessTokenVerifier },
     { createPostgrestClient },
     { createSupabaseStorageClient },
@@ -69,6 +69,9 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
     SESSION_SECRET: process.env.SESSION_SECRET,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
   });
   const missing = missingRuntimeEnv(runtimeEnv);
 
@@ -105,6 +108,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
       requiredEnv.SUPABASE_ANON_KEY,
     ),
     sessionSecret: requiredEnv.SESSION_SECRET,
+    vapid: readVapidKeys(runtimeEnv),
   });
   const url = new URL(request.url ?? "/api/v1", "https://equo.local");
   const result = await runtime.handle({

@@ -4,6 +4,15 @@ export type RuntimeEnv = {
   SUPABASE_SERVICE_ROLE_KEY: string;
   GOOGLE_OAUTH_CLIENT_ID: string;
   SESSION_SECRET: string;
+  /**
+   * Web push (VAPID). OPTIONAL, and deliberately absent from
+   * missingRuntimeEnv: a deployment without these keys should have
+   * notifications switched off, not the whole API returning 503.
+   */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  /** RFC 8292 "sub" - a mailto: or https: URL. Defaults per readVapidKeys. */
+  VAPID_SUBJECT?: string;
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -22,6 +31,32 @@ export function readRuntimeEnv(source: EnvSource): Partial<RuntimeEnv> {
     SUPABASE_SERVICE_ROLE_KEY: cleanEnvValue(source.SUPABASE_SERVICE_ROLE_KEY),
     GOOGLE_OAUTH_CLIENT_ID: cleanEnvValue(source.GOOGLE_OAUTH_CLIENT_ID),
     SESSION_SECRET: cleanEnvValue(source.SESSION_SECRET),
+    VAPID_PUBLIC_KEY: cleanEnvValue(source.VAPID_PUBLIC_KEY),
+    VAPID_PRIVATE_KEY: cleanEnvValue(source.VAPID_PRIVATE_KEY),
+    VAPID_SUBJECT: cleanEnvValue(source.VAPID_SUBJECT),
+  };
+}
+
+/**
+ * The VAPID keypair, or undefined when push is not configured.
+ *
+ * Both halves or nothing: a public key without its private key would let the
+ * UI offer to turn notifications on and then silently never deliver one, which
+ * is worse than the switch not being there.
+ */
+export function readVapidKeys(
+  env: Partial<RuntimeEnv>,
+): { publicKey: string; privateKey: string; subject: string } | undefined {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
+    return undefined;
+  }
+
+  return {
+    publicKey: env.VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY,
+    // Push services require a contact; they reject a request whose JWT has no
+    // usable "sub". The site itself is a valid one and needs no extra config.
+    subject: env.VAPID_SUBJECT ?? "https://equo-mu.vercel.app",
   };
 }
 

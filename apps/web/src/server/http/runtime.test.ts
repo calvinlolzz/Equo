@@ -137,6 +137,15 @@ function makeClient(): PostgrestClient {
       }
       if (fn === "delete_my_account") return { ok: true, groups_reassigned: 0, groups_deleted: 0, memberships_anonymized: 1 };
       if (fn === "create_expense") return expenseRow;
+      if (fn === "upsert_push_subscription") return { id: "push_1", endpoint: args.p_endpoint };
+      if (fn === "delete_push_subscription") return { deleted: 1 };
+      if (fn === "push_targets_for_group") {
+        return {
+          group_name: "Tokyo Trip",
+          actor_name: "Alice",
+          subscriptions: [{ endpoint: "https://push.example/1", p256dh: "key", auth: "auth" }],
+        };
+      }
       if (fn === "soft_delete_expense") return { ...expenseRow, version: 2 };
       if (fn === "accept_invite") return { group: groupRow, member: ownerMember, claimed: false };
       if (fn === "create_settlement") {
@@ -152,6 +161,15 @@ function makeClient(): PostgrestClient {
     },
   });
 }
+
+const vapid = { publicKey: "test-public", privateKey: "test-private", subject: "mailto:ops@example.com" };
+
+const alice = async (idToken: string) => ({
+  auth_user_id: "user_alice",
+  google_sub: idToken,
+  email: "alice@example.com",
+  display_name: "Alice",
+});
 
 describe("createHttpRuntime", () => {
   test("exchanges Google tokens for Equo sessions that can authorize API routes", async () => {
@@ -992,6 +1010,190 @@ describe("health", () => {
     });
 
     expect(response.status).toBe(503);
+    logged.mockRestore();
+  });
+});
+
+describe("web push wiring", () => {
+  test("stores a subscription against the authenticated caller", async () => {
+    const client = makeClient() as ReturnType<typeof createFakePostgrest>;
+    const runtime = createHttpRuntime({ client, storage: makeStorage(), verifier: alice, vapid });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/push/subscribe",
+      headers: { authorization: "Bearer google-alice" },
+      json: {
+        endpoint: "https://push.example/1",
+        keys: { p256dh: "key", auth: "auth" },
+        user_agent: "Firefox",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    // The user id comes from the session, never from the body.
+    expect(client.rpcCall("upsert_push_subscription")?.args).toEqual({
+      p_user: "user_alice",
+      p_endpoint: "https://push.example/1",
+      p_p256dh: "key",
+      p_auth: "auth",
+      p_user_agent: "Firefox",
+    });
+  });
+
+  test("unsubscribing removes only the caller's own endpoint", async () => {
+    const client = makeClient() as ReturnType<typeof createFakePostgrest>;
+    const runtime = createHttpRuntime({ client, storage: makeStorage(), verifier: alice, vapid });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/push/unsubscribe",
+      headers: { authorization: "Bearer google-alice" },
+      json: { endpoint: "https://push.example/1" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(client.rpcCall("delete_push_subscription")?.args).toEqual({
+      p_user: "user_alice",
+      p_endpoint: "https://push.example/1",
+    });
+  });
+
+  test("push endpoints are behind the session wall", async () => {
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async () => null,
+      vapid,
+    });
+
+    for (const path of ["/api/v1/push/public-key", "/api/v1/push/subscribe"]) {
+      const response = await runtime.handle({
+        method: path.endsWith("public-key") ? "GET" : "POST",
+        path,
+        headers: {},
+        json: {},
+      });
+      expect(response.status).toBe(401);
+    }
+  });
+
+  test("reports push as switched off when the deployment has no VAPID key", async () => {
+    const runtime = createHttpRuntime({ client: makeClient(), storage: makeStorage(), verifier: alice });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/push/public-key",
+      headers: { authorization: "Bearer google-alice" },
+    });
+
+    // Not an error: "this deployment cannot deliver" is a state the UI renders.
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ enabled: false });
+  });
+
+  test("serves the public key when it is configured", async () => {
+    const runtime = createHttpRuntime({ client: makeClient(), storage: makeStorage(), verifier: alice, vapid });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/push/public-key",
+      headers: { authorization: "Bearer google-alice" },
+    });
+
+    expect(response.body).toEqual({ enabled: true, public_key: "test-public" });
+    // The private half never leaves the server.
+    expect(JSON.stringify(response.body)).not.toContain("test-private");
+  });
+
+  test("notifies the rest of the group after an expense is created", async () => {
+    const sent: string[] = [];
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: alice,
+      vapid,
+      pushSend: async (subscription, payload) => {
+        sent.push(`${subscription.endpoint}|${payload.title}|${payload.body}`);
+        return { statusCode: 201 };
+      },
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/expenses",
+      headers: { authorization: "Bearer google-alice" },
+      json: {
+        client_request_id: "req_expense",
+        title: "Dinner",
+        amount_minor: 120000,
+        currency: "TWD",
+        expense_payments: [{ payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }],
+        expense_shares: [{ member_id: "member_owner", share_type: "fixed", amount_minor: 120000 }],
+      },
+    });
+
+    expect(response.status).toBe(201);
+    expect(sent).toEqual(["https://push.example/1|Tokyo Trip|Alice 記了一筆：Dinner $1,200"]);
+  });
+
+  test("sends nothing when the deployment has push switched off", async () => {
+    const sent: string[] = [];
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: alice,
+      pushSend: async (subscription) => {
+        sent.push(subscription.endpoint);
+        return { statusCode: 201 };
+      },
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/expenses",
+      headers: { authorization: "Bearer google-alice" },
+      json: {
+        client_request_id: "req_expense",
+        title: "Dinner",
+        amount_minor: 120000,
+        currency: "TWD",
+        expense_payments: [{ payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }],
+        expense_shares: [{ member_id: "member_owner", share_type: "fixed", amount_minor: 120000 }],
+      },
+    });
+
+    expect(response.status).toBe(201);
+    expect(sent).toEqual([]);
+  });
+
+  test("a push failure never turns a saved expense into a failed request", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const runtime = createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: alice,
+      vapid,
+      pushSend: async () => {
+        throw new Error("push service unreachable");
+      },
+    });
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups/group_1/expenses",
+      headers: { authorization: "Bearer google-alice" },
+      json: {
+        client_request_id: "req_expense",
+        title: "Dinner",
+        amount_minor: 120000,
+        currency: "TWD",
+        expense_payments: [{ payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }],
+        expense_shares: [{ member_id: "member_owner", share_type: "fixed", amount_minor: 120000 }],
+      },
+    });
+
+    expect(response.status).toBe(201);
     logged.mockRestore();
   });
 });

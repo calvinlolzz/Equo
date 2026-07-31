@@ -64,6 +64,10 @@ import {
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
+import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
+import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
+import { notifyExpenseCreated } from "../push/pushSender.js";
+import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
 import { healthRoute } from "../routes/healthRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -78,6 +82,15 @@ type RuntimeOptions = {
   supabaseVerifier?: GoogleTokenVerifier;
   sessionSecret?: string;
   now?: number;
+  /**
+   * Absent = this deployment has push switched off: the subscribe endpoints
+   * still store rows, GET /push/public-key reports enabled:false, and nothing
+   * is ever delivered. Keeping it optional means a missing VAPID key cannot
+   * take the rest of the API down with it.
+   */
+  vapid?: VapidKeys;
+  /** Test seam: the push transport. Defaults to web-push. */
+  pushSend?: PushSendFn;
 };
 
 type RuntimeRoute = {
@@ -369,11 +382,66 @@ export function createHttpRuntime(options: RuntimeOptions) {
       pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses$/,
       label: "POST /api/v1/groups/:groupId/expenses",
       async handle(request, match) {
+        const groupId = match[1];
         const result = await createExpenseRoute(
           routeOptions(options, request),
-          match[1],
+          groupId,
           body<CreateExpenseRequest>(request),
         );
+
+        // Notify AFTER the write, never before, and never in a way that can
+        // change the response. The await is deliberate: a serverless function
+        // can be frozen the moment it responds, so work started and not waited
+        // for is work that may never happen. Group sizes here are small enough
+        // that the fan-out is a handful of parallel requests.
+        if (result.ok && options.vapid && "expense" in result.body) {
+          const created = result.body.expense as {
+            title: string;
+            amount_minor: number;
+            currency: string;
+            kind: string;
+          };
+          const actorUserId = "actorUserId" in result ? result.actorUserId : undefined;
+
+          if (actorUserId) {
+            await notifyExpenseCreated({
+              repository: createSupabasePushRepository(options.client),
+              vapid: options.vapid,
+              groupId,
+              actorUserId,
+              expense: created,
+              send: options.pushSend,
+            });
+          }
+        }
+
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/push\/public-key$/,
+      label: "GET /api/v1/push/public-key",
+      async handle(request) {
+        const result = await pushPublicKeyRoute(routeOptions(options, request), options.vapid?.publicKey);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/push\/subscribe$/,
+      label: "POST /api/v1/push/subscribe",
+      async handle(request) {
+        const result = await subscribePushRoute(routeOptions(options, request), body(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/push\/unsubscribe$/,
+      label: "POST /api/v1/push/unsubscribe",
+      async handle(request) {
+        const result = await unsubscribePushRoute(routeOptions(options, request), body(request));
         return jsonResponse(result.status, result.body);
       },
     },

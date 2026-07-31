@@ -81,3 +81,64 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// Web push
+// ---------------------------------------------------------------------------
+//
+// The payload is the JSON the server encrypted (see server/push/pushNotification):
+// { title, body, url, tag }. Anything unreadable still produces a notification —
+// on Chrome, a push event that ends without showNotification() gets the browser's
+// own "This site has been updated in the background" instead, which is worse
+// than a generic line of our own.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || "Equo";
+  const options = {
+    body: payload.body || "群組有新的記錄",
+    tag: payload.tag || "equo",
+    // Same tag replaces the previous notification rather than stacking; renotify
+    // still buzzes, so a second expense is not silently swallowed.
+    renotify: Boolean(payload.tag),
+    icon: "/icons/equo-icon-192.png",
+    badge: "/icons/equo-icon-192.png",
+    data: { url: payload.url || "/" },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Tapping one should land on the group it is about, in a window that is
+// already open where possible — opening a second copy of an installed PWA is
+// disorienting and loses whatever was on screen.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+      for (const client of windows) {
+        if (new URL(client.url).pathname === target) {
+          return client.focus();
+        }
+      }
+
+      const existing = windows[0];
+      if (existing) {
+        await existing.focus();
+        if ("navigate" in existing) return existing.navigate(target);
+        return undefined;
+      }
+
+      return self.clients.openWindow(target);
+    })(),
+  );
+});
