@@ -69,8 +69,12 @@ async function openComposer() {
 
 /** Taps the composer's numeric keypad, which is the mobile amount step. */
 async function typeAmount(digits: string) {
+  // Scoped to the composer: the home screen behind it has a row of date chips
+  // labelled with day numbers, so a global query for "1" is ambiguous on the
+  // 1st of the month. (It was, on the day this scoping was added.)
+  const composer = screen.getByRole("dialog", { name: app.addExpense });
   for (const digit of digits) {
-    screen.getByRole("button", { name: digit }).click();
+    within(composer).getByRole("button", { name: digit }).click();
   }
   // The keypad writes straight into the amount, so the sheet is dirty as soon
   // as the effect that reports it up has flushed.

@@ -66,12 +66,19 @@ const errorGroup = {
   status_updated_by: null,
 };
 
+/**
+ * Fresh enough that the health card never reports a stale backup. A fixed
+ * timestamp here would start failing the "nothing to do" tests the moment it
+ * aged past the 36-hour threshold - which is exactly what happened.
+ */
+const recently = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
 const baseRoutes: AdminRoutes = {
   "GET /admin/me": me,
   "GET /admin/overview": overview,
   "GET /admin/storage": { object_count: 0, total_bytes: 0, orphan_count: 0, orphan_bytes: 0 },
   "GET /admin/health": {
-    backup: { last_success_at: "2026-07-30T02:00:00.000Z", detail: {} },
+    backup: { last_success_at: recently, detail: {} },
     rate_limit: { active_buckets: 0, blocked_24h: 0 },
     errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
     feedback: { open: 0 },
@@ -295,7 +302,7 @@ describe("the errors tab", () => {
 
 describe("the inbox on the overview", () => {
   const busyHealth = {
-    backup: { last_success_at: "2026-07-30T02:00:00.000Z", detail: {} },
+    backup: { last_success_at: recently, detail: {} },
     rate_limit: { active_buckets: 0, blocked_24h: 0 },
     errors: { last_24h: 12, last_7d: 40, latest_at: null, open_groups: 2 },
     feedback: { open: 1 },
@@ -356,7 +363,7 @@ describe("the inbox on the overview", () => {
             ok: true,
             status: 200,
             json: async () => ({
-              backup: { last_success_at: "2026-07-30T02:00:00.000Z", detail: {} },
+              backup: { last_success_at: recently, detail: {} },
               rate_limit: { active_buckets: 0, blocked_24h: 0 },
               errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
               feedback: { open },

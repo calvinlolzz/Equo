@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Pencil, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Moon, Pencil, Sun, Trash2, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { InfoDialogMode } from "./appTypes";
+import type { ThemeMode } from "./themeStore";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
 import { describePushState } from "./pushNotifications";
@@ -55,6 +56,8 @@ export function ProfileDialog({
   session,
   infoDialog,
   onOpenInfoDialog,
+  theme,
+  onToggleTheme,
   onClose,
   onSave,
   onToast,
@@ -77,6 +80,13 @@ export function ProfileDialog({
    */
   infoDialog: InfoDialogMode;
   onOpenInfoDialog: (info: InfoDialogMode) => void;
+  /**
+   * Day/night, shared with the top bar's icon. Two entry points onto one piece
+   * of state on purpose: the icon is a shortcut, and a settings list is where
+   * people go looking for a setting even when a shortcut exists.
+   */
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   onClose: () => void;
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
@@ -253,10 +263,20 @@ export function ProfileDialog({
                 </button>
               ) : null}
             </div>
-            <button className="profile-other-row" type="button" onClick={() => onToast(text.languageToast)}>
+            <button className="profile-other-row" type="button" onClick={onToggleTheme}>
+              {theme === "light" ? <Sun aria-hidden="true" size={19} /> : <Moon aria-hidden="true" size={19} />}
+              <span>{text.themeSetting}</span>
+              <span className="profile-row-value">{theme === "light" ? text.themeLight : text.themeDark}</span>
+            </button>
+            {/* Informational, not a control: there is one language, so a button
+                here would be something you can press that does nothing. It
+                still earns its row - "which language is this in" is a question
+                people look in settings to answer. */}
+            <div className="profile-other-row profile-other-row-static">
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>
-            </button>
+              <span className="profile-row-value">{text.languageValue}</span>
+            </div>
             <button className="profile-other-row" type="button" onClick={onFeedback}>
               <MessageSquareText aria-hidden="true" size={19} />
               <span>{text.feedbackEntry}</span>
