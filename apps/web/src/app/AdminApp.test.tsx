@@ -319,6 +319,68 @@ describe("the inbox on the overview", () => {
     await waitFor(() => expect(window.location.search).toBe("?tab=errors&status=open"));
   });
 
+  test("clearing the last item empties its badge immediately", async () => {
+    // The counts come from one health read taken at mount; without a re-read
+    // after the mutation, the badge keeps saying 1 until the page is reloaded.
+    let healthReads = 0;
+    const routes: AdminRoutes = {
+      ...baseRoutes,
+      "GET /admin/feedback": {
+        total: 1,
+        feedback: [
+          {
+            id: "fb_1",
+            user_email: "alice@example.com",
+            type: "problem",
+            message: "壞掉了",
+            status: "new",
+            created_at: "2026-07-30T02:00:00.000Z",
+          },
+        ],
+      },
+      "POST /admin/feedback/fb_1/status": { id: "fb_1", status: "done" },
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const full = String(url).replace(/^\/api\/v1/, "");
+        const path = full.split("?")[0];
+
+        if (method === "GET" && path === "/admin/health") {
+          healthReads += 1;
+          // One open item to start with, none once it has been dealt with.
+          const open = healthReads === 1 ? 1 : 0;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              backup: { last_success_at: "2026-07-30T02:00:00.000Z", detail: {} },
+              rate_limit: { active_buckets: 0, blocked_24h: 0 },
+              errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
+              feedback: { open },
+            }),
+          } as Response;
+        }
+
+        const body = routes[`${method} ${path}`];
+        if (body === undefined) throw new Error(`No fake route for "${method} ${path}"`);
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+
+    renderAdmin("?tab=feedback");
+
+    const nav = await screen.findByRole("navigation", { name: "後台功能" });
+    const feedbackTab = within(nav).getByRole("button", { name: /回饋/ });
+    expect(await within(feedbackTab).findByText("1")).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: "完成" }));
+
+    await waitFor(() => expect(within(feedbackTab).queryByText("1")).toBeNull());
+  });
+
   test("puts the backlog on the sidebar tabs too", async () => {
     fakeAdminApi({ ...baseRoutes, "GET /admin/health": busyHealth });
     renderAdmin();
