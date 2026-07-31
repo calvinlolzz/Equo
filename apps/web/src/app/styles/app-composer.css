@@ -11,6 +11,18 @@
   color: rgb(var(--fg) / 0.72);
 }
 
+/* "自動帶入 07-30" next to the pair label — says where the number came from
+   without competing with it. */
+.composer-exchange-source {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(var(--surf) / 0.12);
+  color: rgb(var(--fg) / 0.6);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .composer-exchange-row input {
   width: 90px;
   min-height: 34px;

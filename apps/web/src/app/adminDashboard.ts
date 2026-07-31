@@ -245,7 +245,23 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "admin.grant": "新增管理員",
   "admin.role_change": "變更管理員角色",
   "admin.remove": "移除管理員",
+  "error.status": "標記錯誤狀態",
 };
+
+const ERROR_GROUP_STATUS_LABELS: Record<string, string> = {
+  open: "未處理",
+  resolved: "已處理",
+};
+
+/** zh-TW label for an app_error_group_status.status; unknown values pass through raw. */
+export function errorGroupStatusLabel(status: string): string {
+  return ERROR_GROUP_STATUS_LABELS[status] ?? status;
+}
+
+/** Where a report came from. Only the two the check constraint allows exist. */
+export function errorSourceLabel(source: string): string {
+  return source === "admin" ? "後台" : "前台";
+}
 
 const ADMIN_ROLE_LABELS: Record<string, string> = {
   owner: "擁有者",

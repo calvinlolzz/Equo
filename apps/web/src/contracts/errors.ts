@@ -36,6 +36,12 @@ export const errorCodes = [
    * only "you are the last admin-console owner; hand it over first".
    */
   "ACCOUNT_DELETE_BLOCKED",
+  /**
+   * The exchange-rate upstream is unreachable and no usable cached copy is
+   * left. Advisory only — the composer falls back to its manual rate field,
+   * so nothing the user was doing is blocked.
+   */
+  "EXCHANGE_RATE_UNAVAILABLE",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

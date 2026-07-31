@@ -660,6 +660,39 @@
   white-space: nowrap;
 }
 
+/* Second line under a table cell's main text — the page an error last came
+   from, under the message itself. */
+.admin-table__submeta {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* Header of an error group's drill-down: the message, full width, not
+   ellipsised the way the table cell has to be. */
+.admin-error-card {
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.admin-error-card__message {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.admin-error-card__meta {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
 .admin-chips {
   display: flex;
   gap: 6px;
@@ -764,6 +797,7 @@
   .admin-gate,
   .admin-tile,
   .admin-user-card,
+  .admin-error-card,
   .admin-group-card,
   .admin-modal__panel,
   .admin-table-wrap,
@@ -802,6 +836,8 @@
   .admin-pagination,
   .admin-toggle,
   .admin-modal__subheading,
+  .admin-table__submeta,
+  .admin-error-card__meta,
   .admin-user-card__email {
     color: #a2a7b0;
   }

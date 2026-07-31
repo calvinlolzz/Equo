@@ -128,6 +128,16 @@ export type ExpensesPageResponse = {
   expenses: ExpenseSummary[];
 };
 
+export type ExchangeRatesResponse = {
+  base: string;
+  /** The upstream's publication date (YYYY-MM-DD). */
+  date: string;
+  /** quote code -> units of quote per 1 base; always carries base: 1. */
+  rates: Record<string, number>;
+  /** The upstream was unreachable and this is a kept-past-TTL copy. */
+  stale: boolean;
+};
+
 export type EquoApiClient = ReturnType<typeof createApiClient>;
 
 export type ApiClientError = Error & { code?: string };
@@ -365,6 +375,12 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "GET",
       });
     },
+    /** Daily reference rates for the composer's 匯率 field, keyed on `base`. */
+    getExchangeRates(base: string) {
+      return request<ExchangeRatesResponse>(`/exchange-rates?base=${encodeURIComponent(base)}`, {
+        method: "GET",
+      });
+    },
     uploadGroupImage(groupId: string, payload: UploadGroupImageRequest) {
       return request<{ image: { url: string } }>(`/groups/${groupId}/images`, {
         method: "POST",
@@ -472,8 +488,23 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify({ status }),
       });
     },
-    adminListErrors(options: AdminListOptions = {}) {
-      return request<AdminErrorPage>(`/admin/errors${adminListQuery(options)}`, { method: "GET" });
+    adminListErrorGroups(options: AdminListOptions & { status?: string } = {}) {
+      const params = new URLSearchParams(adminListQuery(options).replace(/^\?/, ""));
+      if (options.status && options.status !== "all") params.set("status", options.status);
+      const query = params.toString();
+      return request<AdminErrorGroupPage>(`/admin/error-groups${query ? `?${query}` : ""}`, { method: "GET" });
+    },
+    adminListErrors(options: AdminListOptions & { fingerprint?: string } = {}) {
+      const params = new URLSearchParams(adminListQuery(options).replace(/^\?/, ""));
+      if (options.fingerprint) params.set("fingerprint", options.fingerprint);
+      const query = params.toString();
+      return request<AdminErrorPage>(`/admin/errors${query ? `?${query}` : ""}`, { method: "GET" });
+    },
+    adminSetErrorGroupStatus(fingerprint: string, status: string) {
+      return request<{ fingerprint: string; status: string }>(
+        `/admin/error-groups/${encodeURIComponent(fingerprint)}/status`,
+        { method: "POST", body: JSON.stringify({ status }) },
+      );
     },
     adminSetUserDisabled(userId: string, disabled: boolean) {
       return request<{ id: string; disabled_at: string | null }>(
@@ -763,9 +794,29 @@ export type AdminErrorRow = {
   context: string | null;
   page: string | null;
   created_at: string;
+  fingerprint: string;
 };
 
 export type AdminErrorPage = {
   total: number;
   errors: AdminErrorRow[];
+};
+
+export type AdminErrorGroupRow = {
+  fingerprint: string;
+  source: string;
+  sample_message: string;
+  last_page: string | null;
+  occurrences: number;
+  user_count: number;
+  first_seen: string;
+  last_seen: string;
+  status: "open" | "resolved";
+  status_updated_at: string | null;
+  status_updated_by: string | null;
+};
+
+export type AdminErrorGroupPage = {
+  total: number;
+  groups: AdminErrorGroupRow[];
 };

@@ -55,24 +55,42 @@ export function useExpenseComposer({
 }: UseExpenseComposerDeps) {
   const [expenseComposerOpen, setExpenseComposerOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  /**
+   * The expense a 重複這筆 was launched from. Separate from editingExpense on
+   * purpose: it seeds the same sheet, but the submit path below keys create vs.
+   * replace off editingExpense alone, so a duplicate can never overwrite the
+   * entry it was copied from.
+   */
+  const [duplicatingExpense, setDuplicatingExpense] = useState<Expense | null>(null);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
 
   /** Open the composer for a brand-new expense (never carrying a prior edit). */
   function openExpenseComposer() {
     setEditingExpense(null);
+    setDuplicatingExpense(null);
     setExpenseComposerOpen(true);
   }
 
   function openExpenseEdit(expense: Expense) {
     setDialog(null);
     setSelectedExpenseId("");
+    setDuplicatingExpense(null);
     setEditingExpense(expense);
+    setExpenseComposerOpen(true);
+  }
+
+  function openExpenseDuplicate(expense: Expense) {
+    setDialog(null);
+    setSelectedExpenseId("");
+    setEditingExpense(null);
+    setDuplicatingExpense(expense);
     setExpenseComposerOpen(true);
   }
 
   function closeExpenseComposer() {
     setExpenseComposerOpen(false);
     setEditingExpense(null);
+    setDuplicatingExpense(null);
   }
 
   function openExpenseDetail(expenseId: string) {
@@ -117,6 +135,7 @@ export function useExpenseComposer({
       );
       setExpenseComposerOpen(false);
       setEditingExpense(null);
+      setDuplicatingExpense(null);
       haptic("success");
       showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
     } catch (error) {
@@ -217,10 +236,12 @@ export function useExpenseComposer({
   return {
     expenseComposerOpen,
     editingExpense,
+    duplicatingExpense,
     selectedExpenseId,
     setSelectedExpenseId,
     openExpenseComposer,
     openExpenseEdit,
+    openExpenseDuplicate,
     closeExpenseComposer,
     openExpenseDetail,
     handleExpenseDraftSubmit,

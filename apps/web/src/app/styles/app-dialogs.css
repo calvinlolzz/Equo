@@ -610,6 +610,13 @@
   gap: 10px;
 }
 
+/* Three actions in a two-column grid: the two safe ones pair up on the first
+   row and 刪除 takes the second on its own. Squeezing three across would put a
+   destructive button at thumb width next to two that undo nothing. */
+.dialog-action-row--three .danger-action {
+  grid-column: 1 / -1;
+}
+
 .danger-action {
   width: 100%;
   min-height: 48px;

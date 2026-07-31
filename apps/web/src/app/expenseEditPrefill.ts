@@ -34,6 +34,35 @@ export type ExpenseEditPrefill = {
   dateTimeIso: string;
 };
 
+/**
+ * The same expense as the starting point for a new one: 重複這筆.
+ *
+ * Everything that describes *how* the cost is shared carries over (title,
+ * category, payers, split, note, currency) because that is the part nobody
+ * wants to key in again for the weekly grocery run or the monthly rent. Two
+ * things deliberately do not:
+ *
+ * - the timestamp, which becomes now - a duplicate is a thing that happened
+ *   today, and silently re-filing it under the original's date would put it in
+ *   the wrong month's total;
+ * - the receipt photo, which is evidence of one specific transaction and would
+ *   be a lie attached to a different one.
+ *
+ * The exchange rate does carry over, but the composer refreshes it from
+ * today's rates for anything that is not an edit (see ExpenseComposerSheet).
+ */
+export function buildExpenseDuplicatePrefill(
+  expense: Expense,
+  groupCurrency: string,
+  nowIso: string,
+): ExpenseEditPrefill {
+  return {
+    ...buildExpenseEditPrefill(expense, groupCurrency),
+    dateTimeIso: nowIso,
+    imageUrl: "",
+  };
+}
+
 function minorToAmountString(amountMinor: number): string {
   const value = amountMinor / 100;
   return (Math.round(value * 100) / 100).toString();

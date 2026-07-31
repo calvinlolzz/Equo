@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Expense } from "./appTypes";
-import { buildExpenseEditPrefill } from "./expenseEditPrefill";
+import { buildExpenseDuplicatePrefill, buildExpenseEditPrefill } from "./expenseEditPrefill";
 
 function makeExpense(overrides: Partial<Expense>): Expense {
   return {
@@ -161,5 +161,79 @@ describe("buildExpenseEditPrefill", () => {
       shareMemberIds: ["member_b"],
     });
     expect(buildExpenseEditPrefill(settlement, "TWD").transferToMemberId).toBe("member_b");
+  });
+});
+
+const NOW = "2026-07-30T02:30:00.000Z";
+
+describe("buildExpenseDuplicatePrefill", () => {
+  test("carries over everything that describes how the cost is shared", () => {
+    const expense = makeExpense({
+      title: "週末採買",
+      category: "grocery",
+      note: "全聯",
+      amountMinor: 1000,
+      shareAmountsMinor: { member_a: 600, member_b: 400 },
+      payments: [
+        { payerId: "member_a", amountMinor: 700 },
+        { payerId: "member_b", amountMinor: 300 },
+      ],
+    });
+
+    const prefill = buildExpenseDuplicatePrefill(expense, "TWD", NOW);
+
+    expect(prefill.title).toBe("週末採買");
+    expect(prefill.category).toBe("grocery");
+    expect(prefill.note).toBe("全聯");
+    expect(prefill.shareMemberIds).toEqual(["member_a", "member_b"]);
+    expect(prefill.splitMode).toBe("amount");
+    expect(prefill.shareAmounts).toEqual({ member_a: "6", member_b: "4" });
+    expect(prefill.payments).toEqual([
+      { payerId: "member_a", amount: "7" },
+      { payerId: "member_b", amount: "3" },
+    ]);
+  });
+
+  test("files the copy under now, not the original's date", () => {
+    const expense = makeExpense({});
+
+    expect(buildExpenseDuplicatePrefill(expense, "TWD", NOW).dateTimeIso).toBe(NOW);
+    // The edit path must keep the original timestamp — the two differing is
+    // the whole reason for a separate builder.
+    expect(buildExpenseEditPrefill(expense, "TWD").dateTimeIso).toBe("2026-02-03T10:20:00.000Z");
+  });
+
+  test("drops the receipt photo, which is evidence of the original transaction", () => {
+    const expense = makeExpense({ imageUrl: "https://cdn.equo.local/expense.jpg" });
+
+    expect(buildExpenseDuplicatePrefill(expense, "TWD", NOW).imageUrl).toBe("");
+    expect(buildExpenseEditPrefill(expense, "TWD").imageUrl).toBe("https://cdn.equo.local/expense.jpg");
+  });
+
+  test("keeps a foreign-currency entry in its own currency", () => {
+    const expense = makeExpense({
+      amountMinor: 3000,
+      sourceCurrency: "JPY",
+      sourceAmountMinor: 100000,
+      exchangeRate: 0.3,
+    });
+
+    const prefill = buildExpenseDuplicatePrefill(expense, "TWD", NOW);
+
+    expect(prefill.currency).toBe("JPY");
+    expect(prefill.amount).toBe("1000");
+  });
+
+  test("keeps a percent split as percents", () => {
+    const expense = makeExpense({
+      shareType: "percent",
+      sharePercents: { member_a: 70, member_b: 30 },
+      shareAmountsMinor: { member_a: 700, member_b: 300 },
+    });
+
+    const prefill = buildExpenseDuplicatePrefill(expense, "TWD", NOW);
+
+    expect(prefill.splitMode).toBe("percent");
+    expect(prefill.sharePercents).toEqual({ member_a: "70", member_b: "30" });
   });
 });

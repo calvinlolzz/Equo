@@ -36,7 +36,9 @@ import {
   adminRemoveAdminRoute,
   adminSetAdminRoleRoute,
   adminListAuditLogsRoute,
+  adminListErrorGroupsRoute,
   adminListErrorsRoute,
+  adminSetErrorGroupStatusRoute,
   adminListFeedbackRoute,
   adminListGroupExpensesRoute,
   adminListGroupsRoute,
@@ -60,6 +62,7 @@ import {
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
+import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { healthRoute } from "../routes/healthRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -163,6 +166,29 @@ export function createHttpRuntime(options: RuntimeOptions) {
         return { ...response, headers: { ...response.headers, "cache-control": "no-store" } };
       },
     })),
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/exchange-rates$/,
+      label: "GET /api/v1/exchange-rates",
+      async handle(request) {
+        const result = await exchangeRatesRoute(
+          { ...routeOptions(options, request), now: options.now },
+          queryParam(request, "base"),
+        );
+        const response = jsonResponse(result.status, result.body);
+        // The rates are the same for everyone and change once a day; let the
+        // browser reuse them for an hour rather than asking on every open.
+        // Private, since the endpoint is authenticated and a shared CDN cache
+        // would serve one user's response to the next caller.
+        return {
+          ...response,
+          headers: {
+            ...response.headers,
+            "cache-control": result.status === 200 ? "private, max-age=3600" : "no-store",
+          },
+        };
+      },
+    },
     {
       method: "GET",
       pattern: /^\/api\/v1\/groups$/,
@@ -478,9 +504,40 @@ export function createHttpRuntime(options: RuntimeOptions) {
         const offsetParam = queryParam(request, "offset");
         const result = await adminListErrorsRoute(routeOptions(options, request), {
           search: queryParam(request, "search"),
+          fingerprint: queryParam(request, "fingerprint"),
           limit: limitParam ? Number(limitParam) : undefined,
           offset: offsetParam ? Number(offsetParam) : undefined,
         });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/error-groups$/,
+      label: "GET /api/v1/admin/error-groups",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListErrorGroupsRoute(routeOptions(options, request), {
+          search: queryParam(request, "search"),
+          status: queryParam(request, "status"),
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/error-groups\/([^/]+)\/status$/,
+      label: "POST /api/v1/admin/error-groups/:fingerprint/status",
+      async handle(request, match) {
+        const payload = body<{ status?: string }>(request);
+        const result = await adminSetErrorGroupStatusRoute(
+          routeOptions(options, request),
+          decodeURIComponent(match[1]),
+          payload.status,
+        );
         return jsonResponse(result.status, result.body);
       },
     },

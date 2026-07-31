@@ -224,10 +224,12 @@ export function App() {
   const {
     expenseComposerOpen,
     editingExpense,
+    duplicatingExpense,
     selectedExpenseId,
     setSelectedExpenseId,
     openExpenseComposer,
     openExpenseEdit,
+    openExpenseDuplicate,
     closeExpenseComposer,
     openExpenseDetail,
     handleExpenseDraftSubmit,
@@ -1265,9 +1267,11 @@ export function App() {
       {expenseComposerOpen ? (
         <ExpenseComposerSheet
           members={members}
+          groupId={activeGroup?.id ?? ""}
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
-          initialExpense={editingExpense ?? undefined}
+          initialExpense={editingExpense ?? duplicatingExpense ?? undefined}
+          duplicating={Boolean(duplicatingExpense)}
           onClose={requestCloseComposer}
           onDirtyChange={setComposerDirty}
           onSubmit={handleExpenseDraftSubmit}
@@ -1328,6 +1332,7 @@ export function App() {
           members={members}
           onClose={closeDialog}
           onEdit={openExpenseEdit}
+          onDuplicate={openExpenseDuplicate}
           onDelete={deleteExpense}
           onPrev={
             selectedExpenseIndex > 0
