@@ -659,39 +659,6 @@
   padding-right: 2px;
 }
 
-.currency-option {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  border-radius: 12px;
-  padding: 0 14px;
-  color: rgb(var(--fg) / 0.76);
-  background: rgb(var(--surf) / 0.08);
-  font-weight: 780;
-  text-align: left;
-}
-
-.currency-option span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.currency-option strong {
-  font-size: 13px;
-}
-
-.currency-option:active {
-  opacity: 0.7;
-}
-
-.currency-option.active {
-  color: rgb(var(--ink));
-  background: rgb(var(--gold));
-}
-
 .expense-composer {
   width: min(520px, 100%);
   max-height: calc(100vh - 48px);

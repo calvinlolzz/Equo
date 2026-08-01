@@ -1380,6 +1380,8 @@ export function App() {
           session={session}
           infoDialog={infoDialog}
           onOpenInfoDialog={setInfoDialog}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onClose={closeDialog}
           onSave={saveProfile}
           onToast={showToast}

@@ -179,10 +179,20 @@
   font-weight: 800;
 }
 
-/* The notification row is the only one that is not itself a button: it carries
-   a status line and its own action, so the row stays a container. */
-.profile-push-row {
+/* Rows that report rather than act (language, and the notification row, which
+   carries its own button instead). Not buttons, so they must not pretend to be
+   pressable. */
+.profile-push-row,
+.profile-other-row-static {
   cursor: default;
+}
+
+/* The current value, right-aligned against the label: 夜間 / 繁體中文. Reading
+   down the column answers "what is this set to" without opening anything. */
+.profile-row-value {
+  margin-left: auto;
+  color: rgb(var(--fg) / 0.6);
+  font-weight: 600;
 }
 
 .profile-push-text {
