@@ -917,11 +917,14 @@ export function App() {
             <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setSettingsDrawerOpen(true)}>
               <Settings aria-hidden="true" size={22} />
             </button>
-          ) : (
-            <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
-              <UserRound aria-hidden="true" size={18} />
-            </button>
-          )}
+          ) : null}
+          {/* Profile sits next to the theme toggle on every screen, in a group
+              or not. It used to move into the group rail once you opened a
+              group, which left a gap up here and pushed the group's cover down
+              a row - and meant "where is my account" had two answers. */}
+          <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
+            <UserRound aria-hidden="true" size={18} />
+          </button>
         </div>
       </header>
 
@@ -1231,7 +1234,6 @@ export function App() {
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
                 isOwner={isCurrentMemberOwner}
-                onProfile={openProfileDialog}
                 onEditGroup={openEditGroup}
                 onNavigate={handleSideNavClick}
                 onArchive={() => setDialog("archive")}
@@ -1249,7 +1251,6 @@ export function App() {
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
                 isOwner={isCurrentMemberOwner}
-                onProfile={openProfileDialog}
                 onEditGroup={openEditGroup}
                 onNavigate={handleSideNavClick}
                 onArchive={() => setDialog("archive")}

@@ -444,14 +444,6 @@
   background: rgb(var(--danger) / 0.045);
 }
 
-.profile-dot-row {
-  display: flex;
-  justify-content: flex-end;
-  justify-self: end;
-  width: 100%;
-  margin-bottom: 4px;
-}
-
 .profile-dot {
   width: 36px;
   height: 36px;

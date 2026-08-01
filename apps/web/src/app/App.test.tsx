@@ -659,6 +659,34 @@ describe("repeating an expense", () => {
   });
 });
 
+describe("the top bar", () => {
+  test("keeps 個人資料 next to the theme toggle once a group is open, and only there", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByLabelText(UI_TEXT.app.profile)).toBeTruthy();
+    // It used to move into the group rail on entering a group, which is how
+    // "where is my account" ended up with two answers.
+    expect(screen.getAllByLabelText(UI_TEXT.app.profile)).toHaveLength(1);
+  });
+
+  test("is the same place before any group is open", async () => {
+    signIn();
+    fakeApi([{ route: "GET /groups", body: { groups: [] } }]);
+    renderApp();
+    await screen.findAllByText(UI_TEXT.app.createGroup);
+
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByLabelText(UI_TEXT.app.profile)).toBeTruthy();
+  });
+});
+
 describe("unread badges on the group list", () => {
   const tokyo = group();
   const osaka = group({ id: "group_2", name: "大阪旅行" });

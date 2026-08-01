@@ -26,7 +26,6 @@ type GroupSideNavProps = {
   isOwner: boolean;
   /** Called before any navigation when rendered inside the mobile drawer, so the drawer closes first. */
   onBeforeNavigate?: () => void;
-  onProfile: () => void;
   onEditGroup: () => void;
   onNavigate: (id: string) => void;
   onArchive: () => void;
@@ -40,7 +39,6 @@ export function GroupSideNav({
   memberCount,
   isOwner,
   onBeforeNavigate,
-  onProfile,
   onEditGroup,
   onNavigate,
   onArchive,
@@ -50,19 +48,6 @@ export function GroupSideNav({
 
   return (
     <>
-      <div className="profile-dot-row">
-        <button
-          className="profile-dot"
-          type="button"
-          aria-label={text.profile}
-          onClick={() => {
-            closeDrawer();
-            onProfile();
-          }}
-        >
-          <UserRound aria-hidden="true" size={18} />
-        </button>
-      </div>
       <div className="side-group-card">
         <div className="side-cover">{coverImageUrl ? <img src={coverImageUrl} alt="" loading="lazy" decoding="async" /> : null}</div>
         <div className="side-group-name">
