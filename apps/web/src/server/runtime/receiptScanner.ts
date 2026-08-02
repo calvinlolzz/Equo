@@ -4,15 +4,18 @@ import type { ScanReceiptLineItem, ScanReceiptResponse } from "../../contracts/s
 export const RECEIPT_CATEGORIES = ["food", "transport", "lodging", "shopping", "general", "other"] as const;
 
 /**
- * Recognition runs on the model named here. Vision quality is what decides
- * whether a faded 熱感應 receipt reads correctly, so this is not a knob to turn
- * down for cost without checking real receipts first; `effort: "low"` below is
- * the cost lever instead, and it suits a task that is perception rather than
- * reasoning.
+ * Recognition model. Overridable per deployment via RECEIPT_SCAN_MODEL so
+ * trying a different one is an env change rather than a code change - vision
+ * quality on a faded 熱感應 receipt is the thing worth re-measuring, and that
+ * is easier when swapping the model costs nothing.
+ *
+ * Note the effort parameter is deliberately NOT sent: it is rejected outright
+ * by Haiku 4.5, so passing it would make the cheap default the one model this
+ * endpoint cannot run on.
  */
-const MODEL = "claude-opus-5";
+export const RECEIPT_SCAN_DEFAULT_MODEL = "claude-haiku-4-5";
 
-/** Thinking is on by default on this model and shares the budget with the reply, so leave headroom above the small JSON. */
+/** Generous headroom over the small JSON, so a long itemised receipt is never truncated mid-object. */
 const MAX_TOKENS = 4000;
 
 /**
@@ -169,8 +172,10 @@ export function normaliseReceiptResult(raw: RawReceipt, fallbackCurrency: string
  * feature as unavailable and the client still attaches the photo, so a missing
  * key costs the auto-fill and nothing else.
  */
-export function createReceiptScanner(apiKey: string | undefined): ReceiptScanner | undefined {
+export function createReceiptScanner(apiKey: string | undefined, model?: string): ReceiptScanner | undefined {
   if (!apiKey) return undefined;
+
+  const modelId = model?.trim() || RECEIPT_SCAN_DEFAULT_MODEL;
 
   return async ({ dataUrl, currency }) => {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
@@ -179,12 +184,10 @@ export function createReceiptScanner(apiKey: string | undefined): ReceiptScanner
     let response;
     try {
       response = await client.messages.create({
-        model: MODEL,
+        model: modelId,
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
-        // Perception, not reasoning: low effort keeps latency and spend down on
-        // a call that fires every time somebody photographs a receipt.
-        output_config: { effort: "low", format: { type: "json_schema", schema: RESPONSE_SCHEMA } },
+        output_config: { format: { type: "json_schema", schema: RESPONSE_SCHEMA } },
         messages: [
           {
             role: "user",

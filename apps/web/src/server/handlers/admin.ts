@@ -227,6 +227,7 @@ export async function handleAdminTrends(
 export async function handleAdminHealth(
   repository: AdminRepository,
   context: AuthenticatedContext,
+  receiptScan?: AdminHealthRecord["receipt_scan"],
 ): Promise<HandlerResult<AdminHealthRecord>> {
   const role = await repository.findAdminRole(context.user.id);
 
@@ -235,7 +236,7 @@ export async function handleAdminHealth(
   }
 
   const health = await repository.getHealth();
-  return { ok: true, status: 200, body: health };
+  return { ok: true, status: 200, body: receiptScan ? { ...health, receipt_scan: receiptScan } : health };
 }
 
 export async function handleAdminStorage(

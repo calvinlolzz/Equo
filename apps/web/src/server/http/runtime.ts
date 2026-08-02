@@ -64,7 +64,7 @@ import {
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { scanReceiptRoute } from "../routes/receiptRoutes.js";
-import type { ReceiptScanner } from "../runtime/receiptScanner.js";
+import { RECEIPT_SCAN_DEFAULT_MODEL, type ReceiptScanner } from "../runtime/receiptScanner.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
@@ -101,6 +101,8 @@ type RuntimeOptions = {
    * rest of the API down.
    */
   scanReceipt?: ReceiptScanner;
+  /** Which model scanReceipt is pointed at, for the admin console's health card only. */
+  receiptScanModel?: string;
 };
 
 type RuntimeRoute = {
@@ -673,7 +675,10 @@ export function createHttpRuntime(options: RuntimeOptions) {
       pattern: /^\/api\/v1\/admin\/health$/,
       label: "GET /api/v1/admin/health",
       async handle(request) {
-        const result = await adminHealthRoute(routeOptions(options, request));
+        const result = await adminHealthRoute(routeOptions(options, request), {
+          enabled: Boolean(options.scanReceipt),
+          model: options.receiptScanModel?.trim() || RECEIPT_SCAN_DEFAULT_MODEL,
+        });
         return jsonResponse(result.status, result.body);
       },
     },

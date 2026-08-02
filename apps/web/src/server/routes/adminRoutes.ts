@@ -70,14 +70,17 @@ export async function adminTrendsRoute(options: RouteOptions, days: string | und
   return handleAdminTrends(createSupabaseAdminRepository(options.client), auth.context, days);
 }
 
-export async function adminHealthRoute(options: RouteOptions) {
+export async function adminHealthRoute(
+  options: RouteOptions,
+  receiptScan?: { enabled: boolean; model: string },
+) {
   const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
   }
 
-  return handleAdminHealth(createSupabaseAdminRepository(options.client), auth.context);
+  return handleAdminHealth(createSupabaseAdminRepository(options.client), auth.context, receiptScan);
 }
 
 export async function adminListAdminsRoute(options: RouteOptions) {

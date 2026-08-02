@@ -1,4 +1,4 @@
-import { Archive, Plus, RefreshCw, Ticket } from "lucide-react";
+import { Archive, Plus, RefreshCw, Scan } from "lucide-react";
 import type { Group } from "./appTypes";
 import { UI_TEXT } from "./uiText";
 
@@ -69,8 +69,8 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
 
       <div className="rail-bottom-actions">
         <button className="rail-join-toggle" type="button" onClick={onShowInviteCode}>
-          <Ticket aria-hidden="true" size={16} />
-          {text.inputInviteCode}
+          <Scan aria-hidden="true" size={16} />
+          {text.scanOrInputInviteCode}
         </button>
       </div>
     </aside>

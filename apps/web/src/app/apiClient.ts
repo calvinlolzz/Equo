@@ -666,6 +666,11 @@ export type AdminHealthSummary = {
     open_groups?: number;
   };
   feedback: { open: number };
+  /**
+   * Receipt recognition's live configuration. Absent on an API deployed before
+   * this shipped, so the tile is conditional rather than assumed.
+   */
+  receipt_scan?: { enabled: boolean; model: string };
 };
 
 export type AdminUserRow = {

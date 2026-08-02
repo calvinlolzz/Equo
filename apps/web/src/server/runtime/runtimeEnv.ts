@@ -19,6 +19,8 @@ export type RuntimeEnv = {
    * should offer the camera and skip the auto-fill, not 503 the whole API.
    */
   ANTHROPIC_API_KEY?: string;
+  /** Overrides the recognition model. Absent = the scanner's own default. */
+  RECEIPT_SCAN_MODEL?: string;
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -41,6 +43,7 @@ export function readRuntimeEnv(source: EnvSource): Partial<RuntimeEnv> {
     VAPID_PRIVATE_KEY: cleanEnvValue(source.VAPID_PRIVATE_KEY),
     VAPID_SUBJECT: cleanEnvValue(source.VAPID_SUBJECT),
     ANTHROPIC_API_KEY: cleanEnvValue(source.ANTHROPIC_API_KEY),
+    RECEIPT_SCAN_MODEL: cleanEnvValue(source.RECEIPT_SCAN_MODEL),
   };
 }
 

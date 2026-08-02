@@ -192,7 +192,7 @@ describe("輸入邀請碼", () => {
     await landOnGroup();
 
     fireEvent.click(screen.getByRole("button", { name: app.groupList }));
-    fireEvent.click(await screen.findByRole("button", { name: app.inputInviteCode }));
+    fireEvent.click(await screen.findByRole("button", { name: app.scanOrInputInviteCode }));
     fireEvent.click(await screen.findByRole("button", { name: app.scanInviteQr }));
 
     await screen.findByRole("dialog", { name: app.scanInviteTitle });

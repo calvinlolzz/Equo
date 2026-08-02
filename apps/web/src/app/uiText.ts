@@ -67,6 +67,7 @@ export const UI_TEXT = {
     copyCode: "複製邀請碼",
     copyLink: "複製連結",
     inputInviteCode: "輸入邀請碼",
+    scanOrInputInviteCode: "掃描 / 輸入邀請碼",
     emptyContinue: "目前沒有可繼續的群組",
     createFirstGroup: "建立第一個群組",
     profile: "個人資料",

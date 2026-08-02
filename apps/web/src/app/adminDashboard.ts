@@ -176,6 +176,23 @@ export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTi
       hint: health.feedback.open > 0 ? "在「回饋」分頁處理" : "都看完了",
       tone: health.feedback.open === 0 ? "ok" : "warn",
     },
+    // Only tile that reports configuration rather than traffic. It earns the
+    // space because an unset ANTHROPIC_API_KEY fails silently by design - the
+    // app degrades to "photo only" and nobody files a bug - so this is the one
+    // place the difference is visible.
+    ...(health.receipt_scan
+      ? [
+          {
+            key: "receipt_scan",
+            label: "收據辨識",
+            value: health.receipt_scan.enabled ? "已啟用" : "未設定",
+            hint: health.receipt_scan.enabled
+              ? health.receipt_scan.model
+              : "缺 ANTHROPIC_API_KEY，只會附照片",
+            tone: health.receipt_scan.enabled ? ("ok" as const) : ("warn" as const),
+          },
+        ]
+      : []),
   ];
 }
 
