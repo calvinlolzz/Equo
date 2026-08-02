@@ -449,6 +449,13 @@
   height: 36px;
   display: grid;
   place-items: center;
+  /* Buttons keep their UA default padding (1px 6px) unless it is reset, and
+     box-sizing takes it out of the 36px - so the avatar img's 100% sizing was
+     resolving against a 24x34 content box and rendering as a tall ellipse with
+     the button's own background showing as a ring. Same fix as
+     .profile-avatar-picker and .expense-detail-image. */
+  padding: 0;
+  overflow: hidden;
   border-radius: 50%;
   color: rgb(var(--ink));
   background: rgba(232, 236, 235, 0.9);
