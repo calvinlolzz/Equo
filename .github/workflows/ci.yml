@@ -1,0 +1,60 @@
+name: CI
+
+# Why this exists: nothing was checking the test suite. Vercel builds every
+# push, so a broken BUILD was caught - but a red test suite, or a type error in
+# a file the bundler happens not to reach, sailed straight into main. Two real
+# ones got through that way (a query that only breaks on the 1st of the month,
+# and a fixture that expired once a timestamp aged past a threshold), and both
+# were found by hand days later.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per branch. A force-push or a quick follow-up commit cancels the run
+# it supersedes rather than queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # Matches the runtime the API is deployed on. `npm` cache keyed on the
+          # lockfile so a run with no dependency change skips the download.
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        # ci, not install: fails loudly if package-lock.json disagrees with
+        # package.json instead of quietly resolving something else.
+        run: npm ci
+
+      - name: Type-check
+        # Ahead of the tests: a type error is the fastest failure to read, and
+        # vitest would otherwise run for a minute before reporting the same
+        # thing as a runtime error somewhere less obvious.
+        run: npx tsc -b apps/web
+
+      - uses: actions/setup-python@v6
+        with:
+          # The repo's static checks are Python; `python` (not just `python3`)
+          # has to be on PATH because that is what the npm scripts call.
+          python-version: "3.12"
+
+      - name: Verify release
+        # The project's own composite check: tests, production build, and the
+        # static guards over the built bundle, file encodings, and vercel.json
+        # (that last one is what stands between us and another eight-hour API
+        # outage - see check-launch-readiness-stage.py).
+        run: npm run verify:release
