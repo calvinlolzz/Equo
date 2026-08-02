@@ -660,6 +660,31 @@
     justify-self: center;
   }
 
+  /* In a group the middle slot is the group's name, so it drops the brand
+     square entirely and becomes a plain centred title. Truncates rather than
+     wrapping: the bar is one row, between two fixed-width controls. */
+  .brand-mark--title {
+    width: auto;
+    max-width: 56vw;
+    height: 44px;
+    padding: 0 8px;
+    border-radius: 12px;
+    background: transparent;
+    color: rgb(var(--fg));
+    font-size: 17px;
+    font-weight: 820;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The day/night shortcut is desktop-only now: on a phone the top bar is
+     ☰ / name / avatar like the app it is modelled on, and the same setting
+     lives in 個人資料 → 外觀主題 with its current value spelled out. */
+  .theme-toggle-button {
+    display: none;
+  }
+
   .top-bar > .top-actions {
     grid-column: 3;
     justify-self: end;

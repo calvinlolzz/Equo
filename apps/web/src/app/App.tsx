@@ -42,7 +42,7 @@ import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
-import { MemberAvatar } from "./MemberAvatar";
+import { MemberAvatar, upscaleGoogleAvatar } from "./MemberAvatar";
 import { isGroupOwner } from "./isGroupOwner";
 import { resolveActiveTab } from "./resolveActiveTab";
 import { resolveCurrentMember } from "./resolveCurrentMember";
@@ -471,7 +471,7 @@ export function App() {
 
   // Which bottom tab reads as selected. Derived, not stored: three of the tabs
   // open the shared sheet rather than navigating, so the dialog IS the state.
-  const activeTab = resolveActiveTab(dialog);
+  const activeTab = resolveActiveTab(dialog, settingsDrawerOpen);
 
   // "Add to home screen". Only offered on the phone layout, and only once the
   // user actually has a group open — asking someone to install the app before
@@ -901,8 +901,16 @@ export function App() {
             {otherGroupsUnread > 0 ? <span className="top-bar-unread-dot" aria-hidden="true" /> : null}
           </button>
         ) : null}
-        <button className="brand-mark" type="button" onClick={openHome}>
-          Equo
+        {/* The phone shell puts the group's name where the reference app does
+            - centred between the drawer button and the avatar - because on a
+            screen this narrow "which group am I in" beats the brand. Wider
+            layouts keep the brand, which is also the way home. */}
+        <button
+          className={isMobileLayout && activeGroup ? "brand-mark brand-mark--title" : "brand-mark"}
+          type="button"
+          onClick={openHome}
+        >
+          {isMobileLayout && activeGroup ? activeGroup.name : "Equo"}
         </button>
         <div className="top-actions">
           <button
@@ -913,17 +921,20 @@ export function App() {
           >
             {theme === "light" ? <Moon aria-hidden="true" size={20} /> : <Sun aria-hidden="true" size={20} />}
           </button>
-          {activeGroup ? (
-            <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupManage} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setSettingsDrawerOpen(true)}>
-              <Settings aria-hidden="true" size={22} />
-            </button>
-          ) : null}
           {/* Profile sits next to the theme toggle on every screen, in a group
               or not. It used to move into the group rail once you opened a
               group, which left a gap up here and pushed the group's cover down
-              a row - and meant "where is my account" had two answers. */}
+              a row - and meant "where is my account" had two answers.
+
+              It shows the Google picture when there is one: an avatar is how
+              people recognise "this is my account", and a generic outline of a
+              person is not. */}
           <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
-            <UserRound aria-hidden="true" size={18} />
+            {displayAvatarUrl ? (
+              <img src={upscaleGoogleAvatar(displayAvatarUrl)} alt="" />
+            ) : (
+              <UserRound aria-hidden="true" size={18} />
+            )}
           </button>
         </div>
       </header>
@@ -1316,15 +1327,19 @@ export function App() {
               <ChartNoAxesColumn aria-hidden="true" size={20} />
               <span>{text.navAnalysis}</span>
             </button>
+            {/* 設定, not 群組成員: the member list lives one row inside this
+                drawer, and a settings destination is what the fifth slot is for
+                on every phone app people already use. It also gives the gear
+                that used to sit in the top bar a home. */}
             <button
-              className={activeTab === "members" ? "mobile-tab-item active" : "mobile-tab-item"}
+              className={activeTab === "settings" ? "mobile-tab-item active" : "mobile-tab-item"}
               type="button"
-              aria-label={text.navMembers}
-              aria-current={activeTab === "members" ? "page" : undefined}
-              onClick={openMemberList}
+              aria-label={text.navSettings}
+              aria-current={activeTab === "settings" ? "page" : undefined}
+              onClick={() => setSettingsDrawerOpen(true)}
             >
-              <UserRound aria-hidden="true" size={20} />
-              <span>{text.navMembers}</span>
+              <Settings aria-hidden="true" size={20} />
+              <span>{text.navSettings}</span>
             </button>
           </nav>
         </section>
