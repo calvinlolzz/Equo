@@ -7,6 +7,7 @@ import type {
   CreateInviteRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  ScanReceiptRequest,
   UpdateGroupRequest,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
@@ -62,6 +63,8 @@ import {
   replaceExpenseRoute,
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
+import { scanReceiptRoute } from "../routes/receiptRoutes.js";
+import type { ReceiptScanner } from "../runtime/receiptScanner.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
@@ -91,6 +94,13 @@ type RuntimeOptions = {
   vapid?: VapidKeys;
   /** Test seam: the push transport. Defaults to web-push. */
   pushSend?: PushSendFn;
+  /**
+   * Absent = receipt recognition is switched off for the same reason as vapid:
+   * POST /receipts/scan answers 503 RECEIPT_SCAN_UNAVAILABLE and the client
+   * falls back to attaching the photo, rather than the missing key taking the
+   * rest of the API down.
+   */
+  scanReceipt?: ReceiptScanner;
 };
 
 type RuntimeRoute = {
@@ -478,6 +488,18 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "PATCH /api/v1/me/avatar",
       async handle(request) {
         const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/receipts\/scan$/,
+      label: "POST /api/v1/receipts/scan",
+      async handle(request) {
+        const result = await scanReceiptRoute(
+          { ...routeOptions(options, request), scanReceipt: options.scanReceipt },
+          body<ScanReceiptRequest>(request),
+        );
         return jsonResponse(result.status, result.body);
       },
     },

@@ -13,6 +13,7 @@ import {
   type ComposerSplitMode,
 } from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { buildReceiptComposerPrefill, type ReceiptPrefill } from "./receiptPrefill";
 import { formatAmount, formatAmountInputDisplay, stripAmountInput } from "./formatAmount";
 import {
   buildEqualShareAmountsMinor,
@@ -136,6 +137,7 @@ export function ExpenseComposerSheet({
   currencyOptions,
   initialExpense,
   duplicating = false,
+  receiptPrefill,
   onClose,
   onDirtyChange,
   onSubmit,
@@ -156,6 +158,12 @@ export function ExpenseComposerSheet({
    */
   duplicating?: boolean;
   /**
+   * Open as a NEW entry seeded from a scanned receipt: the photo is attached
+   * and whatever the model could read is filled in. Mutually exclusive with
+   * initialExpense — a scan always starts a new expense, never edits one.
+   */
+  receiptPrefill?: ReceiptPrefill;
+  /**
    * Asks to close. May decline and put the discard confirm up instead — see
    * onDirtyChange — so this sheet never animates itself away on the way out.
    */
@@ -172,12 +180,22 @@ export function ExpenseComposerSheet({
   fetchExchangeRates?: (base: string) => Promise<ExchangeRatesResponse>;
 }) {
   const editPrefill = useMemo(
-    () =>
-      initialExpense
-        ? duplicating
+    () => {
+      if (initialExpense) {
+        return duplicating
           ? buildExpenseDuplicatePrefill(initialExpense, groupCurrency, new Date().toISOString())
-          : buildExpenseEditPrefill(initialExpense, groupCurrency)
-        : null,
+          : buildExpenseEditPrefill(initialExpense, groupCurrency);
+      }
+      if (receiptPrefill) {
+        return buildReceiptComposerPrefill(receiptPrefill, {
+          groupCurrency,
+          currencyCodes: currencyOptions.map((option) => option.code),
+          memberIds: members.map((member) => member.id),
+          nowIso: new Date().toISOString(),
+        });
+      }
+      return null;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -223,7 +241,7 @@ export function ExpenseComposerSheet({
     (editPrefill?.payments ?? []).map((payment, index) => ({ key: index, payerId: payment.payerId, amount: payment.amount })),
   );
   const payerRowKeyRef = useRef(editPrefill?.payments.length ?? 0);
-  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>("");
+  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>(receiptPrefill?.imageDataUrl ?? "");
   const [composerImageUrl, setComposerImageUrl] = useState<string>(editPrefill?.imageUrl ?? "");
   const [composerNote, setComposerNote] = useState(editPrefill?.note ?? "");
   const [composerSubmitting, setComposerSubmitting] = useState(false);

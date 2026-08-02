@@ -6,6 +6,7 @@ import { describeCloudActionError } from "./describeCloudActionError";
 import type { DialogMode, Expense, Group, Member } from "./appTypes";
 import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
+import type { ReceiptPrefill } from "./receiptPrefill";
 import { expenseToDraft } from "./expenseUndo";
 import { haptic } from "./haptics";
 import { formatAmount } from "./formatAmount";
@@ -63,11 +64,28 @@ export function useExpenseComposer({
    */
   const [duplicatingExpense, setDuplicatingExpense] = useState<Expense | null>(null);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string>("");
+  /**
+   * A scanned receipt waiting to seed the composer. A third seed alongside
+   * editingExpense/duplicatingExpense, and like duplicating it always creates:
+   * the submit path keys replace-vs-create off editingExpense alone.
+   */
+  const [receiptPrefill, setReceiptPrefill] = useState<ReceiptPrefill | null>(null);
 
   /** Open the composer for a brand-new expense (never carrying a prior edit). */
   function openExpenseComposer() {
     setEditingExpense(null);
     setDuplicatingExpense(null);
+    setReceiptPrefill(null);
+    setExpenseComposerOpen(true);
+  }
+
+  /** Open the composer seeded from a receipt photo plus whatever the scan could read. */
+  function openExpenseFromReceipt(prefill: ReceiptPrefill) {
+    setDialog(null);
+    setSelectedExpenseId("");
+    setEditingExpense(null);
+    setDuplicatingExpense(null);
+    setReceiptPrefill(prefill);
     setExpenseComposerOpen(true);
   }
 
@@ -75,6 +93,7 @@ export function useExpenseComposer({
     setDialog(null);
     setSelectedExpenseId("");
     setDuplicatingExpense(null);
+    setReceiptPrefill(null);
     setEditingExpense(expense);
     setExpenseComposerOpen(true);
   }
@@ -83,6 +102,7 @@ export function useExpenseComposer({
     setDialog(null);
     setSelectedExpenseId("");
     setEditingExpense(null);
+    setReceiptPrefill(null);
     setDuplicatingExpense(expense);
     setExpenseComposerOpen(true);
   }
@@ -91,6 +111,7 @@ export function useExpenseComposer({
     setExpenseComposerOpen(false);
     setEditingExpense(null);
     setDuplicatingExpense(null);
+    setReceiptPrefill(null);
   }
 
   function openExpenseDetail(expenseId: string) {
@@ -136,6 +157,7 @@ export function useExpenseComposer({
       setExpenseComposerOpen(false);
       setEditingExpense(null);
       setDuplicatingExpense(null);
+      setReceiptPrefill(null);
       haptic("success");
       showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
     } catch (error) {
@@ -237,9 +259,11 @@ export function useExpenseComposer({
     expenseComposerOpen,
     editingExpense,
     duplicatingExpense,
+    receiptPrefill,
     selectedExpenseId,
     setSelectedExpenseId,
     openExpenseComposer,
+    openExpenseFromReceipt,
     openExpenseEdit,
     openExpenseDuplicate,
     closeExpenseComposer,

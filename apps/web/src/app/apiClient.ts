@@ -8,6 +8,8 @@ import type {
   RemoveGroupMemberRequest,
   RenameGroupMemberRequest,
   UpdateGroupRequest,
+  ScanReceiptRequest,
+  ScanReceiptResponse,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
 } from "../contracts/schemas";
@@ -408,6 +410,18 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     },
     uploadGroupImage(groupId: string, payload: UploadGroupImageRequest) {
       return request<{ image: { url: string } }>(`/groups/${groupId}/images`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    /**
+     * Read a photographed receipt into composer fields. Rejects with a
+     * RECEIPT_SCAN_UNAVAILABLE ApiRequestError when recognition is off or the
+     * upstream failed — callers still have the photo, so that is a downgrade
+     * rather than a failure.
+     */
+    scanReceipt(payload: ScanReceiptRequest) {
+      return request<ScanReceiptResponse>("/receipts/scan", {
         method: "POST",
         body: JSON.stringify(payload),
       });
