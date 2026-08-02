@@ -87,16 +87,55 @@ describe("the mobile chrome", () => {
 
     // The top-bar drawer triggers and the bottom tab bar are live on mobile.
     expect(screen.getByRole("button", { name: app.groupList })).toBeTruthy();
-    expect(screen.getByRole("button", { name: app.groupManage })).toBeTruthy();
+    // 群組管理 moved out of the top bar into the 設定 tab.
+    expect(screen.queryByRole("button", { name: app.groupManage })).toBeNull();
     expect(screen.getByRole("button", { name: app.navRecords })).toBeTruthy();
     expect(screen.getByRole("button", { name: app.navAnalysis })).toBeTruthy();
-    expect(screen.getByRole("button", { name: app.navMembers })).toBeTruthy();
+    expect(screen.getByRole("button", { name: app.navSettings })).toBeTruthy();
 
     // The desktop group rail is aria-hidden on mobile, so its actions are out of
     // the accessibility tree entirely - not merely visually hidden. If the inert
     // wiring regressed, these would leak back in as duplicate, focusable controls.
     expect(screen.queryByRole("button", { name: app.refresh })).toBeNull();
     expect(screen.queryByRole("button", { name: app.archivedGroups })).toBeNull();
+  });
+});
+
+describe("the phone top bar", () => {
+  test("names the group in the middle, between the drawer button and the avatar", async () => {
+    await landOnGroup();
+
+    const banner = screen.getByRole("banner");
+    // Not the brand: on a screen this narrow, "which group am I in" is the
+    // thing worth the middle slot.
+    expect(within(banner).getByText("東京旅行")).toBeTruthy();
+    expect(within(banner).queryByText("Equo")).toBeNull();
+    expect(within(banner).getByLabelText(app.groupList)).toBeTruthy();
+    expect(within(banner).getByLabelText(app.profile)).toBeTruthy();
+  });
+
+  test("the profile button is the Google picture when there is one", async () => {
+    window.localStorage.setItem(
+      "equo.clean.session",
+      JSON.stringify({
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        user: {
+          id: "user_alice",
+          email: "alice@example.com",
+          displayName: "Alice",
+          avatarUrl: "https://lh3.googleusercontent.com/a/photo=s96-c",
+        },
+      }),
+    );
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const avatar = within(screen.getByLabelText(app.profile)).getByRole("presentation", { hidden: true });
+    expect(avatar.getAttribute("src")).toContain("lh3.googleusercontent.com");
   });
 });
 
@@ -126,14 +165,16 @@ describe("the group drawer", () => {
 });
 
 describe("the settings drawer", () => {
-  test("the group-manage button opens the right drawer", async () => {
+  test("the 設定 tab opens the right drawer", async () => {
     await landOnGroup();
 
     expect(screen.queryByRole("dialog", { name: app.groupManage })).toBeNull();
 
-    screen.getByRole("button", { name: app.groupManage }).click();
+    screen.getByRole("button", { name: app.navSettings }).click();
 
     expect(await screen.findByRole("dialog", { name: app.groupManage })).toBeTruthy();
+    // ...and the tab bar says that is where you are.
+    expect(screen.getByRole("button", { name: app.navSettings }).getAttribute("aria-current")).toBe("page");
   });
 });
 
@@ -246,7 +287,7 @@ describe("the Back button", () => {
   test("closes a drawer rather than leaving the group", async () => {
     await landOnGroup();
 
-    screen.getByRole("button", { name: app.groupManage }).click();
+    screen.getByRole("button", { name: app.navSettings }).click();
     await screen.findByRole("dialog", { name: app.groupManage });
 
     await pressBack();

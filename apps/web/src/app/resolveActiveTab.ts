@@ -12,11 +12,18 @@ import type { DialogMode } from "./appTypes";
  * profile sheet, create-group, an expense detail) leaves "home" selected: those
  * open OVER the home screen, which is still what's behind them.
  */
-export type ActiveTab = "home" | "records" | "analysis" | "members";
+export type ActiveTab = "home" | "records" | "analysis" | "settings";
 
-export function resolveActiveTab(dialog: DialogMode): ActiveTab {
+/**
+ * `settingsOpen` is the group-settings drawer, which is the fifth tab. The
+ * member list gets the same answer: it is only reachable from inside that
+ * drawer, and the drawer closes on the way - without this the tab bar would
+ * snap back to 首頁 the moment you arrived somewhere you navigated to from 設定.
+ */
+export function resolveActiveTab(dialog: DialogMode, settingsOpen = false): ActiveTab {
   if (dialog === "recordsPanel") return "records";
   if (dialog === "analysisPanel") return "analysis";
-  if (dialog === "memberList") return "members";
+  if (dialog === "memberList") return "settings";
+  if (settingsOpen) return "settings";
   return "home";
 }
