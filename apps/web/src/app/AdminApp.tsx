@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, Search, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
@@ -17,6 +17,7 @@ import {
   type AdminHealthSummary,
   type AdminMeSummary,
   type AdminOverviewSummary,
+  type AdminReceiptScanSettings,
   type AdminStorageSummary,
   type AdminTrendsSummary,
   type AdminUserDetail,
@@ -241,6 +242,7 @@ export function AdminApp() {
     { key: "feedback", icon: MessageSquareText, badge: health?.feedback.open },
     { key: "errors", icon: Bug, badge: health?.errors.open_groups },
     { key: "audit", icon: ScrollText },
+    { key: "settings", icon: SlidersHorizontal },
     // Managing admins is owner-only; the server enforces it too, this just
     // hides a tab that would 403 anyway.
     ...(me?.role === "owner" ? [{ key: "admins" as const, icon: ShieldCheck }] : []),
@@ -305,6 +307,7 @@ export function AdminApp() {
           <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
         )}
         {tab === "audit" && <AuditPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "settings" && <SettingsPanel client={client} canEdit={me?.role === "owner" || me?.role === "admin"} />}
         {tab === "admins" && <AdminsPanel client={client} meUserId={me?.user.id ?? ""} />}
       </main>
 
@@ -2239,5 +2242,138 @@ function Pagination({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Runtime settings an admin can change without a deploy.
+ *
+ * Only receipt recognition so far, and it is here rather than in an env var for
+ * one reason: it is the only feature that costs money per call, so "stop it
+ * now" has to be a thing somebody can do in seconds. Choosing the model is the
+ * same switch and comes along for free.
+ */
+function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
+  const [settings, setSettings] = useState<AdminReceiptScanSettings | null>(null);
+  const [enabled, setEnabled] = useState(true);
+  const [model, setModel] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    client
+      .adminGetReceiptScanSettings()
+      .then((result) => {
+        if (cancelled) return;
+        setSettings(result);
+        setEnabled(result.enabled);
+        setModel(result.model);
+      })
+      .catch(() => {
+        if (!cancelled) setError("設定載入失敗，可能是資料庫尚未套用 app_settings migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  // The saved state is the baseline, so re-selecting the original value clears
+  // the dirty flag instead of leaving a Save button that would write nothing.
+  const dirty = Boolean(settings) && (enabled !== settings?.enabled || model !== settings?.model);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!dirty || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const saved = await client.adminSetReceiptScanSettings(enabled, model);
+      setSettings(saved);
+      setEnabled(saved.enabled);
+      setModel(saved.model);
+      setNotice(saved.enabled ? `已儲存，目前使用 ${saved.model}。` : "已關閉收據辨識，使用者仍可附上照片。");
+    } catch (err) {
+      const code = (err as ApiClientError).code;
+      setError(code === "ADMIN_FORBIDDEN" ? "只有管理員或擁有者能變更設定。" : "儲存失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-label="設定">
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+      {!settings && !error && <p className="admin-loading">載入中…</p>}
+
+      {settings && (
+        <form className="admin-settings-card" onSubmit={save}>
+          <div className="admin-settings-head">
+            <h2>收據辨識</h2>
+            <p>
+              使用者拍下收據後自動填入金額與店名。關閉後仍會把照片附在支出上，只是需要手動輸入金額。
+            </p>
+          </div>
+
+          {/* A key that is not set makes every control below cosmetic, so say
+              so rather than letting someone "turn on" a feature that cannot run. */}
+          {!settings.configured && (
+            <p className="admin-error">
+              這個部署沒有設定 ANTHROPIC_API_KEY，辨識無法運作。請先在 Vercel 環境變數加入後重新部署。
+            </p>
+          )}
+
+          <label className="admin-settings-row">
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={!canEdit || busy}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span>
+              <strong>啟用收據辨識</strong>
+              <small>成本異常時可立即關閉，不需重新部署。</small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <select
+              className="admin-select"
+              value={model}
+              disabled={!canEdit || busy}
+              aria-label="辨識模型"
+              onChange={(event) => setModel(event.target.value)}
+            >
+              {settings.models.map((option: string) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <span>
+              <strong>辨識模型</strong>
+              <small>由便宜到準確排列，換模型後下一次掃描立即生效。</small>
+            </span>
+          </label>
+
+          <div className="admin-settings-foot">
+            <span className="admin-muted">
+              {settings.updated_at
+                ? `最後變更：${formatDateTime(settings.updated_at)}${settings.updated_by_email ? `（${settings.updated_by_email}）` : ""}`
+                : "尚未變更過，目前為預設值"}
+            </span>
+            {canEdit && (
+              <button type="submit" disabled={!dirty || busy}>
+                {busy ? "儲存中…" : "儲存"}
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

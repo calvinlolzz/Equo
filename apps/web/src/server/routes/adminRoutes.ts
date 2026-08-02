@@ -2,9 +2,12 @@ import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
+import { createSupabaseSettingsRepository } from "../repositories/supabaseSettingsRepository.js";
 import {
+  handleAdminGetReceiptScanSettings,
   handleAdminGroupDetail,
   handleAdminHealth,
+  handleAdminSetReceiptScanSettings,
   handleAdminTrends,
   handleAdminListAdmins,
   handleAdminRemoveAdmin,
@@ -72,7 +75,7 @@ export async function adminTrendsRoute(options: RouteOptions, days: string | und
 
 export async function adminHealthRoute(
   options: RouteOptions,
-  receiptScan?: { enabled: boolean; model: string },
+  receiptScan?: { configured: boolean; defaultModel: string },
 ) {
   const auth = await buildAuthContext(options);
 
@@ -80,7 +83,60 @@ export async function adminHealthRoute(
     return { ok: false, status: 401, body: auth.error };
   }
 
-  return handleAdminHealth(createSupabaseAdminRepository(options.client), auth.context, receiptScan);
+  let tile: { configured: boolean; enabled: boolean; model: string } | undefined;
+
+  if (receiptScan) {
+    try {
+      const saved = await createSupabaseSettingsRepository(options.client).getReceiptScan(receiptScan.defaultModel);
+      tile = { configured: receiptScan.configured, enabled: saved.enabled !== false, model: saved.model };
+    } catch {
+      // Same fail-open as the scan path: a console ahead of its migration must
+      // still render the rest of the health card rather than 500.
+      tile = { configured: receiptScan.configured, enabled: true, model: receiptScan.defaultModel };
+    }
+  }
+
+  return handleAdminHealth(createSupabaseAdminRepository(options.client), auth.context, tile);
+}
+
+export async function adminGetReceiptScanSettingsRoute(
+  options: RouteOptions,
+  config: { configured: boolean; defaultModel: string },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminGetReceiptScanSettings(
+    createSupabaseAdminRepository(options.client),
+    createSupabaseSettingsRepository(options.client),
+    auth.context,
+    config.defaultModel,
+    config.configured,
+  );
+}
+
+export async function adminSetReceiptScanSettingsRoute(
+  options: RouteOptions,
+  body: { enabled?: unknown; model?: unknown },
+  config: { configured: boolean; defaultModel: string },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetReceiptScanSettings(
+    createSupabaseAdminRepository(options.client),
+    createSupabaseSettingsRepository(options.client),
+    auth.context,
+    body,
+    config.defaultModel,
+    config.configured,
+  );
 }
 
 export async function adminListAdminsRoute(options: RouteOptions) {

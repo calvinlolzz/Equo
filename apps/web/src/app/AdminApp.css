@@ -1424,3 +1424,70 @@ button.admin-inbox__item:hover {
     background: #262a30;
   }
 }
+
+/* --- Settings ----------------------------------------------------------- */
+
+.admin-settings-card {
+  display: grid;
+  gap: 18px;
+  max-width: 620px;
+  padding: 22px;
+  border: 1px solid #e3e6ea;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.admin-settings-head h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.admin-settings-head p {
+  margin: 0;
+  color: #5b6069;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Control first, label second: the switch and the picker line up in a column
+   so the eye can find "what is currently set" without reading the prose. */
+.admin-settings-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 12px;
+}
+
+.admin-settings-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-settings-row small {
+  color: #5b6069;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-settings-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.admin-settings-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid #e3e6ea;
+  font-size: 12px;
+}
+
+/* Without this the 儲存 label breaks one character per line once the
+   last-changed line above it gets long enough to squeeze the row. */
+.admin-settings-foot button {
+  white-space: nowrap;
+}

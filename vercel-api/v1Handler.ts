@@ -113,7 +113,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     ),
     sessionSecret: requiredEnv.SESSION_SECRET,
     vapid: readVapidKeys(runtimeEnv),
-    scanReceipt: createReceiptScanner(runtimeEnv.ANTHROPIC_API_KEY, runtimeEnv.RECEIPT_SCAN_MODEL),
+    scanReceipt: createReceiptScanner(runtimeEnv.ANTHROPIC_API_KEY),
     receiptScanModel: runtimeEnv.RECEIPT_SCAN_MODEL,
   });
   const url = new URL(request.url ?? "/api/v1", "https://equo.local");

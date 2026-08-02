@@ -483,3 +483,71 @@ describe("the command palette", () => {
     expect(urls.some((url) => url.includes("/admin/users?search=a"))).toBe(false);
   });
 });
+
+describe("the settings tab", () => {
+  const settings = {
+    enabled: true,
+    model: "claude-haiku-4-5",
+    updated_at: null,
+    updated_by_email: null,
+    configured: true,
+    models: ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"],
+  };
+
+  test("saves the kill switch and the model in one request", async () => {
+    const urls = fakeAdminApi({
+      ...baseRoutes,
+      "GET /admin/settings/receipt-scan": settings,
+      "PUT /admin/settings/receipt-scan": { ...settings, enabled: false, model: "claude-sonnet-5" },
+    });
+    renderAdmin("?tab=settings");
+
+    const model = await screen.findByLabelText("辨識模型");
+    fireEvent.change(model, { target: { value: "claude-sonnet-5" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+
+    await waitFor(() => expect(urls).toContain("PUT /admin/settings/receipt-scan"));
+    await screen.findByText(/已關閉收據辨識/);
+  });
+
+  test("nothing to save until something actually changed", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": settings });
+    renderAdmin("?tab=settings");
+
+    const save = await screen.findByRole("button", { name: "儲存" });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+
+    // Toggling away and back leaves the form clean again, rather than arming a
+    // Save that would write the value already stored.
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("says so when the deployment has no API key, instead of offering a switch that does nothing", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": { ...settings, configured: false } });
+    renderAdmin("?tab=settings");
+
+    expect(await screen.findByText(/ANTHROPIC_API_KEY/)).toBeTruthy();
+  });
+
+  test("explains a missing migration rather than showing an empty panel", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
+        if (path === "/admin/settings/receipt-scan") {
+          return { ok: false, status: 500, json: async () => ({ error: { code: "INTERNAL_ERROR" } }) } as Response;
+        }
+        const body = (baseRoutes as Record<string, unknown>)[`${method} ${path}`];
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    renderAdmin("?tab=settings");
+
+    expect(await screen.findByText(/app_settings migration/)).toBeTruthy();
+  });
+});

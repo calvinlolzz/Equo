@@ -141,6 +141,35 @@ const BACKUP_STALE_HOURS = 36;
  * a different dashboard: did last night's backup run, is the rate limiter
  * turning anyone away, is the app throwing errors, is feedback piling up.
  */
+/**
+ * Two different failures wear the same face in the app - either way recognition
+ * just stops auto-filling and nobody reports it - so the tile has to say which
+ * one it is: a missing key is fixed in Vercel, a switched-off feature here.
+ */
+function receiptScanTile(scan: NonNullable<AdminHealthSummary["receipt_scan"]>): HealthTile {
+  if (!scan.configured) {
+    return {
+      key: "receipt_scan",
+      label: "收據辨識",
+      value: "未設定",
+      hint: "缺 ANTHROPIC_API_KEY，只會附照片",
+      tone: "warn",
+    };
+  }
+
+  if (!scan.enabled) {
+    return {
+      key: "receipt_scan",
+      label: "收據辨識",
+      value: "已關閉",
+      hint: "在「設定」分頁開啟",
+      tone: "warn",
+    };
+  }
+
+  return { key: "receipt_scan", label: "收據辨識", value: "已啟用", hint: scan.model, tone: "ok" };
+}
+
 export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTile[] {
   const backupAgeHours = health.backup ? (nowMs - Date.parse(health.backup.last_success_at)) / 3_600_000 : null;
   const backupBytes = Number(health.backup?.detail?.bytes ?? 0);
@@ -180,19 +209,7 @@ export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTi
     // space because an unset ANTHROPIC_API_KEY fails silently by design - the
     // app degrades to "photo only" and nobody files a bug - so this is the one
     // place the difference is visible.
-    ...(health.receipt_scan
-      ? [
-          {
-            key: "receipt_scan",
-            label: "收據辨識",
-            value: health.receipt_scan.enabled ? "已啟用" : "未設定",
-            hint: health.receipt_scan.enabled
-              ? health.receipt_scan.model
-              : "缺 ANTHROPIC_API_KEY，只會附照片",
-            tone: health.receipt_scan.enabled ? ("ok" as const) : ("warn" as const),
-          },
-        ]
-      : []),
+    ...(health.receipt_scan ? [receiptScanTile(health.receipt_scan)] : []),
   ];
 }
 

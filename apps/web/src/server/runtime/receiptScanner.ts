@@ -4,16 +4,26 @@ import type { ScanReceiptLineItem, ScanReceiptResponse } from "../../contracts/s
 export const RECEIPT_CATEGORIES = ["food", "transport", "lodging", "shopping", "general", "other"] as const;
 
 /**
- * Recognition model. Overridable per deployment via RECEIPT_SCAN_MODEL so
- * trying a different one is an env change rather than a code change - vision
- * quality on a faded 熱感應 receipt is the thing worth re-measuring, and that
- * is easier when swapping the model costs nothing.
+ * Models this endpoint knows how to call: vision-capable, and supporting the
+ * structured-output schema the response is parsed from.
  *
- * Note the effort parameter is deliberately NOT sent: it is rejected outright
- * by Haiku 4.5, so passing it would make the cheap default the one model this
- * endpoint cannot run on.
+ * The allowlist lives here rather than in the database on purpose - it is a
+ * property of the deployed code, so adding a model must not need a migration,
+ * and dropping one must not leave a saved setting pointing at something the
+ * server will now reject on every scan.
+ *
+ * Note the effort parameter is deliberately NOT sent on any of them: it is
+ * rejected outright by Haiku 4.5, so passing it would make the cheapest option
+ * the one model this endpoint cannot run on.
  */
-export const RECEIPT_SCAN_DEFAULT_MODEL = "claude-haiku-4-5";
+export const RECEIPT_SCAN_MODELS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const;
+
+/** Cheapest of the allowed models; recognition is perception, not reasoning. */
+export const RECEIPT_SCAN_DEFAULT_MODEL: string = RECEIPT_SCAN_MODELS[0];
+
+export function isReceiptScanModel(model: string): boolean {
+  return (RECEIPT_SCAN_MODELS as readonly string[]).includes(model);
+}
 
 /** Generous headroom over the small JSON, so a long itemised receipt is never truncated mid-object. */
 const MAX_TOKENS = 4000;
@@ -88,7 +98,12 @@ type RawReceipt = {
 /** Thrown when recognition could not run or produced nothing usable. The route turns this into RECEIPT_SCAN_UNAVAILABLE. */
 export class ReceiptScanUnavailableError extends Error {}
 
-export type ReceiptScanner = (input: { dataUrl: string; currency: string }) => Promise<ScanReceiptResponse>;
+export type ReceiptScanner = (input: {
+  dataUrl: string;
+  currency: string;
+  /** Chosen per call, because an admin can change it between two requests. */
+  model: string;
+}) => Promise<ScanReceiptResponse>;
 
 function mediaTypeFromDataUrl(dataUrl: string): "image/jpeg" | "image/png" | "image/webp" {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,/.exec(dataUrl);
@@ -172,12 +187,14 @@ export function normaliseReceiptResult(raw: RawReceipt, fallbackCurrency: string
  * feature as unavailable and the client still attaches the photo, so a missing
  * key costs the auto-fill and nothing else.
  */
-export function createReceiptScanner(apiKey: string | undefined, model?: string): ReceiptScanner | undefined {
+export function createReceiptScanner(apiKey: string | undefined): ReceiptScanner | undefined {
   if (!apiKey) return undefined;
 
-  const modelId = model?.trim() || RECEIPT_SCAN_DEFAULT_MODEL;
-
-  return async ({ dataUrl, currency }) => {
+  return async ({ dataUrl, currency, model }) => {
+    // Guard here as well as at the route: this is the last point before real
+    // money is spent, and an unknown model id fails as a 404 per scan rather
+    // than anywhere a user would see.
+    const modelId = isReceiptScanModel(model) ? model : RECEIPT_SCAN_DEFAULT_MODEL;
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: 1 });
 

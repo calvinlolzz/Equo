@@ -104,7 +104,7 @@ describe("healthTiles", () => {
   });
 
   test("shows which model receipt recognition is running on", () => {
-    const configured = tile(makeHealth({ receipt_scan: { enabled: true, model: "claude-haiku-4-5" } }), "receipt_scan");
+    const configured = tile(makeHealth({ receipt_scan: { configured: true, enabled: true, model: "claude-haiku-4-5" } }), "receipt_scan");
     expect(configured?.tone).toBe("ok");
     expect(configured?.value).toBe("已啟用");
     expect(configured?.hint).toBe("claude-haiku-4-5");
@@ -113,7 +113,7 @@ describe("healthTiles", () => {
   test("flags a missing API key, which otherwise fails silently", () => {
     // Without the key the app quietly degrades to attaching the photo, so
     // nobody reports it as broken - the console is the only signal there is.
-    const off = tile(makeHealth({ receipt_scan: { enabled: false, model: "claude-haiku-4-5" } }), "receipt_scan");
+    const off = tile(makeHealth({ receipt_scan: { configured: false, enabled: true, model: "claude-haiku-4-5" } }), "receipt_scan");
     expect(off?.tone).toBe("warn");
     expect(off?.value).toBe("未設定");
   });

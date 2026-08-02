@@ -1,5 +1,7 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
+import type { ReceiptScanSettings, SettingsRepository } from "../repositories/supabaseSettingsRepository.js";
+import { RECEIPT_SCAN_MODELS, isReceiptScanModel } from "../runtime/receiptScanner.js";
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
@@ -67,6 +69,14 @@ export function isUuid(value: string): boolean {
  * a 403. The console still hides what a role can't do, but the rank check here
  * is the actual enforcement - the UI is only a convenience.
  */
+/** The console's view of receipt recognition: the saved settings plus what the deployment allows. */
+export type AdminReceiptScanSettings = ReceiptScanSettings & {
+  /** Is ANTHROPIC_API_KEY set at all. False means the switch below has no effect yet. */
+  configured: boolean;
+  /** Which models this build can be pointed at, so the console never offers one the server would reject. */
+  models: string[];
+};
+
 export const ADMIN_ROLE_RANK: Record<string, number> = {
   support: 1,
   admin: 2,
@@ -721,4 +731,75 @@ export async function handleAdminSetGroupDeleted(
   }
 
   return { ok: true, status: 200, body: result };
+}
+
+/**
+ * Read the receipt-recognition settings for the console.
+ *
+ * Support-level access is enough: knowing which model is live and whether the
+ * feature is on is diagnostic information, and it is the first thing to check
+ * when somebody reports "掃描沒反應". Changing it needs admin (below).
+ */
+export async function handleAdminGetReceiptScanSettings(
+  repository: AdminRepository,
+  settings: SettingsRepository,
+  context: AuthenticatedContext,
+  defaultModel: string,
+  configured: boolean,
+): Promise<HandlerResult<AdminReceiptScanSettings>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const saved = await settings.getReceiptScan(defaultModel);
+  return { ok: true, status: 200, body: { ...saved, configured, models: [...RECEIPT_SCAN_MODELS] } };
+}
+
+/**
+ * Change them. Admin or owner, matching the other actions that alter what the
+ * product does rather than just reading it — this one can stop a paid feature
+ * for every user at once, which is the point of it existing.
+ */
+export async function handleAdminSetReceiptScanSettings(
+  repository: AdminRepository,
+  settings: SettingsRepository,
+  context: AuthenticatedContext,
+  body: { enabled?: unknown; model?: unknown },
+  defaultModel: string,
+  configured: boolean,
+): Promise<HandlerResult<AdminReceiptScanSettings>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  const enabled = body?.enabled;
+  const model = typeof body?.model === "string" ? body.model.trim() : "";
+
+  // Reject an unknown model rather than storing it: a saved value the server
+  // cannot call would turn every subsequent scan into a silent 503, and the
+  // console would keep showing the setting as if it had taken effect.
+  if (typeof enabled !== "boolean" || !isReceiptScanModel(model)) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_ADMIN",
+          message: `enabled must be a boolean and model one of: ${RECEIPT_SCAN_MODELS.join(", ")}`,
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  const saved = await settings.setReceiptScan(
+    { id: context.user.id, email: context.user.email },
+    enabled,
+    model,
+  );
+  return { ok: true, status: 200, body: { ...saved, configured, models: [...RECEIPT_SCAN_MODELS] } };
 }

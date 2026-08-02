@@ -563,6 +563,17 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify({}),
       });
     },
+    /** The console's live view of receipt recognition (support+ may read). */
+    adminGetReceiptScanSettings() {
+      return request<AdminReceiptScanSettings>("/admin/settings/receipt-scan", { method: "GET" });
+    },
+    /** Change the kill switch and/or the model (admin+). */
+    adminSetReceiptScanSettings(enabled: boolean, model: string) {
+      return request<AdminReceiptScanSettings>("/admin/settings/receipt-scan", {
+        method: "PUT",
+        body: JSON.stringify({ enabled, model }),
+      });
+    },
     adminListAdmins() {
       return request<{ admins: AdminAccountRow[] }>("/admin/admins", { method: "GET" });
     },
@@ -670,7 +681,18 @@ export type AdminHealthSummary = {
    * Receipt recognition's live configuration. Absent on an API deployed before
    * this shipped, so the tile is conditional rather than assumed.
    */
-  receipt_scan?: { enabled: boolean; model: string };
+  receipt_scan?: { configured: boolean; enabled: boolean; model: string };
+};
+
+export type AdminReceiptScanSettings = {
+  enabled: boolean;
+  model: string;
+  updated_at: string | null;
+  updated_by_email: string | null;
+  /** Is ANTHROPIC_API_KEY set on the deployment. False = the switch below has nothing to switch. */
+  configured: boolean;
+  /** Models this build can be pointed at. */
+  models: string[];
 };
 
 export type AdminUserRow = {
