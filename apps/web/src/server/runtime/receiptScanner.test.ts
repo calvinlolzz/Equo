@@ -232,6 +232,56 @@ describe("the Gemini call", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  test("retries once when the upstream never answers", async () => {
+    // Two in three production scans ended as a full timeout with no response,
+    // while the ones that answered took ~4.4s - a stall is what a second
+    // attempt on a fresh connection is for.
+    let calls = 0;
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          steps: [{ type: "model_output", content: [{ type: "text", text: JSON.stringify(modelOutput) }] }],
+        }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+
+    const result = await scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.recognised).toBe(true);
+  });
+
+  test("gives up after the second unanswered attempt rather than hammering", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
+      throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+
+    await expect(scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" })).rejects.toBeInstanceOf(
+      ReceiptScanUnavailableError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("does not retry a status, because a status is a real answer", async () => {
+    // Repeating a 429 spends the same rejection twice and adds load to
+    // something already throttling us.
+    const fetchMock = stubFetch({ error: { message: "quota exceeded" } }, false, 429);
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+
+    await expect(scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" })).rejects.toBeInstanceOf(
+      ReceiptScanUnavailableError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test("reports the free tier's quota rejection as unavailable, not as a crash", async () => {
     stubFetch({ error: { message: "quota exceeded" } }, false, 429);
     const scan = createReceiptScanner({ google: "gemini-test" })!;
