@@ -38,6 +38,38 @@ describe("legal content", () => {
     expect(text).toContain("已刪除的使用者");
   });
 
+  test("section numbers run in sequence in both documents", () => {
+    // Inserting a section means renumbering everything after it, and a skipped
+    // or repeated number in a policy that cross-references "見第 3 節" is the
+    // kind of slip nobody notices until a reviewer does.
+    for (const doc of [PRIVACY_POLICY, TERMS_OF_SERVICE]) {
+      const numbers = doc.sections.map((section) => Number(section.heading.split(".")[0]));
+      expect(numbers).toEqual(numbers.map((_, index) => index + 1));
+    }
+  });
+
+  test("the privacy policy discloses that receipt scans leave for a third-party AI", () => {
+    const text = allText(PRIVACY_POLICY);
+    // Naming the provider is the point: under its free tier the content is used
+    // to improve their products and may be read by their staff, which is a
+    // materially different promise from an ordinary sub-processor.
+    expect(text).toContain("Gemini");
+    expect(text).toContain("改善");
+    expect(text).toContain("閱讀");
+  });
+
+  test("the privacy policy tells users how to avoid the AI entirely", () => {
+    // A disclosure with no way out is a warning, not a choice - and there IS a
+    // way out here, because the composer's own photo picker never scans.
+    expect(allText(PRIVACY_POLICY)).toContain("不會送去辨識");
+  });
+
+  test("the terms' content licence covers sending photos to that third party", () => {
+    // Storing and displaying was all the old clause permitted; scanning sends
+    // the photo somewhere else entirely.
+    expect(allText(TERMS_OF_SERVICE)).toContain("第三方 AI");
+  });
+
   test("the terms disclaim payment handling and name the governing law", () => {
     const text = allText(TERMS_OF_SERVICE);
     // Equo is a record-keeping tool, not a money mover — the disclaimer stores
