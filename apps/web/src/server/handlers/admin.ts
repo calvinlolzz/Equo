@@ -1,7 +1,13 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type { ReceiptScanSettings, SettingsRepository } from "../repositories/supabaseSettingsRepository.js";
-import { RECEIPT_SCAN_MODELS, isReceiptScanModel } from "../runtime/receiptScanner.js";
+import {
+  RECEIPT_SCAN_MODELS,
+  availableReceiptScanModels,
+  isReceiptScanModel,
+  type ReceiptScanKeys,
+  type ReceiptScanModel,
+} from "../runtime/receiptScanner.js";
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
@@ -71,11 +77,31 @@ export function isUuid(value: string): boolean {
  */
 /** The console's view of receipt recognition: the saved settings plus what the deployment allows. */
 export type AdminReceiptScanSettings = ReceiptScanSettings & {
-  /** Is ANTHROPIC_API_KEY set at all. False means the switch below has no effect yet. */
+  /**
+   * Can the CURRENTLY SELECTED model actually run - i.e. does its provider have
+   * a key. False means the switch below has nothing to switch, and the fix is
+   * in the deployment's env rather than in the console.
+   */
   configured: boolean;
-  /** Which models this build can be pointed at, so the console never offers one the server would reject. */
-  models: string[];
+  /**
+   * Every model this build knows, each marked with whether its provider has a
+   * key here. The console shows them all rather than hiding the unusable ones,
+   * because "why is Gemini not in the list" is a worse question to be left with
+   * than "Gemini needs a key".
+   */
+  models: Array<ReceiptScanModel & { available: boolean }>;
 };
+
+/** Can the saved model actually run here, i.e. does its provider have a key. */
+function canRun(models: AdminReceiptScanSettings["models"], model: string): boolean {
+  return models.some((entry) => entry.id === model && entry.available);
+}
+
+/** The catalog as the console needs it: every model, each flagged runnable or not. */
+function describeModels(keys: ReceiptScanKeys): AdminReceiptScanSettings["models"] {
+  const available = new Set(availableReceiptScanModels(keys).map((entry) => entry.id));
+  return RECEIPT_SCAN_MODELS.map((entry) => ({ ...entry, available: available.has(entry.id) }));
+}
 
 export const ADMIN_ROLE_RANK: Record<string, number> = {
   support: 1,
@@ -745,7 +771,7 @@ export async function handleAdminGetReceiptScanSettings(
   settings: SettingsRepository,
   context: AuthenticatedContext,
   defaultModel: string,
-  configured: boolean,
+  keys: ReceiptScanKeys,
 ): Promise<HandlerResult<AdminReceiptScanSettings>> {
   const role = await repository.findAdminRole(context.user.id);
 
@@ -754,7 +780,12 @@ export async function handleAdminGetReceiptScanSettings(
   }
 
   const saved = await settings.getReceiptScan(defaultModel);
-  return { ok: true, status: 200, body: { ...saved, configured, models: [...RECEIPT_SCAN_MODELS] } };
+  const models = describeModels(keys);
+  return {
+    ok: true,
+    status: 200,
+    body: { ...saved, configured: canRun(models, saved.model), models },
+  };
 }
 
 /**
@@ -768,7 +799,7 @@ export async function handleAdminSetReceiptScanSettings(
   context: AuthenticatedContext,
   body: { enabled?: unknown; model?: unknown },
   defaultModel: string,
-  configured: boolean,
+  keys: ReceiptScanKeys,
 ): Promise<HandlerResult<AdminReceiptScanSettings>> {
   const role = await repository.findAdminRole(context.user.id);
 
@@ -789,7 +820,7 @@ export async function handleAdminSetReceiptScanSettings(
       body: {
         error: {
           code: "INVALID_ADMIN",
-          message: `enabled must be a boolean and model one of: ${RECEIPT_SCAN_MODELS.join(", ")}`,
+          message: `enabled must be a boolean and model one of: ${RECEIPT_SCAN_MODELS.map((entry) => entry.id).join(", ")}`,
           request_id: "req_admin",
         },
       },
@@ -801,5 +832,10 @@ export async function handleAdminSetReceiptScanSettings(
     enabled,
     model,
   );
-  return { ok: true, status: 200, body: { ...saved, configured, models: [...RECEIPT_SCAN_MODELS] } };
+  const models = describeModels(keys);
+  return {
+    ok: true,
+    status: 200,
+    body: { ...saved, configured: canRun(models, saved.model), models },
+  };
 }

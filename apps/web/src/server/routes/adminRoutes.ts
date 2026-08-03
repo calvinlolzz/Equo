@@ -3,6 +3,7 @@ import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepository.js";
 import { createSupabaseSettingsRepository } from "../repositories/supabaseSettingsRepository.js";
+import { availableReceiptScanModels, type ReceiptScanKeys } from "../runtime/receiptScanner.js";
 import {
   handleAdminGetReceiptScanSettings,
   handleAdminGroupDetail,
@@ -75,7 +76,7 @@ export async function adminTrendsRoute(options: RouteOptions, days: string | und
 
 export async function adminHealthRoute(
   options: RouteOptions,
-  receiptScan?: { configured: boolean; defaultModel: string },
+  receiptScan?: { keys: ReceiptScanKeys; defaultModel: string },
 ) {
   const auth = await buildAuthContext(options);
 
@@ -86,13 +87,18 @@ export async function adminHealthRoute(
   let tile: { configured: boolean; enabled: boolean; model: string } | undefined;
 
   if (receiptScan) {
+    // "configured" is per-model now: the selected model's provider is what has
+    // to have a key, not the feature in the abstract.
+    const runnable = (model: string) =>
+      availableReceiptScanModels(receiptScan.keys).some((entry) => entry.id === model);
+
     try {
       const saved = await createSupabaseSettingsRepository(options.client).getReceiptScan(receiptScan.defaultModel);
-      tile = { configured: receiptScan.configured, enabled: saved.enabled !== false, model: saved.model };
+      tile = { configured: runnable(saved.model), enabled: saved.enabled !== false, model: saved.model };
     } catch {
       // Same fail-open as the scan path: a console ahead of its migration must
       // still render the rest of the health card rather than 500.
-      tile = { configured: receiptScan.configured, enabled: true, model: receiptScan.defaultModel };
+      tile = { configured: runnable(receiptScan.defaultModel), enabled: true, model: receiptScan.defaultModel };
     }
   }
 
@@ -101,7 +107,7 @@ export async function adminHealthRoute(
 
 export async function adminGetReceiptScanSettingsRoute(
   options: RouteOptions,
-  config: { configured: boolean; defaultModel: string },
+  config: { keys: ReceiptScanKeys; defaultModel: string },
 ) {
   const auth = await buildAuthContext(options);
 
@@ -114,14 +120,14 @@ export async function adminGetReceiptScanSettingsRoute(
     createSupabaseSettingsRepository(options.client),
     auth.context,
     config.defaultModel,
-    config.configured,
+    config.keys,
   );
 }
 
 export async function adminSetReceiptScanSettingsRoute(
   options: RouteOptions,
   body: { enabled?: unknown; model?: unknown },
-  config: { configured: boolean; defaultModel: string },
+  config: { keys: ReceiptScanKeys; defaultModel: string },
 ) {
   const auth = await buildAuthContext(options);
 
@@ -135,7 +141,7 @@ export async function adminSetReceiptScanSettingsRoute(
     auth.context,
     body,
     config.defaultModel,
-    config.configured,
+    config.keys,
   );
 }
 

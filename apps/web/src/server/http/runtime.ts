@@ -64,7 +64,11 @@ import {
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
 import { scanReceiptRoute } from "../routes/receiptRoutes.js";
-import { RECEIPT_SCAN_DEFAULT_MODEL, type ReceiptScanner } from "../runtime/receiptScanner.js";
+import {
+  RECEIPT_SCAN_DEFAULT_MODEL,
+  type ReceiptScanKeys,
+  type ReceiptScanner,
+} from "../runtime/receiptScanner.js";
 import {
   adminGetReceiptScanSettingsRoute,
   adminSetReceiptScanSettingsRoute,
@@ -110,6 +114,8 @@ type RuntimeOptions = {
    * in the console. The saved choice wins; this is only the fallback.
    */
   receiptScanModel?: string;
+  /** Which providers have keys here, so the console can mark each model runnable or not. */
+  receiptScanKeys?: ReceiptScanKeys;
 };
 
 type RuntimeRoute = {
@@ -148,7 +154,7 @@ function body<T>(request: HttpRuntimeRequest): T {
 /** What the deployment contributes to the settings picture: the key, and the fallback model. */
 function receiptScanConfig(options: RuntimeOptions) {
   return {
-    configured: Boolean(options.scanReceipt),
+    keys: options.receiptScanKeys ?? {},
     defaultModel: options.receiptScanModel?.trim() || RECEIPT_SCAN_DEFAULT_MODEL,
   };
 }

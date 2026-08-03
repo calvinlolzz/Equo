@@ -2283,6 +2283,7 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
   // The saved state is the baseline, so re-selecting the original value clears
   // the dirty flag instead of leaving a Save button that would write nothing.
   const dirty = Boolean(settings) && (enabled !== settings?.enabled || model !== settings?.model);
+  const selected = settings?.models.find((entry) => entry.id === model);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -2319,11 +2320,13 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
             </p>
           </div>
 
-          {/* A key that is not set makes every control below cosmetic, so say
-              so rather than letting someone "turn on" a feature that cannot run. */}
-          {!settings.configured && (
+          {/* A provider without a key makes every control below cosmetic, so
+              say so rather than letting someone "turn on" a model that cannot
+              run. Named per provider, because the env var to add differs. */}
+          {!selected?.available && (
             <p className="admin-error">
-              這個部署沒有設定 ANTHROPIC_API_KEY，辨識無法運作。請先在 Vercel 環境變數加入後重新部署。
+              這個部署沒有設定 {selected?.provider === "google" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY"}
+              ，選定的模型無法運作。請先在 Vercel 環境變數加入後重新部署。
             </p>
           )}
 
@@ -2348,17 +2351,26 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
               aria-label="辨識模型"
               onChange={(event) => setModel(event.target.value)}
             >
-              {settings.models.map((option: string) => (
-                <option key={option} value={option}>
-                  {option}
+              {settings.models.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.id}
+                  {option.available ? "" : "（未設定金鑰）"}
                 </option>
               ))}
             </select>
             <span>
               <strong>辨識模型</strong>
-              <small>由便宜到準確排列，換模型後下一次掃描立即生效。</small>
+              <small>{selected?.note ?? "換模型後下一次掃描立即生效。"}</small>
             </span>
           </label>
+
+          {selected?.provider === "google" && (
+            <p className="admin-warning">
+              <strong>Gemini 免費層會用你送出的內容訓練 Google 的模型，且真人可能閱讀。</strong>
+              Google 條款明文寫著「請勿向免費服務提交敏感、機密或個人資訊」，而收據上有消費地點、時間、品項與卡號末四碼——那是使用者的個資，不是你的測試資料。
+              上線前請確認你的隱私權政策有揭露這件事；若不確定，請改用付費模型。
+            </p>
+          )}
 
           <div className="admin-settings-foot">
             <span className="admin-muted">

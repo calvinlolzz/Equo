@@ -3,26 +3,49 @@ import type { ScanReceiptLineItem, ScanReceiptResponse } from "../../contracts/s
 /** The composer's category keys. The model must return one of these or null - a free-text guess would not map to any chip. */
 export const RECEIPT_CATEGORIES = ["food", "transport", "lodging", "shopping", "general", "other"] as const;
 
+export type ReceiptScanProvider = "anthropic" | "google";
+
+export type ReceiptScanModel = {
+  id: string;
+  provider: ReceiptScanProvider;
+  /**
+   * Shown in the console next to the id. Says what choosing it actually costs,
+   * because that is the only reason anybody switches.
+   */
+  note: string;
+};
+
 /**
- * Models this endpoint knows how to call: vision-capable, and supporting the
- * structured-output schema the response is parsed from.
+ * Models this endpoint knows how to call: vision-capable, and able to be held
+ * to the structured-output schema the response is parsed from.
  *
  * The allowlist lives here rather than in the database on purpose - it is a
  * property of the deployed code, so adding a model must not need a migration,
  * and dropping one must not leave a saved setting pointing at something the
  * server will now reject on every scan.
  *
- * Note the effort parameter is deliberately NOT sent on any of them: it is
- * rejected outright by Haiku 4.5, so passing it would make the cheapest option
- * the one model this endpoint cannot run on.
+ * Note the effort parameter is deliberately NOT sent to the Claude models: it
+ * is rejected outright by Haiku 4.5, so passing it would make the cheapest
+ * option the one model this endpoint cannot run on.
  */
-export const RECEIPT_SCAN_MODELS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"] as const;
+export const RECEIPT_SCAN_MODELS: readonly ReceiptScanModel[] = [
+  { id: "claude-haiku-4-5", provider: "anthropic", note: "付費・最便宜，約 US$0.003 一次" },
+  { id: "claude-sonnet-5", provider: "anthropic", note: "付費・辨識較準，模糊或小字收據用" },
+  { id: "claude-opus-5", provider: "anthropic", note: "付費・最準也最貴" },
+  // Free of charge, and not free of consequences - see the terms warning the
+  // console shows next to it. Kept last so it is a deliberate choice.
+  { id: "gemini-3.6-flash", provider: "google", note: "免費層・Google 會用來訓練且真人可能閱讀" },
+];
 
-/** Cheapest of the allowed models; recognition is perception, not reasoning. */
-export const RECEIPT_SCAN_DEFAULT_MODEL: string = RECEIPT_SCAN_MODELS[0];
+/** Cheapest paid option; recognition is perception, not reasoning. */
+export const RECEIPT_SCAN_DEFAULT_MODEL = "claude-haiku-4-5";
+
+export function findReceiptScanModel(model: string): ReceiptScanModel | undefined {
+  return RECEIPT_SCAN_MODELS.find((entry) => entry.id === model);
+}
 
 export function isReceiptScanModel(model: string): boolean {
-  return (RECEIPT_SCAN_MODELS as readonly string[]).includes(model);
+  return findReceiptScanModel(model) !== undefined;
 }
 
 /** Generous headroom over the small JSON, so a long itemised receipt is never truncated mid-object. */
@@ -43,7 +66,12 @@ const SYSTEM_PROMPT = [
   "Never invent a value you cannot read. A null field is correct and useful; a plausible guess is not.",
 ].join("\n");
 
-const RESPONSE_SCHEMA = {
+const CURRENCY_CODES = ["TWD", "JPY", "USD", "EUR", "CNY", "HKD", "KRW", "GBP", "SGD", "THB", "AUD", "CAD", "MYR", "VND", "PHP"];
+
+/**
+ * Claude's dialect: nullability is an anyOf against a null branch.
+ */
+const ANTHROPIC_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     recognised: { type: "boolean" },
@@ -56,7 +84,7 @@ const RESPONSE_SCHEMA = {
       description: "Grand total as a decimal in the receipt's own currency, e.g. 1250.5. Null if unreadable.",
     },
     currency: {
-      anyOf: [{ type: "string", enum: ["TWD", "JPY", "USD", "EUR", "CNY", "HKD", "KRW", "GBP", "SGD", "THB", "AUD", "CAD", "MYR", "VND", "PHP"] }, { type: "null" }],
+      anyOf: [{ type: "string", enum: CURRENCY_CODES }, { type: "null" }],
       description: "ISO 4217 code of the currency printed on the receipt. Null when no symbol or code is visible.",
     },
     purchased_at: {
@@ -83,6 +111,57 @@ const RESPONSE_SCHEMA = {
   },
   required: ["recognised", "merchant", "total_amount", "currency", "purchased_at", "category", "items"],
   additionalProperties: false,
+};
+
+/**
+ * Gemini's dialect of the same schema.
+ *
+ * Not a cosmetic difference: its structured-output subset has no anyOf, and
+ * expresses nullability by listing "null" in the type array instead. Feeding it
+ * the Claude schema above is rejected, so the two are written out separately
+ * rather than translated at runtime - a translator would be one more thing that
+ * can be subtly wrong in a way only production notices.
+ */
+const GEMINI_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    recognised: { type: "boolean" },
+    merchant: {
+      type: ["string", "null"],
+      description: "Shop or restaurant name as printed, or null if not shown.",
+    },
+    total_amount: {
+      type: ["number", "null"],
+      description: "Grand total as a decimal in the receipt's own currency, e.g. 1250.5. Null if unreadable.",
+    },
+    currency: {
+      type: ["string", "null"],
+      enum: [...CURRENCY_CODES, null],
+      description: "ISO 4217 code of the currency printed on the receipt. Null when no symbol or code is visible.",
+    },
+    purchased_at: {
+      type: ["string", "null"],
+      description: "Date printed on the receipt as YYYY-MM-DD. Convert 民國 years by adding 1911. Null if not shown.",
+    },
+    category: {
+      type: ["string", "null"],
+      enum: [...RECEIPT_CATEGORIES, null],
+      description: "Best-fitting spending category for the whole receipt.",
+    },
+    items: {
+      type: "array",
+      description: "Line items, in printed order. Empty when individual lines are not legible.",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          amount: { type: ["number", "null"] },
+        },
+        required: ["name", "amount"],
+      },
+    },
+  },
+  required: ["recognised", "merchant", "total_amount", "currency", "purchased_at", "category", "items"],
 };
 
 type RawReceipt = {
@@ -179,64 +258,154 @@ export function normaliseReceiptResult(raw: RawReceipt, fallbackCurrency: string
   };
 }
 
+/** The instruction and the image, in the shape both callers need. */
+type ScanInput = { dataUrl: string; currency: string; model: string };
+
+function userPrompt(currency: string): string {
+  return `Extract this receipt. If no currency is printed on it, assume ${currency}.`;
+}
+
+async function callAnthropic(apiKey: string, { dataUrl, currency, model }: ScanInput): Promise<string> {
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: 1 });
+
+  let response;
+  try {
+    response = await client.messages.create({
+      model,
+      max_tokens: MAX_TOKENS,
+      system: SYSTEM_PROMPT,
+      output_config: { format: { type: "json_schema", schema: ANTHROPIC_RESPONSE_SCHEMA } },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaTypeFromDataUrl(dataUrl),
+                data: dataUrl.slice(dataUrl.indexOf(",") + 1),
+              },
+            },
+            { type: "text", text: userPrompt(currency) },
+          ],
+        },
+      ],
+    });
+  } catch (error) {
+    throw new ReceiptScanUnavailableError(`Receipt recognition upstream failed: ${(error as Error).message}`);
+  }
+
+  // Safety classifiers answer with a 200 and an empty content array, so
+  // reading content[0] before checking stop_reason would throw on a refusal.
+  if (response.stop_reason === "refusal") {
+    throw new ReceiptScanUnavailableError("Receipt recognition was declined by the model's safety classifiers.");
+  }
+
+  const textBlock = response.content.find((block) => block.type === "text");
+  return textBlock && "text" in textBlock ? textBlock.text : "";
+}
+
+type GeminiStep = { type?: string; content?: Array<{ type?: string; text?: string }> };
+
 /**
- * Receipt recognition backed by Claude vision, or undefined when this
- * deployment has no ANTHROPIC_API_KEY.
+ * Gemini's Interactions API. Called over plain HTTPS rather than through a
+ * Google SDK: the request is one JSON body and the response one field deep, so
+ * a dependency would buy nothing but a version to keep current.
+ */
+async function callGemini(apiKey: string, { dataUrl, currency, model }: ScanInput): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        // The Interactions API has no documented system-instruction field, so
+        // the standing instructions ride as the first text part. Order matters:
+        // the rules have to precede the image they apply to.
+        input: [
+          { type: "text", text: SYSTEM_PROMPT },
+          {
+            type: "image",
+            data: dataUrl.slice(dataUrl.indexOf(",") + 1),
+            mime_type: mediaTypeFromDataUrl(dataUrl),
+          },
+          { type: "text", text: userPrompt(currency) },
+        ],
+        response_format: {
+          type: "text",
+          mime_type: "application/json",
+          schema: GEMINI_RESPONSE_SCHEMA,
+        },
+      }),
+    });
+  } catch (error) {
+    // Includes the abort: a hung upstream must surface as "unavailable" rather
+    // than holding the request open behind a user's spinner.
+    throw new ReceiptScanUnavailableError(`Receipt recognition upstream failed: ${(error as Error).message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    // 429 here is the free tier's quota, which is the expected failure rather
+    // than an exceptional one - the caller degrades to attaching the photo.
+    throw new ReceiptScanUnavailableError(`Receipt recognition upstream returned ${response.status}.`);
+  }
+
+  const body = (await response.json()) as { steps?: GeminiStep[] };
+  // Search for the model_output step instead of indexing steps[0]: the array is
+  // a timeline that can also carry thoughts and tool steps, and which of those
+  // appear is not ours to control.
+  const output = body.steps?.find((step) => step.type === "model_output");
+  return output?.content?.find((part) => part.type === "text")?.text ?? "";
+}
+
+/** API keys per provider. A provider with no key simply has no models available. */
+export type ReceiptScanKeys = {
+  anthropic?: string;
+  google?: string;
+};
+
+/** Which of the catalog's models this deployment can actually run. */
+export function availableReceiptScanModels(keys: ReceiptScanKeys): ReceiptScanModel[] {
+  return RECEIPT_SCAN_MODELS.filter((entry) =>
+    entry.provider === "anthropic" ? Boolean(keys.anthropic) : Boolean(keys.google),
+  );
+}
+
+/**
+ * Receipt recognition, or undefined when no provider has a key at all.
  *
  * Returning undefined rather than throwing is the point: the route reports the
  * feature as unavailable and the client still attaches the photo, so a missing
- * key costs the auto-fill and nothing else.
+ * key costs the auto-fill and nothing else. A key for one provider and not the
+ * other still returns a scanner - it just cannot run the other's models, which
+ * is what the console's per-model availability is for.
  */
-export function createReceiptScanner(apiKey: string | undefined): ReceiptScanner | undefined {
-  if (!apiKey) return undefined;
+export function createReceiptScanner(keys: ReceiptScanKeys): ReceiptScanner | undefined {
+  if (!keys.anthropic && !keys.google) return undefined;
 
   return async ({ dataUrl, currency, model }) => {
-    // Guard here as well as at the route: this is the last point before real
-    // money is spent, and an unknown model id fails as a 404 per scan rather
+    // Guard here as well as at the route: this is the last point before a real
+    // request is spent, and an unknown model id fails as a 404 per scan rather
     // than anywhere a user would see.
-    const modelId = isReceiptScanModel(model) ? model : RECEIPT_SCAN_DEFAULT_MODEL;
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: 1 });
+    const entry = findReceiptScanModel(model) ?? findReceiptScanModel(RECEIPT_SCAN_DEFAULT_MODEL)!;
+    const apiKey = entry.provider === "anthropic" ? keys.anthropic : keys.google;
 
-    let response;
-    try {
-      response = await client.messages.create({
-        model: modelId,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        output_config: { format: { type: "json_schema", schema: RESPONSE_SCHEMA } },
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mediaTypeFromDataUrl(dataUrl),
-                  data: dataUrl.slice(dataUrl.indexOf(",") + 1),
-                },
-              },
-              {
-                type: "text",
-                text: `Extract this receipt. If no currency is printed on it, assume ${currency}.`,
-              },
-            ],
-          },
-        ],
-      });
-    } catch (error) {
-      throw new ReceiptScanUnavailableError(`Receipt recognition upstream failed: ${(error as Error).message}`);
+    if (!apiKey) {
+      throw new ReceiptScanUnavailableError(`No API key configured for ${entry.provider}.`);
     }
 
-    // Safety classifiers answer with a 200 and an empty content array, so
-    // reading content[0] before checking stop_reason would throw on a refusal.
-    if (response.stop_reason === "refusal") {
-      throw new ReceiptScanUnavailableError("Receipt recognition was declined by the model's safety classifiers.");
-    }
-
-    const textBlock = response.content.find((block) => block.type === "text");
-    const payload = textBlock && "text" in textBlock ? textBlock.text : "";
+    const input = { dataUrl, currency, model: entry.id };
+    const payload =
+      entry.provider === "anthropic" ? await callAnthropic(apiKey, input) : await callGemini(apiKey, input);
 
     try {
       return normaliseReceiptResult(JSON.parse(payload) as RawReceipt, currency);
