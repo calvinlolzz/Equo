@@ -52,10 +52,16 @@ export function isReceiptScanModel(model: string): boolean {
 const MAX_TOKENS = 4000;
 
 /**
- * A scan must not hold an HTTP request open indefinitely - the user is staring
- * at a "辨識中…" spinner with a camera running behind it.
+ * How long to wait before calling it a failure.
+ *
+ * Sized from what the happy path actually costs: a successful recognition
+ * measures ~4.4s upstream, so 12s is already generous. The old 30s was picked
+ * before there was any data, and production showed what it buys - a hung
+ * upstream made the user watch "辨識中…" for half a minute before being told it
+ * had failed. Failing at 12s is not a worse outcome than failing at 30s; it is
+ * the same outcome, eighteen seconds sooner.
  */
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 12_000;
 
 const SYSTEM_PROMPT = [
   "You extract structured data from a photo of a purchase receipt.",
