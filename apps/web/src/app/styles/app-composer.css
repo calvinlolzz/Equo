@@ -727,9 +727,7 @@
 
   .hero-summary-grid,
   .panel-stat-grid,
-  .member-quick-actions,
-  .dialog-action-row,
-  .invite-action-grid {
+  .dialog-action-row {
     grid-template-columns: 1fr;
   }
 

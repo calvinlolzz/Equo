@@ -181,52 +181,121 @@
   gap: 10px;
 }
 
-.invite-dialog-code {
+.invite-group-name {
+  display: block;
+  color: rgb(var(--fg));
+  font-size: 20px;
+}
+
+/* The four brackets are the scan-target cue the reference app uses; drawn on
+   the frame rather than in the SVG so they never eat into the quiet zone the
+   code needs to stay readable. */
+.invite-qr-frame {
+  position: relative;
+  justify-self: center;
   display: grid;
-  justify-items: center;
-  gap: 8px;
-  border-radius: 16px;
+  place-items: center;
+  width: min(272px, 68vw);
+  aspect-ratio: 1;
   padding: 18px;
-  color: rgb(var(--ink));
-  background: rgb(var(--surface-solid) / 0.9);
+  color: rgb(var(--fg));
 }
 
-.invite-dialog-code span {
-  color: rgba(7, 17, 15, 0.58);
-  font-size: 13px;
-  font-weight: 820;
+/* Gold, not --accent: gold is this app's highlight token (the balance ring, the
+   secondary CTA), and --accent is reserved for interactive/selected state - the
+   brackets are decoration marking a scan target, not something you can press.
+
+   Eight bars rather than bordered pseudo-elements: this way the brackets are
+   positioned from the frame's own edges and stay correct at any width, with no
+   offsets to keep in sync with the size above. */
+.invite-qr-frame::before {
+  --bracket-length: 46px;
+  --bracket-weight: 3px;
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold))),
+    linear-gradient(rgb(var(--gold)), rgb(var(--gold)));
+  background-size:
+    var(--bracket-length) var(--bracket-weight),
+    var(--bracket-weight) var(--bracket-length),
+    var(--bracket-length) var(--bracket-weight),
+    var(--bracket-weight) var(--bracket-length),
+    var(--bracket-length) var(--bracket-weight),
+    var(--bracket-weight) var(--bracket-length),
+    var(--bracket-length) var(--bracket-weight),
+    var(--bracket-weight) var(--bracket-length);
+  background-position:
+    left top, left top,
+    right top, right top,
+    left bottom, left bottom,
+    right bottom, right bottom;
 }
 
-.invite-dialog-code strong {
-  font-size: 28px;
-  letter-spacing: 0;
-}
-
-.invite-link-box {
-  display: grid;
-  gap: 6px;
+.invite-qr-frame--empty {
   border-radius: 16px;
-  padding: 14px;
   background: rgb(var(--surf) / 0.08);
 }
 
-.invite-link-box span {
+.invite-qr {
+  width: 100%;
+  height: 100%;
+}
+
+.invite-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--surf) / 0.16);
+  border-radius: 14px;
+  color: rgb(var(--fg));
+  background: transparent;
+  text-align: left;
+}
+
+.invite-code-row span {
   color: rgb(var(--fg) / 0.58);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 820;
 }
 
-.invite-link-box strong {
-  overflow-wrap: anywhere;
-  color: rgb(var(--fg));
-  font-size: 13px;
-  line-height: 1.45;
+.invite-code-row strong {
+  font-size: 16px;
+  letter-spacing: 0.06em;
 }
 
-.invite-action-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.invite-share-action {
+  justify-content: center;
+  min-height: 40px;
+  color: rgb(var(--fg) / 0.72);
+}
+
+/* Sits under the code field on 輸入邀請碼: scanning is the easier of the two
+   ways in, but typing is the one people expect to find, so it stays first. */
+.invite-scan-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgb(var(--surf) / 0.18);
+  border-radius: 14px;
+  color: rgb(var(--fg));
+  background: transparent;
+  font-weight: 820;
 }
 
 .group-edit-cover {

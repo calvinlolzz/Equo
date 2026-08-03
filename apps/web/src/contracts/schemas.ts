@@ -74,6 +74,33 @@ export type UpdateMyAvatarRequest = IdempotentRequest & {
   data_url: string;
 };
 
+export type ScanReceiptRequest = IdempotentRequest & {
+  data_url: string;
+  /**
+   * The group's currency. A receipt often prints bare numbers, so without this
+   * the model has to guess from the language on the paper — and a NT$1,250
+   * dinner read as ¥1,250 is silently wrong in a way nobody checks.
+   */
+  currency: CurrencyCode;
+};
+
+export type ScanReceiptLineItem = {
+  name: string;
+  amount_minor: number | null;
+};
+
+export type ScanReceiptResponse = {
+  /** false = the photo was processed but isn't a receipt (or is unreadable). */
+  recognised: boolean;
+  merchant: string | null;
+  amount_minor: number | null;
+  currency: CurrencyCode | null;
+  /** Local calendar date printed on the receipt, YYYY-MM-DD, or null. */
+  purchased_at: string | null;
+  category: string | null;
+  items: ScanReceiptLineItem[];
+};
+
 export type ConfirmSettlementRequest = IdempotentRequest & {
   settlement_version: number;
 };

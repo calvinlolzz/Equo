@@ -13,6 +13,14 @@ export type RuntimeEnv = {
   VAPID_PRIVATE_KEY?: string;
   /** RFC 8292 "sub" - a mailto: or https: URL. Defaults per readVapidKeys. */
   VAPID_SUBJECT?: string;
+  /**
+   * Receipt recognition (Claude vision). OPTIONAL, and deliberately absent from
+   * missingRuntimeEnv for the same reason as VAPID: a deployment without a key
+   * should offer the camera and skip the auto-fill, not 503 the whole API.
+   */
+  ANTHROPIC_API_KEY?: string;
+  /** Overrides the recognition model. Absent = the scanner's own default. */
+  RECEIPT_SCAN_MODEL?: string;
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -34,6 +42,8 @@ export function readRuntimeEnv(source: EnvSource): Partial<RuntimeEnv> {
     VAPID_PUBLIC_KEY: cleanEnvValue(source.VAPID_PUBLIC_KEY),
     VAPID_PRIVATE_KEY: cleanEnvValue(source.VAPID_PRIVATE_KEY),
     VAPID_SUBJECT: cleanEnvValue(source.VAPID_SUBJECT),
+    ANTHROPIC_API_KEY: cleanEnvValue(source.ANTHROPIC_API_KEY),
+    RECEIPT_SCAN_MODEL: cleanEnvValue(source.RECEIPT_SCAN_MODEL),
   };
 }
 

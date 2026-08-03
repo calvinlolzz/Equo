@@ -3,6 +3,7 @@ import type {
   CreateExpenseRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  ScanReceiptRequest,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
 } from "./schemas.js";
@@ -226,6 +227,36 @@ export function validateUpdateMyAvatarRequest(request: UpdateMyAvatarRequest): V
   }
 
   const match = DATA_URL_PATTERN.exec(request.data_url ?? "");
+
+  if (!match) {
+    issues.push(issue("INVALID_IMAGE", "data_url must be a base64 jpeg, png, or webp data URL"));
+  } else if (decodedBase64Size(match[2]) > MAX_IMAGE_BYTES) {
+    issues.push(issue("INVALID_IMAGE", "data_url must decode to 1.5 MB or less"));
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+/**
+ * Same image rules as an upload — the scanned photo is on its way to the
+ * upload endpoint too, so accepting anything larger here would just move the
+ * rejection one step later, after the model had already been paid for.
+ */
+export function validateScanReceiptRequest(request: ScanReceiptRequest): ValidationResult {
+  const issues: ValidationIssue[] = [];
+
+  if (!request?.client_request_id?.trim()) {
+    issues.push(issue("IDEMPOTENCY_CONFLICT", "client_request_id is required"));
+  }
+
+  if (!request?.currency?.trim()) {
+    issues.push(issue("MALFORMED_REQUEST", "currency is required"));
+  }
+
+  const match = DATA_URL_PATTERN.exec(request?.data_url ?? "");
 
   if (!match) {
     issues.push(issue("INVALID_IMAGE", "data_url must be a base64 jpeg, png, or webp data URL"));

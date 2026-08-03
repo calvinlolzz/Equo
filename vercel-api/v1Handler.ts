@@ -54,6 +54,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     { createSupabaseAccessTokenVerifier },
     { createPostgrestClient },
     { createSupabaseStorageClient },
+    { createReceiptScanner },
   ] = await Promise.all([
     import("../apps/web/src/server/http/runtime.js"),
     import("../apps/web/src/server/runtime/googleTokenVerifier.js"),
@@ -61,6 +62,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     import("../apps/web/src/server/runtime/supabaseAuthVerifier.js"),
     import("../apps/web/src/server/db/postgrestClient.js"),
     import("../apps/web/src/server/runtime/supabaseStorageClient.js"),
+    import("../apps/web/src/server/runtime/receiptScanner.js"),
   ]);
 
   const runtimeEnv = readRuntimeEnv({
@@ -72,6 +74,8 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    RECEIPT_SCAN_MODEL: process.env.RECEIPT_SCAN_MODEL,
   });
   const missing = missingRuntimeEnv(runtimeEnv);
 
@@ -109,6 +113,8 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     ),
     sessionSecret: requiredEnv.SESSION_SECRET,
     vapid: readVapidKeys(runtimeEnv),
+    scanReceipt: createReceiptScanner(runtimeEnv.ANTHROPIC_API_KEY),
+    receiptScanModel: runtimeEnv.RECEIPT_SCAN_MODEL,
   });
   const url = new URL(request.url ?? "/api/v1", "https://equo.local");
   const result = await runtime.handle({

@@ -54,6 +54,15 @@ const FEEDBACK: RateLimitRule = { name: "feedback", limit: 10, windowSeconds: HO
  */
 const WRITE: RateLimitRule = { name: "write", limit: 120, windowSeconds: MINUTE, scope: "user" };
 
+/**
+ * Receipt recognition. Its own bucket because it is the one endpoint whose cost
+ * is a per-call charge to an upstream model rather than a row in Postgres — the
+ * shared write budget of 120/minute would be an expensive thing to leave open.
+ * Well clear of a real session (nobody photographs thirty receipts an hour) and
+ * far below what a script could spend.
+ */
+const RECEIPT_SCAN: RateLimitRule = { name: "receiptScan", limit: 30, windowSeconds: HOUR, scope: "user" };
+
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
@@ -69,6 +78,7 @@ export function resolveRateLimitRule(method: string, path: string): RateLimitRul
   if (path === "/api/v1/errors") return ERRORS;
   if (path.startsWith("/api/v1/auth/")) return AUTH;
   if (path === "/api/v1/feedback") return FEEDBACK;
+  if (path === "/api/v1/receipts/scan") return RECEIPT_SCAN;
 
   return WRITE;
 }

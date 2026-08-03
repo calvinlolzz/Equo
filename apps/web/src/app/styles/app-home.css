@@ -99,10 +99,40 @@
   gap: 12px;
 }
 
+/* One wide action plus two icon buttons, at every width - the icons are the
+   whole point of the row being this shape, so the phone breakpoint no longer
+   stacks it (see app-composer.css). */
 .member-quick-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr auto auto;
   gap: 10px;
+}
+
+.member-add-action,
+.member-icon-button {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(var(--surf) / 0.16);
+  border-radius: 14px;
+  color: rgb(var(--fg));
+  background: rgb(var(--surf) / 0.06);
+}
+
+.member-add-action {
+  gap: 8px;
+  font-weight: 860;
+}
+
+.member-icon-button {
+  width: 56px;
+  padding: 0;
+}
+
+.member-add-action:active,
+.member-icon-button:active {
+  transform: scale(0.98);
 }
 
 .member-avatar {

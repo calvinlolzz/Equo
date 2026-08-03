@@ -42,6 +42,13 @@ export const errorCodes = [
    * so nothing the user was doing is blocked.
    */
   "EXCHANGE_RATE_UNAVAILABLE",
+  /**
+   * Receipt recognition is switched off (no ANTHROPIC_API_KEY on this
+   * deployment) or the upstream failed. Advisory only — the client still
+   * attaches the photo and opens the composer, so the scan is a shortcut that
+   * degraded, not a lost expense.
+   */
+  "RECEIPT_SCAN_UNAVAILABLE",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

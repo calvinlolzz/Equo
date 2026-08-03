@@ -7,6 +7,7 @@ import type {
   CreateInviteRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  ScanReceiptRequest,
   UpdateGroupRequest,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
@@ -62,6 +63,12 @@ import {
   replaceExpenseRoute,
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
+import { scanReceiptRoute } from "../routes/receiptRoutes.js";
+import { RECEIPT_SCAN_DEFAULT_MODEL, type ReceiptScanner } from "../runtime/receiptScanner.js";
+import {
+  adminGetReceiptScanSettingsRoute,
+  adminSetReceiptScanSettingsRoute,
+} from "../routes/adminRoutes.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
@@ -91,6 +98,18 @@ type RuntimeOptions = {
   vapid?: VapidKeys;
   /** Test seam: the push transport. Defaults to web-push. */
   pushSend?: PushSendFn;
+  /**
+   * Absent = receipt recognition is switched off for the same reason as vapid:
+   * POST /receipts/scan answers 503 RECEIPT_SCAN_UNAVAILABLE and the client
+   * falls back to attaching the photo, rather than the missing key taking the
+   * rest of the API down.
+   */
+  scanReceipt?: ReceiptScanner;
+  /**
+   * The deployment's default recognition model, used until an admin picks one
+   * in the console. The saved choice wins; this is only the fallback.
+   */
+  receiptScanModel?: string;
 };
 
 type RuntimeRoute = {
@@ -124,6 +143,14 @@ function routeOptions(options: RuntimeOptions, request: HttpRuntimeRequest) {
 
 function body<T>(request: HttpRuntimeRequest): T {
   return request.json as T;
+}
+
+/** What the deployment contributes to the settings picture: the key, and the fallback model. */
+function receiptScanConfig(options: RuntimeOptions) {
+  return {
+    configured: Boolean(options.scanReceipt),
+    defaultModel: options.receiptScanModel?.trim() || RECEIPT_SCAN_DEFAULT_MODEL,
+  };
 }
 
 /**
@@ -482,6 +509,44 @@ export function createHttpRuntime(options: RuntimeOptions) {
       },
     },
     {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/settings\/receipt-scan$/,
+      label: "GET /api/v1/admin/settings/receipt-scan",
+      async handle(request) {
+        const result = await adminGetReceiptScanSettingsRoute(routeOptions(options, request), receiptScanConfig(options));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/admin\/settings\/receipt-scan$/,
+      label: "PUT /api/v1/admin/settings/receipt-scan",
+      async handle(request) {
+        const result = await adminSetReceiptScanSettingsRoute(
+          routeOptions(options, request),
+          body<{ enabled?: unknown; model?: unknown }>(request),
+          receiptScanConfig(options),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/receipts\/scan$/,
+      label: "POST /api/v1/receipts/scan",
+      async handle(request) {
+        const result = await scanReceiptRoute(
+          {
+            ...routeOptions(options, request),
+            scanReceipt: options.scanReceipt,
+            defaultModel: options.receiptScanModel,
+          },
+          body<ScanReceiptRequest>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
       method: "DELETE",
       pattern: /^\/api\/v1\/me$/,
       label: "DELETE /api/v1/me",
@@ -651,7 +716,7 @@ export function createHttpRuntime(options: RuntimeOptions) {
       pattern: /^\/api\/v1\/admin\/health$/,
       label: "GET /api/v1/admin/health",
       async handle(request) {
-        const result = await adminHealthRoute(routeOptions(options, request));
+        const result = await adminHealthRoute(routeOptions(options, request), receiptScanConfig(options));
         return jsonResponse(result.status, result.body);
       },
     },

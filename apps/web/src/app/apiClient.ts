@@ -8,6 +8,8 @@ import type {
   RemoveGroupMemberRequest,
   RenameGroupMemberRequest,
   UpdateGroupRequest,
+  ScanReceiptRequest,
+  ScanReceiptResponse,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
 } from "../contracts/schemas";
@@ -412,6 +414,18 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify(payload),
       });
     },
+    /**
+     * Read a photographed receipt into composer fields. Rejects with a
+     * RECEIPT_SCAN_UNAVAILABLE ApiRequestError when recognition is off or the
+     * upstream failed — callers still have the photo, so that is a downgrade
+     * rather than a failure.
+     */
+    scanReceipt(payload: ScanReceiptRequest) {
+      return request<ScanReceiptResponse>("/receipts/scan", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
     updateMyAvatar(payload: UpdateMyAvatarRequest) {
       return request<{ avatar_url: string }>("/me/avatar", {
         method: "PATCH",
@@ -549,6 +563,17 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify({}),
       });
     },
+    /** The console's live view of receipt recognition (support+ may read). */
+    adminGetReceiptScanSettings() {
+      return request<AdminReceiptScanSettings>("/admin/settings/receipt-scan", { method: "GET" });
+    },
+    /** Change the kill switch and/or the model (admin+). */
+    adminSetReceiptScanSettings(enabled: boolean, model: string) {
+      return request<AdminReceiptScanSettings>("/admin/settings/receipt-scan", {
+        method: "PUT",
+        body: JSON.stringify({ enabled, model }),
+      });
+    },
     adminListAdmins() {
       return request<{ admins: AdminAccountRow[] }>("/admin/admins", { method: "GET" });
     },
@@ -652,6 +677,22 @@ export type AdminHealthSummary = {
     open_groups?: number;
   };
   feedback: { open: number };
+  /**
+   * Receipt recognition's live configuration. Absent on an API deployed before
+   * this shipped, so the tile is conditional rather than assumed.
+   */
+  receipt_scan?: { configured: boolean; enabled: boolean; model: string };
+};
+
+export type AdminReceiptScanSettings = {
+  enabled: boolean;
+  model: string;
+  updated_at: string | null;
+  updated_by_email: string | null;
+  /** Is ANTHROPIC_API_KEY set on the deployment. False = the switch below has nothing to switch. */
+  configured: boolean;
+  /** Models this build can be pointed at. */
+  models: string[];
 };
 
 export type AdminUserRow = {

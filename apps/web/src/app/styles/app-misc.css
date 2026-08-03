@@ -751,3 +751,147 @@
     overscroll-behavior-y: contain;
   }
 }
+
+/* --- Full-screen camera (掃描收據 / 掃描邀請 QR code) ------------------- */
+
+/* Above every sheet and drawer, and opaque: a live camera behind a translucent
+   panel reads as broken, and this screen is a destination rather than a layer.
+   dvh, not vh, so the shutter is not parked under mobile Safari's toolbar. */
+.scan-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  height: 100dvh;
+  background: #000;
+  color: #fff;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.scan-topbar {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  padding: calc(env(safe-area-inset-top) + 8px) 12px 8px;
+}
+
+.scan-topbar h2 {
+  margin: 0;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 860;
+}
+
+.scan-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.scan-gallery-button {
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+}
+
+/* The picker is driven by the wrapping <label>; hiding the input with
+   display:none would take it out of the accessibility tree along with it. */
+.scan-gallery-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scan-icon-placeholder {
+  visibility: hidden;
+}
+
+.scan-stage {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+/* cover, not contain: a letterboxed preview makes it much harder to judge
+   whether the receipt is fully inside the frame. captureVideoFrameDataUrl
+   reads the full sensor frame, so nothing the user sees is ever cropped away. */
+.scan-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-reticle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(240px, 62vw);
+  aspect-ratio: 1;
+  border: 3px solid rgb(var(--gold));
+  border-radius: 20px;
+  color: rgb(var(--gold) / 0.85);
+}
+
+.scan-error {
+  position: relative;
+  max-width: 30ch;
+  margin: 0;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.72);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.scan-hint {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 14px 20px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.scan-hint small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.scan-shutter-row {
+  display: grid;
+  place-items: center;
+  padding: 18px 0 24px;
+}
+
+.scan-shutter {
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  border: 4px solid rgba(255, 255, 255, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.scan-shutter:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.scan-shutter:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

@@ -906,7 +906,7 @@ label span {
 :root[data-theme="light"] .archived-dialog-row small,
 :root[data-theme="light"] .record-dialog-row small,
 :root[data-theme="light"] .member-dialog-row small,
-:root[data-theme="light"] .invite-link-box span,
+:root[data-theme="light"] .invite-code-row span,
 :root[data-theme="light"] .category-legend em,
 /* :not(.active) is load-bearing — this readability override otherwise wins over
    the selected-tab colour and flattens the bottom nav's only state cue. */

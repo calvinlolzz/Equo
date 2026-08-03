@@ -29,6 +29,17 @@ describe("resolveRateLimitRule", () => {
     expect(resolveRateLimitRule("POST", "/api/v1/feedback")).toMatchObject({ name: "feedback", scope: "user" });
   });
 
+  test("gives receipt recognition its own, much smaller budget than ordinary writes", () => {
+    const scan = resolveRateLimitRule("POST", "/api/v1/receipts/scan");
+
+    expect(scan).toMatchObject({ name: "receiptScan", scope: "user" });
+    // Its own bucket so a burst of scans can't be charged against - or paid for
+    // out of - the shared write budget; this endpoint costs real money per call.
+    const write = resolveRateLimitRule("POST", "/api/v1/groups")!;
+    expect(scan!.name).not.toBe(write.name);
+    expect(scan!.limit / scan!.windowSeconds).toBeLessThan(write.limit / write.windowSeconds);
+  });
+
   test.each([
     ["POST", "/api/v1/groups"],
     ["PATCH", "/api/v1/groups/group_1"],

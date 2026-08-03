@@ -28,6 +28,15 @@ export type AdminTrendsRecord = {
 export type AdminHealthRecord = {
   /** null until the backup workflow has recorded its first success. */
   backup: { last_success_at: string; detail: Record<string, unknown> } | null;
+  /**
+   * Receipt recognition's live configuration. `configured` is a property of the
+   * deployment (is ANTHROPIC_API_KEY set) and `enabled` is the console's own
+   * switch — kept apart because the fixes are completely different, and both
+   * fail silently in the app: either way it just stops auto-filling.
+   *
+   * Optional so a console deployed ahead of this change still renders.
+   */
+  receipt_scan?: { configured: boolean; enabled: boolean; model: string };
   rate_limit: {
     /** Buckets counted within the last hour - live traffic, not all time. */
     active_buckets: number;

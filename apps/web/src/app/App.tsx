@@ -13,7 +13,9 @@ import {
   Moon,
   Pencil,
   Plus,
+  Scan,
   Settings,
+  Share,
   Sun,
   UserRound,
   X,
@@ -40,6 +42,9 @@ import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { listSettlementRecords } from "./settlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
+import type { ScanSheetMode } from "./ScanSheet";
+import { readInviteToken } from "./inviteToken";
+import type { ReceiptPrefill } from "./receiptPrefill";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
 import { MemberAvatar, upscaleGoogleAvatar } from "./MemberAvatar";
@@ -99,6 +104,11 @@ const ExpenseDetailDialog = lazy(() =>
 const FeedbackDialog = lazy(() => import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })));
 const ProfileDialog = lazy(() => import("./ProfileDialog").then((m) => ({ default: m.ProfileDialog })));
 const RecordsPanel = lazy(() => import("./RecordsPanel").then((m) => ({ default: m.RecordsPanel })));
+// The QR encoder and the camera/decoder are each behind a tap and are dead
+// weight for everyone who never opens them - the decoder alone outweighs the
+// rest of this list.
+const InviteQrCode = lazy(() => import("./InviteQrCode").then((m) => ({ default: m.InviteQrCode })));
+const ScanSheet = lazy(() => import("./ScanSheet").then((m) => ({ default: m.ScanSheet })));
 
 /**
  * Warm the two chunks a user reaches for first, once the browser is idle.
@@ -173,6 +183,9 @@ export function App() {
   // Reported up by the composer sheet, because the Back button closes it from
   // out here and never passes through the sheet's own dismiss handlers.
   const [composerDirty, setComposerDirty] = useState(false);
+  /** Which full-screen camera is up, if any: "receipt" reads a bill, "invite" reads a join QR. */
+  const [scanMode, setScanMode] = useState<ScanSheetMode | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
@@ -264,6 +277,8 @@ export function App() {
     expenseComposerOpen,
     editingExpense,
     duplicatingExpense,
+    receiptPrefill,
+    openExpenseFromReceipt,
     selectedExpenseId,
     setSelectedExpenseId,
     openExpenseComposer,
@@ -462,6 +477,10 @@ export function App() {
     { open: settingsDrawerOpen, close: () => setSettingsDrawerOpen(false) },
     { open: Boolean(dialog), close: closeDialog },
     { open: dialog === "profile" && infoDialog !== null, close: () => setInfoDialog(null) },
+    // Above the dialog layer: the invite scanner is opened FROM the 輸入邀請碼
+    // dialog and leaves it standing underneath, so Back must peel the camera
+    // off first rather than dismissing both at once.
+    { open: scanMode !== null, close: () => setScanMode(null) },
     // Back on a dirty composer raises the discard confirm instead of closing;
     // the confirm then sits above it, so a second Back answers 繼續編輯.
     { open: expenseComposerOpen, close: requestCloseComposer },
@@ -822,6 +841,79 @@ export function App() {
     settleTransfer(debt.from.id, debt.to.id, debt.amountMinor);
   }
 
+  function openReceiptScan() {
+    closeDrawers();
+    setDialog(null);
+    setScanMode("receipt");
+  }
+
+  /**
+   * A captured receipt: recognise it, then open the composer either way.
+   *
+   * Recognition is a shortcut, not a gate - a failed or unconfigured scan still
+   * lands the user in the composer with the photo attached, which is exactly
+   * where the 相機 button in the composer would have put them. Losing the photo
+   * because the model was unreachable would be the worst possible outcome for
+   * somebody standing at a till.
+   */
+  async function handleReceiptCaptured(dataUrl: string) {
+    if (!activeGroup) return;
+    setScanBusy(true);
+
+    let scan: ReceiptPrefill["scan"] = null;
+    try {
+      scan = await createApiClient().scanReceipt({
+        client_request_id: crypto.randomUUID(),
+        data_url: dataUrl,
+        currency: activeGroup.currency,
+      });
+    } catch {
+      // Left null: RECEIPT_SCAN_UNAVAILABLE, offline, rate-limited - all the
+      // same downgrade from the user's point of view.
+    }
+
+    setScanBusy(false);
+    setScanMode(null);
+    openExpenseFromReceipt({ imageDataUrl: dataUrl, scan });
+    showToast(scan?.recognised ? text.scanReceiptDone : text.scanReceiptFailed);
+  }
+
+  /**
+   * A QR seen by the invite scanner. Returning false keeps the camera running,
+   * which is what should happen when the user happens to sweep past some other
+   * code on the table.
+   */
+  function handleInviteQrDetected(payload: string): boolean {
+    const token = readInviteToken(payload);
+    if (!token) return false;
+    setInviteInputValue(token);
+    setInviteInputError("");
+    setScanMode(null);
+    return true;
+  }
+
+  /**
+   * Hand the invite link to the OS share sheet. Falls back to the clipboard
+   * where Web Share is missing (every desktop browser, and Firefox), so the
+   * button always does something useful rather than being conditionally absent.
+   */
+  async function shareInviteLink() {
+    if (!inviteLink) return;
+    if (!navigator.share) {
+      await copyInviteText(inviteLink);
+      return;
+    }
+    try {
+      await navigator.share({ title: activeGroup?.name ?? "Equo", text: text.inviteJoinAsNewMember, url: inviteLink });
+    } catch (error) {
+      // A user who taps outside the share sheet cancelled on purpose; only a
+      // real failure is worth falling back for.
+      if ((error as Error)?.name === "AbortError") return;
+      showToast(text.shareInviteFailed);
+      await copyInviteText(inviteLink);
+    }
+  }
+
   function openHome() {
     // The Equo brand mark goes to the user's primary (newest) group, or the
     // create-first-group start flow when they have none - never a bare root
@@ -1059,14 +1151,29 @@ export function App() {
                 </div>
               </div>
 
+              {/* 新增成員 keeps the width because it is the one action most
+                  people are here for; invite and scan are recognisable enough
+                  as icons that spelling them out would crowd the card. */}
               <div className="member-quick-actions">
-                <button className="primary-action" type="button" onClick={() => setDialog("memberActions")}>
-                  <UserRound aria-hidden="true" size={18} />
+                <button className="member-add-action" type="button" onClick={() => setDialog("memberActions")}>
                   {text.addMember}
+                  <Plus aria-hidden="true" size={18} />
                 </button>
-                <button className="secondary-action" type="button" onClick={openInviteMembers}>
-                  <Inbox aria-hidden="true" size={18} />
-                  {text.inviteMembers}
+                <button
+                  className="member-icon-button"
+                  type="button"
+                  aria-label={text.inviteMembers}
+                  onClick={openInviteMembers}
+                >
+                  <Share aria-hidden="true" size={20} />
+                </button>
+                <button
+                  className="member-icon-button"
+                  type="button"
+                  aria-label={text.scanReceipt}
+                  onClick={openReceiptScan}
+                >
+                  <Scan aria-hidden="true" size={20} />
                 </button>
               </div>
             </article>
@@ -1345,6 +1452,22 @@ export function App() {
         </section>
       )}
 
+      {/* Above every sheet and drawer: it takes the whole screen and owns the
+          camera while it is up. Unmounting is what stops the stream, so this
+          must never be merely hidden. */}
+      {scanMode ? (
+        <Suspense fallback={null}>
+          <ScanSheet
+            mode={scanMode}
+            busy={scanBusy}
+            onClose={() => setScanMode(null)}
+            onCaptureReceipt={handleReceiptCaptured}
+            onDetectInvite={handleInviteQrDetected}
+            onImageError={() => showToast(text.photoError)}
+          />
+        </Suspense>
+      ) : null}
+
       {expenseComposerOpen ? (
         <Suspense fallback={null}>
         <ExpenseComposerSheet
@@ -1354,6 +1477,7 @@ export function App() {
           currencyOptions={currencyOptions}
           initialExpense={editingExpense ?? duplicatingExpense ?? undefined}
           duplicating={Boolean(duplicatingExpense)}
+          receiptPrefill={receiptPrefill ?? undefined}
           onClose={requestCloseComposer}
           onDirtyChange={setComposerDirty}
           onSubmit={handleExpenseDraftSubmit}
@@ -1614,27 +1738,40 @@ export function App() {
               <>
                 <div className="dialog-header">
                   <h3>{text.inviteMembers}</h3>
-                  <p>{`${text.inviteMembers}: ${activeGroup?.name ?? ""}`}</p>
+                  <p>
+                    <strong className="invite-group-name">{activeGroup?.name ?? ""}</strong>
+                    <span>{text.inviteJoinAsNewMember}</span>
+                  </p>
                 </div>
                 <div className="invite-dialog-card">
-                  <div className="invite-dialog-code">
+                  {/* The QR is the primary affordance: the other phone points
+                      its camera and is done, no code to read out or mistype. */}
+                  <Suspense fallback={<div className="invite-qr-frame invite-qr-frame--empty" aria-hidden="true" />}>
+                    <InviteQrCode value={cloudInviteLoading ? "" : inviteLink} />
+                  </Suspense>
+                  <button
+                    className="invite-code-row"
+                    type="button"
+                    aria-label={`${text.copyCode} ${inviteCode}`}
+                    disabled={!inviteCode}
+                    onClick={() => copyInviteText(inviteCode)}
+                  >
+                    <Copy aria-hidden="true" size={18} />
                     <span>{text.inviteCode}</span>
                     <strong>{cloudInviteLoading ? "..." : inviteCode}</strong>
-                  </div>
-                  <div className="invite-link-box">
-                    <span>{text.inviteLink}</span>
-                    <strong>{cloudInviteLoading ? "..." : inviteLink}</strong>
-                  </div>
-                  <div className="invite-action-grid">
-                    <button className="secondary-action" type="button" onClick={() => copyInviteText(inviteCode)}>
-                      <Copy aria-hidden="true" size={18} />
-                      {text.copyCode}
-                    </button>
-                    <button className="primary-action" type="button" onClick={() => copyInviteText(inviteLink)}>
-                      <Link aria-hidden="true" size={18} />
-                      {text.copyLink}
-                    </button>
-                  </div>
+                  </button>
+                  <button
+                    className="primary-action"
+                    type="button"
+                    disabled={!inviteLink}
+                    onClick={() => copyInviteText(inviteLink)}
+                  >
+                    <Link aria-hidden="true" size={18} />
+                    {text.copyLink}
+                  </button>
+                  <button className="text-action invite-share-action" type="button" disabled={!inviteLink} onClick={shareInviteLink}>
+                    {text.shareInvite}
+                  </button>
                 </div>
               </>
             ) : null}
@@ -1670,6 +1807,10 @@ export function App() {
                   />
                 </label>
                 {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
+                <button className="invite-scan-action" type="button" onClick={() => setScanMode("invite")}>
+                  <Scan aria-hidden="true" size={18} />
+                  {text.scanInviteQr}
+                </button>
                 <div className="dialog-action-row">
                   <button
                     className="secondary-action"
