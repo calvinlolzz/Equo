@@ -86,17 +86,22 @@ export async function scanReceiptRoute(options: RouteOptions, request: ScanRecei
     return unavailable("Receipt recognition is currently switched off.", request.client_request_id);
   }
 
+  const model = isReceiptScanModel(settings.model) ? settings.model : fallbackModel;
+  const startedAt = Date.now();
+
   try {
-    const result = await options.scanReceipt({
-      dataUrl: request.data_url,
-      currency: request.currency,
-      model: isReceiptScanModel(settings.model) ? settings.model : fallbackModel,
-    });
+    const result = await options.scanReceipt({ dataUrl: request.data_url, currency: request.currency, model });
+    // The one number worth having when somebody says "辨識好慢": it separates
+    // the upstream's time from the round trip carrying a ~400 KB photo to get
+    // here, which are fixed in completely different places.
+    console.log(
+      `Receipt scan: model=${model} upstream_ms=${Date.now() - startedAt} bytes=${request.data_url.length} recognised=${result.recognised}`,
+    );
     return { ok: true, status: 200, body: result };
   } catch (error) {
     // The photo itself is never logged - a receipt carries a card's last four
     // digits and where somebody was at what time.
-    console.warn("Receipt recognition failed:", (error as Error).message);
+    console.warn(`Receipt recognition failed after ${Date.now() - startedAt}ms:`, (error as Error).message);
     return unavailable(
       error instanceof ReceiptScanUnavailableError
         ? "Receipt recognition is temporarily unavailable."

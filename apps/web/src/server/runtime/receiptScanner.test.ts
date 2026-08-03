@@ -201,6 +201,20 @@ describe("the Gemini call", () => {
     expect(schema.properties.merchant.type).toEqual(["string", "null"]);
   });
 
+  test("asks for the least thinking the model allows", async () => {
+    const fetchMock = stubFetch({
+      steps: [{ type: "model_output", content: [{ type: "text", text: JSON.stringify(modelOutput) }] }],
+    });
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+
+    await scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" });
+
+    // Gemini 3 thinks at "medium" unless told otherwise, and reading a receipt
+    // is perception rather than reasoning - that default is latency the user
+    // spends watching a spinner for nothing.
+    expect(sentBody(fetchMock).generation_config).toEqual({ thinking_level: "minimal" });
+  });
+
   test("finds the model_output step rather than trusting its position", async () => {
     // The steps array is a timeline that can carry thoughts and tool calls
     // first; indexing [0] would read a thought as the answer.

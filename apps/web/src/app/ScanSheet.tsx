@@ -216,12 +216,21 @@ export function ScanSheet({
             {CAMERA_ERROR_TEXT[cameraError]}
           </p>
         ) : null}
+        {/* A live camera feed with one word changed underneath does not read as
+            "working on it" - it reads as a frozen shutter. The overlay covers
+            the preview so the wait is unmistakably a state, not a fault. */}
+        {busy ? (
+          <div className="scan-busy" role="status" aria-live="polite">
+            <span className="scan-busy-spinner" aria-hidden="true" />
+            <span>{text.scanReading}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="scan-hint">
         {isReceipt ? (
           <>
-            <span>{busy ? text.scanReading : text.scanReceiptHint}</span>
+            <span>{text.scanReceiptHint}</span>
             <small>{text.scanReceiptExamples}</small>
           </>
         ) : (
