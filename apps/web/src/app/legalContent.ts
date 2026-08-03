@@ -10,7 +10,14 @@
  * published version — the renderer in ProfileDialog only needs the same shape.
  *
  * Plain-language, Traditional Chinese, ROC (Taiwan) jurisdiction. Reviewed and
- * approved 2026-07-25. Contact: support@equomu.com.
+ * approved 2026-07-25; receipt-recognition disclosure added 2026-08-03.
+ * Contact: support@equomu.com.
+ *
+ * ⚠️ The receipt-recognition section names the AI provider and its tier, because
+ * under a free tier the provider may train on the content and have humans read
+ * it — which is a materially different promise from an ordinary sub-processor.
+ * Changing the provider or moving to a paid plan makes that text wrong, so the
+ * admin console's model picker carries a reminder to come back here.
  */
 
 export const LEGAL_CONTACT_EMAIL = "support@equomu.com";
@@ -30,7 +37,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-const LAST_UPDATED = "最後更新：2026 年 7 月 25 日";
+const LAST_UPDATED = "最後更新：2026 年 8 月 3 日";
 
 export const PRIVACY_POLICY: LegalDocument = {
   title: "隱私權政策",
@@ -43,6 +50,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       bullets: [
         "你用 Google 登入時：你的電子郵件、顯示名稱，以及 Google 頭像。Equo 只用 Google 登入，我們看不到、也不儲存你的 Google 密碼。",
         "你在 App 裡建立的內容：群組、支出記錄（品項、金額、分類、備註、日期）、你新增的成員名稱（含沒有帳號的「虛擬成員」）、清償記錄，以及你上傳的圖片（收據、群組封面、自訂頭像）。",
+      "你選擇使用掃描收據時：那張收據照片，以及從照片辨識出來的金額、店名、日期與品項。詳見第 3 節。",
         "你主動送出的：意見回饋的內容。",
         "系統自動記錄的：為了修正錯誤而記下的當機資訊（錯誤訊息與當下頁面），以及維持登入所需的一個 cookie。",
       ],
@@ -58,15 +66,30 @@ export const PRIVACY_POLICY: LegalDocument = {
       paragraphs: ["我們不會把你的資料賣給別人，也不會拿來投放廣告。"],
     },
     {
-      heading: "3. 誰看得到你的資料",
+      heading: "3. 收據辨識（選用功能）",
+      paragraphs: [
+        "群組首頁的掃描鈕可以拍下收據，自動填入金額與店名。使用這個功能時，那張照片會傳送給第三方 AI 服務進行辨識。不使用這個功能，就不會有任何照片被送出去辨識。",
+      ],
+      callout: {
+        tag: "目前使用免費方案，請務必理解",
+        paragraphs: [
+          "現在的辨識服務是 Google Gemini 的免費方案。依 Google 的服務條款，送出的內容會被 Google 用於提供、改善及開發其產品與服務，且 Google 的人員可能會閱讀、標註與處理這些內容。",
+          "收據上可能有消費地點、時間、購買品項，甚至信用卡號末四碼。請自行斟酌要不要用掃描功能拍攝敏感的收據。",
+          "不想讓照片經過第三方 AI，就不要用掃描鈕：改用記帳表單裡的照片功能挑選或拍攝，照片一樣會附在支出上，但只會存在我們自己的儲存空間，不會送去辨識，金額則需要手動輸入。",
+        ],
+      },
+    },
+    {
+      heading: "4. 誰看得到你的資料",
       bullets: [
         "同群組的其他成員：你的名字、頭像，以及你記的帳，會被同一個群組裡的人看到——這是共同分帳本來就需要的。",
         "我們委託的服務商（只用於提供服務、不會另作他用）：Google（登入）、Supabase（資料庫與圖片儲存）、Vercel（網站代管）。你的資料存放在位於新加坡的伺服器。",
+        "AI 辨識服務：只有在你使用掃描收據時，該張照片會送給 Google Gemini。條件與風險見第 3 節。",
         "法律要求時：當法律或主管機關依法要求，我們可能需要提供必要資料。",
       ],
     },
     {
-      heading: "4. 資料會保留多久，刪帳號會發生什麼",
+      heading: "5. 資料會保留多久，刪帳號會發生什麼",
       paragraphs: [
         "你的資料會一直保留，直到你自己刪除為止——你可以刪掉單筆支出、整個群組，或整個帳號。",
       ],
@@ -79,7 +102,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       },
     },
     {
-      heading: "5. 你的權利",
+      heading: "6. 你的權利",
       bullets: [
         "查看與更正：隨時在 App 內修改你的名字、頭像與帳目。",
         "匯出：每個群組都可以匯出成 CSV 檔。",
@@ -88,17 +111,17 @@ export const PRIVACY_POLICY: LegalDocument = {
       ],
     },
     {
-      heading: "6. Cookie",
+      heading: "7. Cookie",
       paragraphs: [
         "我們只用一個維持登入的必要 cookie（equo_session），沒有任何廣告或跨站追蹤 cookie。",
       ],
     },
     {
-      heading: "7. 兒童",
+      heading: "8. 兒童",
       paragraphs: ["本服務不面向 13 歲以下的兒童，也不會刻意收集他們的資料。"],
     },
     {
-      heading: "8. 政策變更與聯絡",
+      heading: "9. 政策變更與聯絡",
       paragraphs: [
         `若這份政策有重大變更，我們會在 App 內告知。有任何隱私相關問題，請聯絡 ${LEGAL_CONTACT_EMAIL}。`,
       ],
@@ -133,6 +156,7 @@ export const TERMS_OF_SERVICE: LegalDocument = {
       heading: "4. 你的內容",
       paragraphs: [
         "你記的帳與上傳的圖片仍然屬於你。你授權我們為了「提供這個服務」而儲存、處理，並把這些內容顯示給你和你的同群組成員。",
+        "當你使用掃描收據功能時，這份授權也包含把該張照片傳送給第三方 AI 服務進行辨識。該服務目前的條件（包含其可能將內容用於改善自身產品）詳見隱私權政策第 3 節。",
       ],
     },
     {
