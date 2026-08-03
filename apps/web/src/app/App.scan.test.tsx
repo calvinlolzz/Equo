@@ -137,6 +137,25 @@ describe("掃描收據", () => {
     expect(screen.getByRole("button", { name: app.removePhoto })).toBeTruthy();
   });
 
+  test("covers the preview while the frame is being recognised", async () => {
+    stubCamera();
+    const api = await landOnGroup();
+    // A scan that never resolves, so the in-flight state can be observed.
+    api.set("POST /receipts/scan", new Promise(() => {}));
+
+    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    const shutter = await screen.findByRole("button", { name: app.scanReceiptShutter });
+    await waitFor(() => expect((shutter as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(shutter);
+
+    // A live camera with one word changed underneath reads as a broken
+    // shutter, not as "working on it".
+    const busy = await screen.findByRole("status");
+    expect(busy.textContent).toContain(app.scanReading);
+    expect((shutter as HTMLButtonElement).disabled).toBe(true);
+  });
+
   test("still opens the composer with the photo when recognition is unavailable", async () => {
     stubBrowser();
     stubCamera();

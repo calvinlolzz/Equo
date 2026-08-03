@@ -343,6 +343,11 @@ async function callGemini(apiKey: string, { dataUrl, currency, model }: ScanInpu
           mime_type: "application/json",
           schema: GEMINI_RESPONSE_SCHEMA,
         },
+        // Reading a receipt is perception, not reasoning, and Gemini 3 thinks
+        // at "medium" unless told otherwise - which is latency the user spends
+        // staring at a spinner for no gain. "minimal" is the floor this model
+        // allows; thinking cannot be switched off entirely on the Flash line.
+        generation_config: { thinking_level: "minimal" },
       }),
     });
   } catch (error) {

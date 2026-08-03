@@ -895,3 +895,41 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* Covers the preview while a captured frame is being recognised. Opaque enough
+   that the still camera feed behind it cannot be mistaken for a live one. */
+.scan-busy {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 820;
+}
+
+.scan-busy-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgb(var(--gold) / 0.28);
+  border-top-color: rgb(var(--gold));
+  border-radius: 999px;
+  animation: scan-busy-spin 720ms linear infinite;
+}
+
+@keyframes scan-busy-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* Respect a reduced-motion preference: the overlay still says what is
+   happening, it just stops spinning. */
+@media (prefers-reduced-motion: reduce) {
+  .scan-busy-spinner {
+    animation: none;
+  }
+}
