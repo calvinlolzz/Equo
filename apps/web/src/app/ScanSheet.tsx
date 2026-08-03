@@ -15,8 +15,6 @@ export type ScanSheetMode = "receipt" | "invite";
 
 type ScanSheetProps = {
   mode: ScanSheetMode;
-  /** Freezes the shutter while the captured frame is being uploaded/recognised. */
-  busy?: boolean;
   onClose: () => void;
   /** receipt mode: a captured still, already downscaled to a jpeg data URL. */
   onCaptureReceipt?: (dataUrl: string) => void;
@@ -58,7 +56,6 @@ const CAMERA_ERROR_TEXT: Record<CameraError, string> = {
  */
 export function ScanSheet({
   mode,
-  busy = false,
   onClose,
   onCaptureReceipt,
   onDetectInvite,
@@ -158,7 +155,7 @@ export function ScanSheet({
 
   function captureFrame() {
     const video = videoRef.current;
-    if (!video || busy) return;
+    if (!video) return;
     const dataUrl = captureVideoFrameDataUrl(video, RECEIPT_MAX_EDGE_PX);
     if (!dataUrl) {
       onImageError?.();
@@ -169,7 +166,7 @@ export function ScanSheet({
   }
 
   async function pickFromLibrary(file: File | null) {
-    if (!file || busy) return;
+    if (!file) return;
     try {
       const dataUrl = await downscaleImageFileToDataUrl(file, RECEIPT_MAX_EDGE_PX);
       onCaptureReceipt?.(dataUrl);
@@ -216,15 +213,6 @@ export function ScanSheet({
             {CAMERA_ERROR_TEXT[cameraError]}
           </p>
         ) : null}
-        {/* A live camera feed with one word changed underneath does not read as
-            "working on it" - it reads as a frozen shutter. The overlay covers
-            the preview so the wait is unmistakably a state, not a fault. */}
-        {busy ? (
-          <div className="scan-busy" role="status" aria-live="polite">
-            <span className="scan-busy-spinner" aria-hidden="true" />
-            <span>{text.scanReading}</span>
-          </div>
-        ) : null}
       </div>
 
       <div className="scan-hint">
@@ -244,7 +232,7 @@ export function ScanSheet({
             className="scan-shutter"
             type="button"
             aria-label={text.scanReceiptShutter}
-            disabled={busy || !streaming}
+            disabled={!streaming}
             onClick={captureFrame}
           />
         </div>

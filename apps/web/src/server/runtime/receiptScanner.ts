@@ -309,6 +309,23 @@ async function callAnthropic(apiKey: string, { dataUrl, currency, model }: ScanI
 
 type GeminiStep = { type?: string; content?: Array<{ type?: string; text?: string }> };
 
+type GeminiUsage = { total_thought_tokens?: number; total_output_tokens?: number };
+
+/**
+ * What the last Gemini call spent on thinking, for the route to log.
+ *
+ * Module-level and overwritten per call, which is fine because it is only ever
+ * read immediately afterwards by the same request - and it keeps the scanner's
+ * return type the response contract rather than a diagnostics envelope. If
+ * thinking_level were being ignored these numbers would stay high, which is the
+ * only way to tell from outside.
+ */
+let lastGeminiUsage: GeminiUsage = {};
+
+export function readLastGeminiUsage(): GeminiUsage {
+  return lastGeminiUsage;
+}
+
 /**
  * Gemini's Interactions API. Called over plain HTTPS rather than through a
  * Google SDK: the request is one JSON body and the response one field deep, so
@@ -364,7 +381,8 @@ async function callGemini(apiKey: string, { dataUrl, currency, model }: ScanInpu
     throw new ReceiptScanUnavailableError(`Receipt recognition upstream returned ${response.status}.`);
   }
 
-  const body = (await response.json()) as { steps?: GeminiStep[] };
+  const body = (await response.json()) as { steps?: GeminiStep[]; usage?: GeminiUsage };
+  lastGeminiUsage = body.usage ?? {};
   // Search for the model_output step instead of indexing steps[0]: the array is
   // a timeline that can also carry thoughts and tool steps, and which of those
   // appear is not ours to control.

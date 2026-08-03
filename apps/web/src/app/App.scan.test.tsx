@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
 import { UI_TEXT } from "./uiText";
@@ -131,16 +131,19 @@ describe("掃描收據", () => {
     fireEvent.click(shutter);
 
     await waitFor(() => expect(api.calls).toContain("POST /receipts/scan"));
+    // Filled in after the fact - the sheet was already open and blank.
     await waitFor(() => expect(screen.getByLabelText(app.amount)).toHaveProperty("value", "125.5"));
     expect(screen.getByLabelText(app.title)).toHaveProperty("value", "全家便利商店");
     // The photo rides along on the same expense, recognised or not.
     expect(screen.getByRole("button", { name: app.removePhoto })).toBeTruthy();
   });
 
-  test("covers the preview while the frame is being recognised", async () => {
+  test("opens the composer at once instead of waiting on recognition", async () => {
+    stubBrowser();
     stubCamera();
     const api = await landOnGroup();
-    // A scan that never resolves, so the in-flight state can be observed.
+    // A scan that never resolves: recognition takes ~5s in production, and
+    // nobody standing at a till should spend them watching a spinner.
     api.set("POST /receipts/scan", new Promise(() => {}));
 
     fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
@@ -149,11 +152,45 @@ describe("掃描收據", () => {
 
     fireEvent.click(shutter);
 
-    // A live camera with one word changed underneath reads as a broken
-    // shutter, not as "working on it".
-    const busy = await screen.findByRole("status");
-    expect(busy.textContent).toContain(app.scanReading);
-    expect((shutter as HTMLButtonElement).disabled).toBe(true);
+    // Composer up, photo attached, amount blank and typeable - all before the
+    // upstream has said anything.
+    await waitFor(() => expect(screen.getByRole("button", { name: app.removePhoto })).toBeTruthy());
+    expect(screen.getByLabelText(app.amount)).toHaveProperty("value", "");
+    expect(screen.getByText(app.scanReading)).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: app.scanReceipt })).toBeNull();
+  });
+
+  test("a late scan fills the blanks but never overwrites what the user typed", async () => {
+    stubBrowser();
+    stubCamera();
+    const api = await landOnGroup();
+    let resolveScan: (value: unknown) => void = () => {};
+    api.set("POST /receipts/scan", new Promise((resolve) => { resolveScan = resolve; }));
+
+    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    const shutter = await screen.findByRole("button", { name: app.scanReceiptShutter });
+    await waitFor(() => expect((shutter as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(shutter);
+
+    // The impatient user types their own amount during the wait.
+    const amount = await screen.findByLabelText(app.amount);
+    fireEvent.change(amount, { target: { value: "999" } });
+
+    await act(async () => {
+      resolveScan({
+        recognised: true,
+        merchant: "全家便利商店",
+        amount_minor: 12550,
+        currency: "TWD",
+        purchased_at: "2026-07-29",
+        category: "food",
+        items: [],
+      });
+    });
+
+    // Their number stands; the field they left alone gets filled.
+    await waitFor(() => expect(screen.getByLabelText(app.title)).toHaveProperty("value", "全家便利商店"));
+    expect(screen.getByLabelText(app.amount)).toHaveProperty("value", "999");
   });
 
   test("still opens the composer with the photo when recognition is unavailable", async () => {

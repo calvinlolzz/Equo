@@ -953,3 +953,39 @@
   align-items: center;
   gap: 12px;
 }
+
+/* "辨識中…" beside the amount while a background scan runs. Deliberately a
+   quiet line and not a blocking state: the sheet is fully usable, and anything
+   typed here survives the result. */
+.composer-scan-pending {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: rgb(var(--gold));
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.composer-scan-pending::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-inline-end: 6px;
+  border: 2px solid rgb(var(--gold) / 0.3);
+  border-top-color: rgb(var(--gold));
+  border-radius: 999px;
+  vertical-align: -1px;
+  animation: composer-scan-spin 720ms linear infinite;
+}
+
+@keyframes composer-scan-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-scan-pending::before {
+    animation: none;
+  }
+}

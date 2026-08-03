@@ -79,7 +79,16 @@ export function useExpenseComposer({
     setExpenseComposerOpen(true);
   }
 
-  /** Open the composer seeded from a receipt photo plus whatever the scan could read. */
+  /**
+   * Hand the composer a scan that resolved after it opened. Kept separate from
+   * openExpenseFromReceipt because the two happen seconds apart: the sheet is
+   * up long before the upstream answers.
+   */
+  function setReceiptScan(scan: ReceiptPrefill["scan"]) {
+    setReceiptPrefill((current) => (current ? { ...current, scan } : current));
+  }
+
+  /** Open the composer seeded from a receipt photo, before any scan has resolved. */
   function openExpenseFromReceipt(prefill: ReceiptPrefill) {
     setDialog(null);
     setSelectedExpenseId("");
@@ -260,6 +269,7 @@ export function useExpenseComposer({
     editingExpense,
     duplicatingExpense,
     receiptPrefill,
+    setReceiptScan,
     selectedExpenseId,
     setSelectedExpenseId,
     openExpenseComposer,

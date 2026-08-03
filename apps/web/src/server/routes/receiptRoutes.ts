@@ -8,6 +8,7 @@ import {
   RECEIPT_SCAN_DEFAULT_MODEL,
   ReceiptScanUnavailableError,
   isReceiptScanModel,
+  readLastGeminiUsage,
   type ReceiptScanner,
 } from "../runtime/receiptScanner.js";
 
@@ -94,8 +95,11 @@ export async function scanReceiptRoute(options: RouteOptions, request: ScanRecei
     // The one number worth having when somebody says "辨識好慢": it separates
     // the upstream's time from the round trip carrying a ~400 KB photo to get
     // here, which are fixed in completely different places.
+    const usage = readLastGeminiUsage();
     console.log(
-      `Receipt scan: model=${model} upstream_ms=${Date.now() - startedAt} bytes=${request.data_url.length} recognised=${result.recognised}`,
+      `Receipt scan: model=${model} upstream_ms=${Date.now() - startedAt} bytes=${request.data_url.length} ` +
+        `thought_tokens=${usage.total_thought_tokens ?? "n/a"} output_tokens=${usage.total_output_tokens ?? "n/a"} ` +
+        `recognised=${result.recognised}`,
     );
     return { ok: true, status: 200, body: result };
   } catch (error) {

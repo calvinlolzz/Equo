@@ -279,6 +279,7 @@ export function App() {
     duplicatingExpense,
     receiptPrefill,
     openExpenseFromReceipt,
+    setReceiptScan,
     selectedExpenseId,
     setSelectedExpenseId,
     openExpenseComposer,
@@ -848,16 +849,26 @@ export function App() {
   }
 
   /**
-   * A captured receipt: recognise it, then open the composer either way.
+   * A captured receipt: open the composer at once, recognise in the background.
+   *
+   * Recognition takes around five seconds, and nobody standing at a till wants
+   * to spend them watching a spinner. So the sheet opens on the captured photo
+   * immediately and the recognised fields drop in when they arrive; anyone who
+   * gets impatient and types the amount themselves simply keeps their number
+   * (see the composer's own late-scan effect).
    *
    * Recognition is a shortcut, not a gate - a failed or unconfigured scan still
-   * lands the user in the composer with the photo attached, which is exactly
-   * where the 相機 button in the composer would have put them. Losing the photo
-   * because the model was unreachable would be the worst possible outcome for
-   * somebody standing at a till.
+   * leaves the user in the composer with the photo attached, which is exactly
+   * where the 相機 button in the composer would have put them.
    */
   async function handleReceiptCaptured(dataUrl: string) {
     if (!activeGroup) return;
+    // Pinned: the request outlives this screen, and the user may well have
+    // switched groups by the time it answers.
+    const { currency } = activeGroup;
+
+    setScanMode(null);
+    openExpenseFromReceipt({ imageDataUrl: dataUrl, scan: null });
     setScanBusy(true);
 
     let scan: ReceiptPrefill["scan"] = null;
@@ -865,7 +876,7 @@ export function App() {
       scan = await createApiClient().scanReceipt({
         client_request_id: crypto.randomUUID(),
         data_url: dataUrl,
-        currency: activeGroup.currency,
+        currency,
       });
     } catch {
       // Left null: RECEIPT_SCAN_UNAVAILABLE, offline, rate-limited - all the
@@ -873,8 +884,7 @@ export function App() {
     }
 
     setScanBusy(false);
-    setScanMode(null);
-    openExpenseFromReceipt({ imageDataUrl: dataUrl, scan });
+    setReceiptScan(scan);
     showToast(scan?.recognised ? text.scanReceiptDone : text.scanReceiptFailed);
   }
 
@@ -1459,7 +1469,6 @@ export function App() {
         <Suspense fallback={null}>
           <ScanSheet
             mode={scanMode}
-            busy={scanBusy}
             onClose={() => setScanMode(null)}
             onCaptureReceipt={handleReceiptCaptured}
             onDetectInvite={handleInviteQrDetected}
@@ -1478,6 +1487,7 @@ export function App() {
           initialExpense={editingExpense ?? duplicatingExpense ?? undefined}
           duplicating={Boolean(duplicatingExpense)}
           receiptPrefill={receiptPrefill ?? undefined}
+          scanPending={scanBusy}
           onClose={requestCloseComposer}
           onDirtyChange={setComposerDirty}
           onSubmit={handleExpenseDraftSubmit}
