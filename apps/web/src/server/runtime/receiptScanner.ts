@@ -309,7 +309,13 @@ async function callAnthropic(apiKey: string, { dataUrl, currency, model }: ScanI
 
 type GeminiStep = { type?: string; content?: Array<{ type?: string; text?: string }> };
 
-type GeminiUsage = { total_thought_tokens?: number; total_output_tokens?: number };
+type GeminiUsage = {
+  total_thought_tokens?: number;
+  total_output_tokens?: number;
+  total_input_tokens?: number;
+  /** Per-modality split; the "image" entry is what a photo's resolution actually costs. */
+  input_tokens_by_modality?: Array<{ modality?: string; tokens?: number }>;
+};
 
 /**
  * What the last Gemini call spent on thinking, for the route to log.

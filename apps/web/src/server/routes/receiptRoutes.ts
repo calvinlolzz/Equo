@@ -96,8 +96,14 @@ export async function scanReceiptRoute(options: RouteOptions, request: ScanRecei
     // the upstream's time from the round trip carrying a ~400 KB photo to get
     // here, which are fixed in completely different places.
     const usage = readLastGeminiUsage();
+    // Image tokens, not bytes, are what a vision model actually spends time on:
+    // an 87 KB JPEG can still be 1600px on its long edge and cost a pile of
+    // tiles. Logging both is what tells downscaling apart from everything else.
+    const imageTokens =
+      usage.input_tokens_by_modality?.find((entry) => entry.modality === "image")?.tokens ?? "n/a";
     console.log(
       `Receipt scan: model=${model} upstream_ms=${Date.now() - startedAt} bytes=${request.data_url.length} ` +
+        `image_tokens=${imageTokens} input_tokens=${usage.total_input_tokens ?? "n/a"} ` +
         `thought_tokens=${usage.total_thought_tokens ?? "n/a"} output_tokens=${usage.total_output_tokens ?? "n/a"} ` +
         `recognised=${result.recognised}`,
     );
