@@ -1509,3 +1509,31 @@ button.admin-inbox__item:hover {
   display: block;
   margin-bottom: 4px;
 }
+
+/* Source order, not specificity, decides here: a media query adds none, so
+   these have to sit AFTER the light values above or they silently lose - which
+   is exactly what shipped, leaving the labels at 1.23:1 against a white card.
+   Same palette as the console's other surfaces (#1e2126 / #2c3037 / #a2a7b0). */
+@media (prefers-color-scheme: dark) {
+  .admin-settings-card {
+    background: #1e2126;
+    border-color: #2c3037;
+  }
+
+  .admin-settings-head p,
+  .admin-settings-row small {
+    color: #a2a7b0;
+  }
+
+  .admin-settings-foot {
+    border-top-color: #2c3037;
+  }
+
+  /* Keeps its amber tint the way the inbox's warn rows do - a warning that
+     looks like every other panel has stopped warning anybody. */
+  .admin-warning {
+    border-color: #6b5a31;
+    background: #2a2419;
+    color: #e8cf9a;
+  }
+}
