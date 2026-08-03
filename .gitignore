@@ -27,3 +27,9 @@ node_modules/
 
 # Supabase CLI local scratch (link/dump)
 supabase/.temp/
+
+# Secrets staged for `vercel env add`. Nothing holding a live key should be one
+# `git add -A` away from a public repo - and a leaked key is not fixed by a
+# revert, it is fixed by rotating it. (.env* is already covered above.)
+key.txt
+*.key
