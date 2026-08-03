@@ -485,13 +485,19 @@ describe("the command palette", () => {
 });
 
 describe("the settings tab", () => {
+  const models = [
+    { id: "claude-haiku-4-5", provider: "anthropic", note: "付費・最便宜", available: true },
+    { id: "claude-sonnet-5", provider: "anthropic", note: "付費・較準", available: true },
+    { id: "gemini-3.6-flash", provider: "google", note: "免費層", available: false },
+  ];
+
   const settings = {
     enabled: true,
     model: "claude-haiku-4-5",
     updated_at: null,
     updated_by_email: null,
     configured: true,
-    models: ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"],
+    models,
   };
 
   test("saves the kill switch and the model in one request", async () => {
@@ -526,11 +532,48 @@ describe("the settings tab", () => {
     expect((save as HTMLButtonElement).disabled).toBe(true);
   });
 
-  test("says so when the deployment has no API key, instead of offering a switch that does nothing", async () => {
-    fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": { ...settings, configured: false } });
+  test("says so when the selected model's provider has no key", async () => {
+    fakeAdminApi({
+      ...baseRoutes,
+      "GET /admin/settings/receipt-scan": {
+        ...settings,
+        model: "claude-haiku-4-5",
+        models: models.map((entry) => ({ ...entry, available: false })),
+      },
+    });
     renderAdmin("?tab=settings");
 
+    // Names the env var for THAT provider - the fix differs per provider.
     expect(await screen.findByText(/ANTHROPIC_API_KEY/)).toBeTruthy();
+  });
+
+  test("warns about Google's terms when the free tier is selected", async () => {
+    fakeAdminApi({
+      ...baseRoutes,
+      "GET /admin/settings/receipt-scan": {
+        ...settings,
+        model: "gemini-3.6-flash",
+        models: models.map((entry) => ({ ...entry, available: true })),
+      },
+    });
+    renderAdmin("?tab=settings");
+
+    // Receipts are the users' personal data, and the free tier's terms say
+    // Google trains on it and humans may read it. That has to be in front of
+    // whoever flips the switch, not in a README.
+    expect(await screen.findByText(/會用你送出的內容訓練/)).toBeTruthy();
+    // The key IS set in this fixture, so the missing-key error must not also
+    // appear - two red boxes would make it unclear which one to act on.
+    expect(screen.queryByText(/GEMINI_API_KEY/)).toBeNull();
+  });
+
+  test("marks a model whose provider has no key, rather than hiding it", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": settings });
+    renderAdmin("?tab=settings");
+
+    const picker = (await screen.findByLabelText("辨識模型")) as HTMLSelectElement;
+    const gemini = [...picker.options].find((option) => option.value === "gemini-3.6-flash");
+    expect(gemini?.textContent).toContain("未設定金鑰");
   });
 
   test("explains a missing migration rather than showing an empty panel", async () => {

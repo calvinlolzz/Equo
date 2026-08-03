@@ -684,15 +684,24 @@ export type AdminHealthSummary = {
   receipt_scan?: { configured: boolean; enabled: boolean; model: string };
 };
 
+export type AdminReceiptScanModel = {
+  id: string;
+  provider: "anthropic" | "google";
+  /** What choosing it costs, in the console's own words. */
+  note: string;
+  /** Does this deployment hold a key for the model's provider. */
+  available: boolean;
+};
+
 export type AdminReceiptScanSettings = {
   enabled: boolean;
   model: string;
   updated_at: string | null;
   updated_by_email: string | null;
-  /** Is ANTHROPIC_API_KEY set on the deployment. False = the switch below has nothing to switch. */
+  /** Can the SELECTED model actually run here. False = its provider has no key. */
   configured: boolean;
-  /** Models this build can be pointed at. */
-  models: string[];
+  /** Every model this build knows, runnable or not. */
+  models: AdminReceiptScanModel[];
 };
 
 export type AdminUserRow = {

@@ -4,6 +4,9 @@ import type { SettingsRepository } from "../repositories/supabaseSettingsReposit
 import { handleAdminGetReceiptScanSettings, handleAdminSetReceiptScanSettings } from "./admin.js";
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
+/** A deployment with a Claude key and no Gemini one - the common shape. */
+const ANTHROPIC_ONLY = { anthropic: "sk-ant-test" };
+const NO_KEYS = {};
 
 function context(id: string, email = "admin@example.com") {
   return { user: { id, google_sub: `google-${id}`, email, display_name: "Admin" } };
@@ -49,7 +52,7 @@ describe("handleAdminGetReceiptScanSettings", () => {
       settings().repo,
       context("user_support"),
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
     expect(result.status).toBe(200);
@@ -62,11 +65,17 @@ describe("handleAdminGetReceiptScanSettings", () => {
       settings().repo,
       context("user_admin"),
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
-    expect(result.ok && result.body.models).toContain(DEFAULT_MODEL);
-    expect(result.ok && result.body.models.length).toBeGreaterThan(1);
+    const models = result.ok ? result.body.models : [];
+    expect(models.map((entry) => entry.id)).toContain(DEFAULT_MODEL);
+
+    // Every model is listed, but only the ones whose provider has a key here
+    // are marked runnable - "why is Gemini missing" is a worse question to be
+    // left with than "Gemini needs a key".
+    expect(models.find((entry) => entry.provider === "google")?.available).toBe(false);
+    expect(models.find((entry) => entry.id === DEFAULT_MODEL)?.available).toBe(true);
   });
 
   test("distinguishes 'no API key' from 'switched off'", async () => {
@@ -75,7 +84,7 @@ describe("handleAdminGetReceiptScanSettings", () => {
       settings({ enabled: true, model: DEFAULT_MODEL }).repo,
       context("user_admin"),
       DEFAULT_MODEL,
-      false,
+      NO_KEYS,
     );
 
     // Both stop the auto-fill, but one is fixed in Vercel and the other here.
@@ -88,7 +97,7 @@ describe("handleAdminGetReceiptScanSettings", () => {
       settings().repo,
       context("user_nobody"),
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
     expect(result.status).toBe(403);
@@ -105,7 +114,7 @@ describe("handleAdminSetReceiptScanSettings", () => {
       context("user_admin"),
       { enabled: false, model: DEFAULT_MODEL },
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
     expect(result.status).toBe(200);
@@ -125,7 +134,7 @@ describe("handleAdminSetReceiptScanSettings", () => {
       context("user_support"),
       { enabled: false, model: DEFAULT_MODEL },
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
     expect(result.status).toBe(403);
@@ -141,7 +150,7 @@ describe("handleAdminSetReceiptScanSettings", () => {
       context("user_admin"),
       { enabled: true, model: "gpt-4o" },
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
     // Stored, it would turn every later scan into a silent 503 while the
@@ -160,7 +169,7 @@ describe("handleAdminSetReceiptScanSettings", () => {
         context("user_admin"),
         body,
         DEFAULT_MODEL,
-        true,
+        ANTHROPIC_ONLY,
       );
       expect(result.status).toBe(400);
     }
@@ -177,7 +186,7 @@ describe("handleAdminSetReceiptScanSettings", () => {
       context("user_owner", "owner@example.com"),
       { enabled: true, model: "claude-sonnet-5" },
       DEFAULT_MODEL,
-      true,
+      ANTHROPIC_ONLY,
     );
 
     expect(result.ok && result.body).toMatchObject({ enabled: true, model: "claude-sonnet-5", configured: true });

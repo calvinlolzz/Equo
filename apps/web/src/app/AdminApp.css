@@ -1491,3 +1491,21 @@ button.admin-inbox__item:hover {
 .admin-settings-foot button {
   white-space: nowrap;
 }
+
+/* Amber, not red: this is a consequence to read before choosing, not an error
+   that has already happened. */
+.admin-warning {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #f0c36d;
+  border-radius: 8px;
+  background: #fdf6e3;
+  color: #6b4e12;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.admin-warning strong {
+  display: block;
+  margin-bottom: 4px;
+}

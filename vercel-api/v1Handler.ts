@@ -75,6 +75,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     RECEIPT_SCAN_MODEL: process.env.RECEIPT_SCAN_MODEL,
   });
   const missing = missingRuntimeEnv(runtimeEnv);
@@ -113,7 +114,14 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     ),
     sessionSecret: requiredEnv.SESSION_SECRET,
     vapid: readVapidKeys(runtimeEnv),
-    scanReceipt: createReceiptScanner(runtimeEnv.ANTHROPIC_API_KEY),
+    scanReceipt: createReceiptScanner({
+      anthropic: runtimeEnv.ANTHROPIC_API_KEY,
+      google: runtimeEnv.GEMINI_API_KEY,
+    }),
+    receiptScanKeys: {
+      anthropic: runtimeEnv.ANTHROPIC_API_KEY,
+      google: runtimeEnv.GEMINI_API_KEY,
+    },
     receiptScanModel: runtimeEnv.RECEIPT_SCAN_MODEL,
   });
   const url = new URL(request.url ?? "/api/v1", "https://equo.local");
