@@ -8,6 +8,7 @@ import {
   RECEIPT_SCAN_DEFAULT_MODEL,
   ReceiptScanUnavailableError,
   isReceiptScanModel,
+  readLastGeminiAttempts,
   readLastGeminiUsage,
   type ReceiptScanner,
 } from "../runtime/receiptScanner.js";
@@ -105,6 +106,7 @@ export async function scanReceiptRoute(options: RouteOptions, request: ScanRecei
       `Receipt scan: model=${model} upstream_ms=${Date.now() - startedAt} bytes=${request.data_url.length} ` +
         `image_tokens=${imageTokens} input_tokens=${usage.total_input_tokens ?? "n/a"} ` +
         `thought_tokens=${usage.total_thought_tokens ?? "n/a"} output_tokens=${usage.total_output_tokens ?? "n/a"} ` +
+        `attempts=${readLastGeminiAttempts()} ` +
         `recognised=${result.recognised}`,
     );
     return { ok: true, status: 200, body: result };

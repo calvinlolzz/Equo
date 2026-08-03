@@ -315,6 +315,13 @@ async function callAnthropic(apiKey: string, { dataUrl, currency, model }: ScanI
 
 type GeminiStep = { type?: string; content?: Array<{ type?: string; text?: string }> };
 
+/** How many attempts the last Gemini call needed. Read by the route for the log line. */
+let lastGeminiAttempts = 0;
+
+export function readLastGeminiAttempts(): number {
+  return lastGeminiAttempts;
+}
+
 type GeminiUsage = {
   total_thought_tokens?: number;
   total_output_tokens?: number;
@@ -338,12 +345,15 @@ export function readLastGeminiUsage(): GeminiUsage {
   return lastGeminiUsage;
 }
 
+/** Thrown by a single attempt when nothing came back at all, so the caller knows a retry is worth it. */
+class GeminiUnansweredError extends Error {}
+
 /**
- * Gemini's Interactions API. Called over plain HTTPS rather than through a
- * Google SDK: the request is one JSON body and the response one field deep, so
- * a dependency would buy nothing but a version to keep current.
+ * One attempt at Gemini's Interactions API. Called over plain HTTPS rather than
+ * through a Google SDK: the request is one JSON body and the response one field
+ * deep, so a dependency would buy nothing but a version to keep current.
  */
-async function callGemini(apiKey: string, { dataUrl, currency, model }: ScanInput): Promise<string> {
+async function callGeminiOnce(apiKey: string, { dataUrl, currency, model }: ScanInput): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -380,16 +390,17 @@ async function callGemini(apiKey: string, { dataUrl, currency, model }: ScanInpu
       }),
     });
   } catch (error) {
-    // Includes the abort: a hung upstream must surface as "unavailable" rather
-    // than holding the request open behind a user's spinner.
-    throw new ReceiptScanUnavailableError(`Receipt recognition upstream failed: ${(error as Error).message}`);
+    // The abort lands here, and so does a dropped connection: in both cases the
+    // upstream said nothing at all, which is the one failure a second attempt
+    // can plausibly fix.
+    throw new GeminiUnansweredError(`upstream did not answer: ${(error as Error).message}`);
   } finally {
     clearTimeout(timeout);
   }
 
   if (!response.ok) {
-    // 429 here is the free tier's quota, which is the expected failure rather
-    // than an exceptional one - the caller degrades to attaching the photo.
+    // A status IS an answer - 429 means quota, 400 means the request is wrong -
+    // and repeating it would just spend the same rejection twice.
     throw new ReceiptScanUnavailableError(`Receipt recognition upstream returned ${response.status}.`);
   }
 
@@ -400,6 +411,43 @@ async function callGemini(apiKey: string, { dataUrl, currency, model }: ScanInpu
   // appear is not ours to control.
   const output = body.steps?.find((step) => step.type === "model_output");
   return output?.content?.find((part) => part.type === "text")?.text ?? "";
+}
+
+/** One retry, and only when nothing came back. */
+const GEMINI_MAX_ATTEMPTS = 2;
+
+/**
+ * Gemini, retried once when the upstream simply never answers.
+ *
+ * Production showed two out of three scans ending as a full timeout with no
+ * response at all, while the ones that did answer took ~4.4s. A stall like that
+ * is exactly what a second attempt on a fresh connection is for - and it is
+ * nearly free here, because the composer no longer waits on the result: the
+ * user is already typing while this happens.
+ *
+ * Deliberately narrow. Only an unanswered request is retried; any HTTP status
+ * is a real answer (a 429 is the free tier's quota) and repeating it would just
+ * spend the same rejection twice, or add load to something already throttling.
+ *
+ * The Anthropic path has had this all along via the SDK's own maxRetries: 1 -
+ * the hand-rolled Gemini path was the one silently without it.
+ */
+async function callGemini(apiKey: string, input: ScanInput): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
+    lastGeminiAttempts = attempt;
+    try {
+      return await callGeminiOnce(apiKey, input);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof GeminiUnansweredError)) throw error;
+    }
+  }
+
+  throw new ReceiptScanUnavailableError(
+    `Receipt recognition upstream failed after ${GEMINI_MAX_ATTEMPTS} attempts: ${(lastError as Error).message}`,
+  );
 }
 
 /** API keys per provider. A provider with no key simply has no models available. */
