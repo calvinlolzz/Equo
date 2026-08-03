@@ -138,6 +138,7 @@ export function ExpenseComposerSheet({
   initialExpense,
   duplicating = false,
   receiptPrefill,
+  scanPending = false,
   onClose,
   onDirtyChange,
   onSubmit,
@@ -163,6 +164,11 @@ export function ExpenseComposerSheet({
    * initialExpense — a scan always starts a new expense, never edits one.
    */
   receiptPrefill?: ReceiptPrefill;
+  /**
+   * A scan is still in flight for the photo above. Purely a hint: the sheet is
+   * fully usable meanwhile, and anything typed now survives the result.
+   */
+  scanPending?: boolean;
   /**
    * Asks to close. May decline and put the discard confirm up instead — see
    * onDirtyChange — so this sheet never animates itself away on the way out.
@@ -282,6 +288,75 @@ export function ExpenseComposerSheet({
   // — without this the success path would trip the discard confirm on its way
   // out.
   const dirty = !composerSubmitting && isComposerDirty(initialSnapshot.current, snapshot);
+
+  /**
+   * A scan that lands after the sheet is already open.
+   *
+   * The composer opens the instant the shutter fires and the recognised fields
+   * arrive several seconds later, so this fills in what it can without ever
+   * overwriting the user: a field is only touched while it still holds the
+   * value the sheet opened with. Somebody who got impatient and typed the
+   * amount themselves keeps their number.
+   *
+   * Each filled field moves the dirty baseline with it, the same way an
+   * auto-filled exchange rate does — neither is the user's work, and without
+   * this, closing an untouched scanned draft would raise the discard confirm.
+   */
+  const scanApplied = useRef(false);
+
+  useEffect(() => {
+    const scan = receiptPrefill?.scan;
+    if (!scan?.recognised || scanApplied.current) return;
+    scanApplied.current = true;
+
+    const filled = buildReceiptComposerPrefill(
+      { imageDataUrl: receiptPrefill?.imageDataUrl ?? "", scan },
+      {
+        groupCurrency,
+        currencyCodes: currencyOptions.map((option) => option.code),
+        memberIds: members.map((member) => member.id),
+        nowIso: new Date().toISOString(),
+      },
+    );
+
+    const base = initialSnapshot.current;
+    const moved: Partial<ComposerSnapshot> = {};
+
+    if (filled.amount && composerAmount === base.amount) {
+      setComposerAmount(filled.amount);
+      moved.amount = filled.amount;
+    }
+    if (filled.title && composerTitle === base.title) {
+      setComposerTitle(filled.title);
+      moved.title = filled.title;
+    }
+    if (filled.category && composerCategory === base.category) {
+      setComposerCategory(filled.category);
+      moved.category = filled.category;
+    }
+    if (composerDateTime === base.dateTime) {
+      const dateTime = toLocalDateTimeInputValue(filled.dateTimeIso);
+      setComposerDateTime(dateTime);
+      moved.dateTime = dateTime;
+    }
+    if (filled.note && composerNote === base.note) {
+      setComposerNote(filled.note);
+      moved.note = filled.note;
+    }
+    if (filled.currency !== composerCurrency && composerCurrency === base.currency) {
+      setComposerCurrency(filled.currency);
+      moved.currency = filled.currency;
+      // Mirrors the picker's own handler: a rate that belonged to the old
+      // currency means nothing for the new one, so the auto fill takes over.
+      manualRateRef.current = false;
+      setAutoRateDate("");
+    }
+
+    initialSnapshot.current = { ...base, ...moved };
+    // Runs once, when the scan resolves. The field values are read from the
+    // render that carried it, which is exactly "current at that moment".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receiptPrefill?.scan]);
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -950,6 +1025,7 @@ export function ExpenseComposerSheet({
         placeholder="0"
         aria-label={text.amount}
       />
+      {scanPending ? <p className="composer-scan-pending">{text.scanReading}</p> : null}
     </div>
   );
 
@@ -1047,6 +1123,7 @@ export function ExpenseComposerSheet({
         </select>
         <strong>{formatAmountInputDisplay(composerAmount) || "0"}</strong>
       </div>
+      {scanPending ? <p className="composer-scan-pending">{text.scanReading}</p> : null}
       {renderExchangeRow()}
       <div className="composer-keypad" role="group" aria-label={text.amount}>
         {KEYPAD_KEYS.map((key) => (
