@@ -485,7 +485,7 @@ export function App() {
   // Ordered bottom of the stack to top: a drawer is what a dialog opens over,
   // the info sheet sits on top of the profile dialog, and the composer and the
   // feedback sheet are the last things opened over anything else.
-  useOverlayHistory([
+  const overlayDepth = useOverlayHistory([
     { open: groupDrawerOpen, close: () => setGroupDrawerOpen(false) },
     { open: settingsDrawerOpen, close: () => setSettingsDrawerOpen(false) },
     { open: Boolean(dialog), close: closeDialog },
@@ -503,6 +503,25 @@ export function App() {
     { open: discardConfirmOpen, close: () => setDiscardConfirmOpen(false) },
     { open: feedbackOpen, close: () => setFeedbackOpen(false) },
   ]);
+
+  // Mirror "something is covering the screen" onto <html> so the WebGL backdrop
+  // can pause itself. It cannot be a prop: main.tsx renders GlassBackground as a
+  // SIBLING of <App />, so this state is not on its path — and an attribute is
+  // what that component already watches (it observes data-theme on the same
+  // element). Every overlay in the app is a full-viewport layer over a scrim, so
+  // while one is open the field underneath is animating at 30fps to be seen
+  // through 10px of blur at 44% black — and, worse, keeps invalidating the
+  // scrim's own backdrop-filter every frame. Frozen, that blur is cached.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (overlayDepth > 0) root.setAttribute("data-overlay", "1");
+    else root.removeAttribute("data-overlay");
+    // Unmounting with an overlay open would otherwise strand the attribute on
+    // <html> and leave the backdrop paused for good. (Re-running on a depth
+    // change clears and re-sets it in one commit; the observer on the other end
+    // reads the live attribute, so it only ever sees the settled state.)
+    return () => root.removeAttribute("data-overlay");
+  }, [overlayDepth]);
 
   // Which bottom tab reads as selected. Derived, not stored: three of the tabs
   // open the shared sheet rather than navigating, so the dialog IS the state.

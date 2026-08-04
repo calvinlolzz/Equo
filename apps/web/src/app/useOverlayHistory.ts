@@ -53,8 +53,12 @@ function writeHistoryDepth(depth: number, mode: "push" | "replace"): void {
  *
  * @param layers Every overlay, ordered bottom of the stack to top. Back closes
  *   the topmost open one.
+ * @returns How many overlays are currently open. This hook is already the one
+ *   place that has to be told about every overlay in the app, so it is also the
+ *   only honest answer to "is anything covering the screen right now" — see the
+ *   data-overlay mirror in App.tsx, which pauses the WebGL backdrop.
  */
-export function useOverlayHistory(layers: OverlayLayer[]): void {
+export function useOverlayHistory(layers: OverlayLayer[]): number {
   const openLayers = layers.filter((layer) => layer.open);
   const depth = openLayers.length;
 
@@ -97,4 +101,6 @@ export function useOverlayHistory(layers: OverlayLayer[]): void {
       window.history.go(depth - historyDepth);
     }
   }, [depth]);
+
+  return depth;
 }

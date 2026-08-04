@@ -176,12 +176,15 @@ interface SceneOptions {
   autoMouse: boolean;
   speed: number;
   light: boolean;
+  /** Start paused because an overlay already covers the screen. */
+  overlayPaused: boolean;
 }
 
 interface Scene {
   dispose: () => void;
   resize: () => void;
   setPalette: (light: boolean) => void;
+  setOverlayPaused: (paused: boolean) => void;
 }
 
 /** One-off seed per blob (base position, radius, phase, hue). */
@@ -246,6 +249,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   // Called once on build and again live whenever data-theme toggles.
   const blobRGB = new Float32Array(BLOB_COUNT * 3);
   const blobFixed = new Float32Array(BLOB_COUNT);
+  let paletteLight = opts.light;
   function applyPalette(light: boolean) {
     gl.uniform3fv(u.bg, light ? LIGHT_BG_COLOR : BG_COLOR);
     gl.uniform1f(u.light, light ? 1 : 0);
@@ -300,6 +304,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   let raf = 0;
   let running = false;
   let visible = true;
+  let overlayPaused = opts.overlayPaused;
   let lastFrame = 0;
   let clock = 0;
   let mouseX = 0; // final swirl centre fed to the shader (continuously eased)
@@ -395,8 +400,11 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     raf = 0;
   }
 
+  // Three independent reasons to not be drawing: scrolled out of view, the tab
+  // is backgrounded, or an overlay is covering the field. start()/stop() are
+  // both idempotent, so this can be called from any of them.
   function sync() {
-    if (visible && !document.hidden) start();
+    if (visible && !document.hidden && !overlayPaused) start();
     else stop();
   }
 
@@ -420,10 +428,20 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   return {
     resize,
     setPalette(light: boolean) {
+      if (paletteLight === light) return;
+      paletteLight = light;
       applyPalette(light);
       // Nudge one frame so the new palette shows even if the field is paused
       // (e.g. reduced-motion or offscreen) at the moment the theme flips.
       if (!running) gl.drawArrays(gl.TRIANGLES, 0, 3);
+    },
+    setOverlayPaused(paused: boolean) {
+      if (overlayPaused === paused) return;
+      overlayPaused = paused;
+      // Resuming leaves `clock` where it stopped and start() clears lastFrame,
+      // so the first frame back uses a nominal dt rather than the whole time
+      // the sheet was open - the field picks up exactly where it froze.
+      sync();
     },
     dispose() {
       stop();
@@ -452,6 +470,9 @@ export function GlassBackground() {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     let scene: Scene | null = null;
     const isLight = () => document.documentElement.getAttribute("data-theme") === "light";
+    // Set by App.tsx whenever any sheet/dialog/drawer is open. This component is
+    // a sibling of <App />, not a child, so an attribute on <html> is the seam.
+    const isOverlayOpen = () => document.documentElement.hasAttribute("data-overlay");
 
     const build = () => {
       if (scene || reduce.matches) return;
@@ -463,6 +484,7 @@ export function GlassBackground() {
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
         light: isLight(),
+        overlayPaused: isOverlayOpen(),
       });
     };
 
@@ -478,16 +500,25 @@ export function GlassBackground() {
 
     const onResize = () => scene?.resize();
 
-    // Repaint the palette live when the day/night toggle flips data-theme.
-    const themeObserver = new MutationObserver(() => scene?.setPalette(isLight()));
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    // Repaint the palette live when the day/night toggle flips data-theme, and
+    // pause/resume when an overlay opens or closes. Both are attribute flips on
+    // <html>, so one observer covers them; each handler no-ops when its own
+    // attribute is the one that did not change.
+    const rootObserver = new MutationObserver(() => {
+      scene?.setPalette(isLight());
+      scene?.setOverlayPaused(isOverlayOpen());
+    });
+    rootObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-overlay"],
+    });
 
     build();
     reduce.addEventListener("change", onPreferenceChange);
     window.addEventListener("resize", onResize);
 
     return () => {
-      themeObserver.disconnect();
+      rootObserver.disconnect();
       reduce.removeEventListener("change", onPreferenceChange);
       window.removeEventListener("resize", onResize);
       teardown();

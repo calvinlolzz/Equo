@@ -211,6 +211,55 @@ describe("the bottom tab bar", () => {
 });
 
 /**
+ * The animated WebGL backdrop is the app's heaviest continuous cost on a phone,
+ * and while a sheet is open it is drawing a field nobody can see except through
+ * a blurred scrim - which it also forces the browser to re-blur every frame.
+ * GlassBackground is a sibling of <App />, so the only seam between them is this
+ * attribute on <html>; if it stops being written, the backdrop silently never
+ * pauses again and nothing else in the suite would notice.
+ */
+describe("pausing the backdrop while an overlay is open", () => {
+  const hasFlag = () => document.documentElement.hasAttribute("data-overlay");
+
+  test("is unset on the plain group screen", async () => {
+    await landOnGroup();
+
+    expect(hasFlag()).toBe(false);
+  });
+
+  test("is set while a panel is open and cleared when it closes", async () => {
+    await landOnGroup();
+
+    screen.getByRole("button", { name: app.navRecords }).click();
+    await screen.findByRole("dialog", { name: app.groupHome });
+    expect(hasFlag()).toBe(true);
+
+    await pressBack();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull());
+    expect(hasFlag()).toBe(false);
+  });
+
+  test("stays set while a second overlay is peeled off the first", async () => {
+    await landOnGroup();
+    await openComposer();
+    await typeAmount("120");
+
+    // Back raises the discard confirm on top of the composer: depth 2.
+    await pressBack();
+    await screen.findByRole("dialog", { name: app.discardExpenseTitle });
+    expect(hasFlag()).toBe(true);
+
+    // Answering it drops to depth 1 - the composer is still covering the field,
+    // so the flag must not clear yet. A per-overlay boolean would clear here.
+    await pressBack();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.discardExpenseTitle })).toBeNull());
+    expect(screen.getByRole("dialog", { name: app.addExpense })).toBeTruthy();
+    expect(hasFlag()).toBe(true);
+  });
+});
+
+/**
  * The Back button is the phone's primary dismiss gesture. Before
  * useOverlayHistory nothing but the open group lived in history, so Back with a
  * sheet open left the group entirely - or exited the installed PWA - and threw
