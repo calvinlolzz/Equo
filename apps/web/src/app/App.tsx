@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  BellRing,
   ChartNoAxesColumn,
   ChevronRight,
   Copy,
@@ -559,6 +560,18 @@ export function App() {
     return { from, to, amountMinor: firstTransfer.amount.amount_minor };
   }, [firstTransfer, members]);
   const extraTransferCount = Math.max(0, settlementTransfers.length - 1);
+  /**
+   * Whether the top debt's payer can be reminded from the home card: somebody
+   * other than you, with an account to deliver a notification to.
+   *
+   * Same rule as the member list's button (and the server checks all of it
+   * again). This is the placement that matters: the card already says "A 需付
+   * B $500" next to 清償, which is exactly where somebody thinking "he still
+   * hasn't paid me" is looking - the member sheet is two taps away behind a
+   * 設定 tab, and nobody goes there to chase a debt.
+   */
+  const debtNudgeable = Boolean(debt && !debt.from.virtual && debt.from.id !== currentMember?.id);
+  const debtNudged = Boolean(debt && nudgedMemberIds.includes(debt.from.id));
   const maxBalanceMinor = Math.max(1, ...members.map((member) => Math.abs(balances.get(member.id) ?? 0)));
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
   const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
@@ -1323,14 +1336,32 @@ export function App() {
                   <div className="pizo-debt-empty">{text.settled}</div>
                 )}
                 {debt ? (
-                  <button
-                    className="settlement-clear-action"
-                    type="button"
-                    disabled={pendingAction === `settle:${debt.from.id}:${debt.to.id}`}
-                    onClick={settleDebt}
-                  >
-                    {pendingAction === `settle:${debt.from.id}:${debt.to.id}` ? text.processing : text.clearDebt}
-                  </button>
+                  <div className="pizo-debt-actions">
+                    <button
+                      className="settlement-clear-action"
+                      type="button"
+                      disabled={pendingAction === `settle:${debt.from.id}:${debt.to.id}`}
+                      onClick={settleDebt}
+                    >
+                      {pendingAction === `settle:${debt.from.id}:${debt.to.id}` ? text.processing : text.clearDebt}
+                    </button>
+                    {/* 清償 is "I have been paid"; 提醒 is "you haven't paid me
+                        yet". Two answers to the same moment, so they belong
+                        side by side - 清償 keeps the filled treatment because
+                        it is the one that changes the ledger. */}
+                    {debtNudgeable ? (
+                      <button
+                        className={debtNudged ? "pizo-debt-nudge-action sent" : "pizo-debt-nudge-action"}
+                        type="button"
+                        aria-label={`${text.nudgeAria}: ${debt.from.name}`}
+                        disabled={debtNudged || pendingAction === `nudge:${debt.from.id}`}
+                        onClick={() => nudgeMember(debt.from)}
+                      >
+                        <BellRing aria-hidden="true" size={16} />
+                        {debtNudged ? text.nudgeSent : text.nudge}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               {extraTransferCount > 0 ? (

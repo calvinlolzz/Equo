@@ -810,9 +810,61 @@ describe("提醒還款", () => {
     return api;
   }
 
+  /**
+   * Scoped to the member sheet: the same reminder now also exists on the home
+   * card behind it, and an unscoped query would match both.
+   */
   function nudgeButtonFor(name: string) {
-    return screen.queryByRole("button", { name: `${UI_TEXT.app.nudgeAria}: ${name}` });
+    const sheet = screen.getByRole("dialog", { name: UI_TEXT.app.groupHome });
+    return within(sheet).queryByRole("button", { name: `${UI_TEXT.app.nudgeAria}: ${name}` });
   }
+
+  test("sits on the home screen's 債務關係 card, next to 清償", async () => {
+    signIn();
+    const api = fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: debtDetail() },
+      { route: "POST /groups/group_1/members/member_bob/nudge", body: { nudge: { status: "sent" } } },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    // No dialog, no drawer: the card that already says "Bob 需付 Alice" is
+    // where somebody chasing a debt is actually looking.
+    const nudge = await screen.findByRole("button", { name: `${UI_TEXT.app.nudgeAria}: Bob` });
+    const card = nudge.closest(".pizo-debt-card") as HTMLElement;
+    expect(card).toBeTruthy();
+    expect(within(card).getByRole("button", { name: UI_TEXT.app.clearDebt })).toBeTruthy();
+
+    fireEvent.click(nudge);
+
+    await waitFor(() => expect(api.calls).toContain("POST /groups/group_1/members/member_bob/nudge"));
+    await waitFor(() => expect((nudge as HTMLButtonElement).disabled).toBe(true));
+  });
+
+  test("is not offered on the card when the debtor is the logged-in user", async () => {
+    signIn();
+    // Alice (this session) owes Bob - the reminder would be to herself.
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      {
+        route: "GET /groups/group_1",
+        body: groupDetail({
+          members: [alice, bob],
+          balances: [
+            { memberId: "member_alice", balance: { amount_minor: -32000, currency: "TWD" } },
+            { memberId: "member_bob", balance: { amount_minor: 32000, currency: "TWD" } },
+          ],
+        }),
+      },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    // The card is there (it shows the debt), the reminder is not.
+    await screen.findByRole("button", { name: UI_TEXT.app.clearDebt });
+    expect(screen.queryByRole("button", { name: `${UI_TEXT.app.nudgeAria}: Alice` })).toBeNull();
+  });
 
   test("is offered only for a member with an account who owes the group", async () => {
     await openMemberList();

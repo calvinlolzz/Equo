@@ -706,6 +706,51 @@
   background: linear-gradient(180deg, rgb(var(--surf) / 0.1), transparent);
 }
 
+/* The debt card's action row. Spans the three person/amount columns; 清償 takes
+   the room left over so a card without 提醒 looks exactly as it did before. */
+.pizo-debt-card .pizo-debt-actions {
+  position: relative;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.pizo-debt-card .pizo-debt-actions .settlement-clear-action {
+  flex: 1 1 auto;
+}
+
+/* Outlined, not filled: 清償 changes the ledger and keeps the gold; a reminder
+   is the lighter of the two actions and should not compete with it. */
+.pizo-debt-nudge-action {
+  flex: 0 0 auto;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--gold) / 0.5);
+  border-radius: 12px;
+  color: rgb(var(--gold));
+  background: rgb(var(--gold) / 0.1);
+  font-weight: 860;
+  white-space: nowrap;
+}
+
+/* Gold text reads well on the dark card; on white it is a ~2:1 smudge, so day
+   mode keeps the gold border and tint but takes the body text colour. */
+:root[data-theme="light"] .pizo-debt-nudge-action {
+  color: rgb(var(--fg));
+}
+
+.pizo-debt-nudge-action.sent,
+.pizo-debt-nudge-action:disabled {
+  border-color: rgb(var(--surf) / 0.18);
+  color: rgb(var(--fg) / 0.55);
+  background: rgb(var(--surf) / 0.08);
+}
+
 .pizo-debt-card .settlement-clear-action {
   position: relative;
   grid-column: 1 / -1;
