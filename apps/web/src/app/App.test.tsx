@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { ExpenseSummary } from "./apiClient";
+import type { ExpenseSummary, GroupSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
@@ -684,6 +684,179 @@ describe("the top bar", () => {
 
     const banner = screen.getByRole("banner");
     expect(within(banner).getByLabelText(UI_TEXT.app.profile)).toBeTruthy();
+  });
+});
+
+describe("balances on the group list", () => {
+  const tokyo = group();
+  const osaka = group({ id: "group_2", name: "大阪旅行" });
+
+  /**
+   * The open group's detail is authoritative for its own row (see cloudStore's
+   * listBalanceFromDetail), so the fixture's detail balance has to agree with
+   * the list balance or the row shows the detail's number.
+   */
+  async function landWithBalances(groups: GroupSummary[], openGroupBalanceMinor = 0) {
+    signIn();
+    const api = fakeApi([
+      {
+        route: "GET /groups/group_1",
+        body: groupDetail({
+          balances: [{ memberId: "member_alice", balance: { amount_minor: openGroupBalanceMinor, currency: "TWD" } }],
+        }),
+      },
+      { route: "GET /groups", body: { groups } },
+      { route: "GET /groups/group_2", body: groupDetail({ group: osaka }) },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    return api;
+  }
+
+  test("each row says which way its money points, and the header nets them", async () => {
+    await landWithBalances(
+      [
+        { ...tokyo, balance_minor: -32000 },
+        { ...osaka, balance_minor: 50000 },
+      ],
+      -32000,
+    );
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    const tokyoRow = within(rail).getByText("東京旅行").closest("button") as HTMLElement;
+    const osakaRow = within(rail).getByText("大阪旅行").closest("button") as HTMLElement;
+
+    expect(within(tokyoRow).getByText(`${UI_TEXT.app.balanceYouOwe} $320`)).toBeTruthy();
+    expect(within(osakaRow).getByText(`${UI_TEXT.app.balanceOwedToYou} $500`)).toBeTruthy();
+    // -320 + 500 across one currency: the number the app should open on.
+    expect(within(rail).getByText(`${UI_TEXT.app.balanceOwedToYou} $180`)).toBeTruthy();
+  });
+
+  test("shows 已結清 rather than nothing when the balances are known and net out", async () => {
+    await landWithBalances([
+      { ...tokyo, balance_minor: 0 },
+      { ...osaka, balance_minor: 0 },
+    ]);
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    expect(within(rail).getAllByText(UI_TEXT.app.balanceSettled).length).toBeGreaterThan(0);
+  });
+
+  test("a group whose balance the server did not send shows none — never a made-up 已結清", async () => {
+    // Only the open group's balance is derivable locally (from its detail);
+    // 大阪旅行 is the row with genuinely nothing behind it.
+    await landWithBalances([tokyo, osaka]);
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    const osakaRow = within(rail).getByText("大阪旅行").closest("button") as HTMLElement;
+
+    expect(within(osakaRow).queryByText(UI_TEXT.app.balanceSettled)).toBeNull();
+    expect(within(osakaRow).queryByText(new RegExp(UI_TEXT.app.balanceYouOwe))).toBeNull();
+    // Falls back to what the row showed before balances existed.
+    expect(within(osakaRow).getByText("TWD")).toBeTruthy();
+  });
+});
+
+describe("提醒還款", () => {
+  const bob = {
+    id: "member_bob",
+    group_id: "group_1",
+    user_id: "user_bob",
+    display_name: "Bob",
+    role: "member" as const,
+    status: "active" as const,
+  };
+  const alice = {
+    id: "member_alice",
+    group_id: "group_1",
+    user_id: "user_alice",
+    display_name: "Alice",
+    role: "owner" as const,
+    status: "active" as const,
+  };
+  const virtualCarol = {
+    id: "member_carol",
+    group_id: "group_1",
+    user_id: null,
+    display_name: "Carol",
+    role: "member" as const,
+    status: "active" as const,
+  };
+
+  /** Alice is owed 320 by Bob; Carol (no account) is down 100 as well. */
+  function debtDetail() {
+    return groupDetail({
+      members: [alice, bob, virtualCarol],
+      balances: [
+        { memberId: "member_alice", balance: { amount_minor: 42000, currency: "TWD" } },
+        { memberId: "member_bob", balance: { amount_minor: -32000, currency: "TWD" } },
+        { memberId: "member_carol", balance: { amount_minor: -10000, currency: "TWD" } },
+      ],
+    });
+  }
+
+  async function openMemberList() {
+    signIn();
+    const api = fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: debtDetail() },
+      { route: "POST /groups/group_1/members/member_bob/nudge", body: { nudge: { status: "sent" } } },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.members }));
+    // The shared bottom sheet is labelled 群組首頁 whatever it is showing.
+    await screen.findByRole("dialog", { name: UI_TEXT.app.groupHome });
+    return api;
+  }
+
+  function nudgeButtonFor(name: string) {
+    return screen.queryByRole("button", { name: `${UI_TEXT.app.nudgeAria}: ${name}` });
+  }
+
+  test("is offered only for a member with an account who owes the group", async () => {
+    await openMemberList();
+
+    expect(nudgeButtonFor("Bob")).toBeTruthy();
+    // Carol has no login, so there is nothing to deliver a reminder to.
+    expect(nudgeButtonFor("Carol")).toBeNull();
+    // Alice is the logged-in user, and is owed money rather than owing it.
+    expect(nudgeButtonFor("Alice")).toBeNull();
+  });
+
+  test("sends the reminder and stops offering it again", async () => {
+    const api = await openMemberList();
+
+    fireEvent.click(nudgeButtonFor("Bob")!);
+
+    await waitFor(() => expect(api.calls).toContain("POST /groups/group_1/members/member_bob/nudge"));
+    await waitFor(() => expect(screen.getByText(`${UI_TEXT.app.nudgeSentToast}Bob`)).toBeTruthy());
+    await waitFor(() => expect((nudgeButtonFor("Bob") as HTMLButtonElement).disabled).toBe(true));
+  });
+
+  test("says so when somebody else got there first, and does not keep offering", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: debtDetail() },
+      {
+        route: "POST /groups/group_1/members/member_bob/nudge",
+        status: 409,
+        body: { error: { code: "NUDGE_COOLDOWN", message: "too soon", request_id: "req_1" } },
+      },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.members }));
+    // The shared bottom sheet is labelled 群組首頁 whatever it is showing.
+    await screen.findByRole("dialog", { name: UI_TEXT.app.groupHome });
+
+    fireEvent.click(nudgeButtonFor("Bob")!);
+
+    // A refusal the user can act on ("wait"), not a generic 失敗 - and the
+    // button goes quiet, because pressing it again would refuse again.
+    await waitFor(() => expect(screen.getByText(UI_TEXT.app.nudgeCooldown)).toBeTruthy());
+    await waitFor(() => expect((nudgeButtonFor("Bob") as HTMLButtonElement).disabled).toBe(true));
   });
 });
 

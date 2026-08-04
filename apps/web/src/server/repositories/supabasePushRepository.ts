@@ -43,5 +43,17 @@ export function createSupabasePushRepository(client: PostgrestClient): PushRepos
         subscriptions: result?.subscriptions ?? [],
       };
     },
+
+    async targetsForMember(groupId, memberId) {
+      const result = await client.rpc<PushTargetsRecord>("push_targets_for_member", {
+        p_group_id: groupId,
+        p_member_id: memberId,
+      });
+      return {
+        group_name: result?.group_name ?? null,
+        actor_name: result?.actor_name ?? null,
+        subscriptions: result?.subscriptions ?? [],
+      };
+    },
   };
 }

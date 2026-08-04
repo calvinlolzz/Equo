@@ -1,5 +1,6 @@
 import { Plus, Ticket } from "lucide-react";
 import type { Group, StartMode } from "./appTypes";
+import { balanceTone, describeBalance } from "./groupBalanceSummary";
 import { UI_TEXT } from "./uiText";
 
 type Template = {
@@ -101,7 +102,11 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
             </div>
             {groups.length ? (
               <div className="group-list">
-                {groups.map((group) => (
+                {groups.map((group) => {
+                  const balance = describeBalance(group.balanceMinor, group.currency);
+                  const tone = balanceTone(group.balanceMinor);
+
+                  return (
                   <button className="group-item" type="button" key={group.id} onClick={() => onSelectGroup(group)}>
                     <span className="group-item-row">
                       {group.coverImageUrl ? (
@@ -113,11 +118,12 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
                       )}
                       <span className="group-item-text">
                         <strong>{group.name}</strong>
-                        <span>{group.currency}</span>
+                        <span className={tone ? `balance-line ${tone}` : undefined}>{balance ?? group.currency}</span>
                       </span>
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="start-empty">

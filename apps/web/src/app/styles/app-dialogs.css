@@ -101,6 +101,25 @@
   animation: dialog-rise 180ms ease-out;
 }
 
+/* The "you can also just attach the photo" way out on the scan-consent ask.
+   Quieter than the body copy but not hidden: it is the option that keeps the
+   receipt on this device, and someone declining deserves to know it exists. */
+.scan-consent-note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgb(var(--surf) / 0.08);
+  color: rgb(var(--fg) / 0.7);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.flow-dialog .text-action {
+  justify-self: center;
+  color: rgb(var(--accent));
+  font-size: 13px;
+}
+
 .panel-dialog {
   width: min(520px, 100%);
   max-height: min(760px, calc(100vh - 48px));
@@ -569,6 +588,20 @@
 
 .member-icon-action.danger {
   color: rgb(var(--danger));
+}
+
+/* 提醒: gold, this app's "look at this" colour, and never red — the row is
+   already showing a debt, and a red button next to it reads as an accusation
+   rather than a nudge. Goes flat once spent, so a second tap isn't inviting. */
+.member-icon-action.nudge {
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+  white-space: nowrap;
+}
+
+.member-icon-action.nudge.sent {
+  color: rgb(var(--fg) / 0.6);
+  background: rgb(var(--surf) / 0.1);
 }
 
 .member-icon-action.danger.confirming {

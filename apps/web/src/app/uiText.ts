@@ -110,6 +110,35 @@ export const UI_TEXT = {
     scanCameraInsecure: "相機只能在 HTTPS 網站使用。",
     scanReceiptFailed: "收據辨識失敗，照片已幫你帶進表單，請手動填寫金額。",
     scanReceiptDone: "已帶入辨識結果，請確認金額是否正確。",
+    // The one-time consent asked before a receipt is ever sent to the model.
+    // Deliberately blunt about who sees the photo: the free tier this runs on
+    // says in its own terms that submissions may be reviewed by people and
+    // used to improve the service, and a receipt carries where you were, when,
+    // and what you bought.
+    scanConsentTitle: "掃描收據會用到 AI 辨識",
+    scanConsentBody: "拍下的收據會傳送到第三方 AI 服務辨識金額與品項。目前使用的免費方案，服務商可能會保留內容、由人工檢視，並用於改善他們的服務。",
+    scanConsentNote: "不想這樣做也沒關係：用表單裡的相機／相簿按鈕附上照片，照片只會存在你的群組裡，不會送去辨識。",
+    scanConsentPrivacyLink: "詳見隱私權政策",
+    scanConsentAccept: "我了解，開始掃描",
+    scanConsentDecline: "先不要",
+    scanConsentRevoked: "已關閉收據辨識，之後掃描時會再問一次。",
+    receiptScanSetting: "收據 AI 辨識",
+    receiptScanOn: "已同意",
+    receiptScanOff: "未同意",
+    // Balances on the group list + its header total.
+    balanceSettled: "已結清",
+    balanceOwedToYou: "應收",
+    balanceYouOwe: "應付",
+    balanceTotalTitle: "全部群組",
+    balanceMoreCurrencies: "等幣別",
+    // Payment reminders.
+    nudge: "提醒",
+    nudgeAria: "提醒還款",
+    nudgeSent: "已提醒",
+    nudgeSentToast: "已提醒",
+    nudgeCooldown: "剛剛已經提醒過了，晚點再試。",
+    nudgeNotNeeded: "這位成員目前沒有欠款。",
+    nudgeFailed: "提醒失敗，請稍後再試。",
     joinGroupAction: "加入群組",
     inviteNotFound: "找不到這個邀請碼對應的群組，請確認邀請碼是否正確。",
     allocationSettings: "分配設定",

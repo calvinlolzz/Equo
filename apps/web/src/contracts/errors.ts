@@ -49,6 +49,14 @@ export const errorCodes = [
    * degraded, not a lost expense.
    */
   "RECEIPT_SCAN_UNAVAILABLE",
+  /**
+   * Somebody already reminded this member recently (see handlers/nudge.ts's
+   * NUDGE_COOLDOWN_SECONDS). Not a rate limit on the sender - the cooldown
+   * belongs to the person being reminded.
+   */
+  "NUDGE_COOLDOWN",
+  /** Nothing to remind them about: the target's balance is settled or positive. */
+  "NUDGE_NOT_NEEDED",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

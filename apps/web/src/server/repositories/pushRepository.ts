@@ -23,4 +23,10 @@ export type PushRepository = {
   pruneSubscription(endpoint: string): Promise<{ deleted: number }>;
   /** Everyone in the group except the actor, plus the names the message needs. */
   targetsForGroup(groupId: string, actorUserId: string): Promise<PushTargetsRecord>;
+  /**
+   * The endpoints of ONE member - the recipient of a nudge. actor_name is
+   * always null here: the sender's name comes from the write that authorised
+   * the reminder, not from a second lookup.
+   */
+  targetsForMember(groupId: string, memberId: string): Promise<PushTargetsRecord>;
 };

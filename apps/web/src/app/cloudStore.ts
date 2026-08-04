@@ -269,13 +269,31 @@ export function createCloudGroupsStore({
     setState({ groups: [group, ...state.groups.filter((existing) => existing.id !== group.id)] });
   }
 
-  /** Replace a group's entry in place, preserving its position in the list. */
+  /**
+   * Replace a group's entry in place, preserving its position in the list.
+   *
+   * The incoming group comes from a write response (a rename, a cover change),
+   * and those payloads carry no unread count and no balance — see toGroup. So
+   * the list-only decorations are carried over from the entry being replaced;
+   * without that, renaming a group blanks its balance and badge until the next
+   * background refresh, which reads as "renaming settled my debts".
+   */
   function patchGroupInList(group: Group) {
     const index = state.groups.findIndex((existing) => existing.id === group.id);
     if (index === -1) {
       setState({ groups: [...state.groups, group] });
       return;
     }
+    const previous = state.groups[index];
+    group = {
+      ...group,
+      ...(group.unreadCount === undefined && previous.unreadCount !== undefined
+        ? { unreadCount: previous.unreadCount }
+        : {}),
+      ...(group.balanceMinor === undefined && previous.balanceMinor !== undefined
+        ? { balanceMinor: previous.balanceMinor }
+        : {}),
+    };
     const groups = [...state.groups];
     groups[index] = group;
     setState({ groups });
@@ -285,10 +303,41 @@ export function createCloudGroupsStore({
     setState({ groups: state.groups.filter((existing) => existing.id !== groupId) });
   }
 
+  /**
+   * The logged-in user's own balance according to a loaded detail, or
+   * undefined when it cannot be told (no user id in this store, the user has
+   * no member row in this group).
+   *
+   * The detail's balances are kept exact locally through every ledger write
+   * (see applyExpenseToBalances / removeExpenseFromBalances), so this is how
+   * the group list's number stays honest between background refreshes: record
+   * an expense and go back to the list, and the row already agrees with the
+   * screen you just left.
+   */
+  function listBalanceFromDetail(data: CloudGroupData): number | undefined {
+    if (!userId) return undefined;
+    const member = data.members.find((candidate) => candidate.userId === userId);
+    if (!member) return undefined;
+    // A member with no entries has no balance row; that is a real zero, not a
+    // missing value.
+    return data.balances.find((balance) => balance.memberId === member.id)?.balance.amount_minor ?? 0;
+  }
+
+  function groupsWithDetailBalance(groups: Group[], groupId: string, data: CloudGroupData): Group[] {
+    const balanceMinor = listBalanceFromDetail(data);
+    if (balanceMinor === undefined) return groups;
+
+    return groups.map((group) => (group.id === groupId ? { ...group, balanceMinor } : group));
+  }
+
   function patchGroupDetail(groupId: string, patch: Partial<CloudGroupData>) {
     const current = state.groupDetails[groupId];
     if (!current) return;
-    setState({ groupDetails: { ...state.groupDetails, [groupId]: { ...current, ...patch } } });
+    const next = { ...current, ...patch };
+    setState({
+      groupDetails: { ...state.groupDetails, [groupId]: next },
+      groups: groupsWithDetailBalance(state.groups, groupId, next),
+    });
   }
 
   function dropGroupDetail(groupId: string) {
@@ -494,7 +543,12 @@ export function createCloudGroupsStore({
       // replay them on top - otherwise a background refresh makes every offline
       // entry blink out of existence until the flush lands.
       const data = applyQueuedWrites(toGroupUiData(detail), state.pendingWrites);
-      setState({ groupDetails: { ...state.groupDetails, [groupId]: data } });
+      setState({
+        groupDetails: { ...state.groupDetails, [groupId]: data },
+        // The detail is revalidated more often than the list (see autoSync's
+        // groupsListEveryNTicks), so this is usually the fresher number.
+        groups: groupsWithDetailBalance(state.groups, groupId, data),
+      });
       return data;
     } catch (error) {
       return handleError(error);

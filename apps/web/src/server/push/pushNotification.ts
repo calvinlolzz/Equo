@@ -61,3 +61,67 @@ export function buildExpenseNotification({
     tag: `group-${groupId}`,
   };
 }
+
+/**
+ * "Somebody reminded you to settle up."
+ *
+ * Names the sender and the amount, because a reminder that says only "you owe
+ * money" makes the receiver open the app to find out who is asking - and the
+ * whole point is to let them decide, on the lock screen, whether to pay now.
+ *
+ * The amount is stated as a positive number: the receiver's balance is
+ * negative, but "你還有 -NT$300 未結清" is arithmetic, not a sentence.
+ *
+ * Its own tag, so a reminder never silently replaces (or is replaced by) the
+ * group's entry notifications.
+ */
+export function buildNudgeNotification({
+  groupId,
+  groupName,
+  fromName,
+  balanceMinor,
+  currency,
+}: {
+  groupId: string;
+  groupName: string | null;
+  fromName: string | null;
+  /** The receiver's balance - negative, since only a debtor can be nudged. */
+  balanceMinor: number;
+  currency: string;
+}): PushNotificationPayload {
+  const who = fromName?.trim() || FALLBACK_ACTOR_NAME;
+  const amount = formatAmount(Math.abs(balanceMinor), currency);
+
+  return {
+    title: groupName?.trim() || FALLBACK_GROUP_NAME,
+    body: `${who} 提醒你還有 ${amount} 未結清`,
+    url: `/group/${groupId}`,
+    tag: `nudge-${groupId}`,
+  };
+}
+
+/**
+ * "Somebody joined the group."
+ *
+ * Worth a notification because it is the one event where the people already in
+ * the group have something to do about it: an invite link that has been
+ * accepted by the wrong person is only fixable if anybody notices.
+ */
+export function buildMemberJoinedNotification({
+  groupId,
+  groupName,
+  memberName,
+}: {
+  groupId: string;
+  groupName: string | null;
+  memberName: string | null;
+}): PushNotificationPayload {
+  const who = memberName?.trim() || FALLBACK_ACTOR_NAME;
+
+  return {
+    title: groupName?.trim() || FALLBACK_GROUP_NAME,
+    body: `${who} 加入了群組`,
+    url: `/group/${groupId}`,
+    tag: `group-${groupId}`,
+  };
+}

@@ -9,6 +9,13 @@ export type Group = {
    * read from a detail payload has no unread count of its own.
    */
   unreadCount?: number;
+  /**
+   * What this group currently costs the logged-in user, in the group's
+   * currency: positive means the group owes them, negative means they owe it.
+   * Like unreadCount, only the group LIST carries it — and undefined means
+   * "not known here", which must render as nothing rather than as 已結清.
+   */
+  balanceMinor?: number;
 };
 
 export type Member = {

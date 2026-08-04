@@ -1,4 +1,4 @@
-import { Check, Inbox, Pencil, UserMinus, UserRound, X } from "lucide-react";
+import { BellRing, Check, Inbox, Pencil, UserMinus, UserRound, X } from "lucide-react";
 import type { Member } from "./appTypes";
 import { formatSigned } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
@@ -14,6 +14,11 @@ type MemberListPanelProps = {
   renameMemberValue: string;
   confirmingRemoveMemberId: string;
   pendingAction: string | null;
+  /** The logged-in user's own member row, so they aren't offered a reminder to themselves. */
+  currentMemberId?: string;
+  /** Members already reminded in this session — the button stays, spent, rather than vanishing. */
+  nudgedMemberIds?: string[];
+  onNudge?: (member: Member) => void;
   onRenameValueChange: (value: string) => void;
   onStartRename: (member: Member) => void;
   onCancelRename: () => void;
@@ -32,6 +37,9 @@ export function MemberListPanel({
   renameMemberValue,
   confirmingRemoveMemberId,
   pendingAction,
+  currentMemberId,
+  nudgedMemberIds = [],
+  onNudge,
   onRenameValueChange,
   onStartRename,
   onCancelRename,
@@ -58,9 +66,19 @@ export function MemberListPanel({
           const isRenaming = manageable && renamingMemberId === member.id;
           const renamePending = pendingAction === `renameMember:${member.id}`;
           const removePending = pendingAction === `removeMember:${member.id}`;
+          // Only somebody who owes the group, has an account to notify, and
+          // isn't you. The server enforces all three again - this is about not
+          // offering a button that can only fail.
+          const nudgeable =
+            Boolean(onNudge) &&
+            !member.virtual &&
+            member.id !== currentMemberId &&
+            (balances.get(member.id) ?? 0) < 0;
+          const nudged = nudgedMemberIds.includes(member.id);
+          const nudgePending = pendingAction === `nudge:${member.id}`;
           return (
             <div
-              className={manageable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
+              className={manageable || nudgeable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
               key={member.id}
             >
               <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
@@ -101,6 +119,20 @@ export function MemberListPanel({
                     <strong>{member.name}</strong>
                     <small>{member.virtual ? text.virtualMember : member.role === "owner" ? text.owner : text.member}</small>
                   </span>
+                  {nudgeable ? (
+                    <span className="member-row-actions">
+                      <button
+                        className={nudged ? "member-icon-action nudge sent" : "member-icon-action nudge"}
+                        type="button"
+                        aria-label={`${text.nudgeAria}: ${member.name}`}
+                        disabled={nudgePending || nudged}
+                        onClick={() => onNudge?.(member)}
+                      >
+                        <BellRing aria-hidden="true" size={14} />
+                        {nudged ? text.nudgeSent : text.nudge}
+                      </button>
+                    </span>
+                  ) : null}
                   {manageable ? (
                     <span className="member-row-actions">
                       <button

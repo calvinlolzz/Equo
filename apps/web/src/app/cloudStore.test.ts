@@ -464,6 +464,69 @@ describe("createCloudGroupsStore", () => {
     expect(detail.aggregates.spendTotalMinor).toBe(1000);
   });
 
+  test("the group list's balance follows the caller's own balance in the open group", async () => {
+    const apiClient = makeFakeApiClient({
+      getGroupDetail: vi.fn(async () =>
+        makeGroupDetail({
+          members: [
+            member1,
+            { id: "member_2", group_id: "group_1", user_id: null, display_name: "Bob", role: "member" as const, status: "active" as const },
+          ],
+          balances: [
+            { memberId: "member_1", balance: { amount_minor: 0, currency: "TWD" } },
+            { memberId: "member_2", balance: { amount_minor: 0, currency: "TWD" } },
+          ],
+        }),
+      ),
+      createExpense: vi.fn(async () => ({
+        expense: { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" },
+      })),
+    });
+    // userId is what makes "the caller's own member row" resolvable - member1
+    // is user_1's row in this group.
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn(), userId: "user_1" });
+
+    await store.refreshGroups();
+    await store.refreshGroupDetail("group_1");
+    expect(store.getState().groups[0].balanceMinor).toBe(0);
+
+    await store.addExpense(
+      "group_1",
+      {
+        title: "Lunch",
+        amountMinor: 1000,
+        createdAt: "2026-07-04T10:00:00.000Z",
+        payerId: "member_1",
+        shareMemberIds: ["member_1", "member_2"],
+        category: "food",
+      },
+      "TWD",
+    );
+
+    // Paid 1000, owes 500 of it: the list must agree with the group screen the
+    // user just came from, without waiting for the next background refresh.
+    expect(store.getState().groups[0].balanceMinor).toBe(500);
+  });
+
+  test("a rename does not blank the balance and unread count the list already had", async () => {
+    const apiClient = makeFakeApiClient({
+      listGroups: vi.fn(async () => ({ groups: [{ ...group1, unread_count: 2, balance_minor: -4200 }] })),
+      updateGroup: vi.fn(async () => ({ group: { ...group1, name: "Kyoto Trip" } })),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn(), userId: "user_1" });
+    await store.refreshGroups();
+
+    await store.renameGroup("group_1", "Kyoto Trip");
+
+    // The write response carries neither - and a rename that reads as "your
+    // debts are settled" is worse than one that is briefly out of date.
+    expect(store.getState().groups[0]).toMatchObject({
+      name: "Kyoto Trip",
+      balanceMinor: -4200,
+      unreadCount: 2,
+    });
+  });
+
   test("editExpense edits through ONE atomic request and replaces the expense in place locally", async () => {
     const apiClient = makeFakeApiClient({
       getGroupDetail: vi.fn(async () =>
@@ -925,7 +988,9 @@ describe("createCloudGroupsStore", () => {
 
         const persisted = loadCloudCache("user_1", cacheStorage);
         expect(persisted?.groups).toEqual([
-          { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined },
+          // balanceMinor comes from the detail read (this user is member_1,
+          // who has no entries yet) - see listBalanceFromDetail.
+          { id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined, balanceMinor: 0 },
         ]);
         expect(persisted?.groupDetails.group_1.group).toEqual({
           id: "group_1",

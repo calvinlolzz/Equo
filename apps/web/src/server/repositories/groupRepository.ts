@@ -22,6 +22,13 @@ export type GroupRecord = {
    * "unread" is a property of a row in a list, not of the group itself.
    */
   unread_count?: number;
+  /**
+   * The CALLER's own balance in this group, in the group's currency: positive
+   * means the group owes them, negative means they owe it. Like unread_count,
+   * only listGroups fills it in - and it is left undefined (not zero) when the
+   * decoration fails, so "we don't know" never renders as "settled".
+   */
+  balance_minor?: number;
 };
 
 export type ArchivedGroupRecord = {
