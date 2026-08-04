@@ -58,6 +58,15 @@ export const apiContracts: ApiContract[] = [
   },
   {
     method: "POST",
+    path: "/api/v1/groups/:groupId/members/:memberId/nudge",
+    purpose: "Remind one member who owes the group to settle up.",
+    requiresAuth: true,
+    // Re-sending is intentional; the recipient's cooldown, not an idempotency
+    // key, is what stops a double tap from arriving twice.
+    requiresClientRequestId: false,
+  },
+  {
+    method: "POST",
     path: "/api/v1/groups/:groupId/settlement/calculate",
     purpose: "Calculate the current settlement draft.",
     requiresAuth: true,

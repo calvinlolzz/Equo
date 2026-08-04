@@ -739,6 +739,35 @@ label span {
   font-size: 13px;
 }
 
+/* A group row's own balance, and the rail header's total across all of them.
+   Mint for money coming back, red for money going out - the same two colours
+   the balances inside a group already use, so the list and the group agree. */
+.balance-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-line.positive {
+  color: rgb(var(--brand));
+  font-weight: 650;
+}
+
+.balance-line.negative {
+  color: rgb(var(--danger));
+  font-weight: 650;
+}
+
+.balance-line.settled {
+  color: rgb(var(--fg) / 0.5);
+}
+
+.rail-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
 .group-create-item {
   width: 100%;
   min-height: 60px;
@@ -896,7 +925,10 @@ label span {
 :root[data-theme="light"] .section-title-row .text-action,
 :root[data-theme="light"] .spending-date-row span,
 :root[data-theme="light"] .side-group-name span,
-:root[data-theme="light"] .group-item-text span,
+/* :not(.balance-line) is load-bearing, same as .mobile-tab-item below: this
+   readability override would otherwise flatten the 應收/應付 colours to grey,
+   and the colour is what makes a row readable at a glance. */
+:root[data-theme="light"] .group-item-text span:not(.balance-line),
 :root[data-theme="light"] .expense-record-main small,
 :root[data-theme="light"] .pizo-expense-row .expense-record-main small,
 :root[data-theme="light"] .panel-title-row span,

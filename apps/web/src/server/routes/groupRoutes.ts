@@ -220,5 +220,14 @@ export async function acceptInviteRoute(
     return { ok: false, status: 401, body: auth.error };
   }
 
-  return handleAcceptInvite(createSupabaseGroupRepository(options.client), auth.context, token, request);
+  const result = await handleAcceptInvite(createSupabaseGroupRepository(options.client), auth.context, token, request);
+
+  if (result.ok === false) {
+    return result;
+  }
+
+  // actorUserId rides along so the runtime can tell the rest of the group
+  // somebody joined, without verifying the session a second time. Not part of
+  // the HTTP body - same pattern as createExpenseRoute.
+  return { ...result, actorUserId: auth.context.user.id };
 }

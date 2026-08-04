@@ -1,0 +1,74 @@
+import type { Group } from "./appTypes";
+import { formatAmount } from "./formatAmount";
+import { UI_TEXT } from "./uiText";
+
+const text = UI_TEXT.app;
+
+export type CurrencyTotal = {
+  currency: string;
+  /** Positive = owed to the user, negative = owed by them. Never zero. */
+  netMinor: number;
+};
+
+export type GroupBalanceSummary = {
+  /**
+   * Whether any group in the list carried a balance at all. False means the
+   * server did not send them (an old deployment, a failed decoration) - which
+   * has to render as nothing, never as 已結清.
+   */
+  known: boolean;
+  /** Non-zero nets per currency, largest first. Empty when everything nets out. */
+  totals: CurrencyTotal[];
+};
+
+/**
+ * "Do I owe anything, across everything?" - the one number a split-bill app is
+ * expected to open on.
+ *
+ * Kept per currency and never summed across them. A trip group in JPY and a
+ * flat-share in TWD have no common total, and inventing one by adding minor
+ * units would produce a confident, meaningless number - the exchange rate at
+ * the time each expense was recorded is already baked into each group's own
+ * currency, and nothing here knows today's.
+ */
+export function summarizeGroupBalances(groups: Group[]): GroupBalanceSummary {
+  const netByCurrency = new Map<string, number>();
+  let known = false;
+
+  groups.forEach((group) => {
+    if (group.balanceMinor === undefined) return;
+    known = true;
+    netByCurrency.set(group.currency, (netByCurrency.get(group.currency) ?? 0) + group.balanceMinor);
+  });
+
+  const totals = [...netByCurrency.entries()]
+    .filter(([, netMinor]) => netMinor !== 0)
+    .map(([currency, netMinor]) => ({ currency, netMinor }))
+    .sort((left, right) => Math.abs(right.netMinor) - Math.abs(left.netMinor));
+
+  return { known, totals };
+}
+
+/**
+ * One balance as a phrase: 「應收 $300」/「應付 $300」/「已結清」.
+ *
+ * A signed number alone (-$300) does not say which way it points - people read
+ * their own balance as "what I owe" about as often as "what I am owed", and
+ * getting it backwards is the one mistake this screen cannot afford. Returns
+ * null when the balance is unknown, so callers render nothing.
+ */
+export function describeBalance(balanceMinor: number | undefined, currency: string): string | null {
+  if (balanceMinor === undefined) return null;
+  if (balanceMinor === 0) return text.balanceSettled;
+
+  const amount = formatAmount(Math.abs(balanceMinor), currency);
+  return balanceMinor > 0 ? `${text.balanceOwedToYou} ${amount}` : `${text.balanceYouOwe} ${amount}`;
+}
+
+/** "positive" | "negative" | "settled" | null - drives the row's colour. */
+export function balanceTone(balanceMinor: number | undefined): "positive" | "negative" | "settled" | null {
+  if (balanceMinor === undefined) return null;
+  if (balanceMinor > 0) return "positive";
+  if (balanceMinor < 0) return "negative";
+  return "settled";
+}

@@ -63,6 +63,15 @@ const WRITE: RateLimitRule = { name: "write", limit: 120, windowSeconds: MINUTE,
  */
 const RECEIPT_SCAN: RateLimitRule = { name: "receiptScan", limit: 30, windowSeconds: HOUR, scope: "user" };
 
+/**
+ * Payment reminders. The real protection lives in the database - one member of
+ * one group cannot be reminded twice inside the cooldown, by anybody - so this
+ * is only here to stop one account from spraying reminders across every group
+ * it belongs to. A person with a genuine reason to press the button is nowhere
+ * near 20 an hour.
+ */
+const NUDGE: RateLimitRule = { name: "nudge", limit: 20, windowSeconds: HOUR, scope: "user" };
+
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
@@ -79,6 +88,7 @@ export function resolveRateLimitRule(method: string, path: string): RateLimitRul
   if (path.startsWith("/api/v1/auth/")) return AUTH;
   if (path === "/api/v1/feedback") return FEEDBACK;
   if (path === "/api/v1/receipts/scan") return RECEIPT_SCAN;
+  if (path.endsWith("/nudge")) return NUDGE;
 
   return WRITE;
 }

@@ -1,5 +1,7 @@
 import { Archive, Plus, RefreshCw, Scan } from "lucide-react";
 import type { Group } from "./appTypes";
+import { balanceTone, describeBalance, summarizeGroupBalances } from "./groupBalanceSummary";
+import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
 type GroupRailProps = {
@@ -18,11 +20,36 @@ type GroupRailProps = {
 const text = UI_TEXT.app;
 
 export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGroups, onRefresh, onSelectGroup, onShowInviteCode, inert }: GroupRailProps) {
+  // The question people open the app with, answered before they pick a group.
+  const summary = summarizeGroupBalances(groups);
+
   return (
     <aside className="group-rail glass-panel" aria-label={text.groupList} inert={inert} aria-hidden={inert || undefined}>
       <div className="rail-heading">
         <div>
           <h1>群組</h1>
+          {summary.known ? (
+            <p className="rail-total">
+              {summary.totals.length === 0 ? (
+                <span className="balance-line settled">{text.balanceSettled}</span>
+              ) : (
+                // Two currencies is already an unusual amount of information
+                // for a header; past that it becomes a list, and a list here
+                // pushes the groups themselves off the screen.
+                <>
+                  {summary.totals.slice(0, 2).map((total) => (
+                    <span className={total.netMinor > 0 ? "balance-line positive" : "balance-line negative"} key={total.currency}>
+                      {total.netMinor > 0 ? text.balanceOwedToYou : text.balanceYouOwe}{" "}
+                      {formatAmount(Math.abs(total.netMinor), total.currency)}
+                    </span>
+                  ))}
+                  {summary.totals.length > 2 ? (
+                    <span className="balance-line">{`+${summary.totals.length - 2} ${text.balanceMoreCurrencies}`}</span>
+                  ) : null}
+                </>
+              )}
+            </p>
+          ) : null}
         </div>
         <div className="rail-heading-actions">
           <button className="rail-icon-action" type="button" aria-label={text.refresh} onClick={onRefresh}>
@@ -35,7 +62,13 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
       </div>
 
       <div className="group-list">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          // Falls back to the currency code when the balance is unknown - an
+          // older deployment, or a row patched from a write response.
+          const balance = describeBalance(group.balanceMinor, group.currency);
+          const tone = balanceTone(group.balanceMinor);
+
+          return (
           <button className={activeGroup.id === group.id ? "group-item active" : "group-item"} type="button" key={group.id} onClick={() => onSelectGroup(group)}>
             <span className="group-item-row">
               {group.coverImageUrl ? (
@@ -47,7 +80,7 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
               )}
               <span className="group-item-text">
                 <strong>{group.name}</strong>
-                <span>{group.currency}</span>
+                <span className={tone ? `balance-line ${tone}` : undefined}>{balance ?? group.currency}</span>
               </span>
               {group.unreadCount ? (
                 // Counted, not just dotted: "3 筆新的" is a different decision
@@ -58,7 +91,8 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
               ) : null}
             </span>
           </button>
-        ))}
+          );
+        })}
         <button className="group-create-item" type="button" onClick={onCreateGroup}>
           <span className="group-create-icon">
             <Plus aria-hidden="true" size={18} />

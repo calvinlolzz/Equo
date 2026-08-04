@@ -1,7 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
-import { buildExpenseNotification } from "./pushNotification.js";
-import { deliverPush, notifyExpenseCreated, type PushSendFn } from "./pushSender.js";
+import { buildExpenseNotification, buildNudgeNotification } from "./pushNotification.js";
+import {
+  deliverPush,
+  notifyExpenseCreated,
+  notifyMemberJoined,
+  notifyNudge,
+  type PushSendFn,
+} from "./pushSender.js";
 
 const vapid = { publicKey: "pub", privateKey: "priv", subject: "mailto:ops@example.com" };
 
@@ -22,6 +28,9 @@ function makeRepository(overrides: Partial<PushRepository> = {}): PushRepository
     },
     async targetsForGroup() {
       return { group_name: "東京旅行", actor_name: "Alice", subscriptions: [subscription(1)] };
+    },
+    async targetsForMember() {
+      return { group_name: "東京旅行", actor_name: null, subscriptions: [subscription(1)] };
     },
     ...overrides,
   };
@@ -266,5 +275,132 @@ describe("notifyExpenseCreated", () => {
 
     expect(outcome).toEqual({ sent: 0, pruned: 0, failed: 0 });
     logged.mockRestore();
+  });
+});
+
+describe("buildNudgeNotification", () => {
+  test("names who is asking and how much, on the lock screen", () => {
+    const payload = buildNudgeNotification({
+      groupId: "group_1",
+      groupName: "東京旅行",
+      fromName: "Alice",
+      balanceMinor: -32000,
+      currency: "TWD",
+    });
+
+    expect(payload).toEqual({
+      title: "東京旅行",
+      body: "Alice 提醒你還有 $320 未結清",
+      url: "/group/group_1",
+      tag: "nudge-group_1",
+    });
+  });
+
+  test("states the debt as a positive amount", () => {
+    // "你還有 -$320 未結清" is arithmetic, not a sentence.
+    const payload = buildNudgeNotification({
+      groupId: "group_1",
+      groupName: "G",
+      fromName: "A",
+      balanceMinor: -50,
+      currency: "TWD",
+    });
+
+    expect(payload.body).not.toContain("-");
+  });
+
+  test("does not share the group's entry tag", () => {
+    const nudge = buildNudgeNotification({
+      groupId: "group_1", groupName: "G", fromName: "A", balanceMinor: -1, currency: "TWD",
+    });
+    const expense = buildExpenseNotification({
+      groupId: "group_1", groupName: "G", actorName: "A", title: "a", amountMinor: 1, currency: "TWD", kind: "expense",
+    });
+
+    // Sharing a tag would let a routine expense notification replace the
+    // reminder on the lock screen before it was read.
+    expect(nudge.tag).not.toBe(expense.tag);
+  });
+});
+
+describe("notifyNudge", () => {
+  test("delivers only to the member's own endpoints", async () => {
+    const asked: Array<[string, string]> = [];
+    const sent: string[] = [];
+
+    const outcome = await notifyNudge({
+      repository: makeRepository({
+        async targetsForMember(groupId, memberId) {
+          asked.push([groupId, memberId]);
+          return { group_name: "東京旅行", actor_name: null, subscriptions: [subscription(7)] };
+        },
+        async targetsForGroup() {
+          throw new Error("a nudge must never fan out to the group");
+        },
+      }),
+      vapid,
+      groupId: "group_1",
+      toMemberId: "member_bob",
+      groupName: "東京旅行",
+      fromName: "Alice",
+      balanceMinor: -32000,
+      currency: "TWD",
+      send: async (target, payload) => {
+        sent.push(`${target.endpoint}|${payload.body}`);
+        return { statusCode: 201 };
+      },
+    });
+
+    expect(asked).toEqual([["group_1", "member_bob"]]);
+    expect(outcome.sent).toBe(1);
+    expect(sent).toEqual(["https://push.example/7|Alice 提醒你還有 $320 未結清"]);
+  });
+
+  test("swallows a failure — the nudge row and its cooldown already exist", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const outcome = await notifyNudge({
+      repository: makeRepository({
+        async targetsForMember() {
+          throw new Error("database unreachable");
+        },
+      }),
+      vapid,
+      groupId: "group_1",
+      toMemberId: "member_bob",
+      groupName: null,
+      fromName: null,
+      balanceMinor: -1,
+      currency: "TWD",
+      send: async () => ({ statusCode: 201 }),
+    });
+
+    expect(outcome).toEqual({ sent: 0, pruned: 0, failed: 0 });
+    logged.mockRestore();
+  });
+});
+
+describe("notifyMemberJoined", () => {
+  test("tells the rest of the group, using the joiner's name", async () => {
+    const bodies: string[] = [];
+
+    const outcome = await notifyMemberJoined({
+      repository: makeRepository({
+        async targetsForGroup() {
+          return { group_name: "東京旅行", actor_name: "Bob", subscriptions: [subscription(1)] };
+        },
+      }),
+      vapid,
+      groupId: "group_1",
+      actorUserId: "user_bob",
+      send: async (_target, payload) => {
+        bodies.push(payload.body);
+        return { statusCode: 201 };
+      },
+    });
+
+    expect(outcome.sent).toBe(1);
+    // targetsForGroup excludes the actor, so the joiner is not told they joined.
+    expect(bodies).toEqual(["Bob 加入了群組"]);
   });
 });

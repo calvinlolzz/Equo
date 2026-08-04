@@ -76,8 +76,9 @@ import {
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
+import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
-import { notifyExpenseCreated } from "../push/pushSender.js";
+import { notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
 import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
 import { healthRoute } from "../routes/healthRoutes.js";
 import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
@@ -407,6 +408,22 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[1],
           body<AcceptInviteRequest>(request),
         );
+
+        // Same rules as the expense fan-out: after the write, awaited (a
+        // serverless function can be frozen the moment it responds), and never
+        // able to change the response.
+        if (result.ok && options.vapid && "actorUserId" in result && "group" in result.body) {
+          const group = result.body.group as { id: string };
+
+          await notifyMemberJoined({
+            repository: createSupabasePushRepository(options.client),
+            vapid: options.vapid,
+            groupId: group.id,
+            actorUserId: result.actorUserId,
+            send: options.pushSend,
+          });
+        }
+
         return jsonResponse(result.status, result.body);
       },
     },
@@ -446,6 +463,37 @@ export function createHttpRuntime(options: RuntimeOptions) {
               send: options.pushSend,
             });
           }
+        }
+
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/members\/([^/]+)\/nudge$/,
+      label: "POST /api/v1/groups/:groupId/members/:memberId/nudge",
+      async handle(request, match) {
+        const result = await sendNudgeRoute(routeOptions(options, request), match[1], match[2]);
+
+        // The reminder IS the notification: unlike the expense fan-out, there
+        // is nothing else the recipient could learn from this write, so a
+        // deployment without VAPID keys has simply written a row nobody sees.
+        // Still a 200 - the sender's request was valid, and the cooldown that
+        // was started is real.
+        if (result.ok && options.vapid && "notify" in result && result.notify) {
+          const notify = result.notify;
+
+          await notifyNudge({
+            repository: createSupabasePushRepository(options.client),
+            vapid: options.vapid,
+            groupId: notify.groupId,
+            toMemberId: notify.toMemberId,
+            groupName: notify.groupName,
+            fromName: notify.fromName,
+            balanceMinor: notify.balanceMinor,
+            currency: notify.currency,
+            send: options.pushSend,
+          });
         }
 
         return jsonResponse(result.status, result.body);

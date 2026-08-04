@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createFakePostgrest, type FakePostgrest } from "../db/fakePostgrest.js";
 import {
   createSupabaseGroupRepository,
@@ -171,6 +171,39 @@ describe("createSupabaseGroupRepository", () => {
     await expect(createSupabaseGroupRepository(client).listGroups(context)).resolves.toEqual([
       { ...groupRow, unread_count: 0 },
     ]);
+  });
+
+  test("decorates each listed group with the caller's own balance", async () => {
+    const client = makeClient({
+      rpc: (fn) =>
+        fn === "group_balances_for_user"
+          ? [{ group_id: "group_1", balance_minor: -32000, currency: "TWD" }]
+          : [],
+    });
+
+    await expect(createSupabaseGroupRepository(client).listGroups(context)).resolves.toEqual([
+      { ...groupRow, unread_count: 0, balance_minor: -32000 },
+    ]);
+    expect(client.rpcCall("group_balances_for_user")?.args).toEqual({ p_user: "user_alice" });
+  });
+
+  test("a balance the RPC cannot supply is left absent, never zero", async () => {
+    // Fail-open: a deployment whose database has not had the migration applied
+    // still returns a usable list. Reporting 0 would tell everyone their debts
+    // were settled.
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = makeClient({
+      rpc: (fn) => {
+        if (fn === "group_balances_for_user") throw new Error("function does not exist");
+        return [];
+      },
+    });
+
+    const groups = await createSupabaseGroupRepository(client).listGroups(context);
+    warned.mockRestore();
+
+    expect(groups).toEqual([{ ...groupRow, unread_count: 0 }]);
+    expect("balance_minor" in groups[0]).toBe(false);
   });
 
   test("marking a group read is scoped to the caller's own membership", async () => {

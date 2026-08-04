@@ -229,7 +229,7 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
         return [];
       }
 
-      const [groups, unread] = await Promise.all([
+      const [groups, unread, balances] = await Promise.all([
         client.select<GroupRecord>(
           "groups",
           query(
@@ -247,11 +247,32 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
         client.rpc<Array<{ group_id: string; unread_count: number }>>("group_unread_counts", {
           p_user: context.user.id,
         }),
+        // Same idea, and deliberately fail-open: a deployment whose database
+        // has not had the balances migration applied yet must still return a
+        // usable group list. The rows simply arrive without balances, and the
+        // UI shows nothing rather than a wrong zero.
+        client
+          .rpc<Array<{ group_id: string; balance_minor: number; currency: string }>>("group_balances_for_user", {
+            p_user: context.user.id,
+          })
+          .catch((error) => {
+            console.warn("[groups] balance decoration unavailable:", error);
+            return null;
+          }),
       ]);
 
       const unreadByGroupId = new Map((unread ?? []).map((row) => [row.group_id, row.unread_count]));
+      const balanceByGroupId = new Map((balances ?? []).map((row) => [row.group_id, row.balance_minor]));
 
-      return groups.map((group) => ({ ...group, unread_count: unreadByGroupId.get(group.id) ?? 0 }));
+      return groups.map((group) => {
+        const balanceMinor = balanceByGroupId.get(group.id);
+
+        return {
+          ...group,
+          unread_count: unreadByGroupId.get(group.id) ?? 0,
+          ...(balanceMinor === undefined ? {} : { balance_minor: balanceMinor }),
+        };
+      });
     },
 
     async markGroupRead(context: AuthenticatedContext, groupId: string) {

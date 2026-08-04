@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Moon, Pencil, Sun, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Moon, Pencil, ScanLine, Sun, Trash2, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -64,6 +64,8 @@ export function ProfileDialog({
   onLogout,
   onDeleteAccount,
   onFeedback,
+  scanConsentGranted = false,
+  onDisableScanConsent,
 }: {
   profile: ProfileData;
   /**
@@ -98,6 +100,13 @@ export function ProfileDialog({
    */
   onDeleteAccount: () => Promise<void>;
   onFeedback: () => void;
+  /**
+   * Whether this device has agreed to receipt recognition (scanConsent.ts).
+   * Undefined in the standalone/test case, which simply hides the row.
+   */
+  scanConsentGranted?: boolean;
+  /** Withdraw that consent. The next scan asks again. */
+  onDisableScanConsent?: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("account");
   // Only resolved once the 其他設定 tab is actually on screen: working out
@@ -263,6 +272,21 @@ export function ProfileDialog({
                 </button>
               ) : null}
             </div>
+            {/* Only shown once consent has been given: a row offering to turn
+                off something that was never on is noise, and the ask itself
+                lives at the camera where the decision is actually made. */}
+            {scanConsentGranted ? (
+              <div className="profile-other-row profile-push-row">
+                <ScanLine aria-hidden="true" size={19} />
+                <span className="profile-push-text">
+                  <span>{appText.receiptScanSetting}</span>
+                  <small>{appText.receiptScanOn}</small>
+                </span>
+                <button className="profile-link-action" type="button" onClick={onDisableScanConsent}>
+                  {text.pushDisable}
+                </button>
+              </div>
+            ) : null}
             <button className="profile-other-row" type="button" onClick={onToggleTheme}>
               {theme === "light" ? <Sun aria-hidden="true" size={19} /> : <Moon aria-hidden="true" size={19} />}
               <span>{text.themeSetting}</span>

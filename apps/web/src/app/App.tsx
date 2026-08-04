@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   Scan,
+  ScanLine,
   Settings,
   Share,
   Sun,
@@ -44,6 +45,7 @@ import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
 import { readInviteToken } from "./inviteToken";
+import { grantScanConsent, hasScanConsent, revokeScanConsent } from "./scanConsent";
 import type { ReceiptPrefill } from "./receiptPrefill";
 import { GroupRail } from "./GroupRail";
 import { LoginScreen } from "./LoginScreen";
@@ -186,6 +188,15 @@ export function App() {
   /** Which full-screen camera is up, if any: "receipt" reads a bill, "invite" reads a join QR. */
   const [scanMode, setScanMode] = useState<ScanSheetMode | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
+  /** The one-time "your receipt goes to a third-party model" ask (see scanConsent.ts). */
+  const [scanConsentOpen, setScanConsentOpen] = useState(false);
+  const [scanConsentGranted, setScanConsentGranted] = useState(() => hasScanConsent());
+  /**
+   * Reminders sent while this screen has been open. Kept in memory only: the
+   * server's cooldown is the real rule, and this just stops the button
+   * inviting a second tap it would refuse.
+   */
+  const [nudgedMemberIds, setNudgedMemberIds] = useState<string[]>([]);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
@@ -482,6 +493,9 @@ export function App() {
     // dialog and leaves it standing underneath, so Back must peel the camera
     // off first rather than dismissing both at once.
     { open: scanMode !== null, close: () => setScanMode(null) },
+    // The consent ask stands alone (the camera is not open yet), so Back
+    // simply declines it.
+    { open: scanConsentOpen, close: () => setScanConsentOpen(false) },
     // Back on a dirty composer raises the discard confirm instead of closing;
     // the confirm then sits above it, so a second Back answers 繼續編輯.
     { open: expenseComposerOpen, close: requestCloseComposer },
@@ -845,7 +859,66 @@ export function App() {
   function openReceiptScan() {
     closeDrawers();
     setDialog(null);
+    // Asked once per device, before the camera rather than after the photo:
+    // consent given while holding a captured receipt is not much of a choice.
+    if (!scanConsentGranted) {
+      setScanConsentOpen(true);
+      return;
+    }
     setScanMode("receipt");
+  }
+
+  function acceptScanConsent() {
+    grantScanConsent();
+    setScanConsentGranted(true);
+    setScanConsentOpen(false);
+    setScanMode("receipt");
+  }
+
+  /**
+   * Turned off from 個人資料 → 其他設定. The next scan asks again, and until
+   * then no photo goes anywhere near the model — the composer's own camera and
+   * photo picker are unaffected, since those only ever attach the image to the
+   * expense.
+   */
+  function disableScanConsent() {
+    revokeScanConsent();
+    setScanConsentGranted(false);
+    showToast(text.scanConsentRevoked);
+  }
+
+  /**
+   * "Pay me back." Sends a push to one member who owes the group.
+   *
+   * Every refusal has its own sentence: reminded-too-recently and owes-nothing
+   * are both normal answers, and a generic 失敗 would leave the sender
+   * wondering whether to press it again.
+   */
+  async function nudgeMember(member: Member) {
+    if (!activeGroup) return;
+    const actionKey = `nudge:${member.id}`;
+    if (!beginAction(actionKey)) return;
+
+    try {
+      await createApiClient().nudgeMember(activeGroup.id, member.id);
+      setNudgedMemberIds((current) => (current.includes(member.id) ? current : [...current, member.id]));
+      haptic("success");
+      showToast(`${text.nudgeSentToast}${member.name}`);
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "NUDGE_COOLDOWN") {
+        // Already reminded by somebody - mark it spent here too, or the button
+        // keeps offering an action the server will keep refusing.
+        setNudgedMemberIds((current) => (current.includes(member.id) ? current : [...current, member.id]));
+        showToast(text.nudgeCooldown);
+      } else if (code === "NUDGE_NOT_NEEDED") {
+        showToast(text.nudgeNotNeeded);
+      } else {
+        showToast(describeCloudActionError(error));
+      }
+    } finally {
+      endAction();
+    }
   }
 
   /**
@@ -1496,6 +1569,48 @@ export function App() {
         </Suspense>
       ) : null}
 
+      {/* Asked before the camera ever opens. Declining is a plain button, not
+          a hidden backdrop tap, and it leaves the user exactly where they
+          were - the composer's own camera still attaches photos without any
+          of this. */}
+      {scanConsentOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setScanConsentOpen(false);
+          }}
+        >
+          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.scanConsentTitle}>
+            <div className="dialog-header centered">
+              <ScanLine aria-hidden="true" size={28} />
+              <h3>{text.scanConsentTitle}</h3>
+              <p>{text.scanConsentBody}</p>
+            </div>
+            <p className="scan-consent-note">{text.scanConsentNote}</p>
+            <button
+              className="text-action"
+              type="button"
+              onClick={() => {
+                setScanConsentOpen(false);
+                setDialog("profile");
+                setInfoDialog("privacy");
+              }}
+            >
+              {text.scanConsentPrivacyLink}
+            </button>
+            <div className="dialog-action-row">
+              <button className="secondary-action" type="button" onClick={() => setScanConsentOpen(false)}>
+                {text.scanConsentDecline}
+              </button>
+              <button className="primary-action" type="button" onClick={acceptScanConsent}>
+                {text.scanConsentAccept}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {discardConfirmOpen ? (
         <div
           className="modal-backdrop"
@@ -1537,6 +1652,8 @@ export function App() {
           onToast={showToast}
           onLogout={signOut}
           onDeleteAccount={handleDeleteAccount}
+          scanConsentGranted={scanConsentGranted}
+          onDisableScanConsent={disableScanConsent}
           onFeedback={() => {
             closeDialog();
             setFeedbackOpen(true);
@@ -1854,6 +1971,9 @@ export function App() {
                 renameMemberValue={renameMemberValue}
                 confirmingRemoveMemberId={confirmingRemoveMemberId}
                 pendingAction={pendingAction}
+                currentMemberId={currentMember?.id}
+                nudgedMemberIds={nudgedMemberIds}
+                onNudge={nudgeMember}
                 onRenameValueChange={setRenameMemberValue}
                 onStartRename={startRenameMember}
                 onCancelRename={cancelRenameMember}

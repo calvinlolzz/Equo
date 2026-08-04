@@ -1,5 +1,10 @@
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
-import { buildExpenseNotification, type PushNotificationPayload } from "./pushNotification.js";
+import {
+  buildExpenseNotification,
+  buildMemberJoinedNotification,
+  buildNudgeNotification,
+  type PushNotificationPayload,
+} from "./pushNotification.js";
 
 export type VapidKeys = {
   publicKey: string;
@@ -165,6 +170,104 @@ export async function notifyExpenseCreated({
     return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] notify failed:", error);
+    return empty;
+  }
+}
+
+/**
+ * "Somebody reminded you to settle up" -> that one member's devices.
+ *
+ * Swallowing failures matters more here than elsewhere: the nudge row is
+ * already written and its cooldown has already started, so turning a push
+ * problem into an error would tell the sender it failed while making them wait
+ * six hours before they could try again.
+ */
+export async function notifyNudge({
+  repository,
+  vapid,
+  groupId,
+  toMemberId,
+  groupName,
+  fromName,
+  balanceMinor,
+  currency,
+  send,
+}: {
+  repository: PushRepository;
+  vapid: VapidKeys;
+  groupId: string;
+  toMemberId: string;
+  groupName: string | null;
+  fromName: string | null;
+  balanceMinor: number;
+  currency: string;
+  send?: PushSendFn;
+}): Promise<PushDeliveryOutcome> {
+  const empty: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
+
+  try {
+    const targets = await repository.targetsForMember(groupId, toMemberId);
+
+    if (targets.subscriptions.length === 0) {
+      return empty;
+    }
+
+    const payload = buildNudgeNotification({
+      groupId,
+      // The group's name as the RPC knows it; the write's copy is only used
+      // for the sender's own name.
+      groupName: targets.group_name ?? groupName,
+      fromName,
+      balanceMinor,
+      currency,
+    });
+
+    return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
+  } catch (error) {
+    console.error("[push] nudge notify failed:", error);
+    return empty;
+  }
+}
+
+/**
+ * "Somebody joined" -> everyone in the group except the person who joined.
+ *
+ * The joiner is the actor, so targetsForGroup's existing exclusion is exactly
+ * right: being told you have joined a group you just joined is noise.
+ */
+export async function notifyMemberJoined({
+  repository,
+  vapid,
+  groupId,
+  actorUserId,
+  send,
+}: {
+  repository: PushRepository;
+  vapid: VapidKeys;
+  groupId: string;
+  actorUserId: string;
+  send?: PushSendFn;
+}): Promise<PushDeliveryOutcome> {
+  const empty: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
+
+  try {
+    const targets = await repository.targetsForGroup(groupId, actorUserId);
+
+    if (targets.subscriptions.length === 0) {
+      return empty;
+    }
+
+    const payload = buildMemberJoinedNotification({
+      groupId,
+      groupName: targets.group_name,
+      // actor_name is the joiner's display name in this group - by the time
+      // this runs the membership row exists, so the lookup resolves.
+      memberName: targets.actor_name,
+    });
+
+    return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
+  } catch (error) {
+    console.error("[push] join notify failed:", error);
     return empty;
   }
 }

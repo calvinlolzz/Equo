@@ -27,6 +27,12 @@ export type GroupSummary = {
   cover_image_url?: string | null;
   /** Only GET /groups fills this in — see groupRepository's GroupRecord. */
   unread_count?: number;
+  /**
+   * The caller's own balance in this group, in the group's currency (positive
+   * = owed to them). Only GET /groups fills it in, and it is absent — not zero
+   * — when the server could not compute it.
+   */
+  balance_minor?: number;
 };
 
 export type ArchivedGroupSummary = GroupSummary & {
@@ -276,6 +282,17 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     /** Clears this group's unread badge for the caller. */
     markGroupRead(groupId: string) {
       return request<{ group_id: string; last_read_at: string }>(`/groups/${groupId}/read`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    },
+    /**
+     * Remind one member who owes the group. Rejects with NUDGE_COOLDOWN when
+     * they were reminded recently and NUDGE_NOT_NEEDED when they owe nothing —
+     * both are answers to show the user, not failures to retry.
+     */
+    nudgeMember(groupId: string, memberId: string) {
+      return request<{ nudge: { status: string } }>(`/groups/${groupId}/members/${memberId}/nudge`, {
         method: "POST",
         body: JSON.stringify({}),
       });

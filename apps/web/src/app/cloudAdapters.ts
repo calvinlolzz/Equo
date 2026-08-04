@@ -35,6 +35,10 @@ export function toGroup(summary: GroupSummary): Group {
     // so a group written back from one of those cannot silently clear a badge
     // the list had put there.
     ...(summary.unread_count === undefined ? {} : { unreadCount: summary.unread_count }),
+    // Same reasoning as unread_count: a detail read or a create response knows
+    // nothing about the caller's balance, and writing zero for it would turn
+    // every group into 已結清 the moment one of those payloads lands.
+    ...(summary.balance_minor === undefined ? {} : { balanceMinor: summary.balance_minor }),
   };
 }
 

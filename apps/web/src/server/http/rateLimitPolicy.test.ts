@@ -40,6 +40,17 @@ describe("resolveRateLimitRule", () => {
     expect(scan!.limit / scan!.windowSeconds).toBeLessThan(write.limit / write.windowSeconds);
   });
 
+  test("gives payment reminders their own budget", () => {
+    const nudge = resolveRateLimitRule("POST", "/api/v1/groups/group_1/members/member_2/nudge");
+    const write = resolveRateLimitRule("POST", "/api/v1/groups")!;
+
+    expect(nudge).toMatchObject({ name: "nudge", scope: "user" });
+    // The per-recipient cooldown lives in the database; this bucket is what
+    // stops one account spraying reminders across every group it is in, so it
+    // has to be far tighter than the general write budget.
+    expect(nudge!.limit / nudge!.windowSeconds).toBeLessThan(write.limit / write.windowSeconds);
+  });
+
   test.each([
     ["POST", "/api/v1/groups"],
     ["PATCH", "/api/v1/groups/group_1"],

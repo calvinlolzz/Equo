@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
+import { grantScanConsent } from "./scanConsent";
 import { UI_TEXT } from "./uiText";
 
 const app = UI_TEXT.app;
@@ -59,8 +60,16 @@ function stubCamera(): { stop: ReturnType<typeof vi.fn> } {
   return { stop };
 }
 
-async function landOnGroup() {
+/**
+ * Most of these tests are about what the camera does once recognition has been
+ * agreed to, so consent is granted by default - and granted HERE rather than in
+ * a beforeEach, because several tests re-run stubBrowser (for the desktop
+ * layout) mid-test, which clears localStorage again. The consent gate's own
+ * tests opt out with { scanConsent: false }.
+ */
+async function landOnGroup({ scanConsent = true }: { scanConsent?: boolean } = {}) {
   signIn();
+  if (scanConsent) grantScanConsent();
   const api = fakeApi([
     { route: "GET /groups", body: { groups: [group()] } },
     { route: "GET /groups/group_1", body: groupDetail() },
@@ -227,6 +236,68 @@ describe("掃描收據", () => {
     fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
 
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", app.scanCameraDenied);
+  });
+});
+
+describe("收據辨識同意", () => {
+  test("asks before the camera opens, and opens nothing if declined", async () => {
+    const camera = stubCamera();
+    await landOnGroup({ scanConsent: false });
+
+    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+
+    // The ask, not the camera: no stream may be requested before consent.
+    await screen.findByRole("dialog", { name: app.scanConsentTitle });
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(camera.stop).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: app.scanConsentDecline }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.scanConsentTitle })).toBeNull());
+    expect(screen.queryByRole("dialog", { name: app.scanReceipt })).toBeNull();
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  test("accepting opens the camera and is remembered for the next scan", async () => {
+    stubCamera();
+    await landOnGroup({ scanConsent: false });
+
+    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    fireEvent.click(await screen.findByRole("button", { name: app.scanConsentAccept }));
+
+    await screen.findByRole("dialog", { name: app.scanReceipt });
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: app.back }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.scanReceipt })).toBeNull());
+
+    // Second time: straight to the camera, no second ask.
+    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+
+    await screen.findByRole("dialog", { name: app.scanReceipt });
+    expect(screen.queryByRole("dialog", { name: app.scanConsentTitle })).toBeNull();
+  });
+
+  test("withdrawing consent in 個人資料 makes the next scan ask again", async () => {
+    stubCamera();
+    await landOnGroup();
+
+    fireEvent.click(screen.getByLabelText(app.profile));
+    fireEvent.click(await screen.findByRole("tab", { name: UI_TEXT.profile.otherTab }));
+    const row = await screen.findByText(app.receiptScanSetting);
+    fireEvent.click(
+      // The 關閉 button belongs to this row; scoping to the row keeps it from
+      // matching the push notification row's identical label.
+      row.closest(".profile-other-row")!.querySelector("button")!,
+    );
+
+    await waitFor(() => expect(screen.getByText(app.scanConsentRevoked)).toBeTruthy());
+
+    fireEvent.click(screen.getAllByRole("button", { name: app.cancel })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
+
+    await screen.findByRole("dialog", { name: app.scanConsentTitle });
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   });
 });
 
