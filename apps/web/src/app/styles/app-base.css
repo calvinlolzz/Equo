@@ -945,6 +945,16 @@ label span {
 :root[data-theme="light"] .mobile-tab-item:not(.active),
 :root[data-theme="light"] .empty-copy,
 :root[data-theme="light"] .composer-step-count,
+/* Secondary text that is gold in dark mode. Gold reads on the dark cards and
+   is a ~2:1 smudge on the light ones (day-mode home cards are near-white — see
+   the frosted-glass block above), so day mode takes the same muted body colour
+   as every other secondary line here:
+     · the currency code above each amount in 支出記錄
+     · the 最近動態 rows
+     · the archived-group date */
+:root[data-theme="light"] .pizo-expense-row .expense-record-amount small,
+:root[data-theme="light"] .pizo-activity-row span,
+:root[data-theme="light"] .archived-dialog-row b,
 :root[data-theme="light"] .composer-section-head small {
   color: rgb(var(--fg) / 0.72);
 }
