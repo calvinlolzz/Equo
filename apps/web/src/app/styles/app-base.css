@@ -10,6 +10,11 @@
   --accent: 109 226 184;    /* interactive/selection accent (mint -> purple in light) */
   --accent-fg: 7 17 15;     /* text on --accent fills */
   --gold: 255 214 122;      /* gold highlight / secondary CTA */
+  /* Gold that is being READ rather than filled: identical to --gold in dark
+     mode, deepened in light. --gold on a light card is ~2:1, which is a smudge
+     rather than a colour. Use this for gold TEXT; keep --gold for fills,
+     borders and glows, where the contrast that matters is the ink on top. */
+  --gold-ink: 255 214 122;
   --ink: 7 17 15;           /* dark text on bright (mint/gold) fills — dark both themes */
   --card-base: 7 17 15;     /* opaque base under frosted cards (dark -> white in light) */
   --surface-solid: 247 251 248; /* light chip/button that carries dark --ink text (light both themes) */
@@ -30,6 +35,9 @@
   --accent: 142 124 240;    /* periwinkle purple (demo #8E7CF0) — light only */
   --accent-fg: 255 255 255; /* white text on purple */
   --gold: 235 176 74;       /* gold nudged deeper so it reads on white */
+  /* ~4.3:1 on the day-mode cards — passes AA for the large amounts it carries,
+     and still unmistakably gold rather than brown. */
+  --gold-ink: 168 110 18;
   --ink: 7 17 15;
   --card-base: 255 255 255; /* frosted cards sit on white in light mode */
   --surface-solid: 255 255 255; /* stays white so dark-ink chips read as raised cards */
