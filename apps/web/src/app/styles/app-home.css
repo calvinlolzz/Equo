@@ -738,10 +738,9 @@
   white-space: nowrap;
 }
 
-/* Gold text reads well on the dark card; on white it is a ~2:1 smudge, so day
-   mode keeps the gold border and tint but takes the body text colour. */
+/* Keeps the gold language in day mode too, via the readable variant. */
 :root[data-theme="light"] .pizo-debt-nudge-action {
-  color: rgb(var(--fg));
+  color: rgb(var(--gold-ink));
 }
 
 .pizo-debt-nudge-action.sent,
@@ -791,8 +790,10 @@
   font-weight: 900;
 }
 
+/* The card's headline amount. Gold, but gold that is being read - so it takes
+   --gold-ink, which is the same colour in dark mode and a deeper one in light. */
 .pizo-debt-center b {
-  color: rgb(var(--gold));
+  color: rgb(var(--gold-ink));
   font-size: 22px;
   line-height: 1;
 }
