@@ -34,3 +34,29 @@ export function groupExpensesByDay(expenses: Expense[]): ExpenseDayGroup[] {
   }
   return order.map((key) => groups.get(key)!);
 }
+
+/**
+ * Cap how much of a records list is mounted at once.
+ *
+ * The panel keeps every loaded expense in memory (search/filter run over the
+ * whole window), but a group with hundreds of loaded expenses would otherwise
+ * put hundreds of rows in the DOM — re-reconciled on every auto-sync tick and
+ * on every keystroke in the search box. The caller grows `rowLimit` as the
+ * user scrolls, so the mounted count tracks what has actually been looked at.
+ *
+ * Days are taken whole: the day header prints that day's subtotal, so cutting
+ * a day in half would show a subtotal that doesn't add up to the rows beneath
+ * it. That means the result can overshoot `rowLimit` by the tail day's length.
+ * A limit of 0 or less mounts nothing; anything above takes at least one day.
+ */
+export function takeDayGroupsWithin(groups: ExpenseDayGroup[], rowLimit: number): ExpenseDayGroup[] {
+  if (rowLimit <= 0) return [];
+  const taken: ExpenseDayGroup[] = [];
+  let rows = 0;
+  for (const group of groups) {
+    taken.push(group);
+    rows += group.expenses.length;
+    if (rows >= rowLimit) break;
+  }
+  return taken;
+}

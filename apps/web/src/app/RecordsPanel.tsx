@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HandCoins, History, ReceiptText, Search, SlidersHorizontal, X } from "lucide-react";
 import { formatActivityTime, formatDayLabel } from "./appDates";
 import type { Activity, Expense, Member } from "./appTypes";
@@ -10,11 +10,23 @@ import {
   type ExpenseFilter,
   type ExpenseKindFilter,
 } from "./expenseFilter";
-import { groupExpensesByDay } from "./expenseDayGroups";
+import { groupExpensesByDay, takeDayGroupsWithin } from "./expenseDayGroups";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
+
+/**
+ * How many expense rows to mount at a time. The list keeps growing as the user
+ * pulls older pages from the server, and every mounted row is re-reconciled on
+ * every auto-sync tick and every search keystroke - on a phone that is what
+ * makes a long-open records sheet feel progressively heavier. Rows past the
+ * window are mounted lazily as the sentinel below them scrolls into range.
+ */
+const RENDER_WINDOW_STEP = 40;
+
+/** Mount the next slice this far before it reaches the viewport. */
+const RENDER_WINDOW_ROOT_MARGIN = "600px 0px";
 
 const KIND_OPTIONS: Array<{ value: ExpenseKindFilter; label: string }> = [
   { value: "", label: "全部" },
@@ -59,9 +71,52 @@ export function RecordsPanel({
   const [filter, setFilter] = useState<ExpenseFilter>(EMPTY_EXPENSE_FILTER);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  const [rowLimit, setRowLimit] = useState(RENDER_WINDOW_STEP);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
   const filterActive = isExpenseFilterActive(filter);
   const visibleExpenses = useMemo(() => filterExpenses(expenses, filter), [expenses, filter]);
   const summary = useMemo(() => summariseFilteredExpenses(visibleExpenses), [visibleExpenses]);
+
+  // Day grouping runs over the *whole* filtered list so each header's subtotal
+  // is the real day total; only the mounting is windowed.
+  const dayGroups = useMemo(() => groupExpensesByDay(visibleExpenses), [visibleExpenses]);
+  const windowedGroups = useMemo(() => takeDayGroupsWithin(dayGroups, rowLimit), [dayGroups, rowLimit]);
+  const hasUnmountedRows = windowedGroups.length < dayGroups.length;
+
+  // Changing the filter re-shuffles the whole list, so start the window over.
+  // Deliberately keyed on `filter` and not on `expenses`: auto-sync hands us a
+  // fresh expenses array every 20s, and resetting there would yank a reader
+  // back up the list mid-scroll.
+  useEffect(() => {
+    setRowLimit(RENDER_WINDOW_STEP);
+  }, [filter]);
+
+  // Re-observing on every bump is what keeps this chaining: an observer only
+  // reports *changes*, so a sentinel that stays in view after a bump would
+  // never fire again - but a fresh observation always delivers the current
+  // state. The effect stops re-arming once every row is mounted.
+  useEffect(() => {
+    if (!hasUnmountedRows) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    if (typeof IntersectionObserver === "undefined") {
+      // No lazy reveal available (jsdom, ancient browsers): mount the lot
+      // rather than stranding rows behind a sentinel that can never fire.
+      setRowLimit(Number.POSITIVE_INFINITY);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setRowLimit((limit) => limit + RENDER_WINDOW_STEP);
+        }
+      },
+      { rootMargin: RENDER_WINDOW_ROOT_MARGIN },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasUnmountedRows, rowLimit]);
 
   // Only offer categories that actually occur in the loaded window - a select
   // listing six categories for a group that only ever uses 餐飲 is noise.
@@ -192,7 +247,7 @@ export function RecordsPanel({
         <span className="dialog-list-title">{text.expense}</span>
         {visibleExpenses.length ? (
           <>
-            {groupExpensesByDay(visibleExpenses).map((group) => (
+            {windowedGroups.map((group) => (
               <div className="record-day-group" key={group.key}>
                 <div className="record-day-header">
                   <span>{formatDayLabel(group.expenses[0].createdAt)}</span>
@@ -233,7 +288,12 @@ export function RecordsPanel({
                 ))}
               </div>
             ))}
-            {canLoadMoreExpenses ? (
+            {hasUnmountedRows ? (
+              <div className="records-render-sentinel" ref={sentinelRef} aria-hidden="true" />
+            ) : canLoadMoreExpenses ? (
+              // Only offer the server's next page once everything already
+              // loaded is on screen - otherwise 載入更多 would fetch more rows
+              // while local ones are still waiting behind the window.
               <button
                 className="text-action records-load-more"
                 type="button"

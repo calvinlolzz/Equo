@@ -449,6 +449,23 @@
   text-align: left;
 }
 
+/* Long records lists: skip layout/paint for rows scrolled out of view. The
+   mount window in RecordsPanel bounds how many rows exist at all; this bounds
+   what the ones that do exist cost per frame — which matters here because the
+   animated WebGL field behind the sheet keeps the compositor busy anyway.
+   contain-intrinsic-size matches the row min-height so the scrollbar doesn't
+   jump as rows resolve. Scoped to record rows only — the member list is short
+   enough that this would be pure risk with no win. */
+.record-dialog-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 66px;
+}
+
+/* Zero-height marker that triggers mounting the next slice of rows. */
+.records-render-sentinel {
+  height: 1px;
+}
+
 .archived-dialog-list {
   gap: 10px;
 }
