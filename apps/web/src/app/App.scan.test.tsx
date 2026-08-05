@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
 import { grantScanConsent } from "./scanConsent";
@@ -11,6 +11,19 @@ const app = UI_TEXT.app;
 // path; this stands in for the decoder. Hoisted, because the lazy import inside
 // ScanSheet resolves long after the test body has started running.
 vi.mock("jsqr", () => ({ default: () => ({ data: "https://equo-mu.vercel.app/?invite=onog0sd6" }) }));
+
+/**
+ * Every surface in this file is behind a lazy import (App.tsx code-splits the
+ * sheets, and the jsQR chunk they pull in is the largest in the build), so the
+ * findBy* calls below are waiting on a dynamic import, not on a render.
+ * testing-library's 1s default holds when this file runs alone but not when the
+ * full suite has every worker busy — which surfaced as sheets that "cannot be
+ * found" here and pass on a re-run. Nothing is broken in those runs, the chunk
+ * simply has not landed yet, so the honest fix is to wait longer. Kept under vitest's 5s
+ * per-test budget, so an await that genuinely never resolves still reports
+ * what it was looking for instead of blowing the test timeout.
+ */
+configure({ asyncUtilTimeout: 4_000 });
 
 /**
  * The two camera entry points and the invite QR, driven through the real <App />.

@@ -314,8 +314,16 @@ describe("pausing the backdrop while an overlay is open", () => {
 
     await pressBack();
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull());
-    expect(hasFlag()).toBe(false);
+    // Both conditions inside the waitFor: React commits the unmount before it
+    // flushes passive effects, so there is a window where the sheet is already
+    // gone from the DOM and the effect that clears the attribute has not run
+    // yet. Asserting the flag after the waitFor lands in that window under
+    // load, which is a race in the test, not in the app - the attribute does
+    // clear, just a tick later than the removal.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull();
+      expect(hasFlag()).toBe(false);
+    });
   });
 
   test("stays set while a second overlay is peeled off the first", async () => {

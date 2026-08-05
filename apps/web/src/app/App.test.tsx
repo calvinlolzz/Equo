@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ExpenseSummary, GroupSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
+
+/**
+ * Half the surfaces here (the profile dialog, the panels, the composer) are
+ * lazy chunks, so a findBy* on their contents is waiting on a dynamic import.
+ * testing-library's 1s default is fine for this file alone and not when the
+ * whole suite is running — "unable to find 登出" on a signed-in user was that,
+ * not a broken sign-out. Kept under vitest's 5s per-test budget — see the
+ * fuller note in App.scan.test.tsx.
+ */
+configure({ asyncUtilTimeout: 4_000 });
 
 beforeEach(() => {
   stubBrowser();
