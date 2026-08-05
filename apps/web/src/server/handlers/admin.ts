@@ -11,12 +11,19 @@ import {
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
+  AdminDeleteUserResult,
   AdminErrorGroupListRecord,
   AdminErrorGroupStatus,
   AdminErrorListRecord,
   AdminExpenseListRecord,
+  AdminExpenseMetaPatch,
+  AdminExpenseWriteResult,
   AdminFeedbackListRecord,
   AdminFeedbackStatus,
+  AdminMergeConflictGroup,
+  AdminMergeUsersResult,
+  AdminTransferOwnerResult,
+  AdminUserExportRecord,
   AdminGroupDetailRecord,
   AdminGroupFilter,
   AdminGroupListRecord,
@@ -503,11 +510,18 @@ export async function handleAdminListGroupExpenses(
 export const AUDIT_ACTIONS: readonly string[] = [
   "user.disable",
   "user.enable",
+  "user.merge",
+  "user.export",
+  "user.delete",
   "group.archive",
   "group.unarchive",
   "group.delete",
   "group.restore",
+  "group.transfer_owner",
   "group.view",
+  "expense.update",
+  "expense.delete",
+  "expense.restore",
   "error.status",
 ];
 
@@ -754,6 +768,310 @@ export async function handleAdminSetGroupDeleted(
 
   if (!result) {
     return adminNotFound("Group not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+/**
+ * The support actions - the writes that used to mean opening a SQL client.
+ *
+ * Two rank lines run through them. Correcting or removing an expense and moving
+ * a group's ownership sit at admin, alongside the other reversible writes.
+ * Merging and deleting an account sit at owner: a merge retires one of the two
+ * identities and a deletion is the only action in the console with nothing
+ * behind it to restore from.
+ */
+
+/** A date the RPC's `date` parameter will accept, rather than one Postgres has to guess at. */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function adminBadRequest(message: string): HandlerResult<never> {
+  return {
+    ok: false,
+    status: 400,
+    body: { error: { code: "INVALID_ADMIN", message, request_id: "req_admin" } },
+  };
+}
+
+export async function handleAdminSetExpenseDeleted(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  expenseId: string,
+  deleted: boolean,
+): Promise<HandlerResult<AdminExpenseWriteResult>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  if (!isUuid(groupId) || !isUuid(expenseId)) {
+    return adminNotFound("Expense not found.");
+  }
+
+  const result = await repository.setExpenseDeleted(
+    { id: context.user.id, email: context.user.email },
+    groupId,
+    expenseId,
+    deleted,
+  );
+
+  if (!result) {
+    return adminNotFound("Expense not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+/**
+ * Screen the patch before it reaches the RPC.
+ *
+ * An empty patch is rejected rather than allowed through as a no-op: it would
+ * still bump the row's version and write an audit entry saying an admin changed
+ * an expense, which is a false statement about what happened.
+ */
+export function normalizeExpenseMetaPatch(
+  body: { title?: unknown; category?: unknown; expense_date?: unknown; note?: unknown } = {},
+): { ok: true; patch: AdminExpenseMetaPatch } | { ok: false; message: string } {
+  const patch: AdminExpenseMetaPatch = {};
+
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || body.title.trim() === "") {
+      return { ok: false, message: "title must be a non-empty string." };
+    }
+    patch.title = body.title.trim();
+  }
+
+  if (body.category !== undefined) {
+    if (typeof body.category !== "string" || body.category.trim() === "") {
+      return { ok: false, message: "category must be a non-empty string." };
+    }
+    patch.category = body.category.trim();
+  }
+
+  if (body.expense_date !== undefined) {
+    if (typeof body.expense_date !== "string" || !ISO_DATE_RE.test(body.expense_date)) {
+      return { ok: false, message: "expense_date must be a YYYY-MM-DD string." };
+    }
+    patch.expense_date = body.expense_date;
+  }
+
+  // "" is meaningful here - it is how a note is cleared - so only a non-string
+  // is a bad value.
+  if (body.note !== undefined) {
+    if (typeof body.note !== "string") {
+      return { ok: false, message: "note must be a string." };
+    }
+    patch.note = body.note;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, message: "Nothing to change." };
+  }
+
+  return { ok: true, patch };
+}
+
+export async function handleAdminUpdateExpenseMeta(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  expenseId: string,
+  body: { title?: unknown; category?: unknown; expense_date?: unknown; note?: unknown } = {},
+): Promise<HandlerResult<AdminExpenseWriteResult>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  if (!isUuid(groupId) || !isUuid(expenseId)) {
+    return adminNotFound("Expense not found.");
+  }
+
+  const normalized = normalizeExpenseMetaPatch(body);
+
+  if (!normalized.ok) {
+    return adminBadRequest(normalized.message);
+  }
+
+  const result = await repository.updateExpenseMeta(
+    { id: context.user.id, email: context.user.email },
+    groupId,
+    expenseId,
+    normalized.patch,
+  );
+
+  if (!result) {
+    return adminNotFound("Expense not found.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminTransferGroupOwner(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  memberId: string | undefined,
+): Promise<HandlerResult<Extract<AdminTransferOwnerResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  if (!isUuid(groupId)) {
+    return adminNotFound("Group not found.");
+  }
+
+  if (!memberId || !isUuid(memberId)) {
+    return adminNotFound("Member not found.");
+  }
+
+  const result = await repository.transferGroupOwner(
+    { id: context.user.id, email: context.user.email },
+    groupId,
+    memberId,
+  );
+
+  if (!result.ok) {
+    if (result.error === "GROUP_NOT_FOUND") {
+      return adminNotFound("Group not found.");
+    }
+    if (result.error === "MEMBER_NOT_FOUND") {
+      return adminNotFound("Member not found in this group.");
+    }
+    // MEMBER_NOT_CLAIMED - a well-formed request that the data refuses, which
+    // is what 409 is for. The console explains it as "this member has no
+    // account yet".
+    return adminConflict("This member has never been claimed by a login and cannot own the group.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminMergeUsers(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  sourceUserId: string,
+  targetUserId: string | undefined,
+): Promise<HandlerResult<Extract<AdminMergeUsersResult, { ok: true }> | { error: string; groups: AdminMergeConflictGroup[] }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.owner)) {
+    return adminForbidden("Merging accounts requires an owner role.");
+  }
+
+  if (!isUuid(sourceUserId)) {
+    return adminNotFound("User not found.");
+  }
+
+  if (!targetUserId || !isUuid(targetUserId)) {
+    return adminBadRequest("target_user_id must be a user id.");
+  }
+
+  // The account being retired ends this call disabled. Doing that to yourself
+  // locks you out mid-operation, so it is refused here rather than discovered.
+  if (sourceUserId === context.user.id) {
+    return adminConflict("You cannot merge your own account away.");
+  }
+
+  const result = await repository.mergeUsers(
+    { id: context.user.id, email: context.user.email },
+    sourceUserId,
+    targetUserId,
+  );
+
+  if (!result.ok) {
+    if (result.error === "USER_NOT_FOUND") {
+      return adminNotFound("User not found.");
+    }
+    if (result.error === "SAME_USER") {
+      return adminBadRequest("Source and target must be different accounts.");
+    }
+    if (result.error === "SOURCE_IS_ADMIN") {
+      return adminConflict("Remove the console role from this account before merging it.");
+    }
+    // GROUP_OVERLAP - the conflicting groups travel with the error so the
+    // console can name them instead of saying "merge failed".
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: {
+          code: "ADMIN_CONFLICT",
+          message: "Both accounts are members of the same group; merge them by hand or remove one membership first.",
+          request_id: "req_admin",
+          details: { groups: result.groups ?? [] },
+        },
+      },
+    };
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminExportUser(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  userId: string,
+): Promise<HandlerResult<AdminUserExportRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  if (!isUuid(userId)) {
+    return adminNotFound("User not found.");
+  }
+
+  const document = await repository.exportUser({ id: context.user.id, email: context.user.email }, userId);
+
+  if (!document) {
+    return adminNotFound("User not found.");
+  }
+
+  return { ok: true, status: 200, body: document };
+}
+
+export async function handleAdminDeleteUser(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  userId: string,
+): Promise<HandlerResult<Extract<AdminDeleteUserResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.owner)) {
+    return adminForbidden("Deleting an account requires an owner role.");
+  }
+
+  if (!isUuid(userId)) {
+    return adminNotFound("User not found.");
+  }
+
+  // Self-deletion goes through the account page, which knows to clear the
+  // session afterwards. Doing it here would delete the identity behind the
+  // request that is still running.
+  if (userId === context.user.id) {
+    return adminConflict("Delete your own account from the account page, not the console.");
+  }
+
+  const result = await repository.deleteUser({ id: context.user.id, email: context.user.email }, userId);
+
+  if (!result) {
+    return adminNotFound("User not found.");
+  }
+
+  if (!result.ok) {
+    return adminConflict(
+      result.reason === "last_admin_owner"
+        ? "This is the last console owner; hand ownership over before deleting the account."
+        : `Account deletion refused: ${result.reason}`,
+    );
   }
 
   return { ok: true, status: 200, body: result };

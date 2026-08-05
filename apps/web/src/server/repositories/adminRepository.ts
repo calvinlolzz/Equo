@@ -320,6 +320,76 @@ export type AdminRemoveResult =
   | { ok: true; user_id: string }
   | { ok: false; error: "NOT_AN_ADMIN" | "LAST_OWNER" };
 
+/** What the expense writes return: the row as it now stands, not the whole detail. */
+export type AdminExpenseWriteResult = {
+  id: string;
+  title: string;
+  category: string;
+  expense_date: string;
+  note: string | null;
+  deleted_at: string | null;
+  version: number;
+};
+
+/**
+ * The descriptive fields an admin may correct. Money is absent on purpose -
+ * amounts, payers and shares only make sense changed together, and the RPC
+ * refuses to pretend otherwise.
+ *
+ * undefined means "leave alone" for every field. note additionally accepts ""
+ * to clear it, which is why the RPC takes null and "" as different values.
+ */
+export type AdminExpenseMetaPatch = {
+  title?: string;
+  category?: string;
+  expense_date?: string;
+  note?: string;
+};
+
+export type AdminTransferOwnerResult =
+  | {
+      ok: true;
+      group_id: string;
+      owner_member_id: string;
+      owner_user_id: string;
+      owner_display_name: string | null;
+    }
+  | { ok: false; error: "GROUP_NOT_FOUND" | "MEMBER_NOT_FOUND" | "MEMBER_NOT_CLAIMED" };
+
+/** The groups both accounts are in, which is what makes a merge impossible. */
+export type AdminMergeConflictGroup = {
+  group_id: string;
+  name: string;
+};
+
+export type AdminMergeUsersResult =
+  | {
+      ok: true;
+      source_user_id: string;
+      source_email: string | null;
+      target_user_id: string;
+      target_email: string | null;
+      memberships_moved: number;
+      groups_reowned: number;
+    }
+  | {
+      ok: false;
+      error: "SAME_USER" | "USER_NOT_FOUND" | "SOURCE_IS_ADMIN" | "GROUP_OVERLAP";
+      groups?: AdminMergeConflictGroup[];
+    };
+
+/**
+ * The subject-access document, passed through as-is. Deliberately not typed
+ * field by field: it is a file handed to a person, and pinning its shape here
+ * would mean editing three layers to add a section to it.
+ */
+export type AdminUserExportRecord = Record<string, unknown>;
+
+export type AdminDeleteUserResult =
+  | { ok: true; groups_reassigned: number; groups_deleted: number; memberships_anonymized: number }
+  /** delete_my_account's own refusal, currently only 'last_admin_owner'. */
+  | { ok: false; reason: string };
+
 export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
@@ -396,4 +466,30 @@ export type AdminRepository = {
     fingerprint: string,
     status: AdminErrorGroupStatus,
   ): Promise<{ fingerprint: string; status: string } | null>;
+  /**
+   * Soft-delete or restore one expense. Scoped by group as well as id so a
+   * mistyped expense id cannot reach into another group's ledger. Returns null
+   * when the pair names no row.
+   */
+  setExpenseDeleted(
+    actor: AdminActor,
+    groupId: string,
+    expenseId: string,
+    deleted: boolean,
+  ): Promise<AdminExpenseWriteResult | null>;
+  /** Correct an expense's descriptive fields. Returns null when the pair names no row. */
+  updateExpenseMeta(
+    actor: AdminActor,
+    groupId: string,
+    expenseId: string,
+    patch: AdminExpenseMetaPatch,
+  ): Promise<AdminExpenseWriteResult | null>;
+  /** Hand a group's ownership to one of its members (by group_members.id). */
+  transferGroupOwner(actor: AdminActor, groupId: string, memberId: string): Promise<AdminTransferOwnerResult>;
+  /** Move source's memberships onto target and disable source. */
+  mergeUsers(actor: AdminActor, sourceUserId: string, targetUserId: string): Promise<AdminMergeUsersResult>;
+  /** The subject-access document for one user. Returns null when the user does not exist. */
+  exportUser(actor: AdminActor, userId: string): Promise<AdminUserExportRecord | null>;
+  /** Run account deletion on someone's behalf. Returns null when the user does not exist. */
+  deleteUser(actor: AdminActor, userId: string): Promise<AdminDeleteUserResult | null>;
 };

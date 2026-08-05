@@ -1,4 +1,5 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
+import type { ApiError } from "../../contracts/errors.js";
 import type { UpdateMyAvatarRequest, UploadGroupImageRequest } from "../../contracts/schemas.js";
 import {
   imageExtensionFromDataUrl,
@@ -19,6 +20,15 @@ type RouteOptions = {
   verifier: GoogleTokenVerifier;
   idToken: string;
 };
+
+/**
+ * Declared rather than inferred so `ok` stays a literal type in each branch.
+ * Inferred, it widens to boolean, and `if (result.ok)` then narrows nothing -
+ * callers and tests end up looking at the union of both bodies.
+ */
+type RouteResult<T> =
+  | { ok: true; status: number; body: T }
+  | { ok: false; status: number; body: ApiError };
 
 const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg",
@@ -97,7 +107,10 @@ export async function uploadGroupImageRoute(
  * users.avatar_url (mirrored to profiles.avatar_url) so it becomes the new
  * default avatar everywhere the user appears.
  */
-export async function updateMyAvatarRoute(options: RouteOptions, request: UpdateMyAvatarRequest) {
+export async function updateMyAvatarRoute(
+  options: RouteOptions,
+  request: UpdateMyAvatarRequest,
+): Promise<RouteResult<{ avatar_url: string }>> {
   const validation = validateUpdateMyAvatarRequest(request);
 
   if (!validation.ok) {

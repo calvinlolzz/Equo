@@ -33,7 +33,13 @@ import {
 } from "../routes/groupRoutes.js";
 import { createFeedbackRoute, reportErrorRoute } from "../routes/supportRoutes.js";
 import {
+  adminDeleteUserRoute,
+  adminExportUserRoute,
   adminGroupDetailRoute,
+  adminMergeUsersRoute,
+  adminSetExpenseDeletedRoute,
+  adminTransferGroupOwnerRoute,
+  adminUpdateExpenseMetaRoute,
   adminListAdminsRoute,
   adminRemoveAdminRoute,
   adminSetAdminRoleRoute,
@@ -915,6 +921,72 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "POST /api/v1/admin/groups/:groupId/(delete|restore)",
       async handle(request, match) {
         const result = await adminSetGroupDeletedRoute(routeOptions(options, request), match[1], match[2] === "delete");
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)\/expenses\/([^/]+)\/(delete|restore)$/,
+      label: "POST /api/v1/admin/groups/:groupId/expenses/:expenseId/(delete|restore)",
+      async handle(request, match) {
+        const result = await adminSetExpenseDeletedRoute(
+          routeOptions(options, request),
+          match[1],
+          match[2],
+          match[3] === "delete",
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PATCH",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)\/expenses\/([^/]+)$/,
+      label: "PATCH /api/v1/admin/groups/:groupId/expenses/:expenseId",
+      async handle(request, match) {
+        const result = await adminUpdateExpenseMetaRoute(
+          routeOptions(options, request),
+          match[1],
+          match[2],
+          body<{ title?: unknown; category?: unknown; expense_date?: unknown; note?: unknown }>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/groups\/([^/]+)\/transfer-owner$/,
+      label: "POST /api/v1/admin/groups/:groupId/transfer-owner",
+      async handle(request, match) {
+        const payload = body<{ member_id?: string }>(request);
+        const result = await adminTransferGroupOwnerRoute(routeOptions(options, request), match[1], payload?.member_id);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/users\/([^/]+)\/merge$/,
+      label: "POST /api/v1/admin/users/:userId/merge",
+      async handle(request, match) {
+        const payload = body<{ target_user_id?: string }>(request);
+        const result = await adminMergeUsersRoute(routeOptions(options, request), match[1], payload?.target_user_id);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/users\/([^/]+)\/export$/,
+      label: "GET /api/v1/admin/users/:userId/export",
+      async handle(request, match) {
+        const result = await adminExportUserRoute(routeOptions(options, request), match[1]);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/admin\/users\/([^/]+)$/,
+      label: "DELETE /api/v1/admin/users/:userId",
+      async handle(request, match) {
+        const result = await adminDeleteUserRoute(routeOptions(options, request), match[1]);
         return jsonResponse(result.status, result.body);
       },
     },

@@ -594,3 +594,201 @@ describe("the settings tab", () => {
     expect(await screen.findByText(/app_settings migration/)).toBeTruthy();
   });
 });
+
+/**
+ * The support actions. These are the console's first writes against the ledger
+ * itself, so what is worth pinning down is not that a button renders but that
+ * the request it sends is the narrow one: only changed fields, and only for
+ * roles that are allowed to send it at all.
+ */
+const groupMembers = [
+  {
+    id: "member_alice",
+    user_id: "user_alice",
+    display_name: "Alice",
+    email: "alice@example.com",
+    avatar_url: null,
+    role: "owner",
+    status: "active",
+    joined_at: "2026-07-01T00:00:00.000Z",
+    expense_count: 3,
+    balance_minor: 4000,
+  },
+  {
+    id: "member_bob",
+    user_id: "user_bob",
+    display_name: "Bob",
+    email: "bob@example.com",
+    avatar_url: null,
+    role: "member",
+    status: "active",
+    joined_at: "2026-07-02T00:00:00.000Z",
+    expense_count: 1,
+    balance_minor: -4000,
+  },
+  {
+    id: "member_ghost",
+    user_id: null,
+    display_name: "小明",
+    email: null,
+    avatar_url: null,
+    role: "member",
+    status: "active",
+    joined_at: "2026-07-03T00:00:00.000Z",
+    expense_count: 0,
+    balance_minor: 0,
+  },
+];
+
+const groupExpense = {
+  id: "expense_1",
+  title: "拉麵",
+  kind: "expense",
+  category: "food",
+  amount_minor: 4000,
+  currency: "TWD",
+  expense_date: "2026-07-20",
+  note: null,
+  image_url: null,
+  receipt_image_url: null,
+  created_at: "2026-07-20T02:00:00.000Z",
+  deleted_at: null,
+  version: 1,
+  created_by_name: "Alice",
+  transfer_to_name: null,
+  payers: [{ member_id: "member_alice", display_name: "Alice", amount_minor: 4000, currency: "TWD" }],
+  shares: [
+    { member_id: "member_alice", display_name: "Alice", share_type: "equal", share_value: null, amount_minor: 2000 },
+    { member_id: "member_bob", display_name: "Bob", share_type: "equal", share_value: null, amount_minor: 2000 },
+  ],
+};
+
+const groupDetailRoutes: AdminRoutes = {
+  ...baseRoutes,
+  "GET /admin/groups/group_1": {
+    group: {
+      id: "group_1",
+      name: "東京旅行",
+      currency: "TWD",
+      created_at: "2026-07-01T00:00:00.000Z",
+      archived_at: null,
+      deleted_at: null,
+      member_count: 3,
+      expense_count: 1,
+      deleted_expense_count: 0,
+      spend_total_minor: 4000,
+      last_expense_at: "2026-07-20T02:00:00.000Z",
+      owner_display_name: "Alice",
+      cover_image_url: null,
+    },
+    members: groupMembers,
+    invites: [],
+  },
+  "GET /admin/groups/group_1/expenses": { total: 1, expenses: [groupExpense] },
+  "POST /admin/groups/group_1/transfer-owner": {
+    ok: true,
+    group_id: "group_1",
+    owner_member_id: "member_bob",
+    owner_user_id: "user_bob",
+    owner_display_name: "Bob",
+  },
+  "PATCH /admin/groups/group_1/expenses/expense_1": {
+    id: "expense_1",
+    title: "拉麵",
+    category: "transport",
+    expense_date: "2026-07-20",
+    note: null,
+    deleted_at: null,
+    version: 2,
+  },
+  "POST /admin/groups/group_1/expenses/expense_1/delete": {
+    id: "expense_1",
+    title: "拉麵",
+    category: "food",
+    expense_date: "2026-07-20",
+    note: null,
+    deleted_at: "2026-08-05T00:00:00.000Z",
+    version: 2,
+  },
+};
+
+describe("support actions", () => {
+  test("owner transfer offers only claimed members who are not already the owner", async () => {
+    fakeAdminApi(groupDetailRoutes);
+    renderAdmin("?tab=groups&group=group_1");
+
+    const select = (await screen.findByLabelText("轉移擁有者")) as HTMLSelectElement;
+    const options = within(select).getAllByRole("option").map((option) => option.textContent);
+
+    // Alice is the current owner and 小明 has never been claimed by a login.
+    expect(options).toEqual(["選擇新的擁有者…", "Bob"]);
+  });
+
+  test("transferring posts the member id and re-reads the group", async () => {
+    const urls = fakeAdminApi(groupDetailRoutes);
+    vi.stubGlobal("confirm", () => true);
+    renderAdmin("?tab=groups&group=group_1");
+
+    const select = await screen.findByLabelText("轉移擁有者");
+    fireEvent.change(select, { target: { value: "member_bob" } });
+    fireEvent.click(screen.getByRole("button", { name: "轉移" }));
+
+    await waitFor(() =>
+      expect(urls.filter((url) => url === "POST /admin/groups/group_1/transfer-owner")).toHaveLength(1),
+    );
+    // A second detail read, so the roster on screen reflects the new owner.
+    await waitFor(() =>
+      expect(urls.filter((url) => url === "GET /admin/groups/group_1")).toHaveLength(2),
+    );
+  });
+
+  test("editing an expense sends only the field that changed", async () => {
+    let sent: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
+        if (method === "PATCH") sent = JSON.parse(String(init?.body));
+        const body = groupDetailRoutes[`${method} ${path}`];
+        if (body === undefined) throw new Error(`No fake route for "${method} ${path}"`);
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+
+    renderAdmin("?tab=groups&group=group_1");
+
+    fireEvent.click(await screen.findByText("拉麵"));
+    fireEvent.click(await screen.findByRole("button", { name: "修改內容" }));
+    fireEvent.change(screen.getByLabelText("分類"), { target: { value: "transport" } });
+    fireEvent.click(screen.getByRole("button", { name: "儲存" }));
+
+    // Title, date and note were untouched, so they stay out of the patch - the
+    // audit log's diff is only honest if the request is.
+    await waitFor(() => expect(sent).toEqual({ category: "transport" }));
+  });
+
+  test("the money fields are not editable from the console", async () => {
+    fakeAdminApi(groupDetailRoutes);
+    renderAdmin("?tab=groups&group=group_1");
+
+    fireEvent.click(await screen.findByText("拉麵"));
+    fireEvent.click(await screen.findByRole("button", { name: "修改內容" }));
+
+    expect(screen.queryByLabelText("金額")).toBeNull();
+    expect(screen.getByText(/金額、付款人與分攤無法在後台修改/)).toBeTruthy();
+  });
+
+  test("a support-role account gets no write controls at all", async () => {
+    fakeAdminApi({ ...groupDetailRoutes, "GET /admin/me": { ...me, role: "support" } });
+    renderAdmin("?tab=groups&group=group_1");
+
+    await screen.findByText("拉麵");
+    expect(screen.queryByLabelText("轉移擁有者")).toBeNull();
+
+    fireEvent.click(screen.getByText("拉麵"));
+    expect(await screen.findByRole("dialog", { name: "帳目明細" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "修改內容" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "刪除這筆" })).toBeNull();
+  });
+});

@@ -2,8 +2,13 @@ import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
+  AdminDeleteUserResult,
+  AdminExpenseWriteResult,
+  AdminMergeUsersResult,
   AdminRemoveResult,
   AdminSetRoleResult,
+  AdminTransferOwnerResult,
+  AdminUserExportRecord,
   AdminErrorGroupListRecord,
   AdminErrorListRecord,
   AdminExpenseListRecord,
@@ -208,5 +213,70 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       );
       return result ?? null;
     },
+
+    async setExpenseDeleted(actor, groupId, expenseId, deleted) {
+      const result = await client.rpc<AdminExpenseWriteResult | null>("admin_console_set_expense_deleted", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+        p_expense_id: expenseId,
+        p_deleted: deleted,
+      });
+      return result ?? null;
+    },
+
+    async updateExpenseMeta(actor, groupId, expenseId, patch) {
+      // Every field is nullable in the RPC and null means "leave alone", so an
+      // absent key has to arrive as an explicit null rather than be dropped -
+      // PostgREST would otherwise report a missing argument.
+      const result = await client.rpc<AdminExpenseWriteResult | null>("admin_console_update_expense_meta", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+        p_expense_id: expenseId,
+        p_title: patch.title ?? null,
+        p_category: patch.category ?? null,
+        p_expense_date: patch.expense_date ?? null,
+        p_note: patch.note ?? null,
+      });
+      return result ?? null;
+    },
+
+    transferGroupOwner(actor, groupId, memberId) {
+      return client.rpc<AdminTransferOwnerResult>("admin_console_transfer_group_owner", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_group_id: groupId,
+        p_member_id: memberId,
+      });
+    },
+
+    mergeUsers(actor, sourceUserId, targetUserId) {
+      return client.rpc<AdminMergeUsersResult>("admin_console_merge_users", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_source_user_id: sourceUserId,
+        p_target_user_id: targetUserId,
+      });
+    },
+
+    async exportUser(actor, userId) {
+      const document = await client.rpc<AdminUserExportRecord | null>("admin_console_export_user", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_user_id: userId,
+      });
+      return document ?? null;
+    },
+
+    async deleteUser(actor, userId) {
+      const result = await client.rpc<AdminDeleteUserResult | null>("admin_console_delete_user", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_user_id: userId,
+      });
+      return result ?? null;
+    },
+
   };
 }

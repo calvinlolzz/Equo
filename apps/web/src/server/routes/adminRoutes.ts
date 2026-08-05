@@ -5,9 +5,15 @@ import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepo
 import { createSupabaseSettingsRepository } from "../repositories/supabaseSettingsRepository.js";
 import { availableReceiptScanModels, type ReceiptScanKeys } from "../runtime/receiptScanner.js";
 import {
+  handleAdminDeleteUser,
+  handleAdminExportUser,
   handleAdminGetReceiptScanSettings,
   handleAdminGroupDetail,
   handleAdminHealth,
+  handleAdminMergeUsers,
+  handleAdminSetExpenseDeleted,
+  handleAdminTransferGroupOwner,
+  handleAdminUpdateExpenseMeta,
   handleAdminSetReceiptScanSettings,
   handleAdminTrends,
   handleAdminListAdmins,
@@ -340,4 +346,104 @@ export async function adminSetGroupDeletedRoute(options: RouteOptions, groupId: 
   }
 
   return handleAdminSetGroupDeleted(createSupabaseAdminRepository(options.client), auth.context, groupId, deleted);
+}
+
+export async function adminSetExpenseDeletedRoute(
+  options: RouteOptions,
+  groupId: string,
+  expenseId: string,
+  deleted: boolean,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetExpenseDeleted(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    groupId,
+    expenseId,
+    deleted,
+  );
+}
+
+export async function adminUpdateExpenseMetaRoute(
+  options: RouteOptions,
+  groupId: string,
+  expenseId: string,
+  body: { title?: unknown; category?: unknown; expense_date?: unknown; note?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminUpdateExpenseMeta(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    groupId,
+    expenseId,
+    body,
+  );
+}
+
+export async function adminTransferGroupOwnerRoute(
+  options: RouteOptions,
+  groupId: string,
+  memberId: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminTransferGroupOwner(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    groupId,
+    memberId,
+  );
+}
+
+export async function adminMergeUsersRoute(
+  options: RouteOptions,
+  sourceUserId: string,
+  targetUserId: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminMergeUsers(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    sourceUserId,
+    targetUserId,
+  );
+}
+
+export async function adminExportUserRoute(options: RouteOptions, userId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminExportUser(createSupabaseAdminRepository(options.client), auth.context, userId);
+}
+
+export async function adminDeleteUserRoute(options: RouteOptions, userId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminDeleteUser(createSupabaseAdminRepository(options.client), auth.context, userId);
 }
