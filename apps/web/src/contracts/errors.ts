@@ -66,5 +66,12 @@ export type ApiError = {
     code: ErrorCode;
     message: string;
     request_id: string;
+    /**
+     * Machine-readable specifics for the few refusals a message cannot carry -
+     * currently the groups that make an account merge impossible. Optional and
+     * never required to render an error: a client that ignores it still shows
+     * `message`, which always says the same thing in prose.
+     */
+    details?: Record<string, unknown>;
   };
 };

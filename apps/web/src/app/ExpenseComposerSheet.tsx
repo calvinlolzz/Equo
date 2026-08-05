@@ -25,6 +25,7 @@ import {
 import { MemberAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
+import { categoryLabel as lookupCategoryLabel, categoryOptions } from "./catalog";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -630,7 +631,7 @@ export function ExpenseComposerSheet({
         shareAmountsMinor: { [composerTransferToId]: composerTotalAmountMinor },
       };
     } else {
-      const categoryLabel = UI_TEXT.categories[composerCategory as keyof typeof UI_TEXT.categories] ?? UI_TEXT.categories.general;
+      const categoryLabel = lookupCategoryLabel(composerCategory);
       draft = {
         title: composerTitle.trim() || categoryLabel,
         amountMinor: composerTotalAmountMinor,
@@ -978,11 +979,17 @@ export function ExpenseComposerSheet({
         <label>
           <span>{text.category}</span>
           <select value={composerCategory} onChange={(event) => setComposerCategory(event.target.value)} aria-label={text.category}>
-            {Object.entries(UI_TEXT.categories).map(([key, label]) => (
-              <option value={key} key={key}>
-                {label}
+            {categoryOptions().map((option) => (
+              <option value={option.key} key={option.key}>
+                {option.label}
               </option>
             ))}
+            {/* A category that has since been disabled in the console stays
+                selectable while editing an expense already filed under it,
+                rather than being silently rewritten on the next save. */}
+            {!categoryOptions().some((option) => option.key === composerCategory) ? (
+              <option value={composerCategory}>{lookupCategoryLabel(composerCategory)}</option>
+            ) : null}
           </select>
         </label>
       ) : null}

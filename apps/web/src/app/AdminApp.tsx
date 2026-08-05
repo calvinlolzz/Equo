@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Download, LayoutDashboard, Megaphone, MessageSquareText, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
   type AdminAccountRow,
   type AdminAuditLogPage,
+  type AdminCatalogCategoryRow,
+  type AdminCatalogCurrencyRow,
+  type AdminCatalogPayload,
   type AdminErrorGroupPage,
   type AdminErrorGroupRow,
   type AdminErrorPage,
+  type AdminExpenseMetaPatch,
   type AdminExpensePage,
   type AdminExpenseRow,
   type AdminFeedbackPage,
@@ -16,12 +20,14 @@ import {
   type AdminGroupListPage,
   type AdminHealthSummary,
   type AdminMeSummary,
+  type AdminNotificationAudienceOption,
   type AdminOverviewSummary,
   type AdminReceiptScanSettings,
   type AdminStorageSummary,
   type AdminTrendsSummary,
   type AdminUserDetail,
   type AdminUserListPage,
+  type AdminUserRow,
   type ApiClientError,
   type EquoApiClient,
 } from "./apiClient";
@@ -40,6 +46,7 @@ import {
   errorGroupStatusLabel,
   errorSourceLabel,
   expenseCategoryLabel,
+  expenseCategoryKeys,
   expenseImageUrl,
   expenseKindLabel,
   formatDate,
@@ -67,6 +74,7 @@ import {
   type AdminTab,
 } from "./adminRoute";
 import { AdminCommandPalette } from "./AdminCommandPalette";
+import { hydrateCatalog } from "./catalog";
 import { useAdminRoute } from "./useAdminRoute";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
@@ -126,10 +134,27 @@ type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
  * are controlled by the URL rather than by their own state, so a reload, a
  * Back press and a pasted link all land on the same screen.
  */
+/**
+ * The caller's console role, threaded into the panels that offer writes.
+ *
+ * The server is still the enforcement point - every handler re-checks the rank
+ * - but a button that only ever answers 403 is worse than no button, so the
+ * panels hide what this account cannot do.
+ */
+export function canWrite(role: string | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
+export function isConsoleOwner(role: string | undefined): boolean {
+  return role === "owner";
+}
+
 type PanelProps = {
   client: EquoApiClient;
   route: AdminRoute;
   onNavigate: (patch: Partial<AdminRoute>) => void;
+  /** app_admins.role for the signed-in console user. */
+  role?: string;
   /**
    * "Something I just did changed a backlog count." Re-reads the health
    * payload the sidebar badges and the overview inbox are drawn from, so
@@ -240,6 +265,7 @@ export function AdminApp() {
     // The two tabs with a queue behind them carry their backlog in the nav, so
     // nobody has to open them to find out there is nothing to do.
     { key: "feedback", icon: MessageSquareText, badge: health?.feedback.open },
+    { key: "notifications", icon: Megaphone },
     { key: "errors", icon: Bug, badge: health?.errors.open_groups },
     { key: "audit", icon: ScrollText },
     { key: "settings", icon: SlidersHorizontal },
@@ -298,10 +324,13 @@ export function AdminApp() {
         {tab === "overview" && (
           <OverviewPanel client={client} route={route} onNavigate={navigate} health={health} />
         )}
-        {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} />}
-        {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} role={me?.role} />}
+        {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} role={me?.role} />}
         {tab === "feedback" && (
           <FeedbackPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
+        )}
+        {tab === "notifications" && (
+          <NotificationsPanel client={client} canSend={canWrite(me?.role)} />
         )}
         {tab === "errors" && (
           <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
@@ -541,7 +570,7 @@ type ListState<T> = {
   error: string;
 };
 
-function UsersPanel({ client, route, onNavigate }: PanelProps) {
+function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
   // The typing buffer is the one piece of list state that stays local - the URL
   // carries what was actually searched for, not every keystroke on the way
   // there. It re-syncs whenever the route changes underneath (Back, or a
@@ -590,7 +619,7 @@ function UsersPanel({ client, route, onNavigate }: PanelProps) {
   }, [client, search, offset]);
 
   if (selectedUserId) {
-    return <UserDetailPanel client={client} route={route} onNavigate={onNavigate} />;
+    return <UserDetailPanel client={client} route={route} onNavigate={onNavigate} role={role} />;
   }
 
   const now = Date.now();
@@ -670,12 +699,13 @@ function UsersPanel({ client, route, onNavigate }: PanelProps) {
   );
 }
 
-function UserDetailPanel({ client, route, onNavigate }: PanelProps) {
+function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
   const userId = route.userId;
   const selectedGroupId = route.groupId;
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -714,11 +744,71 @@ function UserDetailPanel({ client, route, onNavigate }: PanelProps) {
     }
   }
 
+  /**
+   * The subject-access document, downloaded rather than rendered: it is an
+   * answer to be forwarded to the person who asked for it, and no screen in the
+   * console is a good place to read a year of somebody's ledger.
+   */
+  async function exportUser() {
+    if (!detail) return;
+    setActionBusy(true);
+    setError("");
+    try {
+      const document = await client.adminExportUser(detail.user.id);
+      const blob = new Blob([JSON.stringify(document, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = `equo-個資-${detail.user.email || detail.user.id}-${todayKey()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setNotice("個資檔已下載，這次匯出已記入稽核紀錄。");
+    } catch {
+      setError("匯出失敗，請稍後再試。");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  /**
+   * The only irreversible action in the console, so it asks for the account's
+   * email to be typed out. A confirm() dialog is muscle memory; typing the
+   * address is not.
+   */
+  async function deleteAccount() {
+    if (!detail) return;
+    const typed = window.prompt(
+      `刪除「${detail.user.email}」的帳號無法復原：個人資料會被清除，共用群組裡的帳目會保留成匿名成員。\n` +
+        `確定的話，請輸入這個帳號的 email：`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== detail.user.email.toLowerCase()) {
+      setError("輸入的 email 不符，已取消刪除。");
+      return;
+    }
+
+    setActionBusy(true);
+    setError("");
+    try {
+      const result = await client.adminDeleteUser(detail.user.id);
+      setNotice(
+        `帳號已刪除：${result.groups_reassigned} 個群組換手、${result.groups_deleted} 個私人群組刪除、` +
+          `${result.memberships_anonymized} 筆成員資料匿名化。`,
+      );
+      onNavigate({ userId: "" });
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "刪除失敗，請稍後再試。");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   if (selectedGroupId) {
     return (
       <GroupDetailPanel
         client={client}
         groupId={selectedGroupId}
+        role={role}
         backLabel="回使用者詳情"
         onBack={() => onNavigate({ groupId: "" })}
       />
@@ -755,15 +845,36 @@ function UserDetailPanel({ client, route, onNavigate }: PanelProps) {
                 ・{detail.user.group_count} 個群組・{detail.user.expense_count} 筆支出
               </p>
             </div>
-            <button
-              type="button"
-              className={detail.user.disabled_at ? "admin-action" : "admin-action admin-action--danger"}
-              disabled={actionBusy}
-              onClick={toggleDisabled}
-            >
-              {actionBusy ? "處理中…" : detail.user.disabled_at ? "恢復帳號" : "停用帳號"}
-            </button>
+            <div className="admin-user-card__actions">
+              <button
+                type="button"
+                className={detail.user.disabled_at ? "admin-action" : "admin-action admin-action--danger"}
+                disabled={actionBusy}
+                onClick={toggleDisabled}
+              >
+                {actionBusy ? "處理中…" : detail.user.disabled_at ? "恢復帳號" : "停用帳號"}
+              </button>
+              {canWrite(role) && (
+                <button type="button" className="admin-action" disabled={actionBusy} onClick={exportUser}>
+                  匯出個資 JSON
+                </button>
+              )}
+              {isConsoleOwner(role) && (
+                <button
+                  type="button"
+                  className="admin-action admin-action--danger"
+                  disabled={actionBusy}
+                  onClick={deleteAccount}
+                >
+                  刪除帳號
+                </button>
+              )}
+            </div>
           </article>
+
+          {notice && <p className="admin-notice">{notice}</p>}
+
+          {isConsoleOwner(role) && <MergeAccountSection client={client} user={detail.user} onMerged={setNotice} />}
 
           <h3 className="admin-subheading">所屬群組</h3>
           <div className="admin-table-wrap">
@@ -808,6 +919,135 @@ function UserDetailPanel({ client, route, onNavigate }: PanelProps) {
 }
 
 /**
+ * "One person, two accounts" - fold this account's memberships into another.
+ *
+ * The target is chosen by searching the user list rather than by pasting an id:
+ * the person doing this knows the other account by its email, and a mistyped
+ * uuid here would retire the wrong account.
+ */
+function MergeAccountSection({
+  client,
+  user,
+  onMerged,
+}: {
+  client: EquoApiClient;
+  user: AdminUserDetail["user"];
+  onMerged: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [candidates, setCandidates] = useState<AdminUserRow[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [conflicts, setConflicts] = useState<Array<{ group_id: string; name: string }>>([]);
+
+  async function runSearch(event: FormEvent) {
+    event.preventDefault();
+    if (!search.trim()) return;
+    setSearching(true);
+    setError("");
+    try {
+      const page = await client.adminListUsers({ search: search.trim(), limit: 10 });
+      setCandidates(page.users.filter((candidate) => candidate.id !== user.id));
+    } catch {
+      setError("搜尋失敗，請稍後再試。");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function merge(target: AdminUserRow) {
+    const confirmed = window.confirm(
+      `確定把「${user.email}」的所有群組成員身分轉到「${target.email}」嗎？\n` +
+        `轉移後「${user.email}」會被停用，帳目本身不會移動（帳目掛在成員身分上）。`,
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError("");
+    setConflicts([]);
+    try {
+      const result = await client.adminMergeUsers(user.id, target.id);
+      onMerged(
+        `已把 ${result.memberships_moved} 筆成員身分轉到 ${target.email}` +
+          `${result.groups_reowned > 0 ? `，並轉移 ${result.groups_reowned} 個群組的擁有者` : ""}。原帳號已停用。`,
+      );
+      setOpen(false);
+      setCandidates([]);
+      setSearch("");
+    } catch (caught) {
+      const failure = caught as ApiClientError;
+      setError(failure.message || "合併失敗，請稍後再試。");
+      // The refusal that has something to show: both accounts share a group,
+      // and naming them is the difference between "merge failed" and a next
+      // step somebody can take.
+      const groups = failure.details?.groups;
+      setConflicts(Array.isArray(groups) ? (groups as Array<{ group_id: string; name: string }>) : []);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="admin-merge">
+        <button type="button" className="admin-action" onClick={() => setOpen(true)}>
+          合併到另一個帳號…
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <section className="admin-merge admin-merge--open" aria-label="合併帳號">
+      <h3 className="admin-subheading">合併帳號</h3>
+      <p className="admin-modal__hint">
+        找到這個人的另一個帳號，把「{user.email}」的群組成員身分整併過去。帳目掛在成員身分上，所以不會有金額變動。
+      </p>
+
+      <form className="admin-inline-form" onSubmit={runSearch}>
+        <input
+          className="admin-input"
+          placeholder="用 email 或名稱搜尋要保留的帳號"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <button type="submit" className="admin-action" disabled={searching || !search.trim()}>
+          {searching ? "搜尋中…" : "搜尋"}
+        </button>
+        <button type="button" className="admin-action" onClick={() => setOpen(false)}>
+          取消
+        </button>
+      </form>
+
+      {error && <p className="admin-error">{error}</p>}
+      {conflicts.length > 0 && (
+        <p className="admin-error">
+          兩個帳號都在這些群組裡：{conflicts.map((group) => group.name).join("、")}。
+          請先在其中一個群組移除其中一邊的成員身分，再合併。
+        </p>
+      )}
+
+      {candidates.length > 0 && (
+        <ul className="admin-merge__results">
+          {candidates.map((candidate) => (
+            <li key={candidate.id}>
+              <span>
+                <strong>{candidate.display_name || "—"}</strong> <span className="admin-muted">{candidate.email}</span>
+              </span>
+              <button type="button" className="admin-action" disabled={busy} onClick={() => merge(candidate)}>
+                {busy ? "合併中…" : "合併到這個帳號"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
  * Group drill-down: roster on top, the group's actual expenses below. Reached
  * from both the groups tab and a user's group list, so it takes an onBack
  * label rather than assuming which list it came from.
@@ -815,16 +1055,22 @@ function UserDetailPanel({ client, route, onNavigate }: PanelProps) {
 function GroupDetailPanel({
   client,
   groupId,
+  role,
   backLabel,
   onBack,
 }: {
   client: EquoApiClient;
   groupId: string;
+  role?: string;
   backLabel: string;
   onBack: () => void;
 }) {
   const [detail, setDetail] = useState<AdminGroupDetail | null>(null);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [transferTo, setTransferTo] = useState("");
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -841,7 +1087,41 @@ function GroupDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [client, groupId]);
+  }, [client, groupId, reloadKey]);
+
+  /**
+   * Only a member with an account behind it can own the group - the RPC
+   * refuses the rest, so they are never offered. Removed members stay eligible:
+   * "the owner left" is exactly the case this is for, and re-owning a group to
+   * someone who walked away is a decision for the person doing it.
+   */
+  const ownerCandidates = (detail?.members ?? []).filter(
+    (member) => member.user_id !== null && member.role !== "owner",
+  );
+
+  async function transferOwner() {
+    if (!detail || !transferTo) return;
+    const member = detail.members.find((candidate) => candidate.id === transferTo);
+    const confirmed = window.confirm(
+      `確定把「${detail.group.name}」的擁有者換成「${member?.display_name || member?.email || "這位成員"}」嗎？` +
+        `原擁有者會降為一般成員。`,
+    );
+    if (!confirmed) return;
+
+    setTransferBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await client.adminTransferGroupOwner(detail.group.id, transferTo);
+      setNotice(`已把擁有者轉移給 ${result.owner_display_name || "該成員"}。`);
+      setTransferTo("");
+      setReloadKey((key) => key + 1);
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "轉移失敗，請稍後再試。");
+    } finally {
+      setTransferBusy(false);
+    }
+  }
 
   const now = Date.now();
 
@@ -882,7 +1162,43 @@ function GroupDetailPanel({
             </div>
           </article>
 
-          <h3 className="admin-subheading">成員</h3>
+          {notice && <p className="admin-notice">{notice}</p>}
+
+          <div className="admin-subheading-row">
+            <h3 className="admin-subheading">成員</h3>
+            {canWrite(role) && (
+              <div className="admin-inline-form">
+                <label className="admin-inline-form__label" htmlFor="admin-transfer-owner">
+                  轉移擁有者
+                </label>
+                <select
+                  id="admin-transfer-owner"
+                  className="admin-select"
+                  value={transferTo}
+                  onChange={(event) => setTransferTo(event.target.value)}
+                  disabled={transferBusy || ownerCandidates.length === 0}
+                >
+                  <option value="">
+                    {ownerCandidates.length === 0 ? "沒有可接手的成員" : "選擇新的擁有者…"}
+                  </option>
+                  {ownerCandidates.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.display_name || member.email || member.id.slice(0, 8)}
+                      {member.status === "removed" ? "（已退出）" : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="admin-action"
+                  disabled={transferBusy || !transferTo}
+                  onClick={transferOwner}
+                >
+                  {transferBusy ? "轉移中…" : "轉移"}
+                </button>
+              </div>
+            )}
+          </div>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -969,7 +1285,7 @@ function GroupDetailPanel({
             </table>
           </div>
 
-          <GroupExpensesSection client={client} group={detail.group} />
+          <GroupExpensesSection client={client} group={detail.group} role={role} />
         </>
       )}
     </section>
@@ -979,15 +1295,18 @@ function GroupDetailPanel({
 function GroupExpensesSection({
   client,
   group,
+  role,
 }: {
   client: EquoApiClient;
   group: AdminGroupDetail["group"];
+  role?: string;
 }) {
   const [offset, setOffset] = useState(0);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [state, setState] = useState<ListState<AdminExpensePage>>({ page: null, loading: true, error: "" });
   const [selected, setSelected] = useState<AdminExpenseRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   /** The group's whole ledger, honouring the 顯示已刪除 toggle. */
   async function exportExpenses() {
@@ -1023,7 +1342,7 @@ function GroupExpensesSection({
     return () => {
       cancelled = true;
     };
-  }, [client, group.id, offset, includeDeleted]);
+  }, [client, group.id, offset, includeDeleted, reloadKey]);
 
   const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.expenses.length) : null;
 
@@ -1126,9 +1445,16 @@ function GroupExpensesSection({
 
       {selected && (
         <ExpenseDetailDialog
+          client={client}
+          groupId={group.id}
           expense={selected}
           groupCurrency={group.currency}
+          canEdit={canWrite(role)}
           onClose={() => setSelected(null)}
+          onChanged={() => {
+            setSelected(null);
+            setReloadKey((key) => key + 1);
+          }}
         />
       )}
     </>
@@ -1136,14 +1462,31 @@ function GroupExpensesSection({
 }
 
 function ExpenseDetailDialog({
+  client,
+  groupId,
   expense,
   groupCurrency,
+  canEdit,
   onClose,
+  onChanged,
 }: {
+  client: EquoApiClient;
+  groupId: string;
   expense: AdminExpenseRow;
   groupCurrency: string;
+  canEdit: boolean;
   onClose: () => void;
+  /** A write landed; the caller re-reads the page rather than patching a row. */
+  onChanged: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(expense.title);
+  const [category, setCategory] = useState(expense.category);
+  const [expenseDate, setExpenseDate] = useState(expense.expense_date.slice(0, 10));
+  const [note, setNote] = useState(expense.note ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -1153,6 +1496,60 @@ function ExpenseDetailDialog({
   }, [onClose]);
 
   const image = expenseImageUrl(expense);
+  // Read at render rather than at module load: the catalog arrives from the
+  // server after first paint, and a list captured at import time would be the
+  // bundle's defaults forever.
+  const categoryKeys = expenseCategoryKeys();
+
+  /**
+   * Only what actually differs is sent. An unchanged field left out of the
+   * patch keeps the audit log's diff honest - it should say "the category
+   * changed", not list every field the form happened to contain.
+   */
+  async function saveEdits() {
+    const patch: AdminExpenseMetaPatch = {};
+    if (title.trim() !== expense.title) patch.title = title.trim();
+    if (category !== expense.category) patch.category = category;
+    if (expenseDate !== expense.expense_date.slice(0, 10)) patch.expense_date = expenseDate;
+    if (note !== (expense.note ?? "")) patch.note = note;
+
+    if (Object.keys(patch).length === 0) {
+      setEditing(false);
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try {
+      await client.adminUpdateExpenseMeta(groupId, expense.id, patch);
+      onChanged();
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "儲存失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleDeleted() {
+    const deleting = !expense.deleted_at;
+    const confirmed = window.confirm(
+      deleting
+        ? `確定要刪除「${expense.title}」嗎？這是軟刪除，之後可以在「顯示已刪除」裡復原，但所有成員的結餘會立刻改變。`
+        : `確定要復原「${expense.title}」嗎？這筆帳會重新計入所有成員的結餘。`,
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      await client.adminSetExpenseDeleted(groupId, expense.id, deleting);
+      onChanged();
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "操作失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="admin-modal" role="dialog" aria-modal="true" aria-label="帳目明細" onClick={onClose}>
@@ -1222,6 +1619,89 @@ function ExpenseDetailDialog({
           建立者 {expense.created_by_name ?? "—"}・記錄於 {formatDateTime(expense.created_at)}・版本 {expense.version}
           {expense.deleted_at && `・刪除於 ${formatDateTime(expense.deleted_at)}`}
         </p>
+
+        {error && <p className="admin-error">{error}</p>}
+
+        {canEdit && !editing && (
+          <div className="admin-modal__actions">
+            <button type="button" className="admin-action" disabled={busy} onClick={() => setEditing(true)}>
+              修改內容
+            </button>
+            <button
+              type="button"
+              className={expense.deleted_at ? "admin-action" : "admin-action admin-action--danger"}
+              disabled={busy}
+              onClick={toggleDeleted}
+            >
+              {busy ? "處理中…" : expense.deleted_at ? "復原這筆" : "刪除這筆"}
+            </button>
+          </div>
+        )}
+
+        {canEdit && editing && (
+          <form
+            className="admin-modal__edit"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveEdits();
+            }}
+          >
+            {/*
+              Only the descriptive fields. Amounts, payers and shares are a
+              linked set — the API refuses to change one without the others,
+              and a form that pretended otherwise would be the fastest way to
+              unbalance somebody's group.
+            */}
+            <p className="admin-modal__hint">金額、付款人與分攤無法在後台修改，請讓成員自己在 app 內編輯。</p>
+            <label className="admin-field">
+              <span>項目</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} required />
+            </label>
+            <label className="admin-field">
+              <span>分類</span>
+              <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                {categoryKeys.map((key) => (
+                  <option key={key} value={key}>
+                    {expenseCategoryLabel(key)}
+                  </option>
+                ))}
+                {/* A category from an older build stays selectable rather than
+                    being silently rewritten to 其他 on the next save. */}
+                {!categoryKeys.includes(expense.category) && (
+                  <option value={expense.category}>{expense.category}</option>
+                )}
+              </select>
+            </label>
+            <label className="admin-field">
+              <span>日期</span>
+              <input type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} required />
+            </label>
+            <label className="admin-field">
+              <span>備註</span>
+              <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={500} />
+            </label>
+            <div className="admin-modal__actions">
+              <button type="submit" className="admin-action admin-action--primary" disabled={busy}>
+                {busy ? "儲存中…" : "儲存"}
+              </button>
+              <button
+                type="button"
+                className="admin-action"
+                disabled={busy}
+                onClick={() => {
+                  setEditing(false);
+                  setError("");
+                  setTitle(expense.title);
+                  setCategory(expense.category);
+                  setExpenseDate(expense.expense_date.slice(0, 10));
+                  setNote(expense.note ?? "");
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        )}
       </article>
     </div>
   );
@@ -1240,7 +1720,7 @@ function groupStatusLabel(group: { archived_at: string | null; deleted_at: strin
   return "使用中";
 }
 
-function GroupsPanel({ client, route, onNavigate }: PanelProps) {
+function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
   const [searchInput, setSearchInput] = useState(route.search);
   const search = route.search;
   const filter: AdminGroupFilterOption = route.filter;
@@ -1316,6 +1796,7 @@ function GroupsPanel({ client, route, onNavigate }: PanelProps) {
       <GroupDetailPanel
         client={client}
         groupId={selectedGroupId}
+        role={role}
         backLabel="回群組列表"
         onBack={() => {
           onNavigate({ groupId: "" });
@@ -1490,6 +1971,9 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
   const [state, setState] = useState<ListState<AdminFeedbackPage>>({ page: null, loading: true, error: "" });
   const [busyId, setBusyId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  /** Which row has its reply box open, and what has been typed into it. */
+  const [replyingId, setReplyingId] = useState("");
+  const [replyText, setReplyText] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1515,6 +1999,26 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
       onCountsChanged?.();
     } catch {
       setState((current) => ({ ...current, error: "狀態更新失敗，請稍後再試。" }));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  /** The reply and the status change are one action on the server, so they are one here too. */
+  async function sendReply(feedbackId: string) {
+    if (!replyText.trim()) return;
+    setBusyId(feedbackId);
+    try {
+      await client.adminReplyFeedback(feedbackId, replyText.trim());
+      setReplyingId("");
+      setReplyText("");
+      setReloadKey((key) => key + 1);
+      onCountsChanged?.();
+    } catch (caught) {
+      setState((current) => ({
+        ...current,
+        error: (caught as ApiClientError).message || "回覆送出失敗，請稍後再試。",
+      }));
     } finally {
       setBusyId("");
     }
@@ -1567,6 +2071,20 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
                       </td>
                       <td>{FEEDBACK_STATUS_LABELS[item.status] ?? item.status}</td>
                       <td className="admin-table__actions">
+                        {/* Replying is the action that closes the loop, so it
+                            comes first. It also marks the row done - a reply
+                            that leaves the item in the queue just means the
+                            next person answers it again. */}
+                        {item.user_email && (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={() => setReplyingId(replyingId === item.id ? "" : item.id)}
+                          >
+                            {replyingId === item.id ? "收起" : "回覆"}
+                          </button>
+                        )}
                         {item.status !== "reviewing" && item.status !== "done" && (
                           <button type="button" className="admin-action" disabled={busy} onClick={() => updateStatus(item.id, "reviewing")}>
                             處理中
@@ -1586,6 +2104,41 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
                     </tr>
                   );
                 })}
+                {state.page.feedback
+                  .filter((item) => item.id === replyingId)
+                  .map((item) => (
+                    <tr key={`${item.id}-reply`}>
+                      <td colSpan={6}>
+                        <form
+                          className="admin-reply"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void sendReply(item.id);
+                          }}
+                        >
+                          <label className="admin-field">
+                            <span>回覆給 {item.user_email}（會出現在他的 app 通知中心）</span>
+                            <textarea
+                              value={replyText}
+                              rows={3}
+                              maxLength={1000}
+                              placeholder="謝謝回報，這個問題已經在最新版修好了…"
+                              onChange={(event) => setReplyText(event.target.value)}
+                            />
+                          </label>
+                          <div className="admin-modal__actions">
+                            <button
+                              type="submit"
+                              className="admin-action admin-action--primary"
+                              disabled={busyId === item.id || !replyText.trim()}
+                            >
+                              {busyId === item.id ? "送出中…" : "送出回覆並標記完成"}
+                            </button>
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
                 {state.page.feedback.length === 0 && (
                   <tr>
                     <td colSpan={6} className="admin-table__empty">
@@ -1606,6 +2159,154 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
           )}
         </>
       )}
+    </section>
+  );
+}
+
+const AUDIENCE_OPTIONS: Array<{ value: AdminNotificationAudienceOption; label: string; hint: string }> = [
+  { value: "active", label: "近 30 天活躍使用者", hint: "最近開過 app 的人。公告的預設對象。" },
+  { value: "all", label: "全部使用者", hint: "所有未停用的帳號，包含很久沒回來的。" },
+  { value: "group", label: "指定群組", hint: "這個群組裡狀態為使用中的成員。" },
+  { value: "user", label: "指定使用者", hint: "只有這一個帳號會收到。" },
+];
+
+/**
+ * Send an in-app message.
+ *
+ * The audience is chosen first and explained in words, because it is the only
+ * irreversible part of this form: the text can be re-sent, but the set of
+ * people who already got it cannot be narrowed afterwards. The confirm before
+ * sending says the audience and the count it is about to reach.
+ */
+function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSend: boolean }) {
+  const [audience, setAudience] = useState<AdminNotificationAudienceOption>("active");
+  const [target, setTarget] = useState("");
+  const [title, setTitle] = useState("");
+  const [bodyText, setBodyText] = useState("");
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const needsTarget = audience === "user" || audience === "group";
+  const selected = AUDIENCE_OPTIONS.find((option) => option.value === audience);
+
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    if (!canSend || busy) return;
+
+    const confirmed = window.confirm(
+      `這則通知會送給「${selected?.label}」，送出後無法收回。確定要送出嗎？`,
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await client.adminSendNotification({
+        audience,
+        target: needsTarget ? target.trim() : undefined,
+        title: title.trim(),
+        body: bodyText.trim(),
+        link: link.trim() || undefined,
+      });
+      setNotice(`已送出，${result.recipients} 位使用者會在通知中心看到。`);
+      setTitle("");
+      setBodyText("");
+      setLink("");
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "送出失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-label="發送通知">
+      <h2 className="admin-subheading">發送站內通知</h2>
+      <p className="admin-modal__hint">
+        通知會出現在使用者 app 右上角的鈴鐺裡，不需要他們開啟推播權限。送出後會記入稽核紀錄。
+      </p>
+
+      {!canSend && <p className="admin-error">你的角色沒有發送通知的權限（需要管理員或擁有者）。</p>}
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+
+      <form className="admin-notify-form" onSubmit={send}>
+        <label className="admin-field">
+          <span>發送對象</span>
+          <select
+            value={audience}
+            onChange={(event) => setAudience(event.target.value as AdminNotificationAudienceOption)}
+            disabled={!canSend}
+          >
+            {AUDIENCE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="admin-modal__hint">{selected?.hint}</p>
+
+        {needsTarget && (
+          <label className="admin-field">
+            <span>{audience === "user" ? "使用者 ID" : "群組 ID"}</span>
+            <input
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="從使用者／群組列表點進去，網址列的 id"
+              disabled={!canSend}
+            />
+          </label>
+        )}
+
+        <label className="admin-field">
+          <span>標題</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            maxLength={80}
+            placeholder="例：這週日凌晨會短暫維護"
+            disabled={!canSend}
+            required
+          />
+        </label>
+
+        <label className="admin-field">
+          <span>內容</span>
+          <textarea
+            value={bodyText}
+            onChange={(event) => setBodyText(event.target.value)}
+            rows={5}
+            maxLength={1000}
+            placeholder="寫給使用者看的完整說明。"
+            disabled={!canSend}
+            required
+          />
+        </label>
+
+        <label className="admin-field">
+          <span>連結（選填）</span>
+          <input
+            value={link}
+            onChange={(event) => setLink(event.target.value)}
+            placeholder="/group/xxxx，只能是站內路徑"
+            disabled={!canSend}
+          />
+        </label>
+
+        <div className="admin-modal__actions">
+          <button
+            type="submit"
+            className="admin-action admin-action--primary"
+            disabled={!canSend || busy || !title.trim() || !bodyText.trim() || (needsTarget && !target.trim())}
+          >
+            {busy ? "送出中…" : "送出通知"}
+          </button>
+        </div>
+      </form>
     </section>
   );
 }
@@ -2387,6 +3088,484 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
           </div>
         </form>
       )}
+
+      <CatalogSection client={client} canEdit={canEdit} />
     </section>
+  );
+}
+
+/**
+ * Master data: the category list, the currency list, and manual exchange rates.
+ *
+ * All three used to be constants in the app bundle, so adding 醫療 or turning on
+ * SGD was a deploy. Editing is inline rather than behind a modal because the
+ * rows are three fields each and the common change is a single label.
+ *
+ * A category is never deleted, only switched off: expenses.category holds the
+ * key as text, so a removed row would leave live expenses pointing at a label
+ * nothing can render. The row shows how many expenses it carries so that
+ * decision is made with the number in view.
+ */
+function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
+  const [catalog, setCatalog] = useState<AdminCatalogPayload | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyKey, setBusyKey] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** The row being edited, as a draft; null means nothing is open. */
+  const [categoryDraft, setCategoryDraft] = useState<AdminCatalogCategoryRow | null>(null);
+  const [currencyDraft, setCurrencyDraft] = useState<AdminCatalogCurrencyRow | null>(null);
+  const [ratePair, setRatePair] = useState({ base: "TWD", quote: "JPY", rate: "", note: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .adminGetCatalog()
+      .then((result) => {
+        if (cancelled) return;
+        setCatalog(result);
+        // The console renders expense categories from the same module the app
+        // does, so hydrating here keeps the expense-edit picker in step with
+        // what this panel just showed.
+        hydrateCatalog({
+          categories: result.categories.filter((row) => row.enabled),
+          currencies: result.currencies.filter((row) => row.enabled),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError("主資料載入失敗，可能是資料庫尚未套用 app_catalog migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, reloadKey]);
+
+  async function run(key: string, action: () => Promise<string>) {
+    setBusyKey(key);
+    setError("");
+    setNotice("");
+    try {
+      setNotice(await action());
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "儲存失敗，請稍後再試。");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  const blankCategory: AdminCatalogCategoryRow = {
+    key: "",
+    label: "",
+    color: "#93a0b5",
+    sort_order: 100,
+    enabled: true,
+  };
+
+  const blankCurrency: AdminCatalogCurrencyRow = { code: "", label: "", sort_order: 100, enabled: true };
+
+  return (
+    <>
+      <h3 className="admin-subheading admin-subheading--spaced">支出分類</h3>
+      <p className="admin-modal__hint">
+        分類只能停用不能刪除：已經記過帳的分類鍵值還留在支出上，刪掉會讓那些帳目顯示不出名稱。
+      </p>
+
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>鍵值</th>
+              <th>名稱</th>
+              <th>顏色</th>
+              <th className="admin-table__num">排序</th>
+              <th className="admin-table__num">使用中帳目</th>
+              <th>狀態</th>
+              <th>最後變更</th>
+              {canEdit && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(catalog?.categories ?? []).map((row) => (
+              <tr key={row.key} className={row.enabled ? undefined : "admin-table__row--deleted"}>
+                <td><code>{row.key}</code></td>
+                <td>{row.label}</td>
+                <td>
+                  <span className="admin-swatch" style={{ background: row.color }} aria-hidden="true" />
+                  <code>{row.color}</code>
+                </td>
+                <td className="admin-table__num">{row.sort_order}</td>
+                <td className="admin-table__num">{(row.expense_count ?? 0).toLocaleString("zh-TW")}</td>
+                <td>{row.enabled ? "使用中" : <span className="admin-badge">已停用</span>}</td>
+                <td>
+                  {row.updated_at ? formatDate(row.updated_at) : "—"}
+                  {row.updated_by_email ? <span className="admin-muted">（{row.updated_by_email}）</span> : null}
+                </td>
+                {canEdit && (
+                  <td className="admin-table__actions">
+                    <button type="button" className="admin-action" onClick={() => setCategoryDraft(row)}>
+                      編輯
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-action"
+                      disabled={busyKey === row.key}
+                      onClick={() =>
+                        run(row.key, async () => {
+                          await client.adminSaveCategory(row.key, {
+                            label: row.label,
+                            color: row.color,
+                            sort_order: row.sort_order,
+                            enabled: !row.enabled,
+                          });
+                          return row.enabled ? `已停用「${row.label}」，現有帳目不受影響。` : `已重新啟用「${row.label}」。`;
+                        })
+                      }
+                    >
+                      {row.enabled ? "停用" : "啟用"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {catalog?.categories.length === 0 && (
+              <tr>
+                <td colSpan={canEdit ? 8 : 7} className="admin-table__empty">
+                  沒有分類
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && !categoryDraft && (
+        <button type="button" className="admin-action" onClick={() => setCategoryDraft(blankCategory)}>
+          新增分類
+        </button>
+      )}
+
+      {canEdit && categoryDraft && (
+        <form
+          className="admin-notify-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const draft = categoryDraft;
+            void run(draft.key || "new-category", async () => {
+              await client.adminSaveCategory(draft.key, {
+                label: draft.label,
+                color: draft.color,
+                sort_order: draft.sort_order,
+                enabled: draft.enabled,
+              });
+              setCategoryDraft(null);
+              return `已儲存分類「${draft.label}」。`;
+            });
+          }}
+        >
+          <label className="admin-field">
+            <span>鍵值（存進帳目裡的值，建立後不能改）</span>
+            <input
+              value={categoryDraft.key}
+              onChange={(event) => setCategoryDraft({ ...categoryDraft, key: event.target.value })}
+              placeholder="medical"
+              pattern="[a-z][a-z0-9_]*"
+              maxLength={31}
+              required
+              disabled={Boolean(catalog?.categories.some((row) => row.key === categoryDraft.key))}
+            />
+          </label>
+          <label className="admin-field">
+            <span>顯示名稱</span>
+            <input
+              value={categoryDraft.label}
+              onChange={(event) => setCategoryDraft({ ...categoryDraft, label: event.target.value })}
+              maxLength={20}
+              required
+            />
+          </label>
+          <label className="admin-field">
+            <span>顏色（分析圓餅圖用）</span>
+            <input
+              type="color"
+              value={categoryDraft.color}
+              onChange={(event) => setCategoryDraft({ ...categoryDraft, color: event.target.value })}
+            />
+          </label>
+          <label className="admin-field">
+            <span>排序（小的排前面）</span>
+            <input
+              type="number"
+              value={categoryDraft.sort_order}
+              min={0}
+              max={9999}
+              onChange={(event) =>
+                setCategoryDraft({ ...categoryDraft, sort_order: Number(event.target.value) || 0 })
+              }
+            />
+          </label>
+          <div className="admin-modal__actions">
+            <button type="submit" className="admin-action admin-action--primary" disabled={busyKey !== ""}>
+              儲存
+            </button>
+            <button type="button" className="admin-action" onClick={() => setCategoryDraft(null)}>
+              取消
+            </button>
+          </div>
+        </form>
+      )}
+
+      <h3 className="admin-subheading admin-subheading--spaced">幣別</h3>
+      <p className="admin-modal__hint">還有帳目用這個幣別記錄時無法停用——那些金額仍然是這個幣別，app 會找不到名稱可以顯示。</p>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>代碼</th>
+              <th>名稱</th>
+              <th className="admin-table__num">排序</th>
+              <th className="admin-table__num">使用中帳目</th>
+              <th>狀態</th>
+              {canEdit && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(catalog?.currencies ?? []).map((row) => (
+              <tr key={row.code} className={row.enabled ? undefined : "admin-table__row--deleted"}>
+                <td><code>{row.code}</code></td>
+                <td>{row.label}</td>
+                <td className="admin-table__num">{row.sort_order}</td>
+                <td className="admin-table__num">{(row.expense_count ?? 0).toLocaleString("zh-TW")}</td>
+                <td>{row.enabled ? "使用中" : <span className="admin-badge">已停用</span>}</td>
+                {canEdit && (
+                  <td className="admin-table__actions">
+                    <button type="button" className="admin-action" onClick={() => setCurrencyDraft(row)}>
+                      編輯
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-action"
+                      disabled={busyKey === row.code}
+                      onClick={() =>
+                        run(row.code, async () => {
+                          await client.adminSaveCurrency(row.code, {
+                            label: row.label,
+                            sort_order: row.sort_order,
+                            enabled: !row.enabled,
+                          });
+                          return row.enabled ? `已停用 ${row.code}。` : `已啟用 ${row.code}。`;
+                        })
+                      }
+                    >
+                      {row.enabled ? "停用" : "啟用"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && !currencyDraft && (
+        <button type="button" className="admin-action" onClick={() => setCurrencyDraft(blankCurrency)}>
+          新增幣別
+        </button>
+      )}
+
+      {canEdit && currencyDraft && (
+        <form
+          className="admin-notify-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const draft = currencyDraft;
+            void run(draft.code || "new-currency", async () => {
+              await client.adminSaveCurrency(draft.code, {
+                label: draft.label,
+                sort_order: draft.sort_order,
+                enabled: draft.enabled,
+              });
+              setCurrencyDraft(null);
+              return `已儲存幣別 ${draft.code.toUpperCase()}。`;
+            });
+          }}
+        >
+          <label className="admin-field">
+            <span>ISO 代碼</span>
+            <input
+              value={currencyDraft.code}
+              onChange={(event) => setCurrencyDraft({ ...currencyDraft, code: event.target.value.toUpperCase() })}
+              placeholder="SGD"
+              pattern="[A-Za-z]{3}"
+              maxLength={3}
+              required
+              disabled={Boolean(catalog?.currencies.some((row) => row.code === currencyDraft.code))}
+            />
+          </label>
+          <label className="admin-field">
+            <span>顯示名稱</span>
+            <input
+              value={currencyDraft.label}
+              onChange={(event) => setCurrencyDraft({ ...currencyDraft, label: event.target.value })}
+              maxLength={20}
+              required
+            />
+          </label>
+          <label className="admin-field">
+            <span>排序</span>
+            <input
+              type="number"
+              value={currencyDraft.sort_order}
+              min={0}
+              max={9999}
+              onChange={(event) =>
+                setCurrencyDraft({ ...currencyDraft, sort_order: Number(event.target.value) || 0 })
+              }
+            />
+          </label>
+          <div className="admin-modal__actions">
+            <button type="submit" className="admin-action admin-action--primary" disabled={busyKey !== ""}>
+              儲存
+            </button>
+            <button type="button" className="admin-action" onClick={() => setCurrencyDraft(null)}>
+              取消
+            </button>
+          </div>
+        </form>
+      )}
+
+      <h3 className="admin-subheading admin-subheading--spaced">匯率覆寫</h3>
+      <p className="admin-modal__hint">
+        設定後這組幣別會改用你填的數字，上游報價會被蓋掉，而且立刻生效（不等 6 小時快取）。留空並儲存即可清除，讓它回去跟隨上游。
+      </p>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>幣別對</th>
+              <th className="admin-table__num">匯率</th>
+              <th>說明</th>
+              <th>最後變更</th>
+              {canEdit && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(catalog?.rate_overrides ?? []).map((row) => (
+              <tr key={`${row.base}-${row.quote}`}>
+                <td>
+                  1 {row.base} → {row.quote}
+                </td>
+                <td className="admin-table__num">{row.rate}</td>
+                <td>{row.note ?? "—"}</td>
+                <td>
+                  {formatDate(row.updated_at)}
+                  {row.updated_by_email ? <span className="admin-muted">（{row.updated_by_email}）</span> : null}
+                </td>
+                {canEdit && (
+                  <td className="admin-table__actions">
+                    <button
+                      type="button"
+                      className="admin-action admin-action--danger"
+                      disabled={busyKey === `${row.base}-${row.quote}`}
+                      onClick={() =>
+                        run(`${row.base}-${row.quote}`, async () => {
+                          await client.adminSetRateOverride({ base: row.base, quote: row.quote, rate: null });
+                          return `已清除 ${row.base}→${row.quote} 的覆寫，恢復跟隨上游。`;
+                        })
+                      }
+                    >
+                      清除
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {catalog?.rate_overrides.length === 0 && (
+              <tr>
+                <td colSpan={canEdit ? 5 : 4} className="admin-table__empty">
+                  沒有覆寫，全部跟隨上游報價
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && (
+        <form
+          className="admin-notify-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(`${ratePair.base}-${ratePair.quote}`, async () => {
+              await client.adminSetRateOverride({
+                base: ratePair.base.toUpperCase(),
+                quote: ratePair.quote.toUpperCase(),
+                rate: ratePair.rate.trim() ? Number(ratePair.rate) : null,
+                note: ratePair.note.trim() || undefined,
+              });
+              const cleared = !ratePair.rate.trim();
+              setRatePair({ ...ratePair, rate: "", note: "" });
+              return cleared
+                ? `已清除 ${ratePair.base}→${ratePair.quote} 的覆寫。`
+                : `已設定 1 ${ratePair.base} = ${ratePair.rate} ${ratePair.quote}。`;
+            });
+          }}
+        >
+          <div className="admin-inline-form">
+            <label className="admin-field">
+              <span>基準幣別</span>
+              <input
+                value={ratePair.base}
+                onChange={(event) => setRatePair({ ...ratePair, base: event.target.value.toUpperCase() })}
+                pattern="[A-Za-z]{3}"
+                maxLength={3}
+                required
+              />
+            </label>
+            <label className="admin-field">
+              <span>報價幣別</span>
+              <input
+                value={ratePair.quote}
+                onChange={(event) => setRatePair({ ...ratePair, quote: event.target.value.toUpperCase() })}
+                pattern="[A-Za-z]{3}"
+                maxLength={3}
+                required
+              />
+            </label>
+          </div>
+          <label className="admin-field">
+            <span>1 {ratePair.base || "???"} 等於多少 {ratePair.quote || "???"}（留空＝清除覆寫）</span>
+            <input
+              type="number"
+              step="0.00000001"
+              min="0"
+              value={ratePair.rate}
+              onChange={(event) => setRatePair({ ...ratePair, rate: event.target.value })}
+              placeholder="4.7"
+            />
+          </label>
+          <label className="admin-field">
+            <span>說明（為什麼要手動設定）</span>
+            <input
+              value={ratePair.note}
+              onChange={(event) => setRatePair({ ...ratePair, note: event.target.value })}
+              maxLength={200}
+              placeholder="上游沒有這組報價"
+            />
+          </label>
+          <div className="admin-modal__actions">
+            <button type="submit" className="admin-action admin-action--primary" disabled={busyKey !== ""}>
+              儲存匯率
+            </button>
+          </div>
+        </form>
+      )}
+    </>
   );
 }

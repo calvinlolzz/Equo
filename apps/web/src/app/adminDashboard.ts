@@ -6,6 +6,7 @@ import type {
   AdminStorageSummary,
   AdminTrendPoint,
 } from "./apiClient";
+import { categoryLabel, categoryOptions } from "./catalog";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
@@ -331,11 +332,18 @@ export function describeLastSeen(iso: string, nowMs: number): string {
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   "user.disable": "停用帳號",
   "user.enable": "恢復帳號",
+  "user.merge": "合併帳號",
+  "user.export": "匯出個資",
+  "user.delete": "刪除帳號",
   "group.archive": "封存群組",
   "group.unarchive": "解除封存",
   "group.delete": "刪除群組",
   "group.restore": "復原群組",
+  "group.transfer_owner": "轉移群組擁有者",
   "group.view": "檢視群組帳目",
+  "expense.update": "修改支出內容",
+  "expense.delete": "刪除支出",
+  "expense.restore": "復原支出",
   "admin.grant": "新增管理員",
   "admin.role_change": "變更管理員角色",
   "admin.remove": "移除管理員",
@@ -421,9 +429,14 @@ export function expenseKindLabel(kind: string): string {
   return (UI_TEXT.composerModes as Record<string, string>)[kind] ?? kind;
 }
 
-/** Reuses the app's own category dictionary so the console reads the same. */
+/** Reads the same catalog the app does, so a category added in the console shows up here too. */
 export function expenseCategoryLabel(category: string): string {
-  return (UI_TEXT.categories as Record<string, string>)[category] ?? category;
+  return categoryLabel(category);
+}
+
+/** The category keys the console offers when correcting an expense. */
+export function expenseCategoryKeys(): string[] {
+  return categoryOptions().map((entry) => entry.key);
 }
 
 const SHARE_TYPE_LABELS: Record<string, string> = {

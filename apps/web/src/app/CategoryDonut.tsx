@@ -1,21 +1,8 @@
 import { formatAmount } from "./formatAmount";
-import { UI_TEXT } from "./uiText";
-
-/** Fixed categorical palette — colours stay consistent across light/dark so the
- *  donut and its legend read the same regardless of theme. */
-const CATEGORY_COLORS: Record<string, string> = {
-  food: "#F0885A",
-  transport: "#5B9BF0",
-  lodging: "#8E7CF0",
-  shopping: "#EC6FA6",
-  general: "#4FC59A",
-  other: "#93A0B5",
-};
-const FALLBACK_COLOR = "#93A0B5";
-
-function categoryLabel(category: string): string {
-  return (UI_TEXT.categories as Record<string, string>)[category] ?? category;
-}
+// The palette used to be a map in this file, which meant a category added in
+// the console had no colour until somebody remembered to come back here. It is
+// a column on the category row now.
+import { categoryColor, categoryLabel } from "./catalog";
 
 const R = 54;
 const STROKE = 18;
@@ -43,7 +30,7 @@ export function CategoryDonut({
     const segment = {
       ...entry,
       frac,
-      color: CATEGORY_COLORS[entry.category] ?? FALLBACK_COLOR,
+      color: categoryColor(entry.category),
       length: frac * CIRC,
       offset,
     };

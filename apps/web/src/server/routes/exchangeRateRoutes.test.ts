@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { createFakePostgrest } from "../db/fakePostgrest.js";
 import {
+  applyRateOverrides,
   EXCHANGE_RATE_CACHE_MS,
   EXCHANGE_RATE_STALE_MS,
   exchangeRatesRoute,
@@ -171,5 +172,86 @@ describe("exchangeRatesRoute", () => {
 
     expect(result.status).toBe(200);
     expect((result.body as { base: string }).base).toBe("TWD");
+  });
+});
+
+describe("applyRateOverrides", () => {
+  test("a manual rate wins over the upstream's", () => {
+    expect(applyRateOverrides("TWD", { TWD: 1, JPY: 4.7 }, { JPY: "4.9" })).toEqual({ TWD: 1, JPY: 4.9 });
+  });
+
+  test("an override may add a currency the upstream never quoted", () => {
+    // The whole point: SUPPORTED_RATE_CODES filters the feed, it does not cap
+    // what somebody can be told the rate is.
+    expect(applyRateOverrides("TWD", { TWD: 1 }, { SGD: 0.042 })).toEqual({ TWD: 1, SGD: 0.042 });
+  });
+
+  test("junk and self-referencing overrides are ignored rather than trusted", () => {
+    expect(
+      applyRateOverrides("TWD", { TWD: 1, JPY: 4.7 }, { TWD: 2, JPY: "abc", USD: 0, EUR: -1 }),
+    ).toEqual({ TWD: 1, JPY: 4.7 });
+  });
+});
+
+describe("overrides in the route", () => {
+  function optionsWithOverrides(overrides: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+    return options({
+      client: createFakePostgrest({
+        select: (table) => (table === "users" ? [{ id: "user_alice", deleted_at: null }] : []),
+        rpc: (fn) => (fn === "exchange_rate_overrides_for" ? overrides : null),
+      }),
+      ...extra,
+    });
+  }
+
+  test("a manual rate replaces the upstream's in the response", async () => {
+    const result = await exchangeRatesRoute(optionsWithOverrides({ JPY: "5.1" }), "TWD");
+
+    expect(result.status).toBe(200);
+    expect((result.body as { rates: Record<string, number> }).rates.JPY).toBe(5.1);
+  });
+
+  test("an override set after the response was cached takes effect immediately", async () => {
+    // Six hours of cache is fine for the feed; it is not fine for a number
+    // somebody just corrected by hand, which is why the merge is on the way out.
+    await exchangeRatesRoute(optionsWithOverrides({}), "TWD");
+    const second = await exchangeRatesRoute(optionsWithOverrides({ JPY: "5.5" }, { now: 1000 }), "TWD");
+
+    expect((second.body as { rates: Record<string, number> }).rates.JPY).toBe(5.5);
+  });
+
+  test("a failed override lookup degrades to the upstream rather than to no rates", async () => {
+    const result = await exchangeRatesRoute(
+      options({
+        client: createFakePostgrest({
+          select: (table) => (table === "users" ? [{ id: "user_alice", deleted_at: null }] : []),
+          rpc: (fn) => {
+            if (fn === "exchange_rate_overrides_for") throw new Error("relation does not exist");
+            return null;
+          },
+        }),
+      }),
+      "TWD",
+    );
+
+    expect(result.status).toBe(200);
+    expect((result.body as { rates: Record<string, number> }).rates.JPY).toBe(4.7);
+  });
+
+  test("with the upstream down and nothing cached, manual rates are still served", async () => {
+    const result = await exchangeRatesRoute(
+      optionsWithOverrides(
+        { SGD: "0.042" },
+        {
+          fetchRates: async () => {
+            throw new Error("upstream down");
+          },
+        },
+      ),
+      "TWD",
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ rates: { TWD: 1, SGD: 0.042 }, stale: true });
   });
 });

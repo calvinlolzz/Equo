@@ -150,7 +150,15 @@ export type ExchangeRatesResponse = {
 
 export type EquoApiClient = ReturnType<typeof createApiClient>;
 
-export type ApiClientError = Error & { code?: string };
+export type ApiClientError = Error & {
+  code?: string;
+  /**
+   * The error body's optional `details`, passed through untouched. Only a
+   * couple of refusals carry one (the groups that block an account merge); a
+   * caller that ignores it still has `message`.
+   */
+  details?: Record<string, unknown>;
+};
 
 /**
  * The request never reached the server, as opposed to reaching it and being
@@ -172,7 +180,7 @@ async function readJson<T>(response: Response): Promise<T> {
   // response.json() throws an opaque SyntaxError ("Unexpected token '<'") that
   // would otherwise surface raw in the UI. Parse defensively and tag a code the
   // localizer (describeCloudActionError) can turn into friendly copy.
-  let payload: { error?: { message?: string; code?: string } } | null = null;
+  let payload: { error?: { message?: string; code?: string; details?: Record<string, unknown> } } | null = null;
   let parseFailed = false;
   try {
     payload = await response.json();
@@ -183,6 +191,9 @@ async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error: ApiClientError = new Error(payload?.error?.message ?? "Request failed");
     error.code = payload?.error?.code ?? (response.status >= 500 ? "SERVER_ERROR" : undefined);
+    if (payload?.error?.details) {
+      error.details = payload.error.details;
+    }
     throw error;
   }
 
@@ -606,8 +617,211 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify({}),
       });
     },
+    /** Soft-delete or restore one expense (admin+). */
+    adminSetExpenseDeleted(groupId: string, expenseId: string, deleted: boolean) {
+      return request<AdminExpenseWriteResult>(
+        `/admin/groups/${groupId}/expenses/${expenseId}/${deleted ? "delete" : "restore"}`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+    },
+    /** Correct an expense's title/category/date/note (admin+). Money is not editable. */
+    adminUpdateExpenseMeta(groupId: string, expenseId: string, patch: AdminExpenseMetaPatch) {
+      return request<AdminExpenseWriteResult>(`/admin/groups/${groupId}/expenses/${expenseId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+    },
+    /** Hand a group to another member, by group_members.id (admin+). */
+    adminTransferGroupOwner(groupId: string, memberId: string) {
+      return request<AdminTransferOwnerResponse>(`/admin/groups/${groupId}/transfer-owner`, {
+        method: "POST",
+        body: JSON.stringify({ member_id: memberId }),
+      });
+    },
+    /** Fold `userId`'s memberships into `targetUserId` and retire it (owner only). */
+    adminMergeUsers(userId: string, targetUserId: string) {
+      return request<AdminMergeUsersResponse>(`/admin/users/${userId}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ target_user_id: targetUserId }),
+      });
+    },
+    /** The subject-access document for one user (admin+). */
+    adminExportUser(userId: string) {
+      return request<Record<string, unknown>>(`/admin/users/${userId}/export`, { method: "GET" });
+    },
+    /** Run account deletion on someone's behalf (owner only, irreversible). */
+    adminDeleteUser(userId: string) {
+      return request<AdminDeleteUserResponse>(`/admin/users/${userId}`, { method: "DELETE" });
+    },
+    /** The category and currency lists the app renders itself from. */
+    getCatalog() {
+      return request<{ categories: Array<{ key: string; label: string; color: string }>; currencies: Array<{ code: string; label: string }> }>(
+        "/catalog",
+        { method: "GET" },
+      );
+    },
+    /** Master data as the console sees it: disabled rows and rate overrides included (support+). */
+    adminGetCatalog() {
+      return request<AdminCatalogPayload>("/admin/catalog", { method: "GET" });
+    },
+    /** Create or update one category, keyed by its expenses.category value (admin+). */
+    adminSaveCategory(key: string, input: { label: string; color: string; sort_order: number; enabled: boolean }) {
+      return request<{ ok: true; category: AdminCatalogCategoryRow }>(
+        `/admin/catalog/categories/${encodeURIComponent(key)}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+    },
+    adminSaveCurrency(code: string, input: { label: string; sort_order: number; enabled: boolean }) {
+      return request<{ ok: true; currency: AdminCatalogCurrencyRow }>(
+        `/admin/catalog/currencies/${encodeURIComponent(code)}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+    },
+    /** Set one pair's manual rate; `rate: null` clears it and follows the upstream again. */
+    adminSetRateOverride(input: { base: string; quote: string; rate: number | null; note?: string }) {
+      return request<{ ok: true; cleared: boolean; base: string; quote: string; rate?: number }>(
+        "/admin/catalog/rates",
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+    },
+    /** The signed-in user's own inbox, plus the unread count for the bell. */
+    listNotifications() {
+      return request<NotificationsPage>("/notifications", { method: "GET" });
+    },
+    /** Mark rows read; an empty list means the whole inbox. */
+    markNotificationsRead(ids: string[] = []) {
+      return request<{ marked: number; unread: number }>("/notifications/read", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+    },
+    /** Send an in-app message to one user, one group, recent users, or everyone (admin+). */
+    adminSendNotification(input: AdminNotificationInput) {
+      return request<{ ok: true; recipients: number }>("/admin/notifications", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    /** Reply to a piece of feedback: the user gets an inbox item and the row closes. */
+    adminReplyFeedback(feedbackId: string, message: string) {
+      return request<{ ok: true; feedback_id: string; notification_id: string; status: string }>(
+        `/admin/feedback/${feedbackId}/reply`,
+        { method: "POST", body: JSON.stringify({ message }) },
+      );
+    },
   };
 }
+
+export type AdminCatalogCategoryRow = {
+  key: string;
+  label: string;
+  color: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at?: string;
+  updated_by_email?: string | null;
+  /** Live expenses filed under this key - what makes disabling it consequential. */
+  expense_count?: number;
+};
+
+export type AdminCatalogCurrencyRow = {
+  code: string;
+  label: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at?: string;
+  updated_by_email?: string | null;
+  expense_count?: number;
+};
+
+export type AdminRateOverrideRow = {
+  base: string;
+  quote: string;
+  /** numeric(18,8) arrives as a string. */
+  rate: string | number;
+  note: string | null;
+  updated_at: string;
+  updated_by_email: string | null;
+};
+
+export type AdminCatalogPayload = {
+  categories: AdminCatalogCategoryRow[];
+  currencies: AdminCatalogCurrencyRow[];
+  rate_overrides: AdminRateOverrideRow[];
+};
+
+export type NotificationRow = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  /** An in-app path, or null. */
+  link: string | null;
+  created_at: string;
+  read_at: string | null;
+};
+
+export type NotificationsPage = {
+  /** Unread across the whole inbox, not just the returned page. */
+  unread: number;
+  items: NotificationRow[];
+};
+
+export type AdminNotificationAudienceOption = "user" | "group" | "active" | "all";
+
+export type AdminNotificationInput = {
+  audience: AdminNotificationAudienceOption;
+  /** A user id for 'user', a group id for 'group'; omitted otherwise. */
+  target?: string;
+  title: string;
+  body: string;
+  /** An in-app path such as /group/<id>. */
+  link?: string;
+};
+
+export type AdminExpenseWriteResult = {
+  id: string;
+  title: string;
+  category: string;
+  expense_date: string;
+  note: string | null;
+  deleted_at: string | null;
+  version: number;
+};
+
+/** Only the descriptive fields; an absent key means "leave alone". */
+export type AdminExpenseMetaPatch = {
+  title?: string;
+  category?: string;
+  expense_date?: string;
+  /** "" clears the note. */
+  note?: string;
+};
+
+export type AdminTransferOwnerResponse = {
+  ok: true;
+  group_id: string;
+  owner_member_id: string;
+  owner_user_id: string;
+  owner_display_name: string | null;
+};
+
+export type AdminMergeUsersResponse = {
+  ok: true;
+  source_user_id: string;
+  source_email: string | null;
+  target_user_id: string;
+  target_email: string | null;
+  memberships_moved: number;
+  groups_reowned: number;
+};
+
+export type AdminDeleteUserResponse = {
+  ok: true;
+  groups_reassigned: number;
+  groups_deleted: number;
+  memberships_anonymized: number;
+};
 
 export type AdminAccountRow = {
   user_id: string;

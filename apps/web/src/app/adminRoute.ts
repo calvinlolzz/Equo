@@ -14,9 +14,28 @@ import type { AdminGroupFilterOption } from "./apiClient";
  * has to deal with pushState.
  */
 
-export type AdminTab = "overview" | "users" | "groups" | "feedback" | "errors" | "audit" | "settings" | "admins";
+export type AdminTab =
+  | "overview"
+  | "users"
+  | "groups"
+  | "feedback"
+  | "notifications"
+  | "errors"
+  | "audit"
+  | "settings"
+  | "admins";
 
-const TABS: readonly AdminTab[] = ["overview", "users", "groups", "feedback", "errors", "audit", "settings", "admins"];
+const TABS: readonly AdminTab[] = [
+  "overview",
+  "users",
+  "groups",
+  "feedback",
+  "notifications",
+  "errors",
+  "audit",
+  "settings",
+  "admins",
+];
 
 /** One source of truth for the tab names: the sidebar and the ⌘K palette read the same map. */
 export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
@@ -24,6 +43,7 @@ export const ADMIN_TAB_LABELS: Record<AdminTab, string> = {
   users: "使用者",
   groups: "群組",
   feedback: "回饋",
+  notifications: "通知",
   errors: "錯誤",
   audit: "稽核",
   settings: "設定",

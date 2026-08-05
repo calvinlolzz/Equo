@@ -12,6 +12,7 @@ import {
 } from "./expenseFilter";
 import { groupExpensesByDay, takeDayGroupsWithin } from "./expenseDayGroups";
 import { formatAmount } from "./formatAmount";
+import { categoryLabel } from "./catalog";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -206,7 +207,7 @@ export function RecordsPanel({
                 <option value="">{"所有分類"}</option>
                 {categories.map((category) => (
                   <option key={category} value={category}>
-                    {(UI_TEXT.categories as Record<string, string>)[category] ?? category}
+                    {categoryLabel(category)}
                   </option>
                 ))}
               </select>

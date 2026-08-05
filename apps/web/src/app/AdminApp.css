@@ -1537,3 +1537,184 @@ button.admin-inbox__item:hover {
     color: #e8cf9a;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Support actions: the console's write surfaces (owner transfer, expense
+   correction, account merge). Styled as ordinary form furniture rather than
+   as anything eye-catching - these sit next to destructive buttons, and a
+   loud affordance next to 刪除帳號 is the wrong instinct.
+   --------------------------------------------------------------------------- */
+
+.admin-inline-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-inline-form__label {
+  font-size: 13px;
+  color: #5f6672;
+}
+
+.admin-input {
+  min-width: 240px;
+  padding: 8px 12px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  color: inherit;
+}
+
+.admin-user-card__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.admin-merge {
+  margin: 16px 0;
+}
+
+.admin-merge--open {
+  padding: 16px;
+  border: 1px solid #d5d9de;
+  border-radius: 12px;
+  background: #fbfbfc;
+}
+
+.admin-merge__results {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-merge__results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid #e4e7ea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.admin-modal__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-modal__hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #5f6672;
+}
+
+.admin-modal__edit {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e4e7ea;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.admin-field > span {
+  color: #5f6672;
+}
+
+.admin-field input,
+.admin-field select,
+.admin-field textarea {
+  padding: 8px 12px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #ffffff;
+  color: inherit;
+}
+
+.admin-action--primary {
+  border-color: #2f6fed;
+  background: #2f6fed;
+  color: #ffffff;
+}
+
+.admin-action--primary:hover:not(:disabled) {
+  background: #2560d8;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-inline-form__label,
+  .admin-field > span,
+  .admin-modal__hint {
+    color: #a2a7b0;
+  }
+
+  .admin-input,
+  .admin-field input,
+  .admin-field select,
+  .admin-field textarea {
+    background: #1e2126;
+    border-color: #2c3037;
+    color: #e6e8eb;
+  }
+
+  .admin-merge--open {
+    border-color: #2c3037;
+    background: #1a1d21;
+  }
+
+  .admin-merge__results li {
+    border-color: #2c3037;
+    background: #1e2126;
+  }
+
+  .admin-modal__edit {
+    border-top-color: #2c3037;
+  }
+
+  .admin-action--primary {
+    border-color: #2f6fed;
+    background: #2f6fed;
+    color: #ffffff;
+  }
+}
+
+/* The compose form and the inline feedback reply. Both are a column of fields
+   inside a page that is otherwise tables, so they get a readable measure
+   rather than stretching to the panel's full width. */
+.admin-notify-form {
+  max-width: 560px;
+}
+
+.admin-reply {
+  padding: 12px 0;
+  max-width: 640px;
+}
+
+/* The category row's colour, next to its hex. A swatch rather than the hex
+   alone: nobody reads #F0885A as orange. */
+.admin-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 3px;
+  vertical-align: -1px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}

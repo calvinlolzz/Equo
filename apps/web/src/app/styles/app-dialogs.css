@@ -1213,3 +1213,111 @@
 :root[data-theme="light"] .records-filter__advanced input {
   background: rgb(var(--card-base) / 0.7);
 }
+
+/* ---------------------------------------------------------------------------
+   通知 inbox. Rows read as a list of short messages rather than as cards:
+   there are only ever a handful, and the thing that has to stand out is which
+   ones are new, not the container each sits in.
+   --------------------------------------------------------------------------- */
+
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.notification-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid rgb(var(--surf) / 0.1);
+}
+
+.notification-row:last-child {
+  border-bottom: none;
+}
+
+.notification-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgb(var(--surf) / 0.1);
+  color: rgb(var(--fg) / 0.62);
+}
+
+/* Unread is carried by the icon rather than by a dot in the margin: it is the
+   one element on the row that is already a solid shape. */
+.notification-row.unread .notification-icon {
+  background: rgb(var(--gold) / 0.9);
+  color: rgb(var(--ink));
+}
+
+.notification-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notification-kind {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(var(--surf) / 0.12);
+  color: rgb(var(--fg) / 0.6);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.notification-text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgb(var(--fg) / 0.78);
+  /* Announcements are written by a person in a textarea, so newlines in them
+     are meant. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notification-time {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: rgb(var(--fg) / 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.notification-link {
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgb(var(--accent));
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.notification-empty {
+  margin: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: rgb(var(--fg) / 0.55);
+}

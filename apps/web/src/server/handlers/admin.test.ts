@@ -26,9 +26,23 @@ import {
   handleAdminSetAdminRole,
   handleAdminRemoveAdmin,
   handleAdminSetErrorGroupStatus,
+  handleAdminDeleteUser,
+  handleAdminExportUser,
+  handleAdminMergeUsers,
+  handleAdminSetExpenseDeleted,
+  handleAdminTransferGroupOwner,
+  handleAdminUpdateExpenseMeta,
+  handleAdminReplyFeedback,
+  handleAdminSendNotification,
+  handleAdminGetCatalog,
+  handleAdminSaveCategory,
+  handleAdminSaveCurrency,
+  handleAdminSetRateOverride,
   normalizeAdminListQuery,
   normalizeErrorStatusFilter,
+  normalizeExpenseMetaPatch,
   normalizeGroupFilter,
+  normalizeNotificationRequest,
 } from "./admin.js";
 
 const context = {
@@ -81,6 +95,19 @@ const groupDetailSummary = {
   last_expense_at: "2026-07-10T00:00:00.000Z",
   owner_display_name: "Alice",
   cover_image_url: null,
+};
+
+const EXPENSE_ID = "33333333-3333-4333-8333-333333333333";
+const MEMBER_ID = "44444444-4444-4444-8444-444444444444";
+
+const expenseWrite = {
+  id: EXPENSE_ID,
+  title: "晚餐",
+  category: "food",
+  expense_date: "2026-08-01",
+  note: null as string | null,
+  deleted_at: null as string | null,
+  version: 2,
 };
 
 const adminAccount = {
@@ -178,6 +205,58 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     },
     async setErrorGroupStatus(_actor, fingerprint, status) {
       return { fingerprint, status };
+    },
+    async setExpenseDeleted(_actor, _groupId, expenseId, deleted) {
+      return { ...expenseWrite, id: expenseId, deleted_at: deleted ? "2026-08-05T00:00:00.000Z" : null };
+    },
+    async updateExpenseMeta(_actor, _groupId, expenseId, patch) {
+      return { ...expenseWrite, id: expenseId, ...patch };
+    },
+    async transferGroupOwner(_actor, groupId, memberId) {
+      return {
+        ok: true,
+        group_id: groupId,
+        owner_member_id: memberId,
+        owner_user_id: USER_ID,
+        owner_display_name: "Bob",
+      };
+    },
+    async mergeUsers(_actor, sourceUserId, targetUserId) {
+      return {
+        ok: true,
+        source_user_id: sourceUserId,
+        source_email: "old@example.com",
+        target_user_id: targetUserId,
+        target_email: "new@example.com",
+        memberships_moved: 2,
+        groups_reowned: 1,
+      };
+    },
+    async exportUser(_actor, userId) {
+      return { user: { id: userId }, memberships: [], expenses: [], feedback: [] };
+    },
+    async deleteUser() {
+      return { ok: true, groups_reassigned: 1, groups_deleted: 0, memberships_anonymized: 3 };
+    },
+    async sendNotification() {
+      return { ok: true, recipients: 7 };
+    },
+    async replyFeedback(_actor, feedbackId) {
+      return { ok: true, feedback_id: feedbackId, notification_id: "notification_1", status: "done" };
+    },
+    async getCatalog() {
+      return { categories: [], currencies: [], rate_overrides: [] };
+    },
+    async saveCategory(_actor, category) {
+      return { ok: true, category };
+    },
+    async saveCurrency(_actor, currency) {
+      return { ok: true, currency };
+    },
+    async setRateOverride(_actor, pair) {
+      return pair.rate === null
+        ? { ok: true, cleared: true, base: pair.base, quote: pair.quote }
+        : { ok: true, cleared: false, base: pair.base, quote: pair.quote, rate: pair.rate };
     },
     ...overrides,
   };
@@ -774,5 +853,362 @@ describe("resolveTrendDays", () => {
     for (const raw of [undefined, "", "abc", "0", "-1", "365", "31", "1e9"]) {
       expect(resolveTrendDays(raw)).toBe(30);
     }
+  });
+});
+
+describe("support actions", () => {
+  const supportContext = { user: { ...context.user, id: "user_support" } };
+
+  /** A console account whose rank is exactly `role`. */
+  function repositoryAsRole(role: string, overrides: Partial<AdminRepository> = {}) {
+    return makeRepository({ async findAdminRole() { return role; }, ...overrides });
+  }
+
+  test("expense writes and owner transfer need admin; support is refused", async () => {
+    const repository = repositoryAsRole("support");
+
+    const results = await Promise.all([
+      handleAdminSetExpenseDeleted(repository, supportContext, GROUP_ID, EXPENSE_ID, true),
+      handleAdminUpdateExpenseMeta(repository, supportContext, GROUP_ID, EXPENSE_ID, { title: "x" }),
+      handleAdminTransferGroupOwner(repository, supportContext, GROUP_ID, MEMBER_ID),
+      handleAdminExportUser(repository, supportContext, USER_ID),
+    ]);
+
+    for (const result of results) {
+      expect(result.status).toBe(403);
+    }
+  });
+
+  test("merge and delete need owner; admin is refused", async () => {
+    const repository = repositoryAsRole("admin");
+
+    const merge = await handleAdminMergeUsers(repository, supportContext, USER_ID, GROUP_ID);
+    const remove = await handleAdminDeleteUser(repository, supportContext, USER_ID);
+
+    expect(merge.status).toBe(403);
+    expect(remove.status).toBe(403);
+  });
+
+  test("soft-deleting an expense returns the row and restoring clears deleted_at", async () => {
+    const repository = makeRepository();
+
+    const deleted = await handleAdminSetExpenseDeleted(repository, context, GROUP_ID, EXPENSE_ID, true);
+    const restored = await handleAdminSetExpenseDeleted(repository, context, GROUP_ID, EXPENSE_ID, false);
+
+    expect((deleted.body as { deleted_at: string | null }).deleted_at).not.toBeNull();
+    expect((restored.body as { deleted_at: string | null }).deleted_at).toBeNull();
+  });
+
+  test("a non-uuid group or expense id is a 404 rather than reaching the RPC", async () => {
+    let called = false;
+    const repository = makeRepository({
+      async setExpenseDeleted(_actor, _groupId, expenseId, deleted) {
+        called = true;
+        return { ...expenseWrite, id: expenseId, deleted_at: deleted ? "x" : null };
+      },
+    });
+
+    const result = await handleAdminSetExpenseDeleted(repository, context, "group_1", EXPENSE_ID, true);
+
+    expect(result.status).toBe(404);
+    expect(called).toBe(false);
+  });
+
+  test("an expense the group does not have is a 404", async () => {
+    const repository = makeRepository({ async setExpenseDeleted() { return null; } });
+    const result = await handleAdminSetExpenseDeleted(repository, context, GROUP_ID, EXPENSE_ID, true);
+
+    expect(result.status).toBe(404);
+  });
+
+  test("the meta patch carries only the fields that were sent", async () => {
+    let seen: unknown;
+    const repository = makeRepository({
+      async updateExpenseMeta(_actor, _groupId, expenseId, patch) {
+        seen = patch;
+        return { ...expenseWrite, id: expenseId, ...patch };
+      },
+    });
+
+    await handleAdminUpdateExpenseMeta(repository, context, GROUP_ID, EXPENSE_ID, {
+      title: "  改過的標題  ",
+      note: "",
+      amount_minor: 999,
+    } as Record<string, unknown>);
+
+    // title trimmed, note kept as "" (that is how a note is cleared), and the
+    // money field dropped entirely rather than passed through.
+    expect(seen).toEqual({ title: "改過的標題", note: "" });
+  });
+
+  test("an empty patch is rejected instead of bumping the row for nothing", async () => {
+    let called = false;
+    const repository = makeRepository({
+      async updateExpenseMeta(_actor, _groupId, expenseId) {
+        called = true;
+        return { ...expenseWrite, id: expenseId };
+      },
+    });
+
+    const result = await handleAdminUpdateExpenseMeta(repository, context, GROUP_ID, EXPENSE_ID, {});
+
+    expect(result.status).toBe(400);
+    expect(called).toBe(false);
+  });
+
+  test("a malformed date is rejected before the RPC sees it", () => {
+    expect(normalizeExpenseMetaPatch({ expense_date: "2026/08/01" }).ok).toBe(false);
+    expect(normalizeExpenseMetaPatch({ expense_date: "2026-08-01" })).toEqual({
+      ok: true,
+      patch: { expense_date: "2026-08-01" },
+    });
+    expect(normalizeExpenseMetaPatch({ title: "   " }).ok).toBe(false);
+  });
+
+  test("transferring to an unclaimed member is a 409, not a 404", async () => {
+    const repository = makeRepository({
+      async transferGroupOwner() {
+        return { ok: false, error: "MEMBER_NOT_CLAIMED" };
+      },
+    });
+
+    const result = await handleAdminTransferGroupOwner(repository, context, GROUP_ID, MEMBER_ID);
+
+    expect(result.status).toBe(409);
+    expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_CONFLICT");
+  });
+
+  test("a merge blocked by a shared group answers 409 and names the groups", async () => {
+    const repository = makeRepository({
+      async mergeUsers() {
+        return { ok: false, error: "GROUP_OVERLAP", groups: [{ group_id: GROUP_ID, name: "Trip" }] };
+      },
+    });
+
+    const result = await handleAdminMergeUsers(repository, context, USER_ID, MEMBER_ID);
+
+    expect(result.status).toBe(409);
+    expect((result.body as { error: { details?: { groups: unknown[] } } }).error.details).toEqual({
+      groups: [{ group_id: GROUP_ID, name: "Trip" }],
+    });
+  });
+
+  test("an admin cannot merge or delete their own account away", async () => {
+    const selfContext = { user: { ...context.user, id: USER_ID } };
+    const repository = makeRepository({ async findAdminRole() { return "owner"; } });
+
+    const merge = await handleAdminMergeUsers(repository, selfContext, USER_ID, MEMBER_ID);
+    const remove = await handleAdminDeleteUser(repository, selfContext, USER_ID);
+
+    expect(merge.status).toBe(409);
+    expect(remove.status).toBe(409);
+  });
+
+  test("deleting the last console owner surfaces the RPC's refusal as 409", async () => {
+    const repository = makeRepository({
+      async deleteUser() {
+        return { ok: false, reason: "last_admin_owner" };
+      },
+    });
+
+    const result = await handleAdminDeleteUser(repository, context, USER_ID);
+
+    expect(result.status).toBe(409);
+    expect((result.body as { error: { message: string } }).error.message).toContain("owner");
+  });
+
+  test("export returns the document as-is", async () => {
+    const result = await handleAdminExportUser(makeRepository(), context, USER_ID);
+
+    expect(result.status).toBe(200);
+    expect((result.body as { user: { id: string } }).user.id).toBe(USER_ID);
+  });
+});
+
+describe("in-app notifications", () => {
+  const FEEDBACK_ID = "55555555-5555-4555-8555-555555555555";
+
+  test("sending needs admin; support is refused", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+    const result = await handleAdminSendNotification(repository, context, {
+      audience: "all",
+      title: "維護通知",
+      body: "今晚 11 點會短暫維護。",
+    });
+
+    expect(result.status).toBe(403);
+  });
+
+  test("replying is support-level work, so support may do it", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+    const result = await handleAdminReplyFeedback(repository, context, FEEDBACK_ID, "已修好了，謝謝回報！");
+
+    expect(result.status).toBe(200);
+  });
+
+  test("an audience that needs a target is rejected without one", () => {
+    expect(normalizeNotificationRequest({ audience: "user", title: "t", body: "b" }).ok).toBe(false);
+    expect(normalizeNotificationRequest({ audience: "group", title: "t", body: "b", target: "nope" }).ok).toBe(false);
+    expect(normalizeNotificationRequest({ audience: "all", title: "t", body: "b" }).ok).toBe(true);
+  });
+
+  test("a target sent with a broadcast audience is dropped, not forwarded", () => {
+    const normalized = normalizeNotificationRequest({
+      audience: "all",
+      title: "t",
+      body: "b",
+      target: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(normalized).toEqual({
+      ok: true,
+      audience: "all",
+      target: null,
+      message: { title: "t", body: "b", link: null },
+    });
+  });
+
+  test("a link has to be an in-app path", () => {
+    // Anything that could navigate off-origin is refused rather than stripped:
+    // silently dropping the destination would send a notification that does
+    // not do what the sender wrote.
+    for (const link of ["https://evil.example/x", "//evil.example", "\\evil", "group/1"]) {
+      expect(normalizeNotificationRequest({ audience: "all", title: "t", body: "b", link }).ok).toBe(false);
+    }
+
+    const ok = normalizeNotificationRequest({ audience: "all", title: "t", body: "b", link: " /group/abc " });
+    expect(ok.ok === true && ok.message.link).toBe("/group/abc");
+  });
+
+  test("an empty title or body never reaches the RPC", async () => {
+    let called = false;
+    const repository = makeRepository({
+      async sendNotification() {
+        called = true;
+        return { ok: true, recipients: 1 };
+      },
+    });
+
+    const result = await handleAdminSendNotification(repository, context, {
+      audience: "all",
+      title: "   ",
+      body: "有內容",
+    });
+
+    expect(result.status).toBe(400);
+    expect(called).toBe(false);
+  });
+
+  test("replying to signed-out feedback is a 409 that explains why", async () => {
+    const repository = makeRepository({
+      async replyFeedback() {
+        return { ok: false, error: "NO_ACCOUNT" };
+      },
+    });
+
+    const result = await handleAdminReplyFeedback(repository, context, FEEDBACK_ID, "回覆內容");
+
+    expect(result.status).toBe(409);
+    expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_CONFLICT");
+  });
+
+  test("an empty reply is rejected before the RPC", async () => {
+    const result = await handleAdminReplyFeedback(makeRepository(), context, FEEDBACK_ID, "   ");
+    expect(result.status).toBe(400);
+  });
+});
+
+describe("master data", () => {
+  test("reading is support-level, writing is not", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+
+    const read = await handleAdminGetCatalog(repository, context);
+    const write = await handleAdminSaveCategory(repository, context, "medical", {
+      label: "醫療",
+      color: "#aa1122",
+    });
+
+    expect(read.status).toBe(200);
+    expect(write.status).toBe(403);
+  });
+
+  test("a key that cannot be stored on an expense is refused", async () => {
+    // "MEDICAL" is not here on purpose - it is lower-cased first, and the other
+    // test pins that down.
+    for (const key of ["3medical", "medical-care", "medical care", "", "a".repeat(40)]) {
+      const result = await handleAdminSaveCategory(makeRepository(), context, key, {
+        label: "醫療",
+        color: "#aa1122",
+      });
+      expect(result.status).toBe(400);
+    }
+  });
+
+  test("the colour has to be a hex the donut can draw", async () => {
+    const bad = await handleAdminSaveCategory(makeRepository(), context, "medical", {
+      label: "醫療",
+      color: "red",
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  test("the key is lower-cased and sort_order clamped before the RPC", async () => {
+    let seen: unknown;
+    const repository = makeRepository({
+      async saveCategory(_actor, category) {
+        seen = category;
+        return { ok: true, category };
+      },
+    });
+
+    await handleAdminSaveCategory(repository, context, "MEDICAL", {
+      label: "  醫療  ",
+      color: "#AA1122",
+      sort_order: 99999,
+    });
+
+    expect(seen).toEqual({ key: "medical", label: "醫療", color: "#aa1122", sort_order: 9999, enabled: true });
+  });
+
+  test("switching off a currency people are still using is a 409", async () => {
+    const repository = makeRepository({
+      async saveCurrency() {
+        return { ok: false, error: "CURRENCY_IN_USE" };
+      },
+    });
+
+    const result = await handleAdminSaveCurrency(repository, context, "JPY", { label: "日圓", enabled: false });
+
+    expect(result.status).toBe(409);
+  });
+
+  test("a rate override needs two different, well-formed codes", async () => {
+    const repository = makeRepository();
+
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TWD", quote: "TWD", rate: 1 })).status).toBe(400);
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TW", quote: "JPY", rate: 1 })).status).toBe(400);
+    // A zero rate would not fail loudly - it would value a currency at nothing.
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TWD", quote: "JPY", rate: 0 })).status).toBe(400);
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TWD", quote: "JPY", rate: "abc" })).status).toBe(400);
+  });
+
+  test("a null rate clears the override rather than being rejected as missing", async () => {
+    let seen: unknown;
+    const repository = makeRepository({
+      async setRateOverride(_actor, pair) {
+        seen = pair;
+        return { ok: true, cleared: true, base: pair.base, quote: pair.quote };
+      },
+    });
+
+    const result = await handleAdminSetRateOverride(repository, context, {
+      base: "twd",
+      quote: "jpy",
+      rate: null,
+      note: "  ",
+    });
+
+    expect(result.status).toBe(200);
+    expect(seen).toEqual({ base: "TWD", quote: "JPY", rate: null, note: null });
   });
 });

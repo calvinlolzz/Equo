@@ -320,6 +320,143 @@ export type AdminRemoveResult =
   | { ok: true; user_id: string }
   | { ok: false; error: "NOT_AN_ADMIN" | "LAST_OWNER" };
 
+/** What the expense writes return: the row as it now stands, not the whole detail. */
+export type AdminExpenseWriteResult = {
+  id: string;
+  title: string;
+  category: string;
+  expense_date: string;
+  note: string | null;
+  deleted_at: string | null;
+  version: number;
+};
+
+/**
+ * The descriptive fields an admin may correct. Money is absent on purpose -
+ * amounts, payers and shares only make sense changed together, and the RPC
+ * refuses to pretend otherwise.
+ *
+ * undefined means "leave alone" for every field. note additionally accepts ""
+ * to clear it, which is why the RPC takes null and "" as different values.
+ */
+export type AdminExpenseMetaPatch = {
+  title?: string;
+  category?: string;
+  expense_date?: string;
+  note?: string;
+};
+
+export type AdminTransferOwnerResult =
+  | {
+      ok: true;
+      group_id: string;
+      owner_member_id: string;
+      owner_user_id: string;
+      owner_display_name: string | null;
+    }
+  | { ok: false; error: "GROUP_NOT_FOUND" | "MEMBER_NOT_FOUND" | "MEMBER_NOT_CLAIMED" };
+
+/** The groups both accounts are in, which is what makes a merge impossible. */
+export type AdminMergeConflictGroup = {
+  group_id: string;
+  name: string;
+};
+
+export type AdminMergeUsersResult =
+  | {
+      ok: true;
+      source_user_id: string;
+      source_email: string | null;
+      target_user_id: string;
+      target_email: string | null;
+      memberships_moved: number;
+      groups_reowned: number;
+    }
+  | {
+      ok: false;
+      error: "SAME_USER" | "USER_NOT_FOUND" | "SOURCE_IS_ADMIN" | "GROUP_OVERLAP";
+      groups?: AdminMergeConflictGroup[];
+    };
+
+/**
+ * The subject-access document, passed through as-is. Deliberately not typed
+ * field by field: it is a file handed to a person, and pinning its shape here
+ * would mean editing three layers to add a section to it.
+ */
+export type AdminUserExportRecord = Record<string, unknown>;
+
+/** Who a console message goes to. See admin_console_send_notification. */
+export type AdminNotificationAudience = "user" | "group" | "active" | "all";
+
+export type AdminSendNotificationResult =
+  | { ok: true; recipients: number }
+  | { ok: false; error: "EMPTY_MESSAGE" | "INVALID_AUDIENCE" | "TARGET_REQUIRED" | "TARGET_NOT_FOUND" };
+
+export type AdminReplyFeedbackResult =
+  | { ok: true; feedback_id: string; notification_id: string; status: string }
+  /** NO_ACCOUNT: the feedback was submitted signed-out, so there is nobody to reply to. */
+  | { ok: false; error: "EMPTY_MESSAGE" | "NOT_FOUND" | "NO_ACCOUNT" };
+
+export type AdminDeleteUserResult =
+  | { ok: true; groups_reassigned: number; groups_deleted: number; memberships_anonymized: number }
+  /** delete_my_account's own refusal, currently only 'last_admin_owner'. */
+  | { ok: false; reason: string };
+
+/**
+ * Master data as the console sees it: disabled rows included, plus how many
+ * live expenses each row is carrying - the number that decides whether a
+ * change is harmless.
+ */
+export type AdminCatalogCategoryRecord = {
+  key: string;
+  label: string;
+  color: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at: string;
+  updated_by_email: string | null;
+  expense_count: number;
+};
+
+export type AdminCatalogCurrencyRecord = {
+  code: string;
+  label: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at: string;
+  updated_by_email: string | null;
+  expense_count: number;
+};
+
+export type AdminRateOverrideRecord = {
+  base: string;
+  quote: string;
+  /** Units of quote per 1 base. Arrives as a string from numeric(18,8). */
+  rate: string | number;
+  note: string | null;
+  updated_at: string;
+  updated_by_email: string | null;
+};
+
+export type AdminCatalogRecord = {
+  categories: AdminCatalogCategoryRecord[];
+  currencies: AdminCatalogCurrencyRecord[];
+  rate_overrides: AdminRateOverrideRecord[];
+};
+
+export type AdminSaveCategoryResult =
+  | { ok: true; category: { key: string; label: string; color: string; sort_order: number; enabled: boolean } }
+  | { ok: false; error: "INVALID_KEY" | "INVALID_LABEL" | "INVALID_COLOR" };
+
+export type AdminSaveCurrencyResult =
+  | { ok: true; currency: { code: string; label: string; sort_order: number; enabled: boolean } }
+  /** CURRENCY_IN_USE: live expenses are still denominated in it. */
+  | { ok: false; error: "INVALID_CODE" | "INVALID_LABEL" | "CURRENCY_IN_USE" };
+
+export type AdminRateOverrideResult =
+  | { ok: true; cleared: boolean; base: string; quote: string; rate?: number }
+  | { ok: false; error: "INVALID_CODE" | "SAME_CURRENCY" | "INVALID_RATE" };
+
 export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
@@ -396,4 +533,55 @@ export type AdminRepository = {
     fingerprint: string,
     status: AdminErrorGroupStatus,
   ): Promise<{ fingerprint: string; status: string } | null>;
+  /**
+   * Soft-delete or restore one expense. Scoped by group as well as id so a
+   * mistyped expense id cannot reach into another group's ledger. Returns null
+   * when the pair names no row.
+   */
+  setExpenseDeleted(
+    actor: AdminActor,
+    groupId: string,
+    expenseId: string,
+    deleted: boolean,
+  ): Promise<AdminExpenseWriteResult | null>;
+  /** Correct an expense's descriptive fields. Returns null when the pair names no row. */
+  updateExpenseMeta(
+    actor: AdminActor,
+    groupId: string,
+    expenseId: string,
+    patch: AdminExpenseMetaPatch,
+  ): Promise<AdminExpenseWriteResult | null>;
+  /** Hand a group's ownership to one of its members (by group_members.id). */
+  transferGroupOwner(actor: AdminActor, groupId: string, memberId: string): Promise<AdminTransferOwnerResult>;
+  /** Move source's memberships onto target and disable source. */
+  mergeUsers(actor: AdminActor, sourceUserId: string, targetUserId: string): Promise<AdminMergeUsersResult>;
+  /** The subject-access document for one user. Returns null when the user does not exist. */
+  exportUser(actor: AdminActor, userId: string): Promise<AdminUserExportRecord | null>;
+  /** Run account deletion on someone's behalf. Returns null when the user does not exist. */
+  deleteUser(actor: AdminActor, userId: string): Promise<AdminDeleteUserResult | null>;
+  /** Send one in-app message to an audience. `target` is a user or group id, or null. */
+  sendNotification(
+    actor: AdminActor,
+    audience: AdminNotificationAudience,
+    target: string | null,
+    message: { title: string; body: string; link: string | null },
+  ): Promise<AdminSendNotificationResult>;
+  /** Reply to a piece of feedback: notification + status change in one transaction. */
+  replyFeedback(actor: AdminActor, feedbackId: string, message: string): Promise<AdminReplyFeedbackResult>;
+  /** Master data including disabled rows and the rate overrides. */
+  getCatalog(): Promise<AdminCatalogRecord>;
+  /** Upsert one category. The key is the identity; there is no rename. */
+  saveCategory(
+    actor: AdminActor,
+    category: { key: string; label: string; color: string; sort_order: number; enabled: boolean },
+  ): Promise<AdminSaveCategoryResult>;
+  saveCurrency(
+    actor: AdminActor,
+    currency: { code: string; label: string; sort_order: number; enabled: boolean },
+  ): Promise<AdminSaveCurrencyResult>;
+  /** Set one pair's manual rate, or clear it by passing null. */
+  setRateOverride(
+    actor: AdminActor,
+    pair: { base: string; quote: string; rate: number | null; note: string | null },
+  ): Promise<AdminRateOverrideResult>;
 };

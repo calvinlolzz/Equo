@@ -5,9 +5,21 @@ import { createSupabaseAdminRepository } from "../repositories/supabaseAdminRepo
 import { createSupabaseSettingsRepository } from "../repositories/supabaseSettingsRepository.js";
 import { availableReceiptScanModels, type ReceiptScanKeys } from "../runtime/receiptScanner.js";
 import {
+  handleAdminDeleteUser,
+  handleAdminExportUser,
+  handleAdminGetCatalog,
+  handleAdminSaveCategory,
+  handleAdminSaveCurrency,
+  handleAdminSetRateOverride,
   handleAdminGetReceiptScanSettings,
   handleAdminGroupDetail,
   handleAdminHealth,
+  handleAdminMergeUsers,
+  handleAdminReplyFeedback,
+  handleAdminSendNotification,
+  handleAdminSetExpenseDeleted,
+  handleAdminTransferGroupOwner,
+  handleAdminUpdateExpenseMeta,
   handleAdminSetReceiptScanSettings,
   handleAdminTrends,
   handleAdminListAdmins,
@@ -35,6 +47,7 @@ import {
   type AdminFeedbackListQuery,
   type AdminGroupListQuery,
   type AdminListQuery,
+  type AdminSendNotificationBody,
 } from "../handlers/admin.js";
 
 type RouteOptions = {
@@ -340,4 +353,175 @@ export async function adminSetGroupDeletedRoute(options: RouteOptions, groupId: 
   }
 
   return handleAdminSetGroupDeleted(createSupabaseAdminRepository(options.client), auth.context, groupId, deleted);
+}
+
+export async function adminSetExpenseDeletedRoute(
+  options: RouteOptions,
+  groupId: string,
+  expenseId: string,
+  deleted: boolean,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetExpenseDeleted(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    groupId,
+    expenseId,
+    deleted,
+  );
+}
+
+export async function adminUpdateExpenseMetaRoute(
+  options: RouteOptions,
+  groupId: string,
+  expenseId: string,
+  body: { title?: unknown; category?: unknown; expense_date?: unknown; note?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminUpdateExpenseMeta(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    groupId,
+    expenseId,
+    body,
+  );
+}
+
+export async function adminTransferGroupOwnerRoute(
+  options: RouteOptions,
+  groupId: string,
+  memberId: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminTransferGroupOwner(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    groupId,
+    memberId,
+  );
+}
+
+export async function adminMergeUsersRoute(
+  options: RouteOptions,
+  sourceUserId: string,
+  targetUserId: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminMergeUsers(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    sourceUserId,
+    targetUserId,
+  );
+}
+
+export async function adminExportUserRoute(options: RouteOptions, userId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminExportUser(createSupabaseAdminRepository(options.client), auth.context, userId);
+}
+
+export async function adminDeleteUserRoute(options: RouteOptions, userId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminDeleteUser(createSupabaseAdminRepository(options.client), auth.context, userId);
+}
+
+export async function adminSendNotificationRoute(options: RouteOptions, body: AdminSendNotificationBody) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSendNotification(createSupabaseAdminRepository(options.client), auth.context, body);
+}
+
+export async function adminReplyFeedbackRoute(options: RouteOptions, feedbackId: string, message: unknown) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminReplyFeedback(createSupabaseAdminRepository(options.client), auth.context, feedbackId, message);
+}
+
+export async function adminGetCatalogRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminGetCatalog(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminSaveCategoryRoute(
+  options: RouteOptions,
+  key: string,
+  body: { label?: unknown; color?: unknown; sort_order?: unknown; enabled?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSaveCategory(createSupabaseAdminRepository(options.client), auth.context, key, body);
+}
+
+export async function adminSaveCurrencyRoute(
+  options: RouteOptions,
+  code: string,
+  body: { label?: unknown; sort_order?: unknown; enabled?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSaveCurrency(createSupabaseAdminRepository(options.client), auth.context, code, body);
+}
+
+export async function adminSetRateOverrideRoute(
+  options: RouteOptions,
+  body: { base?: unknown; quote?: unknown; rate?: unknown; note?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetRateOverride(createSupabaseAdminRepository(options.client), auth.context, body);
 }
