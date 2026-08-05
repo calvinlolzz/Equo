@@ -402,6 +402,61 @@ export type AdminDeleteUserResult =
   /** delete_my_account's own refusal, currently only 'last_admin_owner'. */
   | { ok: false; reason: string };
 
+/**
+ * Master data as the console sees it: disabled rows included, plus how many
+ * live expenses each row is carrying - the number that decides whether a
+ * change is harmless.
+ */
+export type AdminCatalogCategoryRecord = {
+  key: string;
+  label: string;
+  color: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at: string;
+  updated_by_email: string | null;
+  expense_count: number;
+};
+
+export type AdminCatalogCurrencyRecord = {
+  code: string;
+  label: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at: string;
+  updated_by_email: string | null;
+  expense_count: number;
+};
+
+export type AdminRateOverrideRecord = {
+  base: string;
+  quote: string;
+  /** Units of quote per 1 base. Arrives as a string from numeric(18,8). */
+  rate: string | number;
+  note: string | null;
+  updated_at: string;
+  updated_by_email: string | null;
+};
+
+export type AdminCatalogRecord = {
+  categories: AdminCatalogCategoryRecord[];
+  currencies: AdminCatalogCurrencyRecord[];
+  rate_overrides: AdminRateOverrideRecord[];
+};
+
+export type AdminSaveCategoryResult =
+  | { ok: true; category: { key: string; label: string; color: string; sort_order: number; enabled: boolean } }
+  | { ok: false; error: "INVALID_KEY" | "INVALID_LABEL" | "INVALID_COLOR" };
+
+export type AdminSaveCurrencyResult =
+  | { ok: true; currency: { code: string; label: string; sort_order: number; enabled: boolean } }
+  /** CURRENCY_IN_USE: live expenses are still denominated in it. */
+  | { ok: false; error: "INVALID_CODE" | "INVALID_LABEL" | "CURRENCY_IN_USE" };
+
+export type AdminRateOverrideResult =
+  | { ok: true; cleared: boolean; base: string; quote: string; rate?: number }
+  | { ok: false; error: "INVALID_CODE" | "SAME_CURRENCY" | "INVALID_RATE" };
+
 export type AdminRepository = {
   /** Returns the caller's app_admins.role, or null when they are not an admin. */
   findAdminRole(userId: string): Promise<string | null>;
@@ -513,4 +568,20 @@ export type AdminRepository = {
   ): Promise<AdminSendNotificationResult>;
   /** Reply to a piece of feedback: notification + status change in one transaction. */
   replyFeedback(actor: AdminActor, feedbackId: string, message: string): Promise<AdminReplyFeedbackResult>;
+  /** Master data including disabled rows and the rate overrides. */
+  getCatalog(): Promise<AdminCatalogRecord>;
+  /** Upsert one category. The key is the identity; there is no rename. */
+  saveCategory(
+    actor: AdminActor,
+    category: { key: string; label: string; color: string; sort_order: number; enabled: boolean },
+  ): Promise<AdminSaveCategoryResult>;
+  saveCurrency(
+    actor: AdminActor,
+    currency: { code: string; label: string; sort_order: number; enabled: boolean },
+  ): Promise<AdminSaveCurrencyResult>;
+  /** Set one pair's manual rate, or clear it by passing null. */
+  setRateOverride(
+    actor: AdminActor,
+    pair: { base: string; quote: string; rate: number | null; note: string | null },
+  ): Promise<AdminRateOverrideResult>;
 };

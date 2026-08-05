@@ -11,7 +11,11 @@ import {
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
+  AdminCatalogRecord,
   AdminDeleteUserResult,
+  AdminRateOverrideResult,
+  AdminSaveCategoryResult,
+  AdminSaveCurrencyResult,
   AdminErrorGroupListRecord,
   AdminErrorGroupStatus,
   AdminErrorListRecord,
@@ -528,6 +532,10 @@ export const AUDIT_ACTIONS: readonly string[] = [
   "error.status",
   "notification.send",
   "feedback.reply",
+  "catalog.category",
+  "catalog.currency",
+  "catalog.rate_set",
+  "catalog.rate_clear",
 ];
 
 /** An unknown/absent action means "any", matching the RPC's '' / 'all' handling. */
@@ -1232,6 +1240,178 @@ export async function handleAdminReplyFeedback(
       return adminConflict("This feedback was sent without signing in, so there is no inbox to reply to.");
     }
     return adminBadRequest("message is required.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+/**
+ * Master data: the category list, the currency list, and manual exchange rates.
+ *
+ * Reading is support-level - "which categories exist" is the first thing to
+ * check when somebody reports a missing one. Writing is admin, because every
+ * write here changes what every user sees in the composer.
+ */
+
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+const CATEGORY_KEY_RE = /^[a-z][a-z0-9_]{0,30}$/;
+const CURRENCY_CODE_RE = /^[A-Z]{3}$/;
+
+/** sort_order is a display position, not an id: out-of-range values are clamped. */
+function normalizeSortOrder(raw: unknown): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.min(Math.max(Math.trunc(value), 0), 9999) : 100;
+}
+
+export async function handleAdminGetCatalog(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+): Promise<HandlerResult<AdminCatalogRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  return { ok: true, status: 200, body: await repository.getCatalog() };
+}
+
+export async function handleAdminSaveCategory(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  key: string,
+  body: { label?: unknown; color?: unknown; sort_order?: unknown; enabled?: unknown } = {},
+): Promise<HandlerResult<Extract<AdminSaveCategoryResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  const normalizedKey = key.trim().toLowerCase();
+
+  // The key is what expenses.category holds, so it is validated here as well as
+  // in the RPC: a bad one would create a category nothing can ever be filed
+  // under.
+  if (!CATEGORY_KEY_RE.test(normalizedKey)) {
+    return adminBadRequest("key must be lower-case letters, digits and underscores, starting with a letter.");
+  }
+
+  const label = typeof body.label === "string" ? body.label.trim() : "";
+  const color = typeof body.color === "string" ? body.color.trim() : "";
+
+  if (!label) {
+    return adminBadRequest("label is required.");
+  }
+
+  if (!HEX_COLOR_RE.test(color)) {
+    return adminBadRequest("color must be a #rrggbb hex value.");
+  }
+
+  const result = await repository.saveCategory(
+    { id: context.user.id, email: context.user.email },
+    {
+      key: normalizedKey,
+      label,
+      color: color.toLowerCase(),
+      sort_order: normalizeSortOrder(body.sort_order),
+      enabled: body.enabled !== false,
+    },
+  );
+
+  if (!result.ok) {
+    return adminBadRequest("The category was rejected by the server.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminSaveCurrency(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  code: string,
+  body: { label?: unknown; sort_order?: unknown; enabled?: unknown } = {},
+): Promise<HandlerResult<Extract<AdminSaveCurrencyResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  const normalizedCode = code.trim().toUpperCase();
+
+  if (!CURRENCY_CODE_RE.test(normalizedCode)) {
+    return adminBadRequest("code must be a three-letter currency code.");
+  }
+
+  const label = typeof body.label === "string" ? body.label.trim() : "";
+
+  if (!label) {
+    return adminBadRequest("label is required.");
+  }
+
+  const result = await repository.saveCurrency(
+    { id: context.user.id, email: context.user.email },
+    {
+      code: normalizedCode,
+      label,
+      sort_order: normalizeSortOrder(body.sort_order),
+      enabled: body.enabled !== false,
+    },
+  );
+
+  if (!result.ok) {
+    if (result.error === "CURRENCY_IN_USE") {
+      return adminConflict("Expenses are still recorded in this currency, so it cannot be switched off.");
+    }
+    return adminBadRequest("The currency was rejected by the server.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminSetRateOverride(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  body: { base?: unknown; quote?: unknown; rate?: unknown; note?: unknown } = {},
+): Promise<HandlerResult<Extract<AdminRateOverrideResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  const base = typeof body.base === "string" ? body.base.trim().toUpperCase() : "";
+  const quote = typeof body.quote === "string" ? body.quote.trim().toUpperCase() : "";
+
+  if (!CURRENCY_CODE_RE.test(base) || !CURRENCY_CODE_RE.test(quote)) {
+    return adminBadRequest("base and quote must be three-letter currency codes.");
+  }
+
+  if (base === quote) {
+    return adminBadRequest("base and quote must differ.");
+  }
+
+  // null clears the override; anything else has to be a usable positive number.
+  // A rate of 0 or NaN would not fail loudly - it would quietly value one
+  // currency at nothing.
+  let rate: number | null = null;
+
+  if (body.rate !== null && body.rate !== undefined && body.rate !== "") {
+    const parsed = Number(body.rate);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return adminBadRequest("rate must be a positive number, or null to clear the override.");
+    }
+    rate = parsed;
+  }
+
+  const result = await repository.setRateOverride(
+    { id: context.user.id, email: context.user.email },
+    { base, quote, rate, note: typeof body.note === "string" ? body.note.trim() || null : null },
+  );
+
+  if (!result.ok) {
+    return adminBadRequest("The rate override was rejected by the server.");
   }
 
   return { ok: true, status: 200, body: result };

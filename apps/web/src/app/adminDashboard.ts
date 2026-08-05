@@ -6,6 +6,7 @@ import type {
   AdminStorageSummary,
   AdminTrendPoint,
 } from "./apiClient";
+import { categoryLabel, categoryOptions } from "./catalog";
 import { formatAmount } from "./formatAmount";
 import { UI_TEXT } from "./uiText";
 
@@ -428,13 +429,15 @@ export function expenseKindLabel(kind: string): string {
   return (UI_TEXT.composerModes as Record<string, string>)[kind] ?? kind;
 }
 
-/** Reuses the app's own category dictionary so the console reads the same. */
+/** Reads the same catalog the app does, so a category added in the console shows up here too. */
 export function expenseCategoryLabel(category: string): string {
-  return (UI_TEXT.categories as Record<string, string>)[category] ?? category;
+  return categoryLabel(category);
 }
 
 /** The category keys the console offers when correcting an expense. */
-export const EXPENSE_CATEGORY_KEYS: readonly string[] = Object.keys(UI_TEXT.categories);
+export function expenseCategoryKeys(): string[] {
+  return categoryOptions().map((entry) => entry.key);
+}
 
 const SHARE_TYPE_LABELS: Record<string, string> = {
   equal: "均分",

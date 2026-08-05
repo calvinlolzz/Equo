@@ -5,6 +5,9 @@ import {
   createApiClient,
   type AdminAccountRow,
   type AdminAuditLogPage,
+  type AdminCatalogCategoryRow,
+  type AdminCatalogCurrencyRow,
+  type AdminCatalogPayload,
   type AdminErrorGroupPage,
   type AdminErrorGroupRow,
   type AdminErrorPage,
@@ -43,7 +46,7 @@ import {
   errorGroupStatusLabel,
   errorSourceLabel,
   expenseCategoryLabel,
-  EXPENSE_CATEGORY_KEYS,
+  expenseCategoryKeys,
   expenseImageUrl,
   expenseKindLabel,
   formatDate,
@@ -71,6 +74,7 @@ import {
   type AdminTab,
 } from "./adminRoute";
 import { AdminCommandPalette } from "./AdminCommandPalette";
+import { hydrateCatalog } from "./catalog";
 import { useAdminRoute } from "./useAdminRoute";
 import { formatAmount } from "./formatAmount";
 import { loadSession } from "./sessionStore";
@@ -1492,6 +1496,11 @@ function ExpenseDetailDialog({
   }, [onClose]);
 
   const image = expenseImageUrl(expense);
+  // Read at render rather than at module load: the catalog arrives from the
+  // server after first paint, and a list captured at import time would be the
+  // bundle's defaults forever.
+  const categoryKeys = expenseCategoryKeys();
+
   /**
    * Only what actually differs is sent. An unchanged field left out of the
    * patch keeps the audit log's diff honest - it should say "the category
@@ -1651,14 +1660,14 @@ function ExpenseDetailDialog({
             <label className="admin-field">
               <span>分類</span>
               <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                {EXPENSE_CATEGORY_KEYS.map((key) => (
+                {categoryKeys.map((key) => (
                   <option key={key} value={key}>
                     {expenseCategoryLabel(key)}
                   </option>
                 ))}
                 {/* A category from an older build stays selectable rather than
                     being silently rewritten to 其他 on the next save. */}
-                {!EXPENSE_CATEGORY_KEYS.includes(expense.category) && (
+                {!categoryKeys.includes(expense.category) && (
                   <option value={expense.category}>{expense.category}</option>
                 )}
               </select>
@@ -3079,6 +3088,484 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
           </div>
         </form>
       )}
+
+      <CatalogSection client={client} canEdit={canEdit} />
     </section>
+  );
+}
+
+/**
+ * Master data: the category list, the currency list, and manual exchange rates.
+ *
+ * All three used to be constants in the app bundle, so adding 醫療 or turning on
+ * SGD was a deploy. Editing is inline rather than behind a modal because the
+ * rows are three fields each and the common change is a single label.
+ *
+ * A category is never deleted, only switched off: expenses.category holds the
+ * key as text, so a removed row would leave live expenses pointing at a label
+ * nothing can render. The row shows how many expenses it carries so that
+ * decision is made with the number in view.
+ */
+function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
+  const [catalog, setCatalog] = useState<AdminCatalogPayload | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyKey, setBusyKey] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** The row being edited, as a draft; null means nothing is open. */
+  const [categoryDraft, setCategoryDraft] = useState<AdminCatalogCategoryRow | null>(null);
+  const [currencyDraft, setCurrencyDraft] = useState<AdminCatalogCurrencyRow | null>(null);
+  const [ratePair, setRatePair] = useState({ base: "TWD", quote: "JPY", rate: "", note: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .adminGetCatalog()
+      .then((result) => {
+        if (cancelled) return;
+        setCatalog(result);
+        // The console renders expense categories from the same module the app
+        // does, so hydrating here keeps the expense-edit picker in step with
+        // what this panel just showed.
+        hydrateCatalog({
+          categories: result.categories.filter((row) => row.enabled),
+          currencies: result.currencies.filter((row) => row.enabled),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError("主資料載入失敗，可能是資料庫尚未套用 app_catalog migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, reloadKey]);
+
+  async function run(key: string, action: () => Promise<string>) {
+    setBusyKey(key);
+    setError("");
+    setNotice("");
+    try {
+      setNotice(await action());
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "儲存失敗，請稍後再試。");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  const blankCategory: AdminCatalogCategoryRow = {
+    key: "",
+    label: "",
+    color: "#93a0b5",
+    sort_order: 100,
+    enabled: true,
+  };
+
+  const blankCurrency: AdminCatalogCurrencyRow = { code: "", label: "", sort_order: 100, enabled: true };
+
+  return (
+    <>
+      <h3 className="admin-subheading admin-subheading--spaced">支出分類</h3>
+      <p className="admin-modal__hint">
+        分類只能停用不能刪除：已經記過帳的分類鍵值還留在支出上，刪掉會讓那些帳目顯示不出名稱。
+      </p>
+
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>鍵值</th>
+              <th>名稱</th>
+              <th>顏色</th>
+              <th className="admin-table__num">排序</th>
+              <th className="admin-table__num">使用中帳目</th>
+              <th>狀態</th>
+              <th>最後變更</th>
+              {canEdit && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(catalog?.categories ?? []).map((row) => (
+              <tr key={row.key} className={row.enabled ? undefined : "admin-table__row--deleted"}>
+                <td><code>{row.key}</code></td>
+                <td>{row.label}</td>
+                <td>
+                  <span className="admin-swatch" style={{ background: row.color }} aria-hidden="true" />
+                  <code>{row.color}</code>
+                </td>
+                <td className="admin-table__num">{row.sort_order}</td>
+                <td className="admin-table__num">{(row.expense_count ?? 0).toLocaleString("zh-TW")}</td>
+                <td>{row.enabled ? "使用中" : <span className="admin-badge">已停用</span>}</td>
+                <td>
+                  {row.updated_at ? formatDate(row.updated_at) : "—"}
+                  {row.updated_by_email ? <span className="admin-muted">（{row.updated_by_email}）</span> : null}
+                </td>
+                {canEdit && (
+                  <td className="admin-table__actions">
+                    <button type="button" className="admin-action" onClick={() => setCategoryDraft(row)}>
+                      編輯
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-action"
+                      disabled={busyKey === row.key}
+                      onClick={() =>
+                        run(row.key, async () => {
+                          await client.adminSaveCategory(row.key, {
+                            label: row.label,
+                            color: row.color,
+                            sort_order: row.sort_order,
+                            enabled: !row.enabled,
+                          });
+                          return row.enabled ? `已停用「${row.label}」，現有帳目不受影響。` : `已重新啟用「${row.label}」。`;
+                        })
+                      }
+                    >
+                      {row.enabled ? "停用" : "啟用"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {catalog?.categories.length === 0 && (
+              <tr>
+                <td colSpan={canEdit ? 8 : 7} className="admin-table__empty">
+                  沒有分類
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && !categoryDraft && (
+        <button type="button" className="admin-action" onClick={() => setCategoryDraft(blankCategory)}>
+          新增分類
+        </button>
+      )}
+
+      {canEdit && categoryDraft && (
+        <form
+          className="admin-notify-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const draft = categoryDraft;
+            void run(draft.key || "new-category", async () => {
+              await client.adminSaveCategory(draft.key, {
+                label: draft.label,
+                color: draft.color,
+                sort_order: draft.sort_order,
+                enabled: draft.enabled,
+              });
+              setCategoryDraft(null);
+              return `已儲存分類「${draft.label}」。`;
+            });
+          }}
+        >
+          <label className="admin-field">
+            <span>鍵值（存進帳目裡的值，建立後不能改）</span>
+            <input
+              value={categoryDraft.key}
+              onChange={(event) => setCategoryDraft({ ...categoryDraft, key: event.target.value })}
+              placeholder="medical"
+              pattern="[a-z][a-z0-9_]*"
+              maxLength={31}
+              required
+              disabled={Boolean(catalog?.categories.some((row) => row.key === categoryDraft.key))}
+            />
+          </label>
+          <label className="admin-field">
+            <span>顯示名稱</span>
+            <input
+              value={categoryDraft.label}
+              onChange={(event) => setCategoryDraft({ ...categoryDraft, label: event.target.value })}
+              maxLength={20}
+              required
+            />
+          </label>
+          <label className="admin-field">
+            <span>顏色（分析圓餅圖用）</span>
+            <input
+              type="color"
+              value={categoryDraft.color}
+              onChange={(event) => setCategoryDraft({ ...categoryDraft, color: event.target.value })}
+            />
+          </label>
+          <label className="admin-field">
+            <span>排序（小的排前面）</span>
+            <input
+              type="number"
+              value={categoryDraft.sort_order}
+              min={0}
+              max={9999}
+              onChange={(event) =>
+                setCategoryDraft({ ...categoryDraft, sort_order: Number(event.target.value) || 0 })
+              }
+            />
+          </label>
+          <div className="admin-modal__actions">
+            <button type="submit" className="admin-action admin-action--primary" disabled={busyKey !== ""}>
+              儲存
+            </button>
+            <button type="button" className="admin-action" onClick={() => setCategoryDraft(null)}>
+              取消
+            </button>
+          </div>
+        </form>
+      )}
+
+      <h3 className="admin-subheading admin-subheading--spaced">幣別</h3>
+      <p className="admin-modal__hint">還有帳目用這個幣別記錄時無法停用——那些金額仍然是這個幣別，app 會找不到名稱可以顯示。</p>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>代碼</th>
+              <th>名稱</th>
+              <th className="admin-table__num">排序</th>
+              <th className="admin-table__num">使用中帳目</th>
+              <th>狀態</th>
+              {canEdit && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(catalog?.currencies ?? []).map((row) => (
+              <tr key={row.code} className={row.enabled ? undefined : "admin-table__row--deleted"}>
+                <td><code>{row.code}</code></td>
+                <td>{row.label}</td>
+                <td className="admin-table__num">{row.sort_order}</td>
+                <td className="admin-table__num">{(row.expense_count ?? 0).toLocaleString("zh-TW")}</td>
+                <td>{row.enabled ? "使用中" : <span className="admin-badge">已停用</span>}</td>
+                {canEdit && (
+                  <td className="admin-table__actions">
+                    <button type="button" className="admin-action" onClick={() => setCurrencyDraft(row)}>
+                      編輯
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-action"
+                      disabled={busyKey === row.code}
+                      onClick={() =>
+                        run(row.code, async () => {
+                          await client.adminSaveCurrency(row.code, {
+                            label: row.label,
+                            sort_order: row.sort_order,
+                            enabled: !row.enabled,
+                          });
+                          return row.enabled ? `已停用 ${row.code}。` : `已啟用 ${row.code}。`;
+                        })
+                      }
+                    >
+                      {row.enabled ? "停用" : "啟用"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && !currencyDraft && (
+        <button type="button" className="admin-action" onClick={() => setCurrencyDraft(blankCurrency)}>
+          新增幣別
+        </button>
+      )}
+
+      {canEdit && currencyDraft && (
+        <form
+          className="admin-notify-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const draft = currencyDraft;
+            void run(draft.code || "new-currency", async () => {
+              await client.adminSaveCurrency(draft.code, {
+                label: draft.label,
+                sort_order: draft.sort_order,
+                enabled: draft.enabled,
+              });
+              setCurrencyDraft(null);
+              return `已儲存幣別 ${draft.code.toUpperCase()}。`;
+            });
+          }}
+        >
+          <label className="admin-field">
+            <span>ISO 代碼</span>
+            <input
+              value={currencyDraft.code}
+              onChange={(event) => setCurrencyDraft({ ...currencyDraft, code: event.target.value.toUpperCase() })}
+              placeholder="SGD"
+              pattern="[A-Za-z]{3}"
+              maxLength={3}
+              required
+              disabled={Boolean(catalog?.currencies.some((row) => row.code === currencyDraft.code))}
+            />
+          </label>
+          <label className="admin-field">
+            <span>顯示名稱</span>
+            <input
+              value={currencyDraft.label}
+              onChange={(event) => setCurrencyDraft({ ...currencyDraft, label: event.target.value })}
+              maxLength={20}
+              required
+            />
+          </label>
+          <label className="admin-field">
+            <span>排序</span>
+            <input
+              type="number"
+              value={currencyDraft.sort_order}
+              min={0}
+              max={9999}
+              onChange={(event) =>
+                setCurrencyDraft({ ...currencyDraft, sort_order: Number(event.target.value) || 0 })
+              }
+            />
+          </label>
+          <div className="admin-modal__actions">
+            <button type="submit" className="admin-action admin-action--primary" disabled={busyKey !== ""}>
+              儲存
+            </button>
+            <button type="button" className="admin-action" onClick={() => setCurrencyDraft(null)}>
+              取消
+            </button>
+          </div>
+        </form>
+      )}
+
+      <h3 className="admin-subheading admin-subheading--spaced">匯率覆寫</h3>
+      <p className="admin-modal__hint">
+        設定後這組幣別會改用你填的數字，上游報價會被蓋掉，而且立刻生效（不等 6 小時快取）。留空並儲存即可清除，讓它回去跟隨上游。
+      </p>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>幣別對</th>
+              <th className="admin-table__num">匯率</th>
+              <th>說明</th>
+              <th>最後變更</th>
+              {canEdit && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(catalog?.rate_overrides ?? []).map((row) => (
+              <tr key={`${row.base}-${row.quote}`}>
+                <td>
+                  1 {row.base} → {row.quote}
+                </td>
+                <td className="admin-table__num">{row.rate}</td>
+                <td>{row.note ?? "—"}</td>
+                <td>
+                  {formatDate(row.updated_at)}
+                  {row.updated_by_email ? <span className="admin-muted">（{row.updated_by_email}）</span> : null}
+                </td>
+                {canEdit && (
+                  <td className="admin-table__actions">
+                    <button
+                      type="button"
+                      className="admin-action admin-action--danger"
+                      disabled={busyKey === `${row.base}-${row.quote}`}
+                      onClick={() =>
+                        run(`${row.base}-${row.quote}`, async () => {
+                          await client.adminSetRateOverride({ base: row.base, quote: row.quote, rate: null });
+                          return `已清除 ${row.base}→${row.quote} 的覆寫，恢復跟隨上游。`;
+                        })
+                      }
+                    >
+                      清除
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {catalog?.rate_overrides.length === 0 && (
+              <tr>
+                <td colSpan={canEdit ? 5 : 4} className="admin-table__empty">
+                  沒有覆寫，全部跟隨上游報價
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && (
+        <form
+          className="admin-notify-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(`${ratePair.base}-${ratePair.quote}`, async () => {
+              await client.adminSetRateOverride({
+                base: ratePair.base.toUpperCase(),
+                quote: ratePair.quote.toUpperCase(),
+                rate: ratePair.rate.trim() ? Number(ratePair.rate) : null,
+                note: ratePair.note.trim() || undefined,
+              });
+              const cleared = !ratePair.rate.trim();
+              setRatePair({ ...ratePair, rate: "", note: "" });
+              return cleared
+                ? `已清除 ${ratePair.base}→${ratePair.quote} 的覆寫。`
+                : `已設定 1 ${ratePair.base} = ${ratePair.rate} ${ratePair.quote}。`;
+            });
+          }}
+        >
+          <div className="admin-inline-form">
+            <label className="admin-field">
+              <span>基準幣別</span>
+              <input
+                value={ratePair.base}
+                onChange={(event) => setRatePair({ ...ratePair, base: event.target.value.toUpperCase() })}
+                pattern="[A-Za-z]{3}"
+                maxLength={3}
+                required
+              />
+            </label>
+            <label className="admin-field">
+              <span>報價幣別</span>
+              <input
+                value={ratePair.quote}
+                onChange={(event) => setRatePair({ ...ratePair, quote: event.target.value.toUpperCase() })}
+                pattern="[A-Za-z]{3}"
+                maxLength={3}
+                required
+              />
+            </label>
+          </div>
+          <label className="admin-field">
+            <span>1 {ratePair.base || "???"} 等於多少 {ratePair.quote || "???"}（留空＝清除覆寫）</span>
+            <input
+              type="number"
+              step="0.00000001"
+              min="0"
+              value={ratePair.rate}
+              onChange={(event) => setRatePair({ ...ratePair, rate: event.target.value })}
+              placeholder="4.7"
+            />
+          </label>
+          <label className="admin-field">
+            <span>說明（為什麼要手動設定）</span>
+            <input
+              value={ratePair.note}
+              onChange={(event) => setRatePair({ ...ratePair, note: event.target.value })}
+              maxLength={200}
+              placeholder="上游沒有這組報價"
+            />
+          </label>
+          <div className="admin-modal__actions">
+            <button type="submit" className="admin-action admin-action--primary" disabled={busyKey !== ""}>
+              儲存匯率
+            </button>
+          </div>
+        </form>
+      )}
+    </>
   );
 }

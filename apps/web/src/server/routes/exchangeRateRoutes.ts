@@ -1,6 +1,7 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
+import { createSupabaseCatalogRepository } from "../repositories/supabaseCatalogRepository.js";
 
 type RouteOptions = {
   client: PostgrestClient;
@@ -89,6 +90,37 @@ export function pickSupportedRates(base: string, rates: Record<string, unknown>)
   return result;
 }
 
+/**
+ * Lay the console's manual rates over the upstream's.
+ *
+ * Applied AFTER the cache rather than inside it, so an override an admin sets
+ * takes effect on the next request instead of up to six hours later - which is
+ * the whole reason a manual rate exists (the upstream is wrong or silent right
+ * now).
+ *
+ * An override may name a currency the upstream never quoted, which is the other
+ * half of the point: SUPPORTED_RATE_CODES is a filter on the feed, not a limit
+ * on what somebody can be told the rate is.
+ */
+export function applyRateOverrides(
+  base: string,
+  rates: Record<string, number>,
+  overrides: Record<string, unknown>,
+): Record<string, number> {
+  const merged = { ...rates };
+
+  for (const [quote, raw] of Object.entries(overrides)) {
+    if (quote === base) continue;
+    // numeric(18,8) comes back from PostgREST as a string.
+    const value = typeof raw === "string" ? Number(raw) : raw;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      merged[quote] = value;
+    }
+  }
+
+  return merged;
+}
+
 async function fetchFromUpstream(base: string): Promise<{ date: string; rates: Record<string, number> }> {
   // open.er-api.com: no API key, no signup, daily refresh, and it carries TWD
   // (the ECB-derived feeds do not, which rules them out for a Taiwan-first app).
@@ -159,8 +191,22 @@ export async function exchangeRatesRoute(
   const now = options.now ?? Date.now();
   const cached = cache.get(base);
 
+  // Read on every request, cache or no cache: an override is set precisely
+  // because the current number is wrong, so it must not wait out the TTL.
+  // Fail-open - a missing table (console ahead of its migration) or a slow
+  // query degrades to the upstream's own numbers rather than to no rates.
+  let overrides: Record<string, unknown> = {};
+  try {
+    overrides = await createSupabaseCatalogRepository(options.client).getRateOverrides(base);
+  } catch (error) {
+    console.warn("[exchange-rates] override lookup failed:", error);
+  }
+
   if (cached && now - cached.at < EXCHANGE_RATE_CACHE_MS) {
-    return { status: 200, body: cached.body };
+    return {
+      status: 200,
+      body: { ...cached.body, rates: applyRateOverrides(base, cached.body.rates, overrides) },
+    };
   }
 
   const fetchRates = options.fetchRates ?? fetchFromUpstream;
@@ -168,13 +214,28 @@ export async function exchangeRatesRoute(
   try {
     const { date, rates } = await fetchRates(base);
     const body: ExchangeRatesBody = { base, date, rates, stale: false };
+    // Cached WITHOUT the overrides so a later change is not baked in for six
+    // hours; the merge happens on the way out, above and below.
     cache.set(base, { at: now, body });
-    return { status: 200, body };
+    return { status: 200, body: { ...body, rates: applyRateOverrides(base, rates, overrides) } };
   } catch (error) {
     console.error("[exchange-rates] upstream fetch failed:", error);
 
     if (cached && now - cached.at < EXCHANGE_RATE_STALE_MS) {
-      return { status: 200, body: { ...cached.body, stale: true } };
+      return {
+        status: 200,
+        body: { ...cached.body, rates: applyRateOverrides(base, cached.body.rates, overrides), stale: true },
+      };
+    }
+
+    // The upstream is unreachable and nothing is cached, but an admin has set
+    // rates by hand - which is exactly the situation those were set for.
+    const manual = applyRateOverrides(base, { [base]: 1 }, overrides);
+    if (Object.keys(manual).length > 1) {
+      return {
+        status: 200,
+        body: { base, date: new Date(now).toISOString().slice(0, 10), rates: manual, stale: true },
+      };
     }
 
     return {

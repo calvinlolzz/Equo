@@ -39,6 +39,7 @@ import { haptic } from "./haptics";
 import { useBodyScrollLock } from "./useBodyScrollLock";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { useOnlineStatus } from "./useOnlineStatus";
+import { useCatalog } from "./useCatalog";
 import { useNotifications } from "./useNotifications";
 import { useOverlayHistory } from "./useOverlayHistory";
 import { usePullToRefresh } from "./usePullToRefresh";
@@ -139,14 +140,6 @@ function prefetchOverlayChunks(): void {
     window.setTimeout(warm, 1_500);
   }
 }
-
-const currencyOptions = [
-  { code: "TWD", label: UI_TEXT.currencies.twd },
-  { code: "JPY", label: UI_TEXT.currencies.jpy },
-  { code: "USD", label: UI_TEXT.currencies.usd },
-  { code: "KRW", label: UI_TEXT.currencies.krw },
-  { code: "EUR", label: UI_TEXT.currencies.eur },
-];
 
 
 
@@ -281,6 +274,11 @@ export function App() {
   // Signed-in only: the inbox belongs to an account, and polling it while
   // signed out would be a 401 every five minutes.
   const notifications = useNotifications(pollingClient, Boolean(session));
+  // The category and currency lists, which an admin can now change without a
+  // deploy. Held here rather than read at module load so the fetched copy
+  // re-renders the composer that uses it.
+  const catalog = useCatalog(pollingClient, Boolean(session));
+  const currencyOptions = catalog.currencies;
 
   const {
     archivedGroups,

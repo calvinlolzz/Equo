@@ -7,6 +7,10 @@ import { availableReceiptScanModels, type ReceiptScanKeys } from "../runtime/rec
 import {
   handleAdminDeleteUser,
   handleAdminExportUser,
+  handleAdminGetCatalog,
+  handleAdminSaveCategory,
+  handleAdminSaveCurrency,
+  handleAdminSetRateOverride,
   handleAdminGetReceiptScanSettings,
   handleAdminGroupDetail,
   handleAdminHealth,
@@ -469,4 +473,55 @@ export async function adminReplyFeedbackRoute(options: RouteOptions, feedbackId:
   }
 
   return handleAdminReplyFeedback(createSupabaseAdminRepository(options.client), auth.context, feedbackId, message);
+}
+
+export async function adminGetCatalogRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminGetCatalog(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminSaveCategoryRoute(
+  options: RouteOptions,
+  key: string,
+  body: { label?: unknown; color?: unknown; sort_order?: unknown; enabled?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSaveCategory(createSupabaseAdminRepository(options.client), auth.context, key, body);
+}
+
+export async function adminSaveCurrencyRoute(
+  options: RouteOptions,
+  code: string,
+  body: { label?: unknown; sort_order?: unknown; enabled?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSaveCurrency(createSupabaseAdminRepository(options.client), auth.context, code, body);
+}
+
+export async function adminSetRateOverrideRoute(
+  options: RouteOptions,
+  body: { base?: unknown; quote?: unknown; rate?: unknown; note?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetRateOverride(createSupabaseAdminRepository(options.client), auth.context, body);
 }

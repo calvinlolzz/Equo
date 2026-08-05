@@ -653,6 +653,37 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminDeleteUser(userId: string) {
       return request<AdminDeleteUserResponse>(`/admin/users/${userId}`, { method: "DELETE" });
     },
+    /** The category and currency lists the app renders itself from. */
+    getCatalog() {
+      return request<{ categories: Array<{ key: string; label: string; color: string }>; currencies: Array<{ code: string; label: string }> }>(
+        "/catalog",
+        { method: "GET" },
+      );
+    },
+    /** Master data as the console sees it: disabled rows and rate overrides included (support+). */
+    adminGetCatalog() {
+      return request<AdminCatalogPayload>("/admin/catalog", { method: "GET" });
+    },
+    /** Create or update one category, keyed by its expenses.category value (admin+). */
+    adminSaveCategory(key: string, input: { label: string; color: string; sort_order: number; enabled: boolean }) {
+      return request<{ ok: true; category: AdminCatalogCategoryRow }>(
+        `/admin/catalog/categories/${encodeURIComponent(key)}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+    },
+    adminSaveCurrency(code: string, input: { label: string; sort_order: number; enabled: boolean }) {
+      return request<{ ok: true; currency: AdminCatalogCurrencyRow }>(
+        `/admin/catalog/currencies/${encodeURIComponent(code)}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+    },
+    /** Set one pair's manual rate; `rate: null` clears it and follows the upstream again. */
+    adminSetRateOverride(input: { base: string; quote: string; rate: number | null; note?: string }) {
+      return request<{ ok: true; cleared: boolean; base: string; quote: string; rate?: number }>(
+        "/admin/catalog/rates",
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+    },
     /** The signed-in user's own inbox, plus the unread count for the bell. */
     listNotifications() {
       return request<NotificationsPage>("/notifications", { method: "GET" });
@@ -680,6 +711,44 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     },
   };
 }
+
+export type AdminCatalogCategoryRow = {
+  key: string;
+  label: string;
+  color: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at?: string;
+  updated_by_email?: string | null;
+  /** Live expenses filed under this key - what makes disabling it consequential. */
+  expense_count?: number;
+};
+
+export type AdminCatalogCurrencyRow = {
+  code: string;
+  label: string;
+  sort_order: number;
+  enabled: boolean;
+  updated_at?: string;
+  updated_by_email?: string | null;
+  expense_count?: number;
+};
+
+export type AdminRateOverrideRow = {
+  base: string;
+  quote: string;
+  /** numeric(18,8) arrives as a string. */
+  rate: string | number;
+  note: string | null;
+  updated_at: string;
+  updated_by_email: string | null;
+};
+
+export type AdminCatalogPayload = {
+  categories: AdminCatalogCategoryRow[];
+  currencies: AdminCatalogCurrencyRow[];
+  rate_overrides: AdminRateOverrideRow[];
+};
 
 export type NotificationRow = {
   id: string;

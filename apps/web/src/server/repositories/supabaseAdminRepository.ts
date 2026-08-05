@@ -2,7 +2,11 @@ import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AdminAccountRecord,
   AdminAuditLogListRecord,
+  AdminCatalogRecord,
   AdminDeleteUserResult,
+  AdminRateOverrideResult,
+  AdminSaveCategoryResult,
+  AdminSaveCurrencyResult,
   AdminExpenseWriteResult,
   AdminMergeUsersResult,
   AdminRemoveResult,
@@ -301,5 +305,44 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       });
     },
 
+    getCatalog() {
+      return client.rpc<AdminCatalogRecord>("admin_console_catalog", {});
+    },
+
+    saveCategory(actor, category) {
+      return client.rpc<AdminSaveCategoryResult>("admin_console_save_category", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_key: category.key,
+        p_label: category.label,
+        p_color: category.color,
+        p_sort_order: category.sort_order,
+        p_enabled: category.enabled,
+      });
+    },
+
+    saveCurrency(actor, currency) {
+      return client.rpc<AdminSaveCurrencyResult>("admin_console_save_currency", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_code: currency.code,
+        p_label: currency.label,
+        p_sort_order: currency.sort_order,
+        p_enabled: currency.enabled,
+      });
+    },
+
+    setRateOverride(actor, pair) {
+      return client.rpc<AdminRateOverrideResult>("admin_console_set_rate_override", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_base: pair.base,
+        p_quote: pair.quote,
+        // null is meaningful here: it is how a pair goes back to following the
+        // upstream feed.
+        p_rate: pair.rate,
+        p_note: pair.note,
+      });
+    },
   };
 }

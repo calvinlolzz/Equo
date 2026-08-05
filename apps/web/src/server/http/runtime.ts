@@ -37,8 +37,12 @@ import {
   adminExportUserRoute,
   adminGroupDetailRoute,
   adminMergeUsersRoute,
+  adminGetCatalogRoute,
   adminReplyFeedbackRoute,
+  adminSaveCategoryRoute,
+  adminSaveCurrencyRoute,
   adminSendNotificationRoute,
+  adminSetRateOverrideRoute,
   adminSetExpenseDeletedRoute,
   adminTransferGroupOwnerRoute,
   adminUpdateExpenseMetaRoute,
@@ -86,6 +90,7 @@ import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
 import { listNotificationsRoute, markNotificationsReadRoute } from "../routes/notificationRoutes.js";
+import { getCatalogRoute } from "../routes/catalogRoutes.js";
 import type { AdminSendNotificationBody } from "../handlers/admin.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
 import { notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
@@ -925,6 +930,62 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "POST /api/v1/admin/groups/:groupId/(delete|restore)",
       async handle(request, match) {
         const result = await adminSetGroupDeletedRoute(routeOptions(options, request), match[1], match[2] === "delete");
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/catalog$/,
+      label: "GET /api/v1/catalog",
+      async handle(request) {
+        const result = await getCatalogRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/catalog$/,
+      label: "GET /api/v1/admin/catalog",
+      async handle(request) {
+        const result = await adminGetCatalogRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/admin\/catalog\/categories\/([^/]+)$/,
+      label: "PUT /api/v1/admin/catalog/categories/:key",
+      async handle(request, match) {
+        const result = await adminSaveCategoryRoute(
+          routeOptions(options, request),
+          match[1],
+          body<{ label?: unknown; color?: unknown; sort_order?: unknown; enabled?: unknown }>(request) ?? {},
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/admin\/catalog\/currencies\/([^/]+)$/,
+      label: "PUT /api/v1/admin/catalog/currencies/:code",
+      async handle(request, match) {
+        const result = await adminSaveCurrencyRoute(
+          routeOptions(options, request),
+          match[1],
+          body<{ label?: unknown; sort_order?: unknown; enabled?: unknown }>(request) ?? {},
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/admin\/catalog\/rates$/,
+      label: "PUT /api/v1/admin/catalog/rates",
+      async handle(request) {
+        const result = await adminSetRateOverrideRoute(
+          routeOptions(options, request),
+          body<{ base?: unknown; quote?: unknown; rate?: unknown; note?: unknown }>(request) ?? {},
+        );
         return jsonResponse(result.status, result.body);
       },
     },

@@ -34,6 +34,10 @@ import {
   handleAdminUpdateExpenseMeta,
   handleAdminReplyFeedback,
   handleAdminSendNotification,
+  handleAdminGetCatalog,
+  handleAdminSaveCategory,
+  handleAdminSaveCurrency,
+  handleAdminSetRateOverride,
   normalizeAdminListQuery,
   normalizeErrorStatusFilter,
   normalizeExpenseMetaPatch,
@@ -239,6 +243,20 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     },
     async replyFeedback(_actor, feedbackId) {
       return { ok: true, feedback_id: feedbackId, notification_id: "notification_1", status: "done" };
+    },
+    async getCatalog() {
+      return { categories: [], currencies: [], rate_overrides: [] };
+    },
+    async saveCategory(_actor, category) {
+      return { ok: true, category };
+    },
+    async saveCurrency(_actor, currency) {
+      return { ok: true, currency };
+    },
+    async setRateOverride(_actor, pair) {
+      return pair.rate === null
+        ? { ok: true, cleared: true, base: pair.base, quote: pair.quote }
+        : { ok: true, cleared: false, base: pair.base, quote: pair.quote, rate: pair.rate };
     },
     ...overrides,
   };
@@ -1097,5 +1115,100 @@ describe("in-app notifications", () => {
   test("an empty reply is rejected before the RPC", async () => {
     const result = await handleAdminReplyFeedback(makeRepository(), context, FEEDBACK_ID, "   ");
     expect(result.status).toBe(400);
+  });
+});
+
+describe("master data", () => {
+  test("reading is support-level, writing is not", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+
+    const read = await handleAdminGetCatalog(repository, context);
+    const write = await handleAdminSaveCategory(repository, context, "medical", {
+      label: "醫療",
+      color: "#aa1122",
+    });
+
+    expect(read.status).toBe(200);
+    expect(write.status).toBe(403);
+  });
+
+  test("a key that cannot be stored on an expense is refused", async () => {
+    // "MEDICAL" is not here on purpose - it is lower-cased first, and the other
+    // test pins that down.
+    for (const key of ["3medical", "medical-care", "medical care", "", "a".repeat(40)]) {
+      const result = await handleAdminSaveCategory(makeRepository(), context, key, {
+        label: "醫療",
+        color: "#aa1122",
+      });
+      expect(result.status).toBe(400);
+    }
+  });
+
+  test("the colour has to be a hex the donut can draw", async () => {
+    const bad = await handleAdminSaveCategory(makeRepository(), context, "medical", {
+      label: "醫療",
+      color: "red",
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  test("the key is lower-cased and sort_order clamped before the RPC", async () => {
+    let seen: unknown;
+    const repository = makeRepository({
+      async saveCategory(_actor, category) {
+        seen = category;
+        return { ok: true, category };
+      },
+    });
+
+    await handleAdminSaveCategory(repository, context, "MEDICAL", {
+      label: "  醫療  ",
+      color: "#AA1122",
+      sort_order: 99999,
+    });
+
+    expect(seen).toEqual({ key: "medical", label: "醫療", color: "#aa1122", sort_order: 9999, enabled: true });
+  });
+
+  test("switching off a currency people are still using is a 409", async () => {
+    const repository = makeRepository({
+      async saveCurrency() {
+        return { ok: false, error: "CURRENCY_IN_USE" };
+      },
+    });
+
+    const result = await handleAdminSaveCurrency(repository, context, "JPY", { label: "日圓", enabled: false });
+
+    expect(result.status).toBe(409);
+  });
+
+  test("a rate override needs two different, well-formed codes", async () => {
+    const repository = makeRepository();
+
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TWD", quote: "TWD", rate: 1 })).status).toBe(400);
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TW", quote: "JPY", rate: 1 })).status).toBe(400);
+    // A zero rate would not fail loudly - it would value a currency at nothing.
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TWD", quote: "JPY", rate: 0 })).status).toBe(400);
+    expect((await handleAdminSetRateOverride(repository, context, { base: "TWD", quote: "JPY", rate: "abc" })).status).toBe(400);
+  });
+
+  test("a null rate clears the override rather than being rejected as missing", async () => {
+    let seen: unknown;
+    const repository = makeRepository({
+      async setRateOverride(_actor, pair) {
+        seen = pair;
+        return { ok: true, cleared: true, base: pair.base, quote: pair.quote };
+      },
+    });
+
+    const result = await handleAdminSetRateOverride(repository, context, {
+      base: "twd",
+      quote: "jpy",
+      rate: null,
+      note: "  ",
+    });
+
+    expect(result.status).toBe(200);
+    expect(seen).toEqual({ base: "TWD", quote: "JPY", rate: null, note: null });
   });
 });

@@ -5,6 +5,7 @@ import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
 import { formatAmount } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
+import { categoryLabel as lookupCategoryLabel } from "./catalog";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -93,8 +94,8 @@ export function ExpenseDetailDialog({
     (member) => member.id === (expense.transferToMemberId ?? expense.shareMemberIds[0]),
   );
   const categoryLabel = expense.category
-    ? UI_TEXT.categories[expense.category as keyof typeof UI_TEXT.categories] ?? UI_TEXT.categories.general
-    : UI_TEXT.categories.general;
+    ? lookupCategoryLabel(expense.category)
+    : lookupCategoryLabel("general");
   const shareMembers = members.filter((member) => expense.shareMemberIds.includes(member.id));
   // For income the "payments" are the beneficiaries' portions (分給誰); for
   // an expense they are the payers (付款人). Either way there is one row per
