@@ -2163,6 +2163,158 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
   );
 }
 
+/**
+ * Pick the one user or group a notification is addressed to.
+ *
+ * This was a text field asking for a uuid, which meant the only way to send
+ * anybody a message was to drill into them in another tab and copy the id out
+ * of the address bar - the console never shows an id on screen. Nobody was
+ * going to find that, and a mistyped uuid is either a 404 or, worse, a message
+ * delivered to a stranger.
+ *
+ * Same search-and-pick shape the account merge uses, against the list
+ * endpoints that already exist.
+ */
+function TargetPicker({
+  client,
+  kind,
+  selected,
+  selectedLabel,
+  disabled,
+  onPick,
+}: {
+  client: EquoApiClient;
+  kind: "user" | "group";
+  selected: string;
+  selectedLabel: string;
+  disabled: boolean;
+  onPick: (id: string, label: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<Array<{ id: string; label: string; hint: string }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState("");
+  const [searched, setSearched] = useState(false);
+
+  // Switching audience resets the search, so the group list is never left
+  // sitting under a "指定使用者" label.
+  useEffect(() => {
+    setSearch("");
+    setResults([]);
+    setSearched(false);
+    setError("");
+  }, [kind]);
+
+  /**
+   * Not a <form>: this control lives inside the notification form, and a
+   * nested form is invalid HTML whose submit button can end up submitting the
+   * outer one - which here would mean "search" sending the notification.
+   * Enter is wired up by hand instead.
+   */
+  async function run() {
+    const query = search.trim();
+    if (!query) return;
+
+    setSearching(true);
+    setError("");
+    try {
+      if (kind === "user") {
+        const page = await client.adminListUsers({ search: query, limit: 8 });
+        setResults(
+          page.users.map((row) => ({
+            id: row.id,
+            label: row.display_name || row.email,
+            hint: `${row.email}${row.disabled_at ? "・已停用" : ""}`,
+          })),
+        );
+      } else {
+        const page = await client.adminListGroups({ search: query, limit: 8 });
+        setResults(
+          page.groups.map((row) => ({
+            id: row.id,
+            label: row.name,
+            hint: `${row.member_count} 位成員・擁有者 ${row.owner_display_name ?? "—"}`,
+          })),
+        );
+      }
+      setSearched(true);
+    } catch {
+      setError("搜尋失敗，請稍後再試。");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  if (selected) {
+    return (
+      <div className="admin-field">
+        <span>{kind === "user" ? "收件人" : "收件群組"}</span>
+        <div className="admin-target-chip">
+          <span>
+            <strong>{selectedLabel}</strong>
+            <code className="admin-muted">{selected.slice(0, 8)}</code>
+          </span>
+          <button type="button" className="admin-action" disabled={disabled} onClick={() => onPick("", "")}>
+            換一個
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-field">
+      <span>{kind === "user" ? "選擇收件人" : "選擇收件群組"}</span>
+      <div className="admin-inline-form">
+        <input
+          className="admin-input"
+          value={search}
+          placeholder={kind === "user" ? "用 email 或名稱搜尋" : "用群組名稱搜尋"}
+          onChange={(event) => setSearch(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            // Otherwise Enter reaches the notification form and sends it.
+            event.preventDefault();
+            void run();
+          }}
+          disabled={disabled}
+        />
+        <button
+          type="button"
+          className="admin-action"
+          disabled={disabled || searching || !search.trim()}
+          onClick={() => void run()}
+        >
+          {searching ? "搜尋中…" : "搜尋"}
+        </button>
+      </div>
+
+      {error && <p className="admin-error">{error}</p>}
+      {searched && results.length === 0 && !error && <p className="admin-modal__hint">找不到符合的對象。</p>}
+
+      {results.length > 0 && (
+        <ul className="admin-merge__results">
+          {results.map((row) => (
+            <li key={row.id}>
+              <span>
+                <strong>{row.label}</strong> <span className="admin-muted">{row.hint}</span>
+              </span>
+              <button
+                type="button"
+                className="admin-action"
+                disabled={disabled}
+                onClick={() => onPick(row.id, row.label)}
+              >
+                選這個
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 const AUDIENCE_OPTIONS: Array<{ value: AdminNotificationAudienceOption; label: string; hint: string }> = [
   { value: "active", label: "近 30 天活躍使用者", hint: "最近開過 app 的人。公告的預設對象。" },
   { value: "all", label: "全部使用者", hint: "所有未停用的帳號，包含很久沒回來的。" },
@@ -2181,6 +2333,8 @@ const AUDIENCE_OPTIONS: Array<{ value: AdminNotificationAudienceOption; label: s
 function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSend: boolean }) {
   const [audience, setAudience] = useState<AdminNotificationAudienceOption>("active");
   const [target, setTarget] = useState("");
+  /** What the picked target is called, so the form can say who it is about to write to. */
+  const [targetLabel, setTargetLabel] = useState("");
   const [title, setTitle] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [link, setLink] = useState("");
@@ -2195,8 +2349,10 @@ function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSen
     event.preventDefault();
     if (!canSend || busy) return;
 
+    // Name the actual recipient when there is one. "送給指定使用者" is not a
+    // thing anybody can check before pressing send.
     const confirmed = window.confirm(
-      `這則通知會送給「${selected?.label}」，送出後無法收回。確定要送出嗎？`,
+      `這則通知會送給「${needsTarget ? targetLabel || selected?.label : selected?.label}」，送出後無法收回。確定要送出嗎？`,
     );
     if (!confirmed) return;
 
@@ -2238,7 +2394,13 @@ function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSen
           <span>發送對象</span>
           <select
             value={audience}
-            onChange={(event) => setAudience(event.target.value as AdminNotificationAudienceOption)}
+            onChange={(event) => {
+              setAudience(event.target.value as AdminNotificationAudienceOption);
+              // A target picked for one audience must not survive into another:
+              // a user id left over from 指定使用者 would be sent as a group id.
+              setTarget("");
+              setTargetLabel("");
+            }}
             disabled={!canSend}
           >
             {AUDIENCE_OPTIONS.map((option) => (
@@ -2251,15 +2413,17 @@ function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSen
         <p className="admin-modal__hint">{selected?.hint}</p>
 
         {needsTarget && (
-          <label className="admin-field">
-            <span>{audience === "user" ? "使用者 ID" : "群組 ID"}</span>
-            <input
-              value={target}
-              onChange={(event) => setTarget(event.target.value)}
-              placeholder="從使用者／群組列表點進去，網址列的 id"
-              disabled={!canSend}
-            />
-          </label>
+          <TargetPicker
+            client={client}
+            kind={audience === "user" ? "user" : "group"}
+            selected={target}
+            selectedLabel={targetLabel}
+            disabled={!canSend}
+            onPick={(id, label) => {
+              setTarget(id);
+              setTargetLabel(label);
+            }}
+          />
         )}
 
         <label className="admin-field">

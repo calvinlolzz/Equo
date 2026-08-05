@@ -792,3 +792,91 @@ describe("support actions", () => {
     expect(screen.queryByRole("button", { name: "刪除這筆" })).toBeNull();
   });
 });
+
+describe("addressing a notification", () => {
+  const notifyRoutes: AdminRoutes = {
+    ...baseRoutes,
+    "POST /admin/notifications": { ok: true, recipients: 1 },
+  };
+
+  test("picking a recipient sends their id, without anyone typing a uuid", async () => {
+    let sent: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const full = String(url).replace(/^\/api\/v1/, "");
+        const path = full.split("?")[0];
+        if (path === "/admin/notifications") sent = JSON.parse(String(init?.body));
+        const body = notifyRoutes[`${method} ${path}`];
+        if (body === undefined) throw new Error(`No fake route for "${method} ${path}"`);
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    vi.stubGlobal("confirm", () => true);
+
+    renderAdmin("?tab=notifications");
+    await screen.findByRole("region", { name: "發送通知" });
+
+    fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "user" } });
+
+    // The id never appears as an input: it is searched for and picked.
+    expect(screen.queryByLabelText("使用者 ID")).toBeNull();
+
+    fireEvent.change(await screen.findByPlaceholderText("用 email 或名稱搜尋"), { target: { value: "alice" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜尋" }));
+    fireEvent.click(await screen.findByRole("button", { name: "選這個" }));
+
+    fireEvent.change(screen.getByLabelText("標題"), { target: { value: "測試" } });
+    fireEvent.change(screen.getByLabelText("內容"), { target: { value: "內容" } });
+    fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
+
+    await waitFor(() =>
+      expect(sent).toEqual({ audience: "user", target: "user_alice", title: "測試", body: "內容" }),
+    );
+  });
+
+  test("switching audience drops the target, so a user id is never sent as a group id", async () => {
+    fakeAdminApi(notifyRoutes);
+    renderAdmin("?tab=notifications");
+    await screen.findByRole("region", { name: "發送通知" });
+
+    fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "user" } });
+    fireEvent.change(await screen.findByPlaceholderText("用 email 或名稱搜尋"), { target: { value: "alice" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜尋" }));
+    fireEvent.click(await screen.findByRole("button", { name: "選這個" }));
+    expect(screen.getByText("Alice")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "group" } });
+
+    // Back to an empty search against groups, not Alice carried across.
+    expect(await screen.findByPlaceholderText("用群組名稱搜尋")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "換一個" })).toBeNull();
+  });
+
+  test("Enter in the search box searches, it does not send the notification", async () => {
+    const urls = fakeAdminApi(notifyRoutes);
+    renderAdmin("?tab=notifications");
+    await screen.findByRole("region", { name: "發送通知" });
+
+    fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "user" } });
+    const box = await screen.findByPlaceholderText("用 email 或名稱搜尋");
+    fireEvent.change(box, { target: { value: "alice" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    // The search ran...
+    await waitFor(() => expect(urls.some((url) => url.includes("/admin/users?search=alice"))).toBe(true));
+    // ...and nothing was sent. A nested <form> here would have submitted the
+    // outer one, i.e. broadcast a half-written notification.
+    expect(urls.some((url) => url === "POST /admin/notifications")).toBe(false);
+  });
+
+  test("a broadcast asks for no target at all", async () => {
+    fakeAdminApi(notifyRoutes);
+    renderAdmin("?tab=notifications");
+    await screen.findByRole("region", { name: "發送通知" });
+
+    expect(screen.queryByPlaceholderText("用 email 或名稱搜尋")).toBeNull();
+    expect(screen.getByRole("button", { name: "送出通知" })).toBeTruthy();
+  });
+});
