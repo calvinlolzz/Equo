@@ -114,6 +114,33 @@
   line-height: 1.55;
 }
 
+/* The swappable body of the shared dialog shell. It inherits the shell's grid
+   and gap so wrapping the content costs nothing in layout — every rule that
+   targets the body's own children keeps working, including the `justify-self`
+   ones below, which need the wrapper to be a grid to still apply.
+
+   The animation is what makes tab switching read as a change rather than a
+   jump-cut: React remounts this element whenever `dialog` changes (it is keyed
+   on it), so the entrance replays even though the sheet itself never left. It
+   is deliberately a short fade with barely any travel — on a fresh open this
+   plays over the sheet's own rise, and anything longer would fight it. */
+.dialog-body {
+  display: grid;
+  gap: 14px;
+  animation: dialog-body-in 170ms ease-out;
+}
+
+@keyframes dialog-body-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .flow-dialog .text-action {
   justify-self: center;
   color: rgb(var(--accent));

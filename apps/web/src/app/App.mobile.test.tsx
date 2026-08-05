@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
 import { UI_TEXT } from "./uiText";
@@ -207,6 +207,84 @@ describe("the bottom tab bar", () => {
     // findBy, not getBy: the panel's own chunk is lazy (see App.tsx), so the
     // dialog frame is on screen a tick before its contents are.
     expect(await within(panel).findByText(app.exportCsv)).toBeTruthy();
+  });
+});
+
+/**
+ * Sheets used to arrive with a slide-up and leave with a cut: only the swipe
+ * gesture and Escape ran the exit, while the X, the backdrop, 取消, Back and the
+ * 首頁 tab all cleared the slot outright. And because the panels share one
+ * mounted shell, moving between the 記錄 / 分析 tabs swapped the contents
+ * between two frames with no transition at all.
+ */
+describe("closing and switching sheets", () => {
+  /** The shell adds `closing` for the duration of the slide-out, then unmounts. */
+  const isAnimatingOut = (panel: HTMLElement) => panel.className.includes("closing");
+
+  async function openRecordsPanel() {
+    screen.getByRole("button", { name: app.navRecords }).click();
+    return await screen.findByRole("dialog", { name: app.groupHome });
+  }
+
+  test("the X button plays the slide-out before the sheet leaves", async () => {
+    await landOnGroup();
+    const panel = await openRecordsPanel();
+
+    fireEvent.click(within(panel).getByRole("button", { name: app.cancel }));
+
+    // The frame that did not exist before: still mounted, on its way out.
+    expect(isAnimatingOut(panel)).toBe(true);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull());
+  });
+
+  test("the backdrop tap animates out too", async () => {
+    await landOnGroup();
+    const panel = await openRecordsPanel();
+
+    // The backdrop only dismisses when the press lands on itself, not the sheet.
+    fireEvent.mouseDown(panel.parentElement as HTMLElement);
+
+    expect(isAnimatingOut(panel)).toBe(true);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull());
+  });
+
+  test("Back animates the sheet out rather than cutting it", async () => {
+    await landOnGroup();
+    const panel = await openRecordsPanel();
+
+    await pressBack();
+
+    expect(isAnimatingOut(panel)).toBe(true);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull());
+  });
+
+  test("the 首頁 tab animates the open panel out", async () => {
+    await landOnGroup();
+    const panel = await openRecordsPanel();
+
+    // fireEvent, not .click(): the assertion below reads state set by this very
+    // click, so it has to be flushed (act-wrapped) before we look.
+    fireEvent.click(screen.getByRole("button", { name: app.navHome }));
+
+    expect(isAnimatingOut(panel)).toBe(true);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.groupHome })).toBeNull());
+  });
+
+  test("switching 記錄 -> 分析 remounts the body so its entrance replays", async () => {
+    await landOnGroup();
+    const panel = await openRecordsPanel();
+    const firstBody = panel.querySelector(".dialog-body");
+    expect(firstBody).toBeTruthy();
+
+    screen.getByRole("button", { name: app.navAnalysis }).click();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: app.navAnalysis }).getAttribute("aria-current")).toBe("page"),
+    );
+
+    // The shell itself never left - that is the point of a tab switch - so the
+    // only thing that can replay the entrance is the body being a new element.
+    expect(screen.getByRole("dialog", { name: app.groupHome })).toBe(panel);
+    expect(panel.querySelector(".dialog-body")).not.toBe(firstBody);
   });
 });
 

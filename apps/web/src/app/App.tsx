@@ -463,6 +463,19 @@ export function App() {
   }
 
   /**
+   * The way a *person* closes the shared dialog: play the slide-out, then clear
+   * the slot. Every dismissal affordance goes through this — X, backdrop, 取消,
+   * Back, the 首頁 tab — so the sheet leaves the way it arrived instead of
+   * blinking out. closeDialog stays the terminal step this hands off to, and
+   * remains what action handlers call when the dialog closes as the *result* of
+   * finished work (a save, a pick) rather than as the dismissal itself.
+   *
+   * On desktop and under reduced motion requestClose skips the wait and closes
+   * at once — the slide-out CSS only exists in the ≤620px media query.
+   */
+  const dismissDialog = dialogSwipe.requestClose;
+
+  /**
    * The one way the composer closes without submitting — backdrop, Esc, swipe
    * and Back all land here — so a half-filled expense can't be thrown away by
    * a stray gesture. Back makes this matter: it is far easier to hit by
@@ -486,9 +499,11 @@ export function App() {
   // the info sheet sits on top of the profile dialog, and the composer and the
   // feedback sheet are the last things opened over anything else.
   const overlayDepth = useOverlayHistory([
-    { open: groupDrawerOpen, close: () => setGroupDrawerOpen(false) },
-    { open: settingsDrawerOpen, close: () => setSettingsDrawerOpen(false) },
-    { open: Boolean(dialog), close: closeDialog },
+    // requestClose, not the raw setters: Back is the phone's primary dismiss, so
+    // it should look like every other way of closing rather than cutting.
+    { open: groupDrawerOpen, close: groupDrawerSwipe.requestClose },
+    { open: settingsDrawerOpen, close: settingsDrawerSwipe.requestClose },
+    { open: Boolean(dialog), close: dismissDialog },
     { open: dialog === "profile" && infoDialog !== null, close: () => setInfoDialog(null) },
     // Above the dialog layer: the invite scanner is opened FROM the 輸入邀請碼
     // dialog and leaves it standing underneath, so Back must peel the camera
@@ -1531,7 +1546,7 @@ export function App() {
               aria-label={text.navHome}
               aria-current={activeTab === "home" ? "page" : undefined}
               onClick={() => {
-                closeDialog();
+                dismissDialog();
                 closeExpenseComposer();
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
@@ -1746,7 +1761,7 @@ export function App() {
           className={dialogSwipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeDialog();
+            if (event.target === event.currentTarget) dismissDialog();
           }}
         >
           <section
@@ -1758,346 +1773,354 @@ export function App() {
             ref={dialogRef}
           >
             <div className="dialog-drag-handle" aria-hidden="true" />
-            <button className="dialog-close" type="button" aria-label={text.cancel} onClick={closeDialog}>
+            <button className="dialog-close" type="button" aria-label={text.cancel} onClick={dismissDialog}>
               <X aria-hidden="true" size={18} />
             </button>
 
-            {dialog === "createGroup" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.createGroup}</h3>
-                  <p>{"\u65b0\u7fa4\u7d44\u6703\u7acb\u5373\u51fa\u73fe\u5728\u5de6\u5074\u5217\u8868\u3002"}</p>
-                </div>
-                <label className="group-edit-cover" aria-label={text.coverImage}>
-                  {groupCoverDataUrl ? (
-                    <img src={groupCoverDataUrl} alt="" />
-                  ) : (
-                    <span>
-                      <Pencil aria-hidden="true" size={22} />
-                    </span>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <label>
-                  <span>{text.name}</span>
-                  <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={selectedTemplateName} aria-label={text.groupName} />
-                </label>
-                <div className="dialog-action-row">
-                  <button
-                    className="secondary-action"
-                    type="button"
-                    onClick={() => {
-                      setDialog(null);
-                      setGroupCoverDataUrl("");
-                    }}
-                  >
-                    {text.cancel}
-                  </button>
-                  <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "createGroup"} onClick={createGroup}>
-                    {pendingAction === "createGroup" ? text.creatingGroup : text.createGroup}
-                  </button>
-                </div>
-              </>
-            ) : null}
+            {/* Keyed on `dialog` so switching panels from the tab bar remounts
+                the body and replays its entrance. Without this the shell stays
+                mounted across 記錄 -> 分析 and the content simply swaps between
+                two frames, which is the "生硬" part of tab switching. Carries
+                the parent's grid + gap so wrapping the body changes nothing
+                about the layout. */}
+            <div className="dialog-body" key={dialog}>
+              {dialog === "createGroup" ? (
+                <>
+                  <div className="dialog-header">
+                    <h3>{text.createGroup}</h3>
+                    <p>{"\u65b0\u7fa4\u7d44\u6703\u7acb\u5373\u51fa\u73fe\u5728\u5de6\u5074\u5217\u8868\u3002"}</p>
+                  </div>
+                  <label className="group-edit-cover" aria-label={text.coverImage}>
+                    {groupCoverDataUrl ? (
+                      <img src={groupCoverDataUrl} alt="" />
+                    ) : (
+                      <span>
+                        <Pencil aria-hidden="true" size={22} />
+                      </span>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <label>
+                    <span>{text.name}</span>
+                    <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={selectedTemplateName} aria-label={text.groupName} />
+                  </label>
+                  <div className="dialog-action-row">
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={() => {
+                        setDialog(null);
+                        setGroupCoverDataUrl("");
+                      }}
+                    >
+                      {text.cancel}
+                    </button>
+                    <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "createGroup"} onClick={createGroup}>
+                      {pendingAction === "createGroup" ? text.creatingGroup : text.createGroup}
+                    </button>
+                  </div>
+                </>
+              ) : null}
 
-            {dialog === "editGroup" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.editGroup}</h3>
-                  <p>{"\u66f4\u65b0\u7fa4\u7d44\u540d\u7a31\uff0c\u53f3\u5074\u8207\u5de6\u5074\u5217\u8868\u6703\u540c\u6b65\u986f\u793a\u3002"}</p>
-                </div>
-                <label className="group-edit-cover" aria-label={text.coverImage}>
-                  {groupCoverDataUrl || groupCoverUrl ? (
-                    <img src={groupCoverDataUrl || groupCoverUrl} alt="" loading="lazy" decoding="async" />
-                  ) : (
-                    <span>
-                      <Pencil aria-hidden="true" size={22} />
-                    </span>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <label>
-                  <span>{text.name}</span>
-                  <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
-                </label>
-                <label>
-                  <span>{text.currency}</span>
-                  <input value={activeGroup?.currency ?? "TWD"} aria-label={text.currency} readOnly />
-                </label>
-                <div className="dialog-action-row">
-                  <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
-                    {text.cancel}
-                  </button>
-                  <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "editGroup"} onClick={updateActiveGroup}>
-                    {pendingAction === "editGroup" ? text.savingChanges : text.save}
-                  </button>
-                </div>
-              </>
-            ) : null}
+              {dialog === "editGroup" ? (
+                <>
+                  <div className="dialog-header">
+                    <h3>{text.editGroup}</h3>
+                    <p>{"\u66f4\u65b0\u7fa4\u7d44\u540d\u7a31\uff0c\u53f3\u5074\u8207\u5de6\u5074\u5217\u8868\u6703\u540c\u6b65\u986f\u793a\u3002"}</p>
+                  </div>
+                  <label className="group-edit-cover" aria-label={text.coverImage}>
+                    {groupCoverDataUrl || groupCoverUrl ? (
+                      <img src={groupCoverDataUrl || groupCoverUrl} alt="" loading="lazy" decoding="async" />
+                    ) : (
+                      <span>
+                        <Pencil aria-hidden="true" size={22} />
+                      </span>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <label>
+                    <span>{text.name}</span>
+                    <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
+                  </label>
+                  <label>
+                    <span>{text.currency}</span>
+                    <input value={activeGroup?.currency ?? "TWD"} aria-label={text.currency} readOnly />
+                  </label>
+                  <div className="dialog-action-row">
+                    <button className="secondary-action" type="button" onClick={dismissDialog}>
+                      {text.cancel}
+                    </button>
+                    <button className="primary-action" type="button" disabled={!groupName.trim() || pendingAction === "editGroup"} onClick={updateActiveGroup}>
+                      {pendingAction === "editGroup" ? text.savingChanges : text.save}
+                    </button>
+                  </div>
+                </>
+              ) : null}
 
 
-            {dialog === "recordsPanel" ? (
-              <Suspense fallback={null}>
-              <RecordsPanel
-                expenseCount={aggregates.expenseCount}
-                totalExpenseMinor={totalExpenseMinor}
-                currency={activeGroup?.currency ?? "TWD"}
-                expenses={expenses}
-                members={members}
-                activities={activities}
-                canLoadMoreExpenses={canLoadMoreExpenses}
-                loadingMoreExpenses={loadingMoreExpenses}
-                pendingAction={pendingAction}
-                pendingWriteIds={pendingWriteIds}
-                onLoadMore={handleLoadMoreExpenses}
-                onExportCsv={handleExportCsv}
-                onOpenExpense={openExpenseDetail}
-              />
-              </Suspense>
-            ) : null}
-
-            {dialog === "analysisPanel" ? (
-              <Suspense fallback={null}>
-              <AnalysisPanel
-                totalExpenseMinor={totalExpenseMinor}
-                currency={activeGroup?.currency ?? "TWD"}
-                members={members}
-                balances={balances}
-                maxBalanceMinor={maxBalanceMinor}
-                debtAmountMinor={debt?.amountMinor ?? 0}
-                settlementTransfers={settlementTransfers}
-                settlementRecords={settlementRecords}
-                dateChips={dateChips}
-                spendByDay={aggregates.spendByDay}
-                spendByCategory={aggregates.spendByCategory}
-                selectedDateKey={selectedDateKey}
-                pendingAction={pendingAction}
-                onSelectDate={setSelectedDateKey}
-                onSettleTransfer={settleTransfer}
-              />
-              </Suspense>
-            ) : null}
-
-            {dialog === "memberActions" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.addMember}</h3>
-                  <p>{"\u9080\u8acb\u771f\u5be6\u6210\u54e1\uff0c\u6216\u5148\u5efa\u7acb\u865b\u64ec\u6210\u54e1\u4f86\u8a18\u9304\u5206\u5e33\u3002"}</p>
-                </div>
-                <div className="dialog-option-list">
-                  <button className="dialog-option" type="button" onClick={openInviteMembers}>
-                    <Inbox aria-hidden="true" size={20} />
-                    <span>
-                      <strong>{text.inviteMembers}</strong>
-                      <small>{"\u8907\u88fd\u9080\u8acb\u78bc\u6216\u9023\u7d50\u7d66\u670b\u53cb\u3002"}</small>
-                    </span>
-                  </button>
-                  <button className="dialog-option" type="button" onClick={() => setDialog("virtualMember")}>
-                    <UserRound aria-hidden="true" size={20} />
-                    <span>
-                      <strong>{text.addVirtualMember}</strong>
-                      <small>{"適合幫沒有帳號的人代記支出。"}</small>
-                    </span>
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {dialog === "inviteMembers" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.inviteMembers}</h3>
-                  <p>
-                    <strong className="invite-group-name">{activeGroup?.name ?? ""}</strong>
-                    <span>{text.inviteJoinAsNewMember}</span>
-                  </p>
-                </div>
-                <div className="invite-dialog-card">
-                  {/* The QR is the primary affordance: the other phone points
-                      its camera and is done, no code to read out or mistype. */}
-                  <Suspense fallback={<div className="invite-qr-frame invite-qr-frame--empty" aria-hidden="true" />}>
-                    <InviteQrCode value={cloudInviteLoading ? "" : inviteLink} />
-                  </Suspense>
-                  <button
-                    className="invite-code-row"
-                    type="button"
-                    aria-label={`${text.copyCode} ${inviteCode}`}
-                    disabled={!inviteCode}
-                    onClick={() => copyInviteText(inviteCode)}
-                  >
-                    <Copy aria-hidden="true" size={18} />
-                    <span>{text.inviteCode}</span>
-                    <strong>{cloudInviteLoading ? "..." : inviteCode}</strong>
-                  </button>
-                  <button
-                    className="primary-action"
-                    type="button"
-                    disabled={!inviteLink}
-                    onClick={() => copyInviteText(inviteLink)}
-                  >
-                    <Link aria-hidden="true" size={18} />
-                    {text.copyLink}
-                  </button>
-                  <button className="text-action invite-share-action" type="button" disabled={!inviteLink} onClick={shareInviteLink}>
-                    {text.shareInvite}
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {dialog === "inviteInput" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.inviteInputTitle}</h3>
-                  <p>{text.inviteInputDescription}</p>
-                </div>
-                <label>
-                  <span>{text.inviteCode}</span>
-                  <input
-                    value={inviteInputValue}
-                    onChange={(event) => {
-                      setInviteInputValue(event.target.value);
-                      setInviteInputError("");
-                    }}
-                    onKeyDown={(event) => {
-                      // Make the keyboard's "Go" key actually join (no <form> to
-                      // submit) — matches the enterKeyHint promise below.
-                      if (event.key === "Enter" && inviteInputValue.trim() && pendingAction !== "joinGroup") {
-                        submitInviteInput();
-                      }
-                    }}
-                    placeholder={text.inviteInputPlaceholder}
-                    aria-label={text.inviteCode}
-                    autoCapitalize="characters"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    spellCheck={false}
-                    enterKeyHint="go"
-                  />
-                </label>
-                {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
-                <button className="invite-scan-action" type="button" onClick={() => setScanMode("invite")}>
-                  <Scan aria-hidden="true" size={18} />
-                  {text.scanInviteQr}
-                </button>
-                <div className="dialog-action-row">
-                  <button
-                    className="secondary-action"
-                    type="button"
-                    onClick={() => {
-                      setDialog(null);
-                      setInviteInputValue("");
-                      setInviteInputError("");
-                    }}
-                  >
-                    {text.cancel}
-                  </button>
-                  <button
-                    className="primary-action"
-                    type="button"
-                    disabled={!inviteInputValue.trim() || pendingAction === "joinGroup"}
-                    onClick={submitInviteInput}
-                  >
-                    {pendingAction === "joinGroup" ? text.joiningGroup : text.joinGroupAction}
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {dialog === "memberList" ? (
-              <MemberListPanel
-                members={members}
-                balances={balances}
-                currency={activeGroup?.currency ?? "TWD"}
-                renamingMemberId={renamingMemberId}
-                renameMemberValue={renameMemberValue}
-                confirmingRemoveMemberId={confirmingRemoveMemberId}
-                pendingAction={pendingAction}
-                currentMemberId={currentMember?.id}
-                nudgedMemberIds={nudgedMemberIds}
-                onNudge={nudgeMember}
-                onRenameValueChange={setRenameMemberValue}
-                onStartRename={startRenameMember}
-                onCancelRename={cancelRenameMember}
-                onSubmitRename={submitRenameMember}
-                onRemove={removeMember}
-                onInvite={openInviteMembers}
-                onAddVirtualMember={() => setDialog("virtualMember")}
-              />
-            ) : null}
-
-            {dialog === "virtualMember" ? (
-              <>
-                <div className="dialog-header">
-                  <h3>{text.addVirtualMember}</h3>
-                  <p>{"\u8f38\u5165\u540d\u7a31\u5f8c\uff0c\u9019\u4f4d\u6210\u54e1\u6703\u7acb\u5373\u51fa\u73fe\u5728\u7fa4\u7d44\u5167\u3002"}</p>
-                </div>
-                <label>
-                  <span>{text.virtualMemberName}</span>
-                  <input
-                    value={virtualMemberName}
-                    onChange={(event) => setVirtualMemberName(event.target.value)}
-                    placeholder="輸入成員名稱"
-                    aria-label={text.virtualMemberName}
-                  />
-                </label>
-                <div className="dialog-action-row">
-                  <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
-                    {text.cancel}
-                  </button>
-                  <button
-                    className="primary-action"
-                    type="button"
-                    disabled={!virtualMemberName.trim() || pendingAction === "addVirtualMember"}
-                    onClick={addVirtualMember}
-                  >
-                    {pendingAction === "addVirtualMember" ? text.processing : text.addMember}
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {dialog === "archivedList" ? (
-              <Suspense fallback={null}>
-                <ArchivedListPanel
-                  archivedGroups={archivedGroups}
-                  loading={archivedGroupsLoading}
-                  unarchivingGroupId={unarchivingGroupId}
-                  onUnarchive={unarchiveGroup}
+              {dialog === "recordsPanel" ? (
+                <Suspense fallback={null}>
+                <RecordsPanel
+                  expenseCount={aggregates.expenseCount}
+                  totalExpenseMinor={totalExpenseMinor}
+                  currency={activeGroup?.currency ?? "TWD"}
+                  expenses={expenses}
+                  members={members}
+                  activities={activities}
+                  canLoadMoreExpenses={canLoadMoreExpenses}
+                  loadingMoreExpenses={loadingMoreExpenses}
+                  pendingAction={pendingAction}
+                  pendingWriteIds={pendingWriteIds}
+                  onLoadMore={handleLoadMoreExpenses}
+                  onExportCsv={handleExportCsv}
+                  onOpenExpense={openExpenseDetail}
                 />
-              </Suspense>
-            ) : null}
+                </Suspense>
+              ) : null}
 
-            {dialog === "archive" || dialog === "delete" ? (
-              <>
-                <div className="dialog-header centered">
-                  <AlertTriangle aria-hidden="true" size={28} />
-                  <h3>{dialog === "archive" ? text.archiveGroup : text.deleteGroup}</h3>
-                  <p>{dialog === "archive" ? "\u5c01\u5b58\u5f8c\u53ef\u5f9e\u5de6\u5074\u4e0a\u65b9\u7684\u5c01\u5b58\u5165\u53e3\u67e5\u770b\u3002" : "刪除後這個群組與所有記錄將永久移除，無法復原。"}</p>
-                </div>
-                <div className="dialog-action-row">
-                  <button className="secondary-action" type="button" onClick={() => setDialog(null)}>
-                    {text.cancel}
+              {dialog === "analysisPanel" ? (
+                <Suspense fallback={null}>
+                <AnalysisPanel
+                  totalExpenseMinor={totalExpenseMinor}
+                  currency={activeGroup?.currency ?? "TWD"}
+                  members={members}
+                  balances={balances}
+                  maxBalanceMinor={maxBalanceMinor}
+                  debtAmountMinor={debt?.amountMinor ?? 0}
+                  settlementTransfers={settlementTransfers}
+                  settlementRecords={settlementRecords}
+                  dateChips={dateChips}
+                  spendByDay={aggregates.spendByDay}
+                  spendByCategory={aggregates.spendByCategory}
+                  selectedDateKey={selectedDateKey}
+                  pendingAction={pendingAction}
+                  onSelectDate={setSelectedDateKey}
+                  onSettleTransfer={settleTransfer}
+                />
+                </Suspense>
+              ) : null}
+
+              {dialog === "memberActions" ? (
+                <>
+                  <div className="dialog-header">
+                    <h3>{text.addMember}</h3>
+                    <p>{"\u9080\u8acb\u771f\u5be6\u6210\u54e1\uff0c\u6216\u5148\u5efa\u7acb\u865b\u64ec\u6210\u54e1\u4f86\u8a18\u9304\u5206\u5e33\u3002"}</p>
+                  </div>
+                  <div className="dialog-option-list">
+                    <button className="dialog-option" type="button" onClick={openInviteMembers}>
+                      <Inbox aria-hidden="true" size={20} />
+                      <span>
+                        <strong>{text.inviteMembers}</strong>
+                        <small>{"\u8907\u88fd\u9080\u8acb\u78bc\u6216\u9023\u7d50\u7d66\u670b\u53cb\u3002"}</small>
+                      </span>
+                    </button>
+                    <button className="dialog-option" type="button" onClick={() => setDialog("virtualMember")}>
+                      <UserRound aria-hidden="true" size={20} />
+                      <span>
+                        <strong>{text.addVirtualMember}</strong>
+                        <small>{"適合幫沒有帳號的人代記支出。"}</small>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {dialog === "inviteMembers" ? (
+                <>
+                  <div className="dialog-header">
+                    <h3>{text.inviteMembers}</h3>
+                    <p>
+                      <strong className="invite-group-name">{activeGroup?.name ?? ""}</strong>
+                      <span>{text.inviteJoinAsNewMember}</span>
+                    </p>
+                  </div>
+                  <div className="invite-dialog-card">
+                    {/* The QR is the primary affordance: the other phone points
+                        its camera and is done, no code to read out or mistype. */}
+                    <Suspense fallback={<div className="invite-qr-frame invite-qr-frame--empty" aria-hidden="true" />}>
+                      <InviteQrCode value={cloudInviteLoading ? "" : inviteLink} />
+                    </Suspense>
+                    <button
+                      className="invite-code-row"
+                      type="button"
+                      aria-label={`${text.copyCode} ${inviteCode}`}
+                      disabled={!inviteCode}
+                      onClick={() => copyInviteText(inviteCode)}
+                    >
+                      <Copy aria-hidden="true" size={18} />
+                      <span>{text.inviteCode}</span>
+                      <strong>{cloudInviteLoading ? "..." : inviteCode}</strong>
+                    </button>
+                    <button
+                      className="primary-action"
+                      type="button"
+                      disabled={!inviteLink}
+                      onClick={() => copyInviteText(inviteLink)}
+                    >
+                      <Link aria-hidden="true" size={18} />
+                      {text.copyLink}
+                    </button>
+                    <button className="text-action invite-share-action" type="button" disabled={!inviteLink} onClick={shareInviteLink}>
+                      {text.shareInvite}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {dialog === "inviteInput" ? (
+                <>
+                  <div className="dialog-header">
+                    <h3>{text.inviteInputTitle}</h3>
+                    <p>{text.inviteInputDescription}</p>
+                  </div>
+                  <label>
+                    <span>{text.inviteCode}</span>
+                    <input
+                      value={inviteInputValue}
+                      onChange={(event) => {
+                        setInviteInputValue(event.target.value);
+                        setInviteInputError("");
+                      }}
+                      onKeyDown={(event) => {
+                        // Make the keyboard's "Go" key actually join (no <form> to
+                        // submit) — matches the enterKeyHint promise below.
+                        if (event.key === "Enter" && inviteInputValue.trim() && pendingAction !== "joinGroup") {
+                          submitInviteInput();
+                        }
+                      }}
+                      placeholder={text.inviteInputPlaceholder}
+                      aria-label={text.inviteCode}
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck={false}
+                      enterKeyHint="go"
+                    />
+                  </label>
+                  {inviteInputError ? <p className="dialog-inline-error">{inviteInputError}</p> : null}
+                  <button className="invite-scan-action" type="button" onClick={() => setScanMode("invite")}>
+                    <Scan aria-hidden="true" size={18} />
+                    {text.scanInviteQr}
                   </button>
-                  <button
-                    className={dialog === "delete" ? "danger-action" : "primary-action"}
-                    type="button"
-                    disabled={pendingAction === "archiveGroup" || pendingAction === "deleteGroup"}
-                    onClick={dialog === "archive" ? archiveActiveGroup : deleteActiveGroup}
-                  >
-                    {pendingAction === "archiveGroup" || pendingAction === "deleteGroup" ? text.processing : text.confirm}
-                  </button>
-                </div>
-              </>
-            ) : null}
+                  <div className="dialog-action-row">
+                    <button
+                      className="secondary-action"
+                      type="button"
+                      onClick={() => {
+                        setDialog(null);
+                        setInviteInputValue("");
+                        setInviteInputError("");
+                      }}
+                    >
+                      {text.cancel}
+                    </button>
+                    <button
+                      className="primary-action"
+                      type="button"
+                      disabled={!inviteInputValue.trim() || pendingAction === "joinGroup"}
+                      onClick={submitInviteInput}
+                    >
+                      {pendingAction === "joinGroup" ? text.joiningGroup : text.joinGroupAction}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {dialog === "memberList" ? (
+                <MemberListPanel
+                  members={members}
+                  balances={balances}
+                  currency={activeGroup?.currency ?? "TWD"}
+                  renamingMemberId={renamingMemberId}
+                  renameMemberValue={renameMemberValue}
+                  confirmingRemoveMemberId={confirmingRemoveMemberId}
+                  pendingAction={pendingAction}
+                  currentMemberId={currentMember?.id}
+                  nudgedMemberIds={nudgedMemberIds}
+                  onNudge={nudgeMember}
+                  onRenameValueChange={setRenameMemberValue}
+                  onStartRename={startRenameMember}
+                  onCancelRename={cancelRenameMember}
+                  onSubmitRename={submitRenameMember}
+                  onRemove={removeMember}
+                  onInvite={openInviteMembers}
+                  onAddVirtualMember={() => setDialog("virtualMember")}
+                />
+              ) : null}
+
+              {dialog === "virtualMember" ? (
+                <>
+                  <div className="dialog-header">
+                    <h3>{text.addVirtualMember}</h3>
+                    <p>{"\u8f38\u5165\u540d\u7a31\u5f8c\uff0c\u9019\u4f4d\u6210\u54e1\u6703\u7acb\u5373\u51fa\u73fe\u5728\u7fa4\u7d44\u5167\u3002"}</p>
+                  </div>
+                  <label>
+                    <span>{text.virtualMemberName}</span>
+                    <input
+                      value={virtualMemberName}
+                      onChange={(event) => setVirtualMemberName(event.target.value)}
+                      placeholder="輸入成員名稱"
+                      aria-label={text.virtualMemberName}
+                    />
+                  </label>
+                  <div className="dialog-action-row">
+                    <button className="secondary-action" type="button" onClick={dismissDialog}>
+                      {text.cancel}
+                    </button>
+                    <button
+                      className="primary-action"
+                      type="button"
+                      disabled={!virtualMemberName.trim() || pendingAction === "addVirtualMember"}
+                      onClick={addVirtualMember}
+                    >
+                      {pendingAction === "addVirtualMember" ? text.processing : text.addMember}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+
+              {dialog === "archivedList" ? (
+                <Suspense fallback={null}>
+                  <ArchivedListPanel
+                    archivedGroups={archivedGroups}
+                    loading={archivedGroupsLoading}
+                    unarchivingGroupId={unarchivingGroupId}
+                    onUnarchive={unarchiveGroup}
+                  />
+                </Suspense>
+              ) : null}
+
+              {dialog === "archive" || dialog === "delete" ? (
+                <>
+                  <div className="dialog-header centered">
+                    <AlertTriangle aria-hidden="true" size={28} />
+                    <h3>{dialog === "archive" ? text.archiveGroup : text.deleteGroup}</h3>
+                    <p>{dialog === "archive" ? "\u5c01\u5b58\u5f8c\u53ef\u5f9e\u5de6\u5074\u4e0a\u65b9\u7684\u5c01\u5b58\u5165\u53e3\u67e5\u770b\u3002" : "刪除後這個群組與所有記錄將永久移除，無法復原。"}</p>
+                  </div>
+                  <div className="dialog-action-row">
+                    <button className="secondary-action" type="button" onClick={dismissDialog}>
+                      {text.cancel}
+                    </button>
+                    <button
+                      className={dialog === "delete" ? "danger-action" : "primary-action"}
+                      type="button"
+                      disabled={pendingAction === "archiveGroup" || pendingAction === "deleteGroup"}
+                      onClick={dialog === "archive" ? archiveActiveGroup : deleteActiveGroup}
+                    >
+                      {pendingAction === "archiveGroup" || pendingAction === "deleteGroup" ? text.processing : text.confirm}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </section>
         </div>
       ) : null}
