@@ -330,7 +330,7 @@ export function AdminApp() {
           <FeedbackPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
         )}
         {tab === "notifications" && (
-          <NotificationsPanel client={client} canSend={canWrite(me?.role)} />
+          <NotificationsPanel client={client} canSend={canWrite(me?.role)} route={route} />
         )}
         {tab === "errors" && (
           <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
@@ -854,6 +854,16 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
               >
                 {actionBusy ? "處理中…" : detail.user.disabled_at ? "恢復帳號" : "停用帳號"}
               </button>
+              {canWrite(role) && (
+                <button
+                  type="button"
+                  className="admin-action"
+                  disabled={actionBusy}
+                  onClick={() => onNavigate({ tab: "notifications", userId: detail.user.id })}
+                >
+                  發通知給這個人
+                </button>
+              )}
               {canWrite(role) && (
                 <button type="button" className="admin-action" disabled={actionBusy} onClick={exportUser}>
                   匯出個資 JSON
@@ -2330,11 +2340,48 @@ const AUDIENCE_OPTIONS: Array<{ value: AdminNotificationAudienceOption; label: s
  * people who already got it cannot be narrowed afterwards. The confirm before
  * sending says the audience and the count it is about to reach.
  */
-function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSend: boolean }) {
-  const [audience, setAudience] = useState<AdminNotificationAudienceOption>("active");
-  const [target, setTarget] = useState("");
+function NotificationsPanel({
+  client,
+  canSend,
+  route,
+}: {
+  client: EquoApiClient;
+  canSend: boolean;
+  route: AdminRoute;
+}) {
+  /**
+   * Arriving from a person's page (?tab=notifications&user=<id>) opens the form
+   * already addressed to them.
+   *
+   * No new route vocabulary was needed: the console already keeps its state in
+   * the URL and already carries `user`, so this is a link rather than a second
+   * copy of the compose form living on the user page - and it stays shareable
+   * like every other screen here.
+   */
+  const arrivedFor = route.userId;
+  const [audience, setAudience] = useState<AdminNotificationAudienceOption>(arrivedFor ? "user" : "active");
+  const [target, setTarget] = useState(arrivedFor);
   /** What the picked target is called, so the form can say who it is about to write to. */
   const [targetLabel, setTargetLabel] = useState("");
+
+  // The URL carries the id but not the name, so resolve it for the chip and
+  // the confirm. Falls back to the id if the lookup fails - the address is
+  // still correct, it just reads worse.
+  useEffect(() => {
+    if (!arrivedFor) return;
+    let cancelled = false;
+    client
+      .adminUserDetail(arrivedFor)
+      .then((detail) => {
+        if (!cancelled) setTargetLabel(detail.user.display_name || detail.user.email);
+      })
+      .catch(() => {
+        if (!cancelled) setTargetLabel(arrivedFor.slice(0, 8));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, arrivedFor]);
   const [title, setTitle] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [link, setLink] = useState("");

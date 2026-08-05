@@ -880,3 +880,98 @@ describe("addressing a notification", () => {
     expect(screen.getByRole("button", { name: "送出通知" })).toBeTruthy();
   });
 });
+
+describe("notifying one person from their page", () => {
+  const userDetail = {
+    user: {
+      id: "user_alice",
+      email: "alice@example.com",
+      display_name: "Alice",
+      avatar_url: null,
+      created_at: "2026-07-01T00:00:00.000Z",
+      last_seen_at: "2026-07-29T00:00:00.000Z",
+      disabled_at: null,
+      group_count: 0,
+      expense_count: 0,
+    },
+    groups: [],
+  };
+
+  const routes: AdminRoutes = {
+    ...baseRoutes,
+    "GET /admin/users/user_alice": userDetail,
+    "POST /admin/notifications": { ok: true, recipients: 1 },
+  };
+
+  test("the shortcut opens the compose form already addressed to them", async () => {
+    fakeAdminApi(routes);
+    renderAdmin("?tab=users&user=user_alice");
+    await screen.findByRole("region", { name: "使用者詳情" });
+
+    // findBy, not getBy: the section renders while the detail is still loading,
+    // and the button only exists once it has arrived.
+    fireEvent.click(await screen.findByRole("button", { name: "發通知給這個人" }));
+
+    await screen.findByRole("region", { name: "發送通知" });
+    // Addressed, named, and no search to redo.
+    expect(await screen.findByText("Alice")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("用 email 或名稱搜尋")).toBeNull();
+    expect((screen.getByLabelText("發送對象") as HTMLSelectElement).value).toBe("user");
+  });
+
+  test("the address is in the URL, so the half-written message survives a reload", async () => {
+    fakeAdminApi(routes);
+    renderAdmin("?tab=users&user=user_alice");
+    await screen.findByRole("region", { name: "使用者詳情" });
+
+    // findBy, not getBy: the section renders while the detail is still loading,
+    // and the button only exists once it has arrived.
+    fireEvent.click(await screen.findByRole("button", { name: "發通知給這個人" }));
+    await screen.findByRole("region", { name: "發送通知" });
+
+    expect(window.location.search).toBe("?tab=notifications&user=user_alice");
+  });
+
+  test("it sends to that person, not to everybody", async () => {
+    let sent: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
+        if (path === "/admin/notifications") sent = JSON.parse(String(init?.body));
+        const body = routes[`${method} ${path}`];
+        if (body === undefined) throw new Error(`No fake route for "${method} ${path}"`);
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    vi.stubGlobal("confirm", () => true);
+
+    renderAdmin("?tab=notifications&user=user_alice");
+    await screen.findByRole("region", { name: "發送通知" });
+
+    fireEvent.change(screen.getByLabelText("標題"), { target: { value: "關於你的回報" } });
+    fireEvent.change(screen.getByLabelText("內容"), { target: { value: "已經修好了" } });
+    fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
+
+    await waitFor(() =>
+      expect(sent).toEqual({
+        audience: "user",
+        target: "user_alice",
+        title: "關於你的回報",
+        body: "已經修好了",
+      }),
+    );
+  });
+
+  test("a support account gets no shortcut, because it cannot send", async () => {
+    fakeAdminApi({ ...routes, "GET /admin/me": { ...me, role: "support" } });
+    renderAdmin("?tab=users&user=user_alice");
+    await screen.findByRole("region", { name: "使用者詳情" });
+    // Wait for the detail to land, or this would pass simply because nothing
+    // has rendered yet.
+    await screen.findByText("alice@example.com");
+
+    expect(screen.queryByRole("button", { name: "發通知給這個人" })).toBeNull();
+  });
+});
