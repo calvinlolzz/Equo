@@ -37,6 +37,8 @@ import {
   adminExportUserRoute,
   adminGroupDetailRoute,
   adminMergeUsersRoute,
+  adminReplyFeedbackRoute,
+  adminSendNotificationRoute,
   adminSetExpenseDeletedRoute,
   adminTransferGroupOwnerRoute,
   adminUpdateExpenseMetaRoute,
@@ -83,6 +85,8 @@ import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
+import { listNotificationsRoute, markNotificationsReadRoute } from "../routes/notificationRoutes.js";
+import type { AdminSendNotificationBody } from "../handlers/admin.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
 import { notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
 import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
@@ -921,6 +925,49 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "POST /api/v1/admin/groups/:groupId/(delete|restore)",
       async handle(request, match) {
         const result = await adminSetGroupDeletedRoute(routeOptions(options, request), match[1], match[2] === "delete");
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/notifications$/,
+      label: "GET /api/v1/notifications",
+      async handle(request) {
+        const result = await listNotificationsRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/notifications\/read$/,
+      label: "POST /api/v1/notifications/read",
+      async handle(request) {
+        const result = await markNotificationsReadRoute(
+          routeOptions(options, request),
+          body<{ ids?: unknown }>(request) ?? {},
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/notifications$/,
+      label: "POST /api/v1/admin/notifications",
+      async handle(request) {
+        const result = await adminSendNotificationRoute(
+          routeOptions(options, request),
+          body<AdminSendNotificationBody>(request) ?? {},
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/feedback\/([^/]+)\/reply$/,
+      label: "POST /api/v1/admin/feedback/:feedbackId/reply",
+      async handle(request, match) {
+        const payload = body<{ message?: unknown }>(request);
+        const result = await adminReplyFeedbackRoute(routeOptions(options, request), match[1], payload?.message);
         return jsonResponse(result.status, result.body);
       },
     },

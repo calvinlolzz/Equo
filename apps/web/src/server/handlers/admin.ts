@@ -22,6 +22,9 @@ import type {
   AdminFeedbackStatus,
   AdminMergeConflictGroup,
   AdminMergeUsersResult,
+  AdminNotificationAudience,
+  AdminReplyFeedbackResult,
+  AdminSendNotificationResult,
   AdminTransferOwnerResult,
   AdminUserExportRecord,
   AdminGroupDetailRecord,
@@ -523,6 +526,8 @@ export const AUDIT_ACTIONS: readonly string[] = [
   "expense.delete",
   "expense.restore",
   "error.status",
+  "notification.send",
+  "feedback.reply",
 ];
 
 /** An unknown/absent action means "any", matching the RPC's '' / 'all' handling. */
@@ -1072,6 +1077,161 @@ export async function handleAdminDeleteUser(
         ? "This is the last console owner; hand ownership over before deleting the account."
         : `Account deletion refused: ${result.reason}`,
     );
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+/**
+ * In-app messages, sent from the console.
+ *
+ * Admin rather than support to send: an announcement reaches every account at
+ * once and cannot be recalled. Replying to a piece of feedback is the opposite
+ * - it goes to exactly the person who wrote in, it is the job support exists to
+ * do, and leaving it at owner/admin is how the queue silently stops being
+ * answered.
+ */
+
+const NOTIFICATION_AUDIENCES: readonly AdminNotificationAudience[] = ["user", "group", "active", "all"];
+
+/** Titles and bodies are bounded here so the RPC is never the first thing to notice. */
+const NOTIFICATION_TITLE_MAX = 80;
+const NOTIFICATION_BODY_MAX = 1000;
+
+export type AdminSendNotificationBody = {
+  audience?: unknown;
+  target?: unknown;
+  title?: unknown;
+  body?: unknown;
+  link?: unknown;
+};
+
+export function normalizeNotificationRequest(
+  body: AdminSendNotificationBody = {},
+):
+  | {
+      ok: true;
+      audience: AdminNotificationAudience;
+      target: string | null;
+      message: { title: string; body: string; link: string | null };
+    }
+  | { ok: false; message: string } {
+  const audience = typeof body.audience === "string" ? body.audience : "";
+
+  if (!(NOTIFICATION_AUDIENCES as readonly string[]).includes(audience)) {
+    return { ok: false, message: `audience must be one of: ${NOTIFICATION_AUDIENCES.join(", ")}` };
+  }
+
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const text = typeof body.body === "string" ? body.body.trim() : "";
+
+  if (!title || !text) {
+    return { ok: false, message: "title and body are required." };
+  }
+
+  if (title.length > NOTIFICATION_TITLE_MAX || text.length > NOTIFICATION_BODY_MAX) {
+    return {
+      ok: false,
+      message: `title must be at most ${NOTIFICATION_TITLE_MAX} characters and body at most ${NOTIFICATION_BODY_MAX}.`,
+    };
+  }
+
+  const needsTarget = audience === "user" || audience === "group";
+  const target = typeof body.target === "string" && body.target ? body.target : null;
+
+  if (needsTarget && (!target || !isUuid(target))) {
+    return { ok: false, message: "target must be a user or group id for this audience." };
+  }
+
+  // A link is an in-app path, never a URL. Anything that could navigate off the
+  // origin is refused rather than stripped: a notification that quietly drops
+  // the destination it was given is worse than one that was not sent.
+  const rawLink = typeof body.link === "string" ? body.link.trim() : "";
+
+  if (rawLink && !/^\/[^/\\]/.test(rawLink)) {
+    return { ok: false, message: "link must be an in-app path starting with a single '/'." };
+  }
+
+  return {
+    ok: true,
+    audience: audience as AdminNotificationAudience,
+    target: needsTarget ? target : null,
+    message: { title, body: text, link: rawLink || null },
+  };
+}
+
+export async function handleAdminSendNotification(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  body: AdminSendNotificationBody = {},
+): Promise<HandlerResult<Extract<AdminSendNotificationResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("Sending notifications requires an admin or owner role.");
+  }
+
+  const normalized = normalizeNotificationRequest(body);
+
+  if (!normalized.ok) {
+    return adminBadRequest(normalized.message);
+  }
+
+  const result = await repository.sendNotification(
+    { id: context.user.id, email: context.user.email },
+    normalized.audience,
+    normalized.target,
+    normalized.message,
+  );
+
+  if (!result.ok) {
+    if (result.error === "TARGET_NOT_FOUND") {
+      return adminNotFound("That user or group does not exist.");
+    }
+    // EMPTY_MESSAGE / INVALID_AUDIENCE / TARGET_REQUIRED are all screened
+    // above; the RPC re-checks them, so reaching here means the two disagree.
+    return adminBadRequest("The notification was rejected by the server.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+export async function handleAdminReplyFeedback(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  feedbackId: string,
+  message: unknown,
+): Promise<HandlerResult<Extract<AdminReplyFeedbackResult, { ok: true }>>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  if (!isUuid(feedbackId)) {
+    return adminNotFound("Feedback not found.");
+  }
+
+  const text = typeof message === "string" ? message.trim() : "";
+
+  if (!text) {
+    return adminBadRequest("message is required.");
+  }
+
+  if (text.length > NOTIFICATION_BODY_MAX) {
+    return adminBadRequest(`message must be at most ${NOTIFICATION_BODY_MAX} characters.`);
+  }
+
+  const result = await repository.replyFeedback({ id: context.user.id, email: context.user.email }, feedbackId, text);
+
+  if (!result.ok) {
+    if (result.error === "NOT_FOUND") {
+      return adminNotFound("Feedback not found.");
+    }
+    if (result.error === "NO_ACCOUNT") {
+      return adminConflict("This feedback was sent without signing in, so there is no inbox to reply to.");
+    }
+    return adminBadRequest("message is required.");
   }
 
   return { ok: true, status: 200, body: result };

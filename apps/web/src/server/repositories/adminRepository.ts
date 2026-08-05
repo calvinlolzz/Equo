@@ -385,6 +385,18 @@ export type AdminMergeUsersResult =
  */
 export type AdminUserExportRecord = Record<string, unknown>;
 
+/** Who a console message goes to. See admin_console_send_notification. */
+export type AdminNotificationAudience = "user" | "group" | "active" | "all";
+
+export type AdminSendNotificationResult =
+  | { ok: true; recipients: number }
+  | { ok: false; error: "EMPTY_MESSAGE" | "INVALID_AUDIENCE" | "TARGET_REQUIRED" | "TARGET_NOT_FOUND" };
+
+export type AdminReplyFeedbackResult =
+  | { ok: true; feedback_id: string; notification_id: string; status: string }
+  /** NO_ACCOUNT: the feedback was submitted signed-out, so there is nobody to reply to. */
+  | { ok: false; error: "EMPTY_MESSAGE" | "NOT_FOUND" | "NO_ACCOUNT" };
+
 export type AdminDeleteUserResult =
   | { ok: true; groups_reassigned: number; groups_deleted: number; memberships_anonymized: number }
   /** delete_my_account's own refusal, currently only 'last_admin_owner'. */
@@ -492,4 +504,13 @@ export type AdminRepository = {
   exportUser(actor: AdminActor, userId: string): Promise<AdminUserExportRecord | null>;
   /** Run account deletion on someone's behalf. Returns null when the user does not exist. */
   deleteUser(actor: AdminActor, userId: string): Promise<AdminDeleteUserResult | null>;
+  /** Send one in-app message to an audience. `target` is a user or group id, or null. */
+  sendNotification(
+    actor: AdminActor,
+    audience: AdminNotificationAudience,
+    target: string | null,
+    message: { title: string; body: string; link: string | null },
+  ): Promise<AdminSendNotificationResult>;
+  /** Reply to a piece of feedback: notification + status change in one transaction. */
+  replyFeedback(actor: AdminActor, feedbackId: string, message: string): Promise<AdminReplyFeedbackResult>;
 };

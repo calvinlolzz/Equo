@@ -1694,3 +1694,15 @@ button.admin-inbox__item:hover {
     color: #ffffff;
   }
 }
+
+/* The compose form and the inline feedback reply. Both are a column of fields
+   inside a page that is otherwise tables, so they get a readable measure
+   rather than stretching to the panel's full width. */
+.admin-notify-form {
+  max-width: 560px;
+}
+
+.admin-reply {
+  padding: 12px 0;
+  max-width: 640px;
+}

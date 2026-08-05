@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Bell,
   BellRing,
   ChartNoAxesColumn,
   ChevronRight,
@@ -38,6 +39,7 @@ import { haptic } from "./haptics";
 import { useBodyScrollLock } from "./useBodyScrollLock";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { useOnlineStatus } from "./useOnlineStatus";
+import { useNotifications } from "./useNotifications";
 import { useOverlayHistory } from "./useOverlayHistory";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
@@ -105,6 +107,9 @@ const ExpenseDetailDialog = lazy(() =>
   import("./ExpenseDetailDialog").then((m) => ({ default: m.ExpenseDetailDialog })),
 );
 const FeedbackDialog = lazy(() => import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })));
+const NotificationsPanel = lazy(() =>
+  import("./NotificationsPanel").then((m) => ({ default: m.NotificationsPanel })),
+);
 const ProfileDialog = lazy(() => import("./ProfileDialog").then((m) => ({ default: m.ProfileDialog })));
 const RecordsPanel = lazy(() => import("./RecordsPanel").then((m) => ({ default: m.RecordsPanel })));
 // The QR encoder and the camera/decoder are each behind a tap and are dead
@@ -142,6 +147,7 @@ const currencyOptions = [
   { code: "KRW", label: UI_TEXT.currencies.krw },
   { code: "EUR", label: UI_TEXT.currencies.eur },
 ];
+
 
 
 
@@ -183,6 +189,7 @@ export function App() {
   // while a mutation is in flight.
   const { pendingAction, actionGuardRef, beginAction, endAction } = useActionGuard();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   // Reported up by the composer sheet, because the Back button closes it from
   // out here and never passes through the sheet's own dismiss handlers.
   const [composerDirty, setComposerDirty] = useState(false);
@@ -228,6 +235,12 @@ export function App() {
     [settingsDrawerSwipe.dragProps.ref, settingsDrawerChromeRef],
   );
   const isMobileLayout = useIsMobileLayout();
+  /**
+   * One client for the things that poll rather than react to a tap. Everything
+   * else calls createApiClient() at the point of use, which is fine for a
+   * one-shot request but would re-arm the inbox's poll on every render here.
+   */
+  const pollingClient = useMemo(() => createApiClient(), []);
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
   const { cloudActivities, recordCloudActivity } = useCloudActivities();
 
@@ -264,6 +277,10 @@ export function App() {
    * the session, and finally to no avatar (icon fallback) if neither exists.
    */
   const displayAvatarUrl = session?.user.avatarUrl ?? profile.avatarDataUrl;
+
+  // Signed-in only: the inbox belongs to an account, and polling it while
+  // signed out would be a 401 every five minutes.
+  const notifications = useNotifications(pollingClient, Boolean(session));
 
   const {
     archivedGroups,
@@ -435,6 +452,7 @@ export function App() {
     !dialog &&
     !expenseComposerOpen &&
     !feedbackOpen &&
+    !notificationsOpen &&
     !groupDrawerOpen &&
     !settingsDrawerOpen;
   const pullStatus = usePullToRefresh(pullEnabled, async () => {
@@ -451,6 +469,7 @@ export function App() {
         expenseComposerOpen ||
         discardConfirmOpen ||
         feedbackOpen ||
+        notificationsOpen ||
         groupDrawerOpen ||
         settingsDrawerOpen),
   );
@@ -517,6 +536,7 @@ export function App() {
     { open: expenseComposerOpen, close: requestCloseComposer },
     { open: discardConfirmOpen, close: () => setDiscardConfirmOpen(false) },
     { open: feedbackOpen, close: () => setFeedbackOpen(false) },
+    { open: notificationsOpen, close: () => setNotificationsOpen(false) },
   ]);
 
   // Mirror "something is covering the screen" onto <html> so the WebGL backdrop
@@ -1135,6 +1155,22 @@ export function App() {
           {isMobileLayout && activeGroup ? activeGroup.name : "Equo"}
         </button>
         <div className="top-actions">
+          {/* The inbox. A count rather than a dot, unlike the group drawer's
+              badge: those are "there is activity in another group", this is
+              "somebody wrote to you", and how many matters. */}
+          <button
+            className="top-bar-icon-button"
+            type="button"
+            aria-label={text.notifications}
+            onClick={() => setNotificationsOpen(true)}
+          >
+            <Bell aria-hidden="true" size={20} />
+            {notifications.unread > 0 ? (
+              <span className="top-bar-unread-count" aria-hidden="true">
+                {notifications.unread > 9 ? "9+" : notifications.unread}
+              </span>
+            ) : null}
+          </button>
           <button
             className="top-bar-icon-button theme-toggle-button"
             type="button"
@@ -1730,6 +1766,25 @@ export function App() {
       {feedbackOpen ? (
         <Suspense fallback={null}>
           <FeedbackDialog onClose={() => setFeedbackOpen(false)} onSubmit={handleFeedbackSubmit} />
+        </Suspense>
+      ) : null}
+
+      {notificationsOpen ? (
+        <Suspense fallback={null}>
+          <NotificationsPanel
+            items={notifications.items}
+            loading={notifications.loading}
+            onClose={() => setNotificationsOpen(false)}
+            onOpened={() => void notifications.markAllRead()}
+            onNavigate={(link) => {
+              setNotificationsOpen(false);
+              // Only the one shape the console can send. Anything else is
+              // ignored rather than handed to the router: a notification is
+              // not a place to accept an arbitrary destination from.
+              const groupId = /^\/group\/([^/?#]+)$/.exec(link)?.[1];
+              if (groupId) openGroup(groupId);
+            }}
+          />
         </Suspense>
       ) : null}
 

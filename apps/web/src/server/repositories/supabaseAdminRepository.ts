@@ -6,6 +6,8 @@ import type {
   AdminExpenseWriteResult,
   AdminMergeUsersResult,
   AdminRemoveResult,
+  AdminReplyFeedbackResult,
+  AdminSendNotificationResult,
   AdminSetRoleResult,
   AdminTransferOwnerResult,
   AdminUserExportRecord,
@@ -276,6 +278,27 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
         p_user_id: userId,
       });
       return result ?? null;
+    },
+
+    sendNotification(actor, audience, target, message) {
+      return client.rpc<AdminSendNotificationResult>("admin_console_send_notification", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_audience: audience,
+        p_target: target,
+        p_title: message.title,
+        p_body: message.body,
+        p_link: message.link,
+      });
+    },
+
+    replyFeedback(actor, feedbackId, message) {
+      return client.rpc<AdminReplyFeedbackResult>("admin_console_reply_feedback", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_feedback_id: feedbackId,
+        p_message: message,
+      });
     },
 
   };

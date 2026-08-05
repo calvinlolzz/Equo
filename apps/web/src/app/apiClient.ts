@@ -653,8 +653,62 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminDeleteUser(userId: string) {
       return request<AdminDeleteUserResponse>(`/admin/users/${userId}`, { method: "DELETE" });
     },
+    /** The signed-in user's own inbox, plus the unread count for the bell. */
+    listNotifications() {
+      return request<NotificationsPage>("/notifications", { method: "GET" });
+    },
+    /** Mark rows read; an empty list means the whole inbox. */
+    markNotificationsRead(ids: string[] = []) {
+      return request<{ marked: number; unread: number }>("/notifications/read", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+    },
+    /** Send an in-app message to one user, one group, recent users, or everyone (admin+). */
+    adminSendNotification(input: AdminNotificationInput) {
+      return request<{ ok: true; recipients: number }>("/admin/notifications", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    /** Reply to a piece of feedback: the user gets an inbox item and the row closes. */
+    adminReplyFeedback(feedbackId: string, message: string) {
+      return request<{ ok: true; feedback_id: string; notification_id: string; status: string }>(
+        `/admin/feedback/${feedbackId}/reply`,
+        { method: "POST", body: JSON.stringify({ message }) },
+      );
+    },
   };
 }
+
+export type NotificationRow = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  /** An in-app path, or null. */
+  link: string | null;
+  created_at: string;
+  read_at: string | null;
+};
+
+export type NotificationsPage = {
+  /** Unread across the whole inbox, not just the returned page. */
+  unread: number;
+  items: NotificationRow[];
+};
+
+export type AdminNotificationAudienceOption = "user" | "group" | "active" | "all";
+
+export type AdminNotificationInput = {
+  audience: AdminNotificationAudienceOption;
+  /** A user id for 'user', a group id for 'group'; omitted otherwise. */
+  target?: string;
+  title: string;
+  body: string;
+  /** An in-app path such as /group/<id>. */
+  link?: string;
+};
 
 export type AdminExpenseWriteResult = {
   id: string;

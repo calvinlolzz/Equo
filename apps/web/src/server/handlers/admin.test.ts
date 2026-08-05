@@ -32,10 +32,13 @@ import {
   handleAdminSetExpenseDeleted,
   handleAdminTransferGroupOwner,
   handleAdminUpdateExpenseMeta,
+  handleAdminReplyFeedback,
+  handleAdminSendNotification,
   normalizeAdminListQuery,
   normalizeErrorStatusFilter,
   normalizeExpenseMetaPatch,
   normalizeGroupFilter,
+  normalizeNotificationRequest,
 } from "./admin.js";
 
 const context = {
@@ -230,6 +233,12 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     },
     async deleteUser() {
       return { ok: true, groups_reassigned: 1, groups_deleted: 0, memberships_anonymized: 3 };
+    },
+    async sendNotification() {
+      return { ok: true, recipients: 7 };
+    },
+    async replyFeedback(_actor, feedbackId) {
+      return { ok: true, feedback_id: feedbackId, notification_id: "notification_1", status: "done" };
     },
     ...overrides,
   };
@@ -998,3 +1007,95 @@ describe("support actions", () => {
   });
 });
 
+describe("in-app notifications", () => {
+  const FEEDBACK_ID = "55555555-5555-4555-8555-555555555555";
+
+  test("sending needs admin; support is refused", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+    const result = await handleAdminSendNotification(repository, context, {
+      audience: "all",
+      title: "維護通知",
+      body: "今晚 11 點會短暫維護。",
+    });
+
+    expect(result.status).toBe(403);
+  });
+
+  test("replying is support-level work, so support may do it", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+    const result = await handleAdminReplyFeedback(repository, context, FEEDBACK_ID, "已修好了，謝謝回報！");
+
+    expect(result.status).toBe(200);
+  });
+
+  test("an audience that needs a target is rejected without one", () => {
+    expect(normalizeNotificationRequest({ audience: "user", title: "t", body: "b" }).ok).toBe(false);
+    expect(normalizeNotificationRequest({ audience: "group", title: "t", body: "b", target: "nope" }).ok).toBe(false);
+    expect(normalizeNotificationRequest({ audience: "all", title: "t", body: "b" }).ok).toBe(true);
+  });
+
+  test("a target sent with a broadcast audience is dropped, not forwarded", () => {
+    const normalized = normalizeNotificationRequest({
+      audience: "all",
+      title: "t",
+      body: "b",
+      target: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(normalized).toEqual({
+      ok: true,
+      audience: "all",
+      target: null,
+      message: { title: "t", body: "b", link: null },
+    });
+  });
+
+  test("a link has to be an in-app path", () => {
+    // Anything that could navigate off-origin is refused rather than stripped:
+    // silently dropping the destination would send a notification that does
+    // not do what the sender wrote.
+    for (const link of ["https://evil.example/x", "//evil.example", "\\evil", "group/1"]) {
+      expect(normalizeNotificationRequest({ audience: "all", title: "t", body: "b", link }).ok).toBe(false);
+    }
+
+    const ok = normalizeNotificationRequest({ audience: "all", title: "t", body: "b", link: " /group/abc " });
+    expect(ok.ok === true && ok.message.link).toBe("/group/abc");
+  });
+
+  test("an empty title or body never reaches the RPC", async () => {
+    let called = false;
+    const repository = makeRepository({
+      async sendNotification() {
+        called = true;
+        return { ok: true, recipients: 1 };
+      },
+    });
+
+    const result = await handleAdminSendNotification(repository, context, {
+      audience: "all",
+      title: "   ",
+      body: "有內容",
+    });
+
+    expect(result.status).toBe(400);
+    expect(called).toBe(false);
+  });
+
+  test("replying to signed-out feedback is a 409 that explains why", async () => {
+    const repository = makeRepository({
+      async replyFeedback() {
+        return { ok: false, error: "NO_ACCOUNT" };
+      },
+    });
+
+    const result = await handleAdminReplyFeedback(repository, context, FEEDBACK_ID, "回覆內容");
+
+    expect(result.status).toBe(409);
+    expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_CONFLICT");
+  });
+
+  test("an empty reply is rejected before the RPC", async () => {
+    const result = await handleAdminReplyFeedback(makeRepository(), context, FEEDBACK_ID, "   ");
+    expect(result.status).toBe(400);
+  });
+});

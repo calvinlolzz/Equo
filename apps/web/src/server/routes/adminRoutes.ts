@@ -11,6 +11,8 @@ import {
   handleAdminGroupDetail,
   handleAdminHealth,
   handleAdminMergeUsers,
+  handleAdminReplyFeedback,
+  handleAdminSendNotification,
   handleAdminSetExpenseDeleted,
   handleAdminTransferGroupOwner,
   handleAdminUpdateExpenseMeta,
@@ -41,6 +43,7 @@ import {
   type AdminFeedbackListQuery,
   type AdminGroupListQuery,
   type AdminListQuery,
+  type AdminSendNotificationBody,
 } from "../handlers/admin.js";
 
 type RouteOptions = {
@@ -446,4 +449,24 @@ export async function adminDeleteUserRoute(options: RouteOptions, userId: string
   }
 
   return handleAdminDeleteUser(createSupabaseAdminRepository(options.client), auth.context, userId);
+}
+
+export async function adminSendNotificationRoute(options: RouteOptions, body: AdminSendNotificationBody) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSendNotification(createSupabaseAdminRepository(options.client), auth.context, body);
+}
+
+export async function adminReplyFeedbackRoute(options: RouteOptions, feedbackId: string, message: unknown) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminReplyFeedback(createSupabaseAdminRepository(options.client), auth.context, feedbackId, message);
 }

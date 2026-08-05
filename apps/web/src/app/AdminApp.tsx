@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Bug, Download, LayoutDashboard, MessageSquareText, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Download, LayoutDashboard, Megaphone, MessageSquareText, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
@@ -17,6 +17,7 @@ import {
   type AdminGroupListPage,
   type AdminHealthSummary,
   type AdminMeSummary,
+  type AdminNotificationAudienceOption,
   type AdminOverviewSummary,
   type AdminReceiptScanSettings,
   type AdminStorageSummary,
@@ -260,6 +261,7 @@ export function AdminApp() {
     // The two tabs with a queue behind them carry their backlog in the nav, so
     // nobody has to open them to find out there is nothing to do.
     { key: "feedback", icon: MessageSquareText, badge: health?.feedback.open },
+    { key: "notifications", icon: Megaphone },
     { key: "errors", icon: Bug, badge: health?.errors.open_groups },
     { key: "audit", icon: ScrollText },
     { key: "settings", icon: SlidersHorizontal },
@@ -322,6 +324,9 @@ export function AdminApp() {
         {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} role={me?.role} />}
         {tab === "feedback" && (
           <FeedbackPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
+        )}
+        {tab === "notifications" && (
+          <NotificationsPanel client={client} canSend={canWrite(me?.role)} />
         )}
         {tab === "errors" && (
           <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
@@ -1957,6 +1962,9 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
   const [state, setState] = useState<ListState<AdminFeedbackPage>>({ page: null, loading: true, error: "" });
   const [busyId, setBusyId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  /** Which row has its reply box open, and what has been typed into it. */
+  const [replyingId, setReplyingId] = useState("");
+  const [replyText, setReplyText] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1982,6 +1990,26 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
       onCountsChanged?.();
     } catch {
       setState((current) => ({ ...current, error: "狀態更新失敗，請稍後再試。" }));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  /** The reply and the status change are one action on the server, so they are one here too. */
+  async function sendReply(feedbackId: string) {
+    if (!replyText.trim()) return;
+    setBusyId(feedbackId);
+    try {
+      await client.adminReplyFeedback(feedbackId, replyText.trim());
+      setReplyingId("");
+      setReplyText("");
+      setReloadKey((key) => key + 1);
+      onCountsChanged?.();
+    } catch (caught) {
+      setState((current) => ({
+        ...current,
+        error: (caught as ApiClientError).message || "回覆送出失敗，請稍後再試。",
+      }));
     } finally {
       setBusyId("");
     }
@@ -2034,6 +2062,20 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
                       </td>
                       <td>{FEEDBACK_STATUS_LABELS[item.status] ?? item.status}</td>
                       <td className="admin-table__actions">
+                        {/* Replying is the action that closes the loop, so it
+                            comes first. It also marks the row done - a reply
+                            that leaves the item in the queue just means the
+                            next person answers it again. */}
+                        {item.user_email && (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={() => setReplyingId(replyingId === item.id ? "" : item.id)}
+                          >
+                            {replyingId === item.id ? "收起" : "回覆"}
+                          </button>
+                        )}
                         {item.status !== "reviewing" && item.status !== "done" && (
                           <button type="button" className="admin-action" disabled={busy} onClick={() => updateStatus(item.id, "reviewing")}>
                             處理中
@@ -2053,6 +2095,41 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
                     </tr>
                   );
                 })}
+                {state.page.feedback
+                  .filter((item) => item.id === replyingId)
+                  .map((item) => (
+                    <tr key={`${item.id}-reply`}>
+                      <td colSpan={6}>
+                        <form
+                          className="admin-reply"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void sendReply(item.id);
+                          }}
+                        >
+                          <label className="admin-field">
+                            <span>回覆給 {item.user_email}（會出現在他的 app 通知中心）</span>
+                            <textarea
+                              value={replyText}
+                              rows={3}
+                              maxLength={1000}
+                              placeholder="謝謝回報，這個問題已經在最新版修好了…"
+                              onChange={(event) => setReplyText(event.target.value)}
+                            />
+                          </label>
+                          <div className="admin-modal__actions">
+                            <button
+                              type="submit"
+                              className="admin-action admin-action--primary"
+                              disabled={busyId === item.id || !replyText.trim()}
+                            >
+                              {busyId === item.id ? "送出中…" : "送出回覆並標記完成"}
+                            </button>
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
                 {state.page.feedback.length === 0 && (
                   <tr>
                     <td colSpan={6} className="admin-table__empty">
@@ -2073,6 +2150,154 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
           )}
         </>
       )}
+    </section>
+  );
+}
+
+const AUDIENCE_OPTIONS: Array<{ value: AdminNotificationAudienceOption; label: string; hint: string }> = [
+  { value: "active", label: "近 30 天活躍使用者", hint: "最近開過 app 的人。公告的預設對象。" },
+  { value: "all", label: "全部使用者", hint: "所有未停用的帳號，包含很久沒回來的。" },
+  { value: "group", label: "指定群組", hint: "這個群組裡狀態為使用中的成員。" },
+  { value: "user", label: "指定使用者", hint: "只有這一個帳號會收到。" },
+];
+
+/**
+ * Send an in-app message.
+ *
+ * The audience is chosen first and explained in words, because it is the only
+ * irreversible part of this form: the text can be re-sent, but the set of
+ * people who already got it cannot be narrowed afterwards. The confirm before
+ * sending says the audience and the count it is about to reach.
+ */
+function NotificationsPanel({ client, canSend }: { client: EquoApiClient; canSend: boolean }) {
+  const [audience, setAudience] = useState<AdminNotificationAudienceOption>("active");
+  const [target, setTarget] = useState("");
+  const [title, setTitle] = useState("");
+  const [bodyText, setBodyText] = useState("");
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const needsTarget = audience === "user" || audience === "group";
+  const selected = AUDIENCE_OPTIONS.find((option) => option.value === audience);
+
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    if (!canSend || busy) return;
+
+    const confirmed = window.confirm(
+      `這則通知會送給「${selected?.label}」，送出後無法收回。確定要送出嗎？`,
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await client.adminSendNotification({
+        audience,
+        target: needsTarget ? target.trim() : undefined,
+        title: title.trim(),
+        body: bodyText.trim(),
+        link: link.trim() || undefined,
+      });
+      setNotice(`已送出，${result.recipients} 位使用者會在通知中心看到。`);
+      setTitle("");
+      setBodyText("");
+      setLink("");
+    } catch (caught) {
+      setError((caught as ApiClientError).message || "送出失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-label="發送通知">
+      <h2 className="admin-subheading">發送站內通知</h2>
+      <p className="admin-modal__hint">
+        通知會出現在使用者 app 右上角的鈴鐺裡，不需要他們開啟推播權限。送出後會記入稽核紀錄。
+      </p>
+
+      {!canSend && <p className="admin-error">你的角色沒有發送通知的權限（需要管理員或擁有者）。</p>}
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+
+      <form className="admin-notify-form" onSubmit={send}>
+        <label className="admin-field">
+          <span>發送對象</span>
+          <select
+            value={audience}
+            onChange={(event) => setAudience(event.target.value as AdminNotificationAudienceOption)}
+            disabled={!canSend}
+          >
+            {AUDIENCE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="admin-modal__hint">{selected?.hint}</p>
+
+        {needsTarget && (
+          <label className="admin-field">
+            <span>{audience === "user" ? "使用者 ID" : "群組 ID"}</span>
+            <input
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="從使用者／群組列表點進去，網址列的 id"
+              disabled={!canSend}
+            />
+          </label>
+        )}
+
+        <label className="admin-field">
+          <span>標題</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            maxLength={80}
+            placeholder="例：這週日凌晨會短暫維護"
+            disabled={!canSend}
+            required
+          />
+        </label>
+
+        <label className="admin-field">
+          <span>內容</span>
+          <textarea
+            value={bodyText}
+            onChange={(event) => setBodyText(event.target.value)}
+            rows={5}
+            maxLength={1000}
+            placeholder="寫給使用者看的完整說明。"
+            disabled={!canSend}
+            required
+          />
+        </label>
+
+        <label className="admin-field">
+          <span>連結（選填）</span>
+          <input
+            value={link}
+            onChange={(event) => setLink(event.target.value)}
+            placeholder="/group/xxxx，只能是站內路徑"
+            disabled={!canSend}
+          />
+        </label>
+
+        <div className="admin-modal__actions">
+          <button
+            type="submit"
+            className="admin-action admin-action--primary"
+            disabled={!canSend || busy || !title.trim() || !bodyText.trim() || (needsTarget && !target.trim())}
+          >
+            {busy ? "送出中…" : "送出通知"}
+          </button>
+        </div>
+      </form>
     </section>
   );
 }
