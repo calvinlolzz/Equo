@@ -30,6 +30,14 @@
     <link rel="icon" type="image/svg+xml" href="/icons/equo-icon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#07110f" />
+    <!-- Which commit this bundle was built from, so a deploy can be verified
+         from the outside: the smoke script reads it to tell "the site is up"
+         apart from "my commit is live" (the UI markers it checks are stable
+         copy, so an older deployment passes them identically). Vite fills this
+         from VITE_COMMIT_SHA, which vercel.json maps from VERCEL_GIT_COMMIT_SHA.
+         A local `vite build` leaves the %VITE_% placeholder as-is, and the smoke
+         script treats anything that is not a hex SHA as "unstamped". -->
+    <meta name="equo-commit" content="%VITE_COMMIT_SHA%" />
     <!-- iOS ignores the manifest's icons and reads this one; 180² is the size
          it actually wants (a 512² gets downscaled on every home screen). -->
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/equo-apple-touch-180.png" />

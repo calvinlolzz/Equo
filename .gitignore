@@ -33,3 +33,8 @@ supabase/.temp/
 # revert, it is fixed by rotating it. (.env* is already covered above.)
 key.txt
 *.key
+
+# Python bytecode from scripts/ (regenerated whenever the smoke-rule tests
+# import a script, so tracking it means churn in every release verification).
+__pycache__/
+*.pyc

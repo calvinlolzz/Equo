@@ -2,7 +2,7 @@
   "version": 2,
   "regions": ["sin1"],
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
+  "buildCommand": "VITE_COMMIT_SHA=$VERCEL_GIT_COMMIT_SHA npm run build",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     { "source": "/api/v1/(.*)", "destination": "/api/v1/[...path]" },

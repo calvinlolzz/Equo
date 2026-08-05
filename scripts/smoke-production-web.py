@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
@@ -16,6 +17,12 @@ if hasattr(sys.stderr, "reconfigure"):
 
 
 BASE_URL = os.environ.get("EQUO_BASE_URL", "").rstrip("/")
+
+# Optional. Set it to the commit that should be live to turn this script from
+# "the site is healthy" into "the deploy landed" - the markers below are stable
+# UI copy, so a previous deployment satisfies every one of them. Accepts a SHA,
+# or the literal "HEAD" to resolve the checkout's own commit.
+EXPECTED_COMMIT = os.environ.get("EQUO_EXPECTED_COMMIT", "").strip()
 
 
 @dataclass(frozen=True)
@@ -34,6 +41,9 @@ CHECKS = (
 )
 
 HOME_REQUIRED_MARKERS = ("使用 Google 登入", "建立群組", "加入群組", "繼續使用")
+
+COMMIT_META_RE = re.compile(r'<meta\s+name="equo-commit"\s+content="([^"]*)"', re.IGNORECASE)
+SHA_RE = re.compile(r"^[0-9a-f]{7,40}$", re.IGNORECASE)
 
 
 def fail(message: str) -> int:
@@ -56,6 +66,51 @@ def validate_home_experience(body: str) -> bool:
     return all(marker in body for marker in HOME_REQUIRED_MARKERS)
 
 
+def read_commit_marker(html: str) -> str | None:
+    """
+    The commit the served bundle was built from, or None when it carries no
+    usable stamp. A build without VITE_COMMIT_SHA leaves Vite's `%VITE_...%`
+    placeholder in place, so "the tag exists" is not enough - it has to look
+    like a SHA before it is worth comparing against anything.
+    """
+    match = COMMIT_META_RE.search(html)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return value.lower() if SHA_RE.match(value) else None
+
+
+def commit_matches(deployed: str, expected: str) -> bool:
+    """
+    Prefix comparison in both directions, so a short SHA from `git rev-parse
+    --short HEAD` matches a full one and vice versa. Both sides must be at
+    least 7 characters: a shorter prefix is not enough to identify a commit,
+    and silently accepting one would make this check worse than none.
+    """
+    deployed = deployed.strip().lower()
+    expected = expected.strip().lower()
+    if len(deployed) < 7 or len(expected) < 7:
+        return False
+    return deployed.startswith(expected) or expected.startswith(deployed)
+
+
+def resolve_expected_commit(value: str) -> str:
+    """`HEAD` means "whatever this checkout is on", so the caller does not have
+    to paste a SHA. Anything else is passed through untouched."""
+    if value.upper() != "HEAD":
+        return value
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def collect_home_shell_text(home_html: str) -> str:
     asset_paths = re.findall(r'''["'](/assets/[^"']+\.(?:js|css))["']''', home_html)
     parts = [home_html]
@@ -75,11 +130,16 @@ def main() -> int:
     if not BASE_URL:
         return fail("set EQUO_BASE_URL to the deployed site, for example https://example.vercel.app")
 
+    home_html = ""
+
     for check in CHECKS:
         try:
             status, content_type, body, final_url = fetch(check.path)
         except (TimeoutError, URLError) as error:
             return fail(f"{check.label}: request failed: {error}")
+
+        if check.label == "home":
+            home_html = body
 
         if status != check.status:
             return fail(f"{check.label}: expected status {check.status}, got {status}; final_url={final_url}; body={body[:240]}")
@@ -98,6 +158,25 @@ def main() -> int:
                 "home: expected the login wall copy and the create/join/continue flow in the bundle; "
                 f"body={body[:240]}"
             )
+
+    deployed_commit = read_commit_marker(home_html)
+    print(f"INFO: deployed commit {deployed_commit}" if deployed_commit else "INFO: deployment carries no commit stamp")
+
+    if EXPECTED_COMMIT:
+        expected = resolve_expected_commit(EXPECTED_COMMIT)
+        if not expected:
+            return fail("EQUO_EXPECTED_COMMIT=HEAD but `git rev-parse HEAD` failed; pass an explicit SHA instead")
+        if not deployed_commit:
+            return fail(
+                "EQUO_EXPECTED_COMMIT is set but the deployment carries no commit stamp; "
+                "it predates the stamp, or the build ran without VITE_COMMIT_SHA"
+            )
+        if not commit_matches(deployed_commit, expected):
+            return fail(
+                f"deployed commit {deployed_commit} does not match expected {expected}; "
+                "the build may still be running or the alias has not flipped yet"
+            )
+        print(f"PASS: deployed commit matches {expected}")
 
     print("PASS: production web smoke checks passed")
     return 0

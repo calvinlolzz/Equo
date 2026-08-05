@@ -7,7 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
     "vercel.json": [
         '"installCommand": "npm install"',
-        '"buildCommand": "npm run build"',
+        # The VITE_COMMIT_SHA prefix is what lets a deploy be verified from the
+        # outside: it maps Vercel's own commit into the build so index.html can
+        # carry it and smoke-production-web.py can tell "the site is up" from
+        # "my commit is live". Dropping it costs nothing visible - the site
+        # still builds and still serves - so it is pinned here.
+        '"buildCommand": "VITE_COMMIT_SHA=$VERCEL_GIT_COMMIT_SHA npm run build"',
         '"outputDirectory": "apps/web/dist"',
         # Every /api/v1/* path must be handed to the catch-all function.
         #
@@ -60,11 +65,20 @@ REQUIRED = {
         "/api/v1/auth/google",
         "equo_session",
     ],
+    # The other half of the deploy-verification chain: the page has to carry the
+    # commit for the smoke script to have anything to compare against.
+    "apps/web/index.html": [
+        'name="equo-commit"',
+        "%VITE_COMMIT_SHA%",
+    ],
     "scripts/smoke-production-web.py": [
         "EQUO_BASE_URL",
+        "EQUO_EXPECTED_COMMIT",
         "HOME_REQUIRED_MARKERS",
         "collect_home_shell_text",
         "validate_home_experience",
+        "read_commit_marker",
+        "commit_matches",
         "/group/smoke-test",
         "/api/v1/unknown",
         "application/json",
@@ -73,6 +87,8 @@ REQUIRED = {
     "scripts/test-smoke-production-web.py": [
         "valid_home",
         "missing_login_wall",
+        "read_commit_marker",
+        "commit_matches",
         "production web smoke rules verified",
     ],
     "docs/DEPLOYMENT.md": [
