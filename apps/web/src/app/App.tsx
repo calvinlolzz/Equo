@@ -44,6 +44,7 @@ import { useNotifications } from "./useNotifications";
 import { useOverlayHistory } from "./useOverlayHistory";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
+import { useDragScrollX } from "./useDragScrollX";
 import { listSettlementRecords } from "./settlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -600,6 +601,9 @@ export function App() {
     );
   }, [aggregates.memberDayShares, selectedDateKey, currentMember]);
   const selectedDateChip = dateChips.find((chip) => chip.key === selectedDateKey);
+  // Mouse drag + wheel panning for the day strip, and it keeps the selected
+  // day scrolled into view (today starts at the far end).
+  const dateStripRef = useDragScrollX(selectedDateKey);
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
   const settlementTransfers = useMemo(() => buildSettlementTransfers(serverBalances), [serverBalances]);
@@ -1361,12 +1365,13 @@ export function App() {
                   <span>{selectedDateChip ? `${selectedDateChip.month}月${selectedDateChip.day}日` : `${new Date().getMonth() + 1}月${new Date().getDate()}日`}</span>
                   <strong>{formatAmount(spendDisplayAmountMinor, activeGroup.currency)}</strong>
                 </div>
-                <div className="date-chip-row" aria-label="日期">
+                <div className="date-chip-row" aria-label="日期" ref={dateStripRef}>
                   {dateChips.map((chip) => (
                     <button
                       className={chip.key === selectedDateKey ? "date-chip active" : "date-chip"}
                       type="button"
                       key={chip.key}
+                      data-active={chip.key === selectedDateKey}
                       onClick={() => setSelectedDateKey(chip.key)}
                     >
                       {chip.day}

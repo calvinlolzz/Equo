@@ -291,21 +291,40 @@
 .date-chip-row {
   display: flex;
   flex-wrap: nowrap;
-  justify-content: flex-end;
+  /* NOT justify-content: flex-end. In a scroll container that pushes the
+     overflow out the *start* edge, which is not a scrollable direction - the
+     four oldest chips became permanently unreachable. An auto margin on the
+     first chip right-aligns the strip while there is room and collapses to 0
+     once it overflows, so everything stays pannable. useDragScrollX then
+     scrolls the selected day back into view (see its comment). */
+  justify-content: flex-start;
   gap: 8px;
   max-width: 190px;
-  /* The chips' -3px tap-target halo would otherwise stick out of the box and
-     make the strip vertically scrollable (overflow-x: auto forces the y axis
-     to compute as auto too). Pad it in, then hard-lock the y axis so the strip
-     only ever pans left/right and vertical drags scroll the page instead. */
-  padding-block: 3px;
+  /* The chips' -3px tap-target halo would otherwise stick out of the box: it
+     makes the strip vertically scrollable (overflow-x: auto forces the y axis
+     to compute as auto too) and adds a phantom 3px of horizontal scroll. Pad
+     it in and pull the padding back out with a matching negative margin so the
+     strip lands exactly where it did before. */
+  padding: 3px;
+  margin: -3px;
   overflow-x: auto;
+  /* Hard-lock the y axis so the strip only ever pans left/right; a vertical
+     drag is left to scroll the page. */
   overflow-y: hidden;
   /* Keep horizontal overscroll inside the chip strip so it can't trigger iOS
      Safari's back/forward swipe-navigation gesture. */
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  cursor: grab;
+}
+
+.date-chip-row > .date-chip:first-child {
+  margin-inline-start: auto;
+}
+
+.date-chip-row.dragging {
+  cursor: grabbing;
 }
 
 .date-chip-row::-webkit-scrollbar {

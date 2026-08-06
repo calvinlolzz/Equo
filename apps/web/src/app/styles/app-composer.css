@@ -754,6 +754,12 @@
     justify-content: flex-start;
   }
 
+  /* The strip spans the card here, so drop the right-aligning auto margin the
+     desktop layout puts on the first chip - days should read left to right. */
+  .date-chip-row > .date-chip:first-child {
+    margin-inline-start: 0;
+  }
+
   .composer-meta-grid {
     grid-template-columns: 1fr;
   }
