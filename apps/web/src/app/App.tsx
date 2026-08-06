@@ -1157,7 +1157,7 @@ export function App() {
               badge: those are "there is activity in another group", this is
               "somebody wrote to you", and how many matters. */}
           <button
-            className="top-bar-icon-button"
+            className="top-bar-icon-button notifications-button"
             type="button"
             aria-label={text.notifications}
             onClick={() => setNotificationsOpen(true)}

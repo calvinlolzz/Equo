@@ -240,9 +240,12 @@ label span {
   background: rgb(var(--gold) / 0.08);
 }
 
-/* The day/night toggle stays visible on every viewport (the other
-   top-bar icon buttons are mobile-only and hidden on desktop). */
-.theme-toggle-button {
+/* .top-bar-icon-button is display:none by default because it started life as
+   a mobile-only affordance (the group-drawer button). Anything using it that
+   should be visible on every viewport has to say so here - the bell shipped
+   without this line and was invisible on every screen size. */
+.theme-toggle-button,
+.notifications-button {
   display: inline-flex;
 }
 
