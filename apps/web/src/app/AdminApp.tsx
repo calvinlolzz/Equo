@@ -2176,152 +2176,125 @@ function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProp
 /**
  * Pick the one user or group a notification is addressed to.
  *
- * This was a text field asking for a uuid, which meant the only way to send
- * anybody a message was to drill into them in another tab and copy the id out
- * of the address bar - the console never shows an id on screen. Nobody was
- * going to find that, and a mistyped uuid is either a 404 or, worse, a message
- * delivered to a stranger.
+ * This was a text field asking for a uuid - the console never shows an id on
+ * screen, so the only way to address anybody was to drill into them in another
+ * tab and copy it out of the address bar. It then became a search box, which
+ * was still ceremony: this deployment has single digits of users and a handful
+ * of live groups, so the whole list fits in a dropdown and there is nothing to
+ * search for.
  *
- * Same search-and-pick shape the account merge uses, against the list
- * endpoints that already exist.
+ * The list is capped at the server's page limit. That is far above the current
+ * size, but if it is ever hit the control says so rather than quietly offering
+ * a truncated list as if it were everybody.
  */
+const TARGET_LIST_LIMIT = 100;
+
 function TargetPicker({
   client,
   kind,
   selected,
-  selectedLabel,
   disabled,
   onPick,
 }: {
   client: EquoApiClient;
   kind: "user" | "group";
   selected: string;
-  selectedLabel: string;
   disabled: boolean;
   onPick: (id: string, label: string) => void;
 }) {
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState<Array<{ id: string; label: string; hint: string }>>([]);
-  const [searching, setSearching] = useState(false);
+  const [options, setOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [searched, setSearched] = useState(false);
 
-  // Switching audience resets the search, so the group list is never left
-  // sitting under a "指定使用者" label.
   useEffect(() => {
-    setSearch("");
-    setResults([]);
-    setSearched(false);
+    let cancelled = false;
+    setLoading(true);
     setError("");
-  }, [kind]);
+    setOptions([]);
 
-  /**
-   * Not a <form>: this control lives inside the notification form, and a
-   * nested form is invalid HTML whose submit button can end up submitting the
-   * outer one - which here would mean "search" sending the notification.
-   * Enter is wired up by hand instead.
-   */
-  async function run() {
-    const query = search.trim();
-    if (!query) return;
+    const load =
+      kind === "user"
+        ? client.adminListUsers({ limit: TARGET_LIST_LIMIT }).then((page) => ({
+            total: page.total,
+            // Deleted/disabled accounts stay listed but say so: "why is that
+            // person missing" is a worse question than a labelled row.
+            rows: page.users.map((row) => ({
+              id: row.id,
+              label: `${row.display_name || row.email}（${row.email}）${row.disabled_at ? "・已停用" : ""}`,
+            })),
+          }))
+        : // The default group filter is already "non-deleted", so a deleted
+          // group is never offered as a destination.
+          client.adminListGroups({ limit: TARGET_LIST_LIMIT }).then((page) => ({
+            total: page.total,
+            rows: page.groups.map((row) => ({
+              id: row.id,
+              label: `${row.name}（${row.member_count} 位成員）`,
+            })),
+          }));
 
-    setSearching(true);
-    setError("");
-    try {
-      if (kind === "user") {
-        const page = await client.adminListUsers({ search: query, limit: 8 });
-        setResults(
-          page.users.map((row) => ({
-            id: row.id,
-            label: row.display_name || row.email,
-            hint: `${row.email}${row.disabled_at ? "・已停用" : ""}`,
-          })),
-        );
-      } else {
-        const page = await client.adminListGroups({ search: query, limit: 8 });
-        setResults(
-          page.groups.map((row) => ({
-            id: row.id,
-            label: row.name,
-            hint: `${row.member_count} 位成員・擁有者 ${row.owner_display_name ?? "—"}`,
-          })),
-        );
-      }
-      setSearched(true);
-    } catch {
-      setError("搜尋失敗，請稍後再試。");
-    } finally {
-      setSearching(false);
-    }
-  }
+    load
+      .then(({ total: count, rows }) => {
+        if (cancelled) return;
+        setOptions(rows);
+        setTotal(count);
+      })
+      .catch(() => {
+        if (!cancelled) setError(kind === "user" ? "使用者清單載入失敗。" : "群組清單載入失敗。");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  if (selected) {
-    return (
-      <div className="admin-field">
-        <span>{kind === "user" ? "收件人" : "收件群組"}</span>
-        <div className="admin-target-chip">
-          <span>
-            <strong>{selectedLabel}</strong>
-            <code className="admin-muted">{selected.slice(0, 8)}</code>
-          </span>
-          <button type="button" className="admin-action" disabled={disabled} onClick={() => onPick("", "")}>
-            換一個
-          </button>
-        </div>
-      </div>
-    );
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [client, kind]);
+
+  // Arriving from somebody's page puts an id in the URL but no name. Once the
+  // list lands, hand the label back so the confirm can say who this is.
+  useEffect(() => {
+    if (!selected || options.length === 0) return;
+    const match = options.find((option) => option.id === selected);
+    if (match) onPick(match.id, match.label);
+    // onPick is stable enough here (it only sets state on the parent); adding
+    // it would re-run this on every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, options]);
+
+  const known = options.some((option) => option.id === selected);
 
   return (
-    <div className="admin-field">
-      <span>{kind === "user" ? "選擇收件人" : "選擇收件群組"}</span>
-      <div className="admin-inline-form">
-        <input
-          className="admin-input"
-          value={search}
-          placeholder={kind === "user" ? "用 email 或名稱搜尋" : "用群組名稱搜尋"}
-          onChange={(event) => setSearch(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            // Otherwise Enter reaches the notification form and sends it.
-            event.preventDefault();
-            void run();
-          }}
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          className="admin-action"
-          disabled={disabled || searching || !search.trim()}
-          onClick={() => void run()}
-        >
-          {searching ? "搜尋中…" : "搜尋"}
-        </button>
-      </div>
-
+    <label className="admin-field">
+      <span>{kind === "user" ? "收件人" : "收件群組"}</span>
+      <select
+        value={selected}
+        disabled={disabled || loading || Boolean(error)}
+        onChange={(event) => {
+          const id = event.target.value;
+          onPick(id, options.find((option) => option.id === id)?.label ?? id);
+        }}
+      >
+        <option value="">
+          {loading ? "載入中…" : kind === "user" ? "選擇收件人…" : "選擇收件群組…"}
+        </option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+        {/* An id from the URL that is not in the loaded page still has to be
+            selectable, or the form would silently lose its address. */}
+        {selected && !known && <option value={selected}>{selected.slice(0, 8)}…</option>}
+      </select>
       {error && <p className="admin-error">{error}</p>}
-      {searched && results.length === 0 && !error && <p className="admin-modal__hint">找不到符合的對象。</p>}
-
-      {results.length > 0 && (
-        <ul className="admin-merge__results">
-          {results.map((row) => (
-            <li key={row.id}>
-              <span>
-                <strong>{row.label}</strong> <span className="admin-muted">{row.hint}</span>
-              </span>
-              <button
-                type="button"
-                className="admin-action"
-                disabled={disabled}
-                onClick={() => onPick(row.id, row.label)}
-              >
-                選這個
-              </button>
-            </li>
-          ))}
-        </ul>
+      {total > options.length && (
+        <p className="admin-modal__hint">
+          只列出前 {options.length} 筆（共 {total} 筆）。要送給沒列出的對象，請先從列表頁進去再用「發通知給這個人」。
+        </p>
       )}
-    </div>
+    </label>
   );
 }
 
@@ -2363,25 +2336,6 @@ function NotificationsPanel({
   const [target, setTarget] = useState(arrivedFor);
   /** What the picked target is called, so the form can say who it is about to write to. */
   const [targetLabel, setTargetLabel] = useState("");
-
-  // The URL carries the id but not the name, so resolve it for the chip and
-  // the confirm. Falls back to the id if the lookup fails - the address is
-  // still correct, it just reads worse.
-  useEffect(() => {
-    if (!arrivedFor) return;
-    let cancelled = false;
-    client
-      .adminUserDetail(arrivedFor)
-      .then((detail) => {
-        if (!cancelled) setTargetLabel(detail.user.display_name || detail.user.email);
-      })
-      .catch(() => {
-        if (!cancelled) setTargetLabel(arrivedFor.slice(0, 8));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, arrivedFor]);
   const [title, setTitle] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [link, setLink] = useState("");
@@ -2464,7 +2418,6 @@ function NotificationsPanel({
             client={client}
             kind={audience === "user" ? "user" : "group"}
             selected={target}
-            selectedLabel={targetLabel}
             disabled={!canSend}
             onPick={(id, label) => {
               setTarget(id);

@@ -1718,28 +1718,3 @@ button.admin-inbox__item:hover {
   vertical-align: -1px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
-
-/* The picked notification target. Shows the short id next to the name so the
-   row is verifiable at a glance without putting a uuid in front of anyone. */
-.admin-target-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border: 1px solid #d5d9de;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.admin-target-chip code {
-  margin-left: 8px;
-  font-size: 12px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .admin-target-chip {
-    border-color: #2c3037;
-    background: #1e2126;
-  }
-}

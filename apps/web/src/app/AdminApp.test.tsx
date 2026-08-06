@@ -799,14 +799,13 @@ describe("addressing a notification", () => {
     "POST /admin/notifications": { ok: true, recipients: 1 },
   };
 
-  test("picking a recipient sends their id, without anyone typing a uuid", async () => {
+  test("the recipient is chosen from a dropdown, not typed", async () => {
     let sent: unknown;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         const method = init?.method ?? "GET";
-        const full = String(url).replace(/^\/api\/v1/, "");
-        const path = full.split("?")[0];
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
         if (path === "/admin/notifications") sent = JSON.parse(String(init?.body));
         const body = notifyRoutes[`${method} ${path}`];
         if (body === undefined) throw new Error(`No fake route for "${method} ${path}"`);
@@ -820,13 +819,17 @@ describe("addressing a notification", () => {
 
     fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "user" } });
 
-    // The id never appears as an input: it is searched for and picked.
-    expect(screen.queryByLabelText("使用者 ID")).toBeNull();
+    // No id field and no search box: the whole list is in the select.
+    const picker = (await screen.findByLabelText("收件人")) as HTMLSelectElement;
+    expect(screen.queryByPlaceholderText("用 email 或名稱搜尋")).toBeNull();
+    await waitFor(() =>
+      expect(within(picker).getAllByRole("option").map((option) => option.textContent)).toEqual([
+        "選擇收件人…",
+        "Alice（alice@example.com）",
+      ]),
+    );
 
-    fireEvent.change(await screen.findByPlaceholderText("用 email 或名稱搜尋"), { target: { value: "alice" } });
-    fireEvent.click(screen.getByRole("button", { name: "搜尋" }));
-    fireEvent.click(await screen.findByRole("button", { name: "選這個" }));
-
+    fireEvent.change(picker, { target: { value: "user_alice" } });
     fireEvent.change(screen.getByLabelText("標題"), { target: { value: "測試" } });
     fireEvent.change(screen.getByLabelText("內容"), { target: { value: "內容" } });
     fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
@@ -836,39 +839,28 @@ describe("addressing a notification", () => {
     );
   });
 
-  test("switching audience drops the target, so a user id is never sent as a group id", async () => {
+  test("the group dropdown lists groups, and switching drops the previous pick", async () => {
     fakeAdminApi(notifyRoutes);
     renderAdmin("?tab=notifications");
     await screen.findByRole("region", { name: "發送通知" });
 
     fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "user" } });
-    fireEvent.change(await screen.findByPlaceholderText("用 email 或名稱搜尋"), { target: { value: "alice" } });
-    fireEvent.click(screen.getByRole("button", { name: "搜尋" }));
-    fireEvent.click(await screen.findByRole("button", { name: "選這個" }));
-    expect(screen.getByText("Alice")).toBeTruthy();
+    const userPicker = (await screen.findByLabelText("收件人")) as HTMLSelectElement;
+    await waitFor(() => expect(within(userPicker).getAllByRole("option")).toHaveLength(2));
+    fireEvent.change(userPicker, { target: { value: "user_alice" } });
+    expect(userPicker.value).toBe("user_alice");
 
     fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "group" } });
 
-    // Back to an empty search against groups, not Alice carried across.
-    expect(await screen.findByPlaceholderText("用群組名稱搜尋")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "換一個" })).toBeNull();
-  });
-
-  test("Enter in the search box searches, it does not send the notification", async () => {
-    const urls = fakeAdminApi(notifyRoutes);
-    renderAdmin("?tab=notifications");
-    await screen.findByRole("region", { name: "發送通知" });
-
-    fireEvent.change(screen.getByLabelText("發送對象"), { target: { value: "user" } });
-    const box = await screen.findByPlaceholderText("用 email 或名稱搜尋");
-    fireEvent.change(box, { target: { value: "alice" } });
-    fireEvent.keyDown(box, { key: "Enter" });
-
-    // The search ran...
-    await waitFor(() => expect(urls.some((url) => url.includes("/admin/users?search=alice"))).toBe(true));
-    // ...and nothing was sent. A nested <form> here would have submitted the
-    // outer one, i.e. broadcast a half-written notification.
-    expect(urls.some((url) => url === "POST /admin/notifications")).toBe(false);
+    // A fresh, empty group select - not Alice's id carried across as a group id.
+    const groupPicker = (await screen.findByLabelText("收件群組")) as HTMLSelectElement;
+    expect(groupPicker.value).toBe("");
+    await waitFor(() =>
+      expect(within(groupPicker).getAllByRole("option").map((option) => option.textContent)).toEqual([
+        "選擇收件群組…",
+        "東京旅行（2 位成員）",
+      ]),
+    );
   });
 
   test("a broadcast asks for no target at all", async () => {
@@ -876,7 +868,7 @@ describe("addressing a notification", () => {
     renderAdmin("?tab=notifications");
     await screen.findByRole("region", { name: "發送通知" });
 
-    expect(screen.queryByPlaceholderText("用 email 或名稱搜尋")).toBeNull();
+    expect(screen.queryByLabelText("收件人")).toBeNull();
     expect(screen.getByRole("button", { name: "送出通知" })).toBeTruthy();
   });
 });
@@ -913,10 +905,9 @@ describe("notifying one person from their page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "發通知給這個人" }));
 
     await screen.findByRole("region", { name: "發送通知" });
-    // Addressed, named, and no search to redo.
-    expect(await screen.findByText("Alice")).toBeTruthy();
-    expect(screen.queryByPlaceholderText("用 email 或名稱搜尋")).toBeNull();
+    // Addressed, and nothing to pick again.
     expect((screen.getByLabelText("發送對象") as HTMLSelectElement).value).toBe("user");
+    await waitFor(() => expect((screen.getByLabelText("收件人") as HTMLSelectElement).value).toBe("user_alice"));
   });
 
   test("the address is in the URL, so the half-written message survives a reload", async () => {
