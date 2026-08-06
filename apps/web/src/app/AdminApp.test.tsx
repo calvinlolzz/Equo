@@ -966,3 +966,79 @@ describe("notifying one person from their page", () => {
     expect(screen.queryByRole("button", { name: "發通知給這個人" })).toBeNull();
   });
 });
+
+describe("notifying a whole group from its page", () => {
+  const routes: AdminRoutes = {
+    ...groupDetailRoutes,
+    "POST /admin/notifications": { ok: true, recipients: 3 },
+  };
+
+  test("the shortcut opens the compose form addressed to that group", async () => {
+    fakeAdminApi(routes);
+    renderAdmin("?tab=groups&group=group_1");
+    await screen.findByText("拉麵");
+
+    fireEvent.click(screen.getByRole("button", { name: "發通知給這個群組" }));
+
+    await screen.findByRole("region", { name: "發送通知" });
+    expect(window.location.search).toBe("?tab=notifications&group=group_1");
+    expect((screen.getByLabelText("發送對象") as HTMLSelectElement).value).toBe("group");
+    await waitFor(() => expect((screen.getByLabelText("收件群組") as HTMLSelectElement).value).toBe("group_1"));
+  });
+
+  test("it sends to that group, not to everybody", async () => {
+    let sent: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
+        if (path === "/admin/notifications") sent = JSON.parse(String(init?.body));
+        const body = routes[`${method} ${path}`];
+        if (body === undefined) throw new Error(`No fake route for "${method} ${path}"`);
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    vi.stubGlobal("confirm", () => true);
+
+    renderAdmin("?tab=notifications&group=group_1");
+    await screen.findByRole("region", { name: "發送通知" });
+    await waitFor(() => expect((screen.getByLabelText("收件群組") as HTMLSelectElement).value).toBe("group_1"));
+
+    fireEvent.change(screen.getByLabelText("標題"), { target: { value: "這個群組的帳目已修正" } });
+    fireEvent.change(screen.getByLabelText("內容"), { target: { value: "請重新整理" } });
+    fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
+
+    await waitFor(() =>
+      expect(sent).toEqual({
+        audience: "group",
+        target: "group_1",
+        title: "這個群組的帳目已修正",
+        body: "請重新整理",
+      }),
+    );
+  });
+
+  test("a deleted group offers no shortcut, because its members have no group to read about", async () => {
+    const deleted = groupDetailRoutes["GET /admin/groups/group_1"] as { group: Record<string, unknown> };
+    fakeAdminApi({
+      ...routes,
+      "GET /admin/groups/group_1": {
+        ...deleted,
+        group: { ...deleted.group, deleted_at: "2026-08-01T00:00:00.000Z" },
+      },
+    });
+    renderAdmin("?tab=groups&group=group_1");
+    await screen.findByText("拉麵");
+
+    expect(screen.queryByRole("button", { name: "發通知給這個群組" })).toBeNull();
+  });
+
+  test("a support account gets no shortcut, because it cannot send", async () => {
+    fakeAdminApi({ ...routes, "GET /admin/me": { ...me, role: "support" } });
+    renderAdmin("?tab=groups&group=group_1");
+    await screen.findByText("拉麵");
+
+    expect(screen.queryByRole("button", { name: "發通知給這個群組" })).toBeNull();
+  });
+});

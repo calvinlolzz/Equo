@@ -811,6 +811,7 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
         role={role}
         backLabel="回使用者詳情"
         onBack={() => onNavigate({ groupId: "" })}
+        onNavigate={onNavigate}
       />
     );
   }
@@ -1068,12 +1069,15 @@ function GroupDetailPanel({
   role,
   backLabel,
   onBack,
+  onNavigate,
 }: {
   client: EquoApiClient;
   groupId: string;
   role?: string;
   backLabel: string;
   onBack: () => void;
+  /** Reached from two different lists, so it navigates rather than owning a route. */
+  onNavigate: (patch: Partial<AdminRoute>) => void;
 }) {
   const [detail, setDetail] = useState<AdminGroupDetail | null>(null);
   const [error, setError] = useState("");
@@ -1170,6 +1174,20 @@ function GroupDetailPanel({
                 {detail.group.currency}
               </p>
             </div>
+            {/* A deleted group's members should not be written to: the group is
+                gone from their app, so a notification about it has no context
+                to land in. */}
+            {canWrite(role) && !detail.group.deleted_at && (
+              <div className="admin-user-card__actions">
+                <button
+                  type="button"
+                  className="admin-action"
+                  onClick={() => onNavigate({ tab: "notifications", groupId: detail.group.id })}
+                >
+                  發通知給這個群組
+                </button>
+              </div>
+            )}
           </article>
 
           {notice && <p className="admin-notice">{notice}</p>}
@@ -1814,6 +1832,7 @@ function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
           // that was archived/deleted elsewhere shouldn't show a stale row.
           setReloadKey((key) => key + 1);
         }}
+        onNavigate={onNavigate}
       />
     );
   }
@@ -2323,17 +2342,24 @@ function NotificationsPanel({
   route: AdminRoute;
 }) {
   /**
-   * Arriving from a person's page (?tab=notifications&user=<id>) opens the form
-   * already addressed to them.
+   * Arriving from a person's or a group's page opens the form already
+   * addressed to them: ?tab=notifications&user=<id> or &group=<id>.
    *
-   * No new route vocabulary was needed: the console already keeps its state in
-   * the URL and already carries `user`, so this is a link rather than a second
-   * copy of the compose form living on the user page - and it stays shareable
-   * like every other screen here.
+   * No new route vocabulary was needed - the console already keeps its state in
+   * the URL and already carries both parameters - so these are links rather
+   * than a second copy of the compose form living on each detail page, and they
+   * stay shareable like every other screen here. On this tab the two parameters
+   * mean "who this is addressed to" rather than "which drill-down is open",
+   * which is the same overload the users tab already lives with.
+   *
+   * A user wins if both are somehow present, so the address is never ambiguous.
    */
-  const arrivedFor = route.userId;
-  const [audience, setAudience] = useState<AdminNotificationAudienceOption>(arrivedFor ? "user" : "active");
-  const [target, setTarget] = useState(arrivedFor);
+  const arrivedForUser = route.userId;
+  const arrivedForGroup = arrivedForUser ? "" : route.groupId;
+  const [audience, setAudience] = useState<AdminNotificationAudienceOption>(
+    arrivedForUser ? "user" : arrivedForGroup ? "group" : "active",
+  );
+  const [target, setTarget] = useState(arrivedForUser || arrivedForGroup);
   /** What the picked target is called, so the form can say who it is about to write to. */
   const [targetLabel, setTargetLabel] = useState("");
   const [title, setTitle] = useState("");
