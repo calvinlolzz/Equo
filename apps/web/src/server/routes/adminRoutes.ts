@@ -15,6 +15,8 @@ import {
   handleAdminGroupDetail,
   handleAdminHealth,
   handleAdminMergeUsers,
+  handleAdminDeleteNotificationBatch,
+  handleAdminListSentNotifications,
   handleAdminReplyFeedback,
   handleAdminSendNotification,
   handleAdminSetExpenseDeleted,
@@ -463,6 +465,26 @@ export async function adminSendNotificationRoute(options: RouteOptions, body: Ad
   }
 
   return handleAdminSendNotification(createSupabaseAdminRepository(options.client), auth.context, body);
+}
+
+export async function adminListSentNotificationsRoute(options: RouteOptions, query: AdminListQuery) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminListSentNotifications(createSupabaseAdminRepository(options.client), auth.context, query);
+}
+
+export async function adminDeleteNotificationBatchRoute(options: RouteOptions, batchId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminDeleteNotificationBatch(createSupabaseAdminRepository(options.client), auth.context, batchId);
 }
 
 export async function adminReplyFeedbackRoute(options: RouteOptions, feedbackId: string, message: unknown) {

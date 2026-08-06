@@ -1321,3 +1321,43 @@
   font-size: 13px;
   color: rgb(var(--fg) / 0.55);
 }
+
+/* 清空 sits above the list rather than beside each row: it is the destructive
+   one, and putting it in the row rhythm would make it easy to hit instead of
+   the per-row delete. */
+.notification-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.notification-clear {
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: rgb(var(--fg) / 0.55);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.notification-clear:hover {
+  color: rgb(var(--fg) / 0.85);
+}
+
+/* Low-contrast until the row is hovered/focused: every row has one, and a
+   column of bins reads as a list of delete buttons rather than as messages. */
+.notification-delete {
+  flex: none;
+  align-self: flex-start;
+  padding: 4px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: rgb(var(--fg) / 0.3);
+  cursor: pointer;
+}
+
+.notification-row:hover .notification-delete,
+.notification-delete:focus-visible {
+  color: rgb(var(--fg) / 0.7);
+}

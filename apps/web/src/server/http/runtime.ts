@@ -38,6 +38,8 @@ import {
   adminGroupDetailRoute,
   adminMergeUsersRoute,
   adminGetCatalogRoute,
+  adminDeleteNotificationBatchRoute,
+  adminListSentNotificationsRoute,
   adminReplyFeedbackRoute,
   adminSaveCategoryRoute,
   adminSaveCurrencyRoute,
@@ -89,7 +91,11 @@ import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
-import { listNotificationsRoute, markNotificationsReadRoute } from "../routes/notificationRoutes.js";
+import {
+  deleteNotificationsRoute,
+  listNotificationsRoute,
+  markNotificationsReadRoute,
+} from "../routes/notificationRoutes.js";
 import { getCatalogRoute } from "../routes/catalogRoutes.js";
 import type { AdminSendNotificationBody } from "../handlers/admin.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
@@ -1007,6 +1013,41 @@ export function createHttpRuntime(options: RuntimeOptions) {
           routeOptions(options, request),
           body<{ ids?: unknown }>(request) ?? {},
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/notifications$/,
+      label: "DELETE /api/v1/notifications",
+      async handle(request) {
+        const result = await deleteNotificationsRoute(
+          routeOptions(options, request),
+          body<{ ids?: unknown }>(request) ?? {},
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/notifications$/,
+      label: "GET /api/v1/admin/notifications",
+      async handle(request) {
+        const limitParam = queryParam(request, "limit");
+        const offsetParam = queryParam(request, "offset");
+        const result = await adminListSentNotificationsRoute(routeOptions(options, request), {
+          limit: limitParam ? Number(limitParam) : undefined,
+          offset: offsetParam ? Number(offsetParam) : undefined,
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/admin\/notifications\/([^/]+)$/,
+      label: "DELETE /api/v1/admin/notifications/:batchId",
+      async handle(request, match) {
+        const result = await adminDeleteNotificationBatchRoute(routeOptions(options, request), match[1]);
         return jsonResponse(result.status, result.body);
       },
     },

@@ -392,6 +392,35 @@ export type AdminSendNotificationResult =
   | { ok: true; recipients: number }
   | { ok: false; error: "EMPTY_MESSAGE" | "INVALID_AUDIENCE" | "TARGET_REQUIRED" | "TARGET_NOT_FOUND" };
 
+/** One send, collapsed back from its per-recipient rows. */
+export type AdminSentNotificationRecord = {
+  batch_id: string;
+  kind: string;
+  title: string;
+  body: string;
+  link: string | null;
+  /** null for rows that predate the column. */
+  audience: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  recipients: number;
+  /** How many of those have opened it - the number that says whether it landed. */
+  read_count: number;
+};
+
+export type AdminSentNotificationListRecord = {
+  total: number;
+  batches: AdminSentNotificationRecord[];
+};
+
+export type AdminDeleteNotificationResult = {
+  ok: true;
+  deleted: number;
+  /** People who had already opened it. A recall does not un-read those. */
+  already_read: number;
+  title: string;
+};
+
 export type AdminReplyFeedbackResult =
   | { ok: true; feedback_id: string; notification_id: string; status: string }
   /** NO_ACCOUNT: the feedback was submitted signed-out, so there is nobody to reply to. */
@@ -568,6 +597,10 @@ export type AdminRepository = {
   ): Promise<AdminSendNotificationResult>;
   /** Reply to a piece of feedback: notification + status change in one transaction. */
   replyFeedback(actor: AdminActor, feedbackId: string, message: string): Promise<AdminReplyFeedbackResult>;
+  /** Everything the console has sent, one row per send. */
+  listSentNotifications(limit: number, offset: number): Promise<AdminSentNotificationListRecord>;
+  /** Recall a send: remove every copy. Returns null when the batch no longer exists. */
+  deleteNotificationBatch(actor: AdminActor, batchId: string): Promise<AdminDeleteNotificationResult | null>;
   /** Master data including disabled rows and the rate overrides. */
   getCatalog(): Promise<AdminCatalogRecord>;
   /** Upsert one category. The key is the identity; there is no rename. */

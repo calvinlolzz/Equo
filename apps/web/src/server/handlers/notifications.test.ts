@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { NotificationRepository } from "../repositories/notificationRepository.js";
 import {
   NOTIFICATION_LIST_LIMIT,
+  handleDeleteNotifications,
   handleListNotifications,
   handleMarkNotificationsRead,
   normalizeNotificationIds,
@@ -26,6 +27,9 @@ function makeRepository(overrides: Partial<NotificationRepository> = {}): Notifi
     },
     async markRead(_userId, ids) {
       return { marked: ids.length, unread: 0 };
+    },
+    async remove(_userId, ids) {
+      return { deleted: ids.length, unread: 0 };
     },
     ...overrides,
   };
@@ -75,5 +79,49 @@ describe("the inbox", () => {
 
   test("a very long id list is capped", () => {
     expect(normalizeNotificationIds(Array.from({ length: 250 }, () => ID_A))).toHaveLength(100);
+  });
+});
+
+describe("clearing the inbox", () => {
+  test("an absent ids list deletes everything", async () => {
+    let seen: string[] | null = null;
+    const repository = makeRepository({
+      async remove(_userId, ids) {
+        seen = ids;
+        return { deleted: 5, unread: 0 };
+      },
+    });
+
+    await handleDeleteNotifications(repository, context, {});
+
+    expect(seen).toEqual([]);
+  });
+
+  test("it is scoped to the caller, never to an id from the request", async () => {
+    let seenUserId = "";
+    const repository = makeRepository({
+      async remove(userId) {
+        seenUserId = userId;
+        return { deleted: 1, unread: 0 };
+      },
+    });
+
+    await handleDeleteNotifications(repository, context, { ids: [ID_A] });
+
+    expect(seenUserId).toBe("user_alice");
+  });
+
+  test("junk ids are dropped rather than sent to Postgres", async () => {
+    let seen: string[] | null = null;
+    const repository = makeRepository({
+      async remove(_userId, ids) {
+        seen = ids;
+        return { deleted: 1, unread: 0 };
+      },
+    });
+
+    await handleDeleteNotifications(repository, context, { ids: [ID_A, "nope", 7] });
+
+    expect(seen).toEqual([ID_A]);
   });
 });

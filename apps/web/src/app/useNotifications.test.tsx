@@ -21,6 +21,7 @@ function makeClient(page: NotificationsPage, overrides: Partial<EquoApiClient> =
   return {
     listNotifications: vi.fn(async () => page),
     markNotificationsRead: vi.fn(async () => ({ marked: page.unread, unread: 0 })),
+    deleteNotifications: vi.fn(async () => ({ deleted: 1, unread: 0 })),
     ...overrides,
   } as unknown as EquoApiClient;
 }
@@ -117,5 +118,81 @@ describe("the inbox hook", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.unread).toBe(0);
     expect(result.current.items).toEqual([]);
+  });
+});
+
+describe("tidying the inbox", () => {
+  test("deleting one row drops it and decrements the badge before the server answers", async () => {
+    let resolveWrite = () => {};
+    const client = makeClient(
+      { unread: 2, items: [makeItem("a"), makeItem("b")] },
+      {
+        deleteNotifications: vi.fn(
+          () =>
+            new Promise<{ deleted: number; unread: number }>((resolve) => {
+              resolveWrite = () => resolve({ deleted: 1, unread: 1 });
+            }),
+        ),
+      } as Partial<EquoApiClient>,
+    );
+
+    const { result } = renderHook(() => useNotifications(client, true));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    act(() => {
+      void result.current.remove("a");
+    });
+
+    expect(result.current.items.map((item) => item.id)).toEqual(["b"]);
+    expect(result.current.unread).toBe(1);
+
+    await act(async () => {
+      resolveWrite();
+    });
+    expect(client.deleteNotifications).toHaveBeenCalledWith(["a"]);
+  });
+
+  test("deleting an already-read row leaves the badge alone", async () => {
+    const client = makeClient({ unread: 1, items: [makeItem("a", true), makeItem("b")] });
+    const { result } = renderHook(() => useNotifications(client, true));
+    await waitFor(() => expect(result.current.unread).toBe(1));
+
+    await act(async () => {
+      await result.current.remove("a");
+    });
+
+    // "a" was read, so it was never part of the count.
+    expect(result.current.unread).toBe(1);
+  });
+
+  test("clearing empties the list and calls the server with no ids", async () => {
+    const client = makeClient({ unread: 2, items: [makeItem("a"), makeItem("b")] });
+    const { result } = renderHook(() => useNotifications(client, true));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.clearAll();
+    });
+
+    expect(result.current.items).toEqual([]);
+    expect(result.current.unread).toBe(0);
+    expect(client.deleteNotifications).toHaveBeenCalledWith();
+  });
+
+  test("a failed delete re-reads rather than leaving the row silently gone", async () => {
+    const client = makeClient(
+      { unread: 1, items: [makeItem("a")] },
+      { deleteNotifications: vi.fn(async () => { throw new Error("offline"); }) } as Partial<EquoApiClient>,
+    );
+
+    const { result } = renderHook(() => useNotifications(client, true));
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.remove("a");
+    });
+
+    // The refresh puts it back, because it was never actually deleted.
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
   });
 });

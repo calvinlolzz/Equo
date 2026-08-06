@@ -21,6 +21,7 @@ import {
   type AdminHealthSummary,
   type AdminMeSummary,
   type AdminNotificationAudienceOption,
+  type AdminSentNotificationPage,
   type AdminOverviewSummary,
   type AdminReceiptScanSettings,
   type AdminStorageSummary,
@@ -2368,9 +2369,50 @@ function NotificationsPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [sent, setSent] = useState<AdminSentNotificationPage | null>(null);
+  const [sentError, setSentError] = useState("");
+  const [recalling, setRecalling] = useState("");
+  const [sentReloadKey, setSentReloadKey] = useState(0);
 
   const needsTarget = audience === "user" || audience === "group";
   const selected = AUDIENCE_OPTIONS.find((option) => option.value === audience);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSentError("");
+    client
+      .adminListSentNotifications({ limit: 20 })
+      .then((page) => {
+        if (!cancelled) setSent(page);
+      })
+      .catch(() => {
+        if (!cancelled) setSentError("已送出清單載入失敗，可能是資料庫尚未套用 notification management migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, sentReloadKey]);
+
+  async function recall(batchId: string, title: string, recipients: number, readCount: number) {
+    const confirmed = window.confirm(
+      `確定要收回「${title}」嗎？它會從 ${recipients} 個收件匣消失。` +
+        (readCount > 0 ? `
+注意：已經有 ${readCount} 人讀過了，收回不會讓他們忘記。` : ""),
+    );
+    if (!confirmed) return;
+
+    setRecalling(batchId);
+    setSentError("");
+    try {
+      const result = await client.adminDeleteNotificationBatch(batchId);
+      setNotice(`已收回「${result.title}」，移除 ${result.deleted} 則。`);
+      setSentReloadKey((key) => key + 1);
+    } catch (caught) {
+      setSentError((caught as ApiClientError).message || "收回失敗，請稍後再試。");
+    } finally {
+      setRecalling("");
+    }
+  }
 
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -2398,6 +2440,7 @@ function NotificationsPanel({
       setTitle("");
       setBodyText("");
       setLink("");
+      setSentReloadKey((key) => key + 1);
     } catch (caught) {
       setError((caught as ApiClientError).message || "送出失敗，請稍後再試。");
     } finally {
@@ -2497,6 +2540,69 @@ function NotificationsPanel({
           </button>
         </div>
       </form>
+
+      <h3 className="admin-subheading admin-subheading--spaced">已送出</h3>
+      <p className="admin-modal__hint">
+        「已讀」是實際打開通知中心看過的人數——公告沒被讀跟沒送出去是兩件不同的事。收回會把每一份都刪掉，但已經讀過的人不會因此忘記。
+      </p>
+
+      {sentError && <p className="admin-error">{sentError}</p>}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>標題</th>
+              <th>對象</th>
+              <th className="admin-table__num">送達</th>
+              <th className="admin-table__num">已讀</th>
+              <th>送出者</th>
+              <th>時間</th>
+              {canSend && <th>操作</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {(sent?.batches ?? []).map((batch) => (
+              <tr key={batch.batch_id}>
+                <td className="admin-table__message" title={batch.body}>
+                  {batch.title}
+                  {batch.kind === "feedback_reply" && <span className="admin-badge">意見回覆</span>}
+                </td>
+                <td>{AUDIENCE_OPTIONS.find((option) => option.value === batch.audience)?.label ?? "—"}</td>
+                <td className="admin-table__num">{batch.recipients}</td>
+                <td className="admin-table__num">
+                  {batch.read_count}
+                  <span className="admin-muted">
+                    {" "}
+                    ({batch.recipients > 0 ? Math.round((batch.read_count / batch.recipients) * 100) : 0}%)
+                  </span>
+                </td>
+                <td>{batch.created_by_email ?? "—"}</td>
+                <td>{formatDateTime(batch.created_at)}</td>
+                {canSend && (
+                  <td className="admin-table__actions">
+                    <button
+                      type="button"
+                      className="admin-action admin-action--danger"
+                      disabled={recalling === batch.batch_id}
+                      onClick={() => recall(batch.batch_id, batch.title, batch.recipients, batch.read_count)}
+                    >
+                      {recalling === batch.batch_id ? "收回中…" : "收回"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+            {sent?.batches.length === 0 && (
+              <tr>
+                <td colSpan={canSend ? 7 : 6} className="admin-table__empty">
+                  還沒有送出任何通知
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

@@ -688,6 +688,30 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     listNotifications() {
       return request<NotificationsPage>("/notifications", { method: "GET" });
     },
+    /** Delete rows from the caller's own inbox; an empty list clears all of it. */
+    deleteNotifications(ids: string[] = []) {
+      return request<{ deleted: number; unread: number }>("/notifications", {
+        method: "DELETE",
+        body: JSON.stringify({ ids }),
+      });
+    },
+    /** Everything the console has sent, one row per send (support+). */
+    adminListSentNotifications(options: { limit?: number; offset?: number } = {}) {
+      const params = new URLSearchParams();
+      if (options.limit !== undefined) params.set("limit", String(options.limit));
+      if (options.offset !== undefined) params.set("offset", String(options.offset));
+      const query = params.toString();
+      return request<AdminSentNotificationPage>(`/admin/notifications${query ? `?${query}` : ""}`, {
+        method: "GET",
+      });
+    },
+    /** Recall a send: remove every copy from every inbox (admin+). */
+    adminDeleteNotificationBatch(batchId: string) {
+      return request<{ ok: true; deleted: number; already_read: number; title: string }>(
+        `/admin/notifications/${batchId}`,
+        { method: "DELETE" },
+      );
+    },
     /** Mark rows read; an empty list means the whole inbox. */
     markNotificationsRead(ids: string[] = []) {
       return request<{ marked: number; unread: number }>("/notifications/read", {
@@ -768,6 +792,25 @@ export type NotificationsPage = {
 };
 
 export type AdminNotificationAudienceOption = "user" | "group" | "active" | "all";
+
+export type AdminSentNotificationRow = {
+  batch_id: string;
+  kind: string;
+  title: string;
+  body: string;
+  link: string | null;
+  audience: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  recipients: number;
+  /** How many recipients have opened it. */
+  read_count: number;
+};
+
+export type AdminSentNotificationPage = {
+  total: number;
+  batches: AdminSentNotificationRow[];
+};
 
 export type AdminNotificationInput = {
   audience: AdminNotificationAudienceOption;

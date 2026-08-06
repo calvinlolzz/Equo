@@ -19,6 +19,10 @@ export type NotificationsState = {
   refresh: () => void;
   /** Mark everything read (what opening the panel does). */
   markAllRead: () => Promise<void>;
+  /** Delete one row. */
+  remove: (id: string) => Promise<void>;
+  /** Delete the whole inbox. */
+  clearAll: () => Promise<void>;
 };
 
 export function useNotifications(client: EquoApiClient | null, enabled: boolean): NotificationsState {
@@ -84,5 +88,36 @@ export function useNotifications(client: EquoApiClient | null, enabled: boolean)
     }
   }, [client, unread]);
 
-  return { unread, items, loading, refresh, markAllRead };
+  /**
+   * Both deletes drop the rows locally first. The list is what the person is
+   * looking at while they tap, so it has to respond now; the next refresh is
+   * what reconciles if the write actually failed.
+   */
+  const remove = useCallback(
+    async (id: string) => {
+      if (!client) return;
+      const removed = items.find((item) => item.id === id);
+      setItems((current) => current.filter((item) => item.id !== id));
+      if (removed && !removed.read_at) setUnread((count) => Math.max(count - 1, 0));
+      try {
+        await client.deleteNotifications([id]);
+      } catch {
+        refresh();
+      }
+    },
+    [client, items, refresh],
+  );
+
+  const clearAll = useCallback(async () => {
+    if (!client) return;
+    setItems([]);
+    setUnread(0);
+    try {
+      await client.deleteNotifications();
+    } catch {
+      refresh();
+    }
+  }, [client, refresh]);
+
+  return { unread, items, loading, refresh, markAllRead, remove, clearAll };
 }

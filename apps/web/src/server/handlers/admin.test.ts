@@ -32,6 +32,8 @@ import {
   handleAdminSetExpenseDeleted,
   handleAdminTransferGroupOwner,
   handleAdminUpdateExpenseMeta,
+  handleAdminDeleteNotificationBatch,
+  handleAdminListSentNotifications,
   handleAdminReplyFeedback,
   handleAdminSendNotification,
   handleAdminGetCatalog,
@@ -243,6 +245,12 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     },
     async replyFeedback(_actor, feedbackId) {
       return { ok: true, feedback_id: feedbackId, notification_id: "notification_1", status: "done" };
+    },
+    async listSentNotifications() {
+      return { total: 0, batches: [] };
+    },
+    async deleteNotificationBatch() {
+      return { ok: true as const, deleted: 4, already_read: 1, title: "維護通知" };
     },
     async getCatalog() {
       return { categories: [], currencies: [], rate_overrides: [] };
@@ -1210,5 +1218,49 @@ describe("master data", () => {
 
     expect(result.status).toBe(200);
     expect(seen).toEqual({ base: "TWD", quote: "JPY", rate: null, note: null });
+  });
+});
+
+describe("managing what was sent", () => {
+  const BATCH_ID = "66666666-6666-4666-8666-666666666666";
+
+  test("reading the sent list is support-level, recalling is not", async () => {
+    const repository = makeRepository({ async findAdminRole() { return "support"; } });
+
+    const read = await handleAdminListSentNotifications(repository, context);
+    const recall = await handleAdminDeleteNotificationBatch(repository, context, BATCH_ID);
+
+    expect(read.status).toBe(200);
+    expect(recall.status).toBe(403);
+  });
+
+  test("a batch that no longer exists is a 404", async () => {
+    const repository = makeRepository({ async deleteNotificationBatch() { return null; } });
+    const result = await handleAdminDeleteNotificationBatch(repository, context, BATCH_ID);
+
+    expect(result.status).toBe(404);
+  });
+
+  test("a non-uuid batch id never reaches the RPC", async () => {
+    let called = false;
+    const repository = makeRepository({
+      async deleteNotificationBatch() {
+        called = true;
+        return { ok: true as const, deleted: 1, already_read: 0, title: "x" };
+      },
+    });
+
+    const result = await handleAdminDeleteNotificationBatch(repository, context, "not-a-uuid");
+
+    expect(result.status).toBe(404);
+    expect(called).toBe(false);
+  });
+
+  test("recalling reports how many had already read it", async () => {
+    const result = await handleAdminDeleteNotificationBatch(makeRepository(), context, BATCH_ID);
+
+    // The recall does not un-read those, so the number has to survive to the
+    // caller rather than being folded into "deleted".
+    expect(result.body).toMatchObject({ deleted: 4, already_read: 1 });
   });
 });

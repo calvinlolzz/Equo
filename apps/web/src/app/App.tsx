@@ -1774,6 +1774,11 @@ export function App() {
             loading={notifications.loading}
             onClose={() => setNotificationsOpen(false)}
             onOpened={() => void notifications.markAllRead()}
+            onDelete={(id) => void notifications.remove(id)}
+            onClearAll={() => {
+              void notifications.clearAll();
+              setNotificationsOpen(false);
+            }}
             onNavigate={(link) => {
               setNotificationsOpen(false);
               // Only the one shape the console can send. Anything else is

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Megaphone, MessageSquareText, X } from "lucide-react";
+import { Megaphone, MessageSquareText, Trash2, X } from "lucide-react";
 import type { NotificationRow } from "./apiClient";
 import { formatActivityTime } from "./appDates";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
@@ -16,6 +16,10 @@ type NotificationsPanelProps = {
   onOpened: () => void;
   /** Follow a notification's in-app link. */
   onNavigate: (link: string) => void;
+  /** Delete one row. */
+  onDelete: (id: string) => void;
+  /** Delete the whole inbox. */
+  onClearAll: () => void;
 };
 
 /**
@@ -26,7 +30,15 @@ type NotificationsPanelProps = {
  * nothing here that a person can act on twice; the reply and the announcement
  * have both done their job once they have been seen.
  */
-export function NotificationsPanel({ items, loading, onClose, onOpened, onNavigate }: NotificationsPanelProps) {
+export function NotificationsPanel({
+  items,
+  loading,
+  onClose,
+  onOpened,
+  onNavigate,
+  onDelete,
+  onClearAll,
+}: NotificationsPanelProps) {
   const swipe = useSwipeToDismiss(onClose);
   const chromeRef = useDialogChrome(swipe.requestClose);
   const dialogRef = useMemo(
@@ -67,6 +79,23 @@ export function NotificationsPanel({ items, loading, onClose, onOpened, onNaviga
           <p>{text.notificationsDescription}</p>
         </div>
 
+        {items.length > 0 && (
+          <div className="notification-toolbar">
+            <button
+              className="notification-clear"
+              type="button"
+              onClick={() => {
+                // Everything at once and unrecoverable, so it asks. Deleting
+                // one row does not - that one is easy to re-read from the
+                // console if it mattered.
+                if (window.confirm(text.notificationsClearConfirm)) onClearAll();
+              }}
+            >
+              {text.notificationsClearAll}
+            </button>
+          </div>
+        )}
+
         {loading && items.length === 0 ? (
           <p className="notification-empty">{text.processing}</p>
         ) : items.length === 0 ? (
@@ -96,6 +125,14 @@ export function NotificationsPanel({ items, loading, onClose, onOpened, onNaviga
                       </button>
                     ) : null}
                   </div>
+                  <button
+                    className="notification-delete"
+                    type="button"
+                    aria-label={`${text.notificationsDelete}：${item.title}`}
+                    onClick={() => onDelete(item.id)}
+                  >
+                    <Trash2 aria-hidden="true" size={15} />
+                  </button>
                 </li>
               );
             })}

@@ -10,8 +10,10 @@ import type {
   AdminExpenseWriteResult,
   AdminMergeUsersResult,
   AdminRemoveResult,
+  AdminDeleteNotificationResult,
   AdminReplyFeedbackResult,
   AdminSendNotificationResult,
+  AdminSentNotificationListRecord,
   AdminSetRoleResult,
   AdminTransferOwnerResult,
   AdminUserExportRecord,
@@ -303,6 +305,25 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
         p_feedback_id: feedbackId,
         p_message: message,
       });
+    },
+
+    listSentNotifications(limit, offset) {
+      return client.rpc<AdminSentNotificationListRecord>("admin_console_sent_notifications", {
+        p_limit: limit,
+        p_offset: offset,
+      });
+    },
+
+    async deleteNotificationBatch(actor, batchId) {
+      const result = await client.rpc<AdminDeleteNotificationResult | null>(
+        "admin_console_delete_notification_batch",
+        {
+          p_actor: actor.id,
+          p_actor_email: actor.email,
+          p_batch_id: batchId,
+        },
+      );
+      return result ?? null;
     },
 
     getCatalog() {

@@ -1,5 +1,6 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
+  NotificationDeleteResult,
   NotificationListRecord,
   NotificationReadResult,
   NotificationRepository,
@@ -18,6 +19,13 @@ export function createSupabaseNotificationRepository(client: PostgrestClient): N
       // The RPC reads an empty array as "everything unread", so an empty list
       // is passed through rather than turned into a second call shape.
       return client.rpc<NotificationReadResult>("notifications_mark_read", {
+        p_user_id: userId,
+        p_ids: ids,
+      });
+    },
+
+    remove(userId, ids) {
+      return client.rpc<NotificationDeleteResult>("notifications_delete", {
         p_user_id: userId,
         p_ids: ids,
       });

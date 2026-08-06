@@ -1,6 +1,7 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
+  NotificationDeleteResult,
   NotificationListRecord,
   NotificationReadResult,
   NotificationRepository,
@@ -56,5 +57,22 @@ export async function handleMarkNotificationsRead(
   body: { ids?: unknown } = {},
 ): Promise<HandlerResult<NotificationReadResult>> {
   const result = await repository.markRead(context.user.id, normalizeNotificationIds(body?.ids));
+  return { ok: true, status: 200, body: result };
+}
+
+/**
+ * Delete from one's own inbox. An absent or empty `ids` clears all of it.
+ *
+ * Deliberately does not distinguish "that id was not yours" from "that id does
+ * not exist": the RPC scopes the delete to the caller, so both are the same
+ * no-op, and reporting the difference would turn this into a way to probe
+ * whether an id exists.
+ */
+export async function handleDeleteNotifications(
+  repository: NotificationRepository,
+  context: AuthenticatedContext,
+  body: { ids?: unknown } = {},
+): Promise<HandlerResult<NotificationDeleteResult>> {
+  const result = await repository.remove(context.user.id, normalizeNotificationIds(body?.ids));
   return { ok: true, status: 200, body: result };
 }

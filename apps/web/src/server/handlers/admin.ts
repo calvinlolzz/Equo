@@ -26,9 +26,11 @@ import type {
   AdminFeedbackStatus,
   AdminMergeConflictGroup,
   AdminMergeUsersResult,
+  AdminDeleteNotificationResult,
   AdminNotificationAudience,
   AdminReplyFeedbackResult,
   AdminSendNotificationResult,
+  AdminSentNotificationListRecord,
   AdminTransferOwnerResult,
   AdminUserExportRecord,
   AdminGroupDetailRecord,
@@ -531,6 +533,7 @@ export const AUDIT_ACTIONS: readonly string[] = [
   "expense.restore",
   "error.status",
   "notification.send",
+  "notification.delete",
   "feedback.reply",
   "catalog.category",
   "catalog.currency",
@@ -1199,6 +1202,55 @@ export async function handleAdminSendNotification(
     // EMPTY_MESSAGE / INVALID_AUDIENCE / TARGET_REQUIRED are all screened
     // above; the RPC re-checks them, so reaching here means the two disagree.
     return adminBadRequest("The notification was rejected by the server.");
+  }
+
+  return { ok: true, status: 200, body: result };
+}
+
+/**
+ * What the console has sent, newest first.
+ *
+ * Support-level: knowing what was announced is the first thing anybody needs
+ * when a user asks about a message. Recalling one is a write, and sits at admin
+ * with the rest of them.
+ */
+export async function handleAdminListSentNotifications(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  query: AdminListQuery = {},
+): Promise<HandlerResult<AdminSentNotificationListRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const { limit, offset } = normalizeAdminListQuery(query);
+  return { ok: true, status: 200, body: await repository.listSentNotifications(limit, offset) };
+}
+
+export async function handleAdminDeleteNotificationBatch(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  batchId: string,
+): Promise<HandlerResult<AdminDeleteNotificationResult>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("Recalling a notification requires an admin or owner role.");
+  }
+
+  if (!isUuid(batchId)) {
+    return adminNotFound("Notification not found.");
+  }
+
+  const result = await repository.deleteNotificationBatch(
+    { id: context.user.id, email: context.user.email },
+    batchId,
+  );
+
+  if (!result) {
+    return adminNotFound("Notification not found.");
   }
 
   return { ok: true, status: 200, body: result };

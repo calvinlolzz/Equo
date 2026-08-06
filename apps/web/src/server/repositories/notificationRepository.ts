@@ -30,8 +30,15 @@ export type NotificationReadResult = {
   unread: number;
 };
 
+export type NotificationDeleteResult = {
+  deleted: number;
+  unread: number;
+};
+
 export type NotificationRepository = {
   list(userId: string, limit: number): Promise<NotificationListRecord>;
   /** An empty id list means "everything unread". */
   markRead(userId: string, ids: string[]): Promise<NotificationReadResult>;
+  /** Delete from one's own inbox. An empty id list means the whole thing. */
+  remove(userId: string, ids: string[]): Promise<NotificationDeleteResult>;
 };

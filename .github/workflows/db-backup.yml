@@ -102,6 +102,18 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
             "select public.record_ops_heartbeat('db_backup', jsonb_build_object('bytes', ${{ env.backup_bytes }}::bigint, 'artifact', 'equo-db-${{ env.stamp }}', 'run_id', '${{ github.run_id }}'));"
 
+      # Retention for the in-app inbox. Deliberately AFTER the dump, so anything
+      # this removes is already inside tonight's backup — and here rather than
+      # in pg_cron so a failure turns this workflow red instead of going quiet
+      # inside the database. Only READ notifications age out; an unread one has
+      # not done its job yet.
+      - name: Purge read notifications older than 7 days
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_read_notifications(7);"
+
       - name: Upload encrypted dump
         uses: actions/upload-artifact@v4
         with:
