@@ -294,7 +294,13 @@
   justify-content: flex-end;
   gap: 8px;
   max-width: 190px;
+  /* The chips' -3px tap-target halo would otherwise stick out of the box and
+     make the strip vertically scrollable (overflow-x: auto forces the y axis
+     to compute as auto too). Pad it in, then hard-lock the y axis so the strip
+     only ever pans left/right and vertical drags scroll the page instead. */
+  padding-block: 3px;
   overflow-x: auto;
+  overflow-y: hidden;
   /* Keep horizontal overscroll inside the chip strip so it can't trigger iOS
      Safari's back/forward swipe-navigation gesture. */
   overscroll-behavior-x: contain;
