@@ -1,12 +1,13 @@
 import type { SettlementTransfer } from "../domain/settlement";
+import type { SpendBreakdown, SpendPeriodKind } from "./apiClient";
 import { formatActivityTime } from "./appDates";
 import type { Member } from "./appTypes";
-import { CategoryDonut } from "./CategoryDonut";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
 import type { SettlementRecord } from "./settlementHistory";
 import { SpendBarChart } from "./SpendBarChart";
 import type { SpendByDayEntry, SpendChartDay } from "./spendChart";
+import { SpendPeriodSection } from "./SpendPeriodSection";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -22,11 +23,23 @@ type AnalysisPanelProps = {
   settlementRecords: SettlementRecord[];
   dateChips: SpendChartDay[];
   spendByDay: SpendByDayEntry[];
-  spendByCategory: Array<{ category: string; totalMinor: number }>;
   selectedDateKey: string;
   pendingAction: string | null;
   onSelectDate: (key: string) => void;
   onSettleTransfer: (fromMemberId: string, toMemberId: string, amountMinor: number) => void;
+  /** Shared with the home screen's 消費 card so the two surfaces never disagree. */
+  spendTab: "personal" | "group";
+  onSelectSpendTab: (tab: "personal" | "group") => void;
+  spendBreakdown: {
+    breakdown: SpendBreakdown | null;
+    periodKind: SpendPeriodKind;
+    periodKey: string | null;
+    loading: boolean;
+    error: string | null;
+    selectPeriodKind: (kind: SpendPeriodKind) => void;
+    selectPeriodKey: (key: string) => void;
+    retry: () => void;
+  };
 };
 
 /** The 分析 bottom-sheet content (stats, spend chart, balances, settlement suggestions + history). */
@@ -41,11 +54,13 @@ export function AnalysisPanel({
   settlementRecords,
   dateChips,
   spendByDay,
-  spendByCategory,
   selectedDateKey,
   pendingAction,
   onSelectDate,
   onSettleTransfer,
+  spendTab,
+  onSelectSpendTab,
+  spendBreakdown,
 }: AnalysisPanelProps) {
   // The 近 8 日支出 chart looks empty with only a day or two of data, so only
   // show it once there's enough spread to be worth a chart.
@@ -58,6 +73,42 @@ export function AnalysisPanel({
         <h3>{text.analysis}</h3>
         <p>{"以目前資料統計群組消費與成員餘額。"}</p>
       </div>
+      {/* The indicator is one element that slides between the two halves, so
+          the underline travels rather than blinking from tab to tab. Its
+          position is driven by data-active, not an inline transform. */}
+      <div className="slide-tabs" data-active={spendTab} role="tablist" aria-label={text.analysis}>
+        <button
+          className={spendTab === "personal" ? "slide-tab active" : "slide-tab"}
+          type="button"
+          role="tab"
+          aria-selected={spendTab === "personal"}
+          onClick={() => onSelectSpendTab("personal")}
+        >
+          {text.personalSpend}
+        </button>
+        <button
+          className={spendTab === "group" ? "slide-tab active" : "slide-tab"}
+          type="button"
+          role="tab"
+          aria-selected={spendTab === "group"}
+          onClick={() => onSelectSpendTab("group")}
+        >
+          {text.groupSpend}
+        </button>
+        <i className="slide-tabs-indicator" aria-hidden="true" />
+      </div>
+      <SpendPeriodSection
+        breakdown={spendBreakdown.breakdown}
+        periodKind={spendBreakdown.periodKind}
+        periodKey={spendBreakdown.periodKey}
+        scope={spendTab}
+        loading={spendBreakdown.loading}
+        error={spendBreakdown.error}
+        currency={currency}
+        onSelectKind={spendBreakdown.selectPeriodKind}
+        onSelectKey={spendBreakdown.selectPeriodKey}
+        onRetry={spendBreakdown.retry}
+      />
       <div className="panel-stat-grid">
         <div>
           <span>{"總金額"}</span>
@@ -83,12 +134,6 @@ export function AnalysisPanel({
             onSelect={onSelectDate}
             emptyText={text.spendChartEmpty}
           />
-        </div>
-      )}
-      {spendByCategory.length > 0 && (
-        <div className="dialog-section-list">
-          <span className="dialog-list-title">{"分類佔比"}</span>
-          <CategoryDonut entries={spendByCategory} currency={currency} />
         </div>
       )}
       <div className="dialog-section-list">

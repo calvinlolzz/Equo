@@ -138,6 +138,34 @@ export type ExpensesPageResponse = {
   expenses: ExpenseSummary[];
 };
 
+/** 每年統計 / 每月統計 — the two bucketings the 分析 period picker offers. */
+export type SpendPeriodKind = "year" | "month";
+
+/** One selectable period: "2026" for a year, "2026-08" for a month. */
+export type SpendPeriodSummary = {
+  key: string;
+  total_minor: number;
+};
+
+export type SpendCategoryBreakdown = {
+  category: string;
+  group_total_minor: number;
+  /** The caller's own share of that category — their expense_shares rows. */
+  personal_total_minor: number;
+};
+
+export type SpendBreakdown = {
+  period_kind: SpendPeriodKind;
+  /** Null only when the group has no spendable expenses at all. */
+  period_key: string | null;
+  currency: string;
+  /** Newest first, capped server-side to 36 entries. */
+  periods: SpendPeriodSummary[];
+  group_total_minor: number;
+  personal_total_minor: number;
+  by_category: SpendCategoryBreakdown[];
+};
+
 export type ExchangeRatesResponse = {
   base: string;
   /** The upstream's publication date (YYYY-MM-DD). */
@@ -411,6 +439,21 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
       if (options.beforeCreatedAt) params.set("before_created_at", options.beforeCreatedAt);
       const query = params.toString();
       return request<ExpensesPageResponse>(`/groups/${groupId}/expenses${query ? `?${query}` : ""}`, {
+        method: "GET",
+      });
+    },
+    /**
+     * 分析頁的期間統計. Server-side because the client only holds the newest
+     * 100 expenses — a year total folded from that window would silently
+     * under-report. Both the group and the personal figure come back together
+     * so the 個人／群組 toggle never needs a round trip.
+     */
+    getSpendBreakdown(groupId: string, options: { kind?: SpendPeriodKind; key?: string } = {}) {
+      const params = new URLSearchParams();
+      if (options.kind) params.set("kind", options.kind);
+      if (options.key) params.set("key", options.key);
+      const query = params.toString();
+      return request<SpendBreakdown>(`/groups/${groupId}/spend-breakdown${query ? `?${query}` : ""}`, {
         method: "GET",
       });
     },

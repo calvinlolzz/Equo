@@ -45,6 +45,7 @@ import { useOverlayHistory } from "./useOverlayHistory";
 import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { useDragScrollX } from "./useDragScrollX";
+import { useSpendBreakdown } from "./useSpendBreakdown";
 import { listSettlementRecords } from "./settlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -604,6 +605,15 @@ export function App() {
   // Mouse drag + wheel panning for the day strip, and it keeps the selected
   // day scrolled into view (today starts at the far end).
   const dateStripRef = useDragScrollX(selectedDateKey);
+
+  // 分析 panel's period stats. Fetched only while that panel is open - the
+  // numbers span the group's whole history, which no other screen shows.
+  const spendBreakdown = useSpendBreakdown({
+    fetchSpendBreakdown: cloudStore?.fetchSpendBreakdown ?? null,
+    groupId: activeGroupId,
+    enabled: dialog === "analysisPanel",
+    describeError: describeCloudActionError,
+  });
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
   const settlementTransfers = useMemo(() => buildSettlementTransfers(serverBalances), [serverBalances]);
@@ -1962,11 +1972,13 @@ export function App() {
                   settlementRecords={settlementRecords}
                   dateChips={dateChips}
                   spendByDay={aggregates.spendByDay}
-                  spendByCategory={aggregates.spendByCategory}
                   selectedDateKey={selectedDateKey}
                   pendingAction={pendingAction}
                   onSelectDate={setSelectedDateKey}
                   onSettleTransfer={settleTransfer}
+                  spendTab={spendTab}
+                  onSelectSpendTab={setSpendTab}
+                  spendBreakdown={spendBreakdown}
                 />
                 </Suspense>
               ) : null}

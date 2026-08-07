@@ -91,6 +91,7 @@ import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
+import { getSpendBreakdownRoute } from "../routes/spendRoutes.js";
 import {
   deleteNotificationsRoute,
   listNotificationsRoute,
@@ -544,6 +545,18 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "POST /api/v1/push/unsubscribe",
       async handle(request) {
         const result = await unsubscribePushRoute(routeOptions(options, request), body(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/spend-breakdown$/,
+      label: "GET /api/v1/groups/:groupId/spend-breakdown",
+      async handle(request, match) {
+        const result = await getSpendBreakdownRoute(routeOptions(options, request), match[1], {
+          kind: queryParam(request, "kind"),
+          key: queryParam(request, "key"),
+        });
         return jsonResponse(result.status, result.body);
       },
     },

@@ -6,6 +6,7 @@ import {
   type BalanceSummary,
   type EquoApiClient,
   type GroupDetail,
+  type SpendPeriodKind,
 } from "./apiClient";
 import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
 import {
@@ -95,6 +96,7 @@ export type ApiClientLike = Pick<
   | "uploadGroupImage"
   | "listExpensesPage"
   | "markGroupRead"
+  | "getSpendBreakdown"
 >;
 
 function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
@@ -937,11 +939,25 @@ export function createCloudGroupsStore({
     }
   }
 
+  /**
+   * Deliberately NOT cached in the store's state: the 分析 period stats are
+   * read-only, are only ever looked at while that panel is open, and go stale
+   * the moment an expense is written. The panel owns the result for as long as
+   * it is on screen; every other consumer would just be holding a snapshot.
+   *
+   * Errors are rethrown rather than routed through handleError so the panel can
+   * show an inline retry instead of a toast over a blank section.
+   */
+  function fetchSpendBreakdown(groupId: string, options: { kind?: SpendPeriodKind; key?: string } = {}) {
+    return apiClient.getSpendBreakdown(groupId, options);
+  }
+
   return {
     getState,
     subscribe,
     refreshGroups,
     refreshGroupDetail,
+    fetchSpendBreakdown,
     markGroupRead,
     createGroup,
     renameGroup,

@@ -688,6 +688,196 @@
   font-size: 13px;
 }
 
+/* 分析 的個人／群組切換。指示線是「一條會滑過去的線」而不是兩條各自
+   亮滅的線 - 所以它是單一元素，用 data-active 平移，位置不靠 JS 量測。 */
+.slide-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid rgb(var(--surf) / 0.12);
+}
+
+.slide-tab {
+  padding: 10px 4px 12px;
+  color: rgb(var(--fg) / 0.48);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 900;
+  transition: color 0.2s ease;
+}
+
+.slide-tab.active {
+  color: rgb(var(--gold-ink));
+}
+
+.slide-tabs-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 50%;
+  height: 3px;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The travelling half is the full tab width; the visible bar sits inside it so
+   the line reads as underlining the label rather than the whole column. */
+.slide-tabs-indicator::after {
+  content: "";
+  display: block;
+  width: 58%;
+  height: 3px;
+  border-radius: 3px;
+  background: rgb(var(--gold));
+}
+
+.slide-tabs[data-active="group"] .slide-tabs-indicator {
+  transform: translateX(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-tabs-indicator {
+    transition: none;
+  }
+}
+
+/* 時間搜索區段 */
+.spend-period-card {
+  display: grid;
+  gap: 14px;
+  border-radius: 18px;
+  padding: 16px;
+  background: rgb(var(--surf) / 0.07);
+}
+
+.spend-period-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.spend-period-select {
+  position: relative;
+  display: inline-flex;
+}
+
+.spend-period-select select {
+  appearance: none;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 32px 8px 14px;
+  color: rgb(var(--fg));
+  background: rgb(var(--surf) / 0.1);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 860;
+}
+
+/* The native popup inherits the select's colours in Chromium, and --fg is
+   near-white in dark mode - pin the options to a readable pair of their own. */
+.spend-period-select option {
+  color: rgb(var(--ink));
+  background: rgb(var(--surface-solid));
+}
+
+.spend-period-select::after {
+  content: "▾";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: rgb(var(--fg) / 0.58);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.spend-period-loading {
+  color: rgb(var(--fg) / 0.48);
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.spend-period-error {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.spend-period-error p {
+  margin: 0;
+  color: rgb(var(--fg) / 0.72);
+  font-size: 14px;
+}
+
+/* Same left/right-only panning contract as the home screen's day strip: the
+   y axis is locked so a vertical drag scrolls the panel, and useDragScrollX
+   adds mouse drag + wheel on desktop. These chips start at the left edge, so
+   no auto-margin trick is needed here (see .date-chip-row for why that
+   matters when a strip is right-aligned). */
+.period-chip-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 3px;
+  margin: -3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  cursor: grab;
+}
+
+.period-chip-row::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.period-chip-row.dragging {
+  cursor: grabbing;
+}
+
+.period-chip {
+  flex: 0 0 auto;
+  border-radius: 12px;
+  padding: 8px 14px;
+  color: rgb(var(--fg) / 0.6);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 860;
+  white-space: nowrap;
+}
+
+.period-chip:active {
+  opacity: 0.7;
+}
+
+.period-chip.active {
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+}
+
+.spend-period-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.spend-period-total span {
+  color: rgb(var(--fg) / 0.72);
+  font-size: 15px;
+  font-weight: 860;
+}
+
+.spend-period-total strong {
+  overflow-wrap: anywhere;
+  color: rgb(var(--gold-ink));
+  font-size: 30px;
+}
+
 .panel-stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
