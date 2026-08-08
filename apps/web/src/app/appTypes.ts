@@ -134,6 +134,7 @@ export type DialogMode =
   | "analysisPanel"
   | "memberActions"
   | "memberList"
+  | "recurringList"
   | "virtualMember"
   | "archivedList"
   | "archive"

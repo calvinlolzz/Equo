@@ -4,6 +4,7 @@ import {
   History,
   House,
   Pencil,
+  Repeat,
   Trash2,
   UserRound,
   type LucideIcon,
@@ -17,6 +18,7 @@ export const sideNavItems: Array<{ id: string; label: string; icon: LucideIcon }
   { id: "records", label: text.records, icon: History },
   { id: "analysis", label: text.analysis, icon: ChartNoAxesColumn },
   { id: "members", label: text.members, icon: UserRound },
+  { id: "recurring", label: text.recurring, icon: Repeat },
 ];
 
 type GroupSideNavProps = {

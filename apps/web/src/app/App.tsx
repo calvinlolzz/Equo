@@ -46,6 +46,7 @@ import { usePullToRefresh } from "./usePullToRefresh";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { useDragScrollX } from "./useDragScrollX";
 import { useSpendBreakdown } from "./useSpendBreakdown";
+import { useRecurringExpenses } from "./useRecurringExpenses";
 import { listSettlementRecords } from "./settlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -110,6 +111,7 @@ const ExpenseDetailDialog = lazy(() =>
   import("./ExpenseDetailDialog").then((m) => ({ default: m.ExpenseDetailDialog })),
 );
 const FeedbackDialog = lazy(() => import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })));
+const RecurringPanel = lazy(() => import("./RecurringPanel").then((m) => ({ default: m.RecurringPanel })));
 const NotificationsPanel = lazy(() =>
   import("./NotificationsPanel").then((m) => ({ default: m.NotificationsPanel })),
 );
@@ -615,6 +617,15 @@ export function App() {
       cloudStore.searchExpenses(activeGroupId, search);
   }, [cloudStore, activeGroupId]);
 
+  // 循環支出 rules, loaded only while their panel is open.
+  const recurring = useRecurringExpenses({
+    store: cloudStore,
+    groupId: activeGroupId,
+    enabled: dialog === "recurringList",
+    showToast,
+    describeError: describeCloudActionError,
+  });
+
   // 分析 panel's period stats. Fetched only while that panel is open - the
   // numbers span the group's whole history, which no other screen shows.
   const spendBreakdown = useSpendBreakdown({
@@ -913,6 +924,10 @@ export function App() {
       setDialog("analysisPanel");
       return;
     }
+    if (id === "recurring") {
+      setDialog("recurringList");
+      return;
+    }
     showToast(text.groupHome);
   }
 
@@ -1109,6 +1124,7 @@ export function App() {
     dialog === "inviteMembers" ||
     dialog === "memberList" ||
     dialog === "recordsPanel" ||
+    dialog === "recurringList" ||
     dialog === "analysisPanel";
 
 
@@ -1967,6 +1983,23 @@ export function App() {
                   searchExpenses={searchExpensesInGroup}
                   describeError={describeCloudActionError}
                 />
+                </Suspense>
+              ) : null}
+
+              {dialog === "recurringList" ? (
+                <Suspense fallback={null}>
+                  <RecurringPanel
+                    members={members}
+                    currency={activeGroup?.currency ?? "TWD"}
+                    currentMemberId={currentMember?.id ?? null}
+                    rules={recurring.rules}
+                    loading={recurring.loading}
+                    error={recurring.error}
+                    savingId={recurring.savingId}
+                    onSave={recurring.save}
+                    onDelete={recurring.remove}
+                    onRetry={recurring.retry}
+                  />
                 </Suspense>
               ) : null}
 

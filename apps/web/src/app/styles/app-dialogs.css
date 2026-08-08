@@ -1551,3 +1551,134 @@
 .notification-delete:focus-visible {
   color: rgb(var(--fg) / 0.7);
 }
+
+/* 循環支出 */
+.recurring-add {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-self: start;
+}
+
+.recurring-form {
+  border-radius: 18px;
+  padding: 16px;
+  background: rgb(var(--surf) / 0.07);
+}
+
+.recurring-hint {
+  display: block;
+  margin-top: 6px;
+  color: rgb(var(--fg) / 0.48);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.recurring-share-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.recurring-chip {
+  border-radius: 12px;
+  padding: 8px 14px;
+  color: rgb(var(--fg) / 0.6);
+  background: rgb(var(--surf) / 0.1);
+  font-size: 14px;
+  font-weight: 860;
+}
+
+.recurring-chip.active {
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+}
+
+.recurring-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.recurring-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  border-radius: 14px;
+  padding: 12px;
+  background: rgb(var(--surf) / 0.07);
+}
+
+/* A rule the nightly run had to switch off still has to be readable — it is
+   carrying the explanation of why it stopped. */
+.recurring-row.inactive {
+  opacity: 0.62;
+}
+
+.recurring-row-main {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.recurring-row-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recurring-row-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recurring-row-title small {
+  color: rgb(var(--fg) / 0.55);
+  font-size: 12px;
+}
+
+.recurring-row-people {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  grid-column: 1 / -1;
+}
+
+.recurring-row-people small {
+  margin-left: 4px;
+  color: rgb(var(--fg) / 0.55);
+  font-size: 12px;
+}
+
+.recurring-row-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: rgb(var(--danger));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.recurring-row-delete {
+  grid-row: 1;
+  grid-column: 2;
+  padding: 6px;
+  border-radius: 10px;
+  color: rgb(var(--fg) / 0.55);
+  background: transparent;
+}
+
+.recurring-footnote {
+  margin: 4px 0 0;
+  color: rgb(var(--fg) / 0.48);
+  font-size: 12px;
+  line-height: 1.6;
+}

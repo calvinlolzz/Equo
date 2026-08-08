@@ -7,6 +7,7 @@ import {
   type EquoApiClient,
   type ExpenseSearchQuery,
   type GroupDetail,
+  type RecurringExpenseInput,
   type SpendPeriodKind,
 } from "./apiClient";
 import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
@@ -99,6 +100,9 @@ export type ApiClientLike = Pick<
   | "markGroupRead"
   | "getSpendBreakdown"
   | "searchExpenses"
+  | "listRecurring"
+  | "upsertRecurring"
+  | "deleteRecurring"
 >;
 
 function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
@@ -973,6 +977,26 @@ export function createCloudGroupsStore({
     };
   }
 
+  /**
+   * 循環支出 rules. Like the other two read-throughs these stay out of the
+   * store's state — the panel that edits them is the only thing that looks at
+   * them, and the expenses they generate arrive through the normal detail
+   * refresh like any other row.
+   */
+  async function listRecurring(groupId: string) {
+    const { recurring } = await apiClient.listRecurring(groupId);
+    return recurring;
+  }
+
+  async function upsertRecurring(groupId: string, payload: RecurringExpenseInput) {
+    const { recurring } = await apiClient.upsertRecurring(groupId, payload);
+    return recurring;
+  }
+
+  async function deleteRecurring(groupId: string, id: string) {
+    await apiClient.deleteRecurring(groupId, id);
+  }
+
   return {
     getState,
     subscribe,
@@ -980,6 +1004,9 @@ export function createCloudGroupsStore({
     refreshGroupDetail,
     fetchSpendBreakdown,
     searchExpenses,
+    listRecurring,
+    upsertRecurring,
+    deleteRecurring,
     markGroupRead,
     createGroup,
     renameGroup,

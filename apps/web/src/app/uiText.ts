@@ -13,6 +13,7 @@ export const UI_TEXT = {
     records: "支出記錄",
     analysis: "分析",
     members: "群組成員",
+    recurring: "循環支出",
     groupList: "群組列表",
     unreadEntries: "筆新記錄",
     refresh: "重新整理",

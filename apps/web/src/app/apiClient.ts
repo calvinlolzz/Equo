@@ -138,6 +138,39 @@ export type ExpensesPageResponse = {
   expenses: ExpenseSummary[];
 };
 
+/** 循環支出: a monthly template the nightly job turns into real expenses. */
+export type RecurringExpense = {
+  id: string;
+  group_id: string;
+  title: string;
+  amount_minor: number;
+  currency: string;
+  category: string;
+  note: string | null;
+  payer_member_id: string;
+  share_member_ids: string[];
+  /** 1-28 — 29-31 are refused rather than clamped, since February has no 30th. */
+  day_of_month: number;
+  next_run_date: string;
+  active: boolean;
+  /** Set when the nightly run disabled the rule, e.g. its creator left the group. */
+  last_error: string | null;
+  last_run_at: string | null;
+};
+
+export type RecurringExpenseInput = {
+  id?: string;
+  title: string;
+  amount_minor: number;
+  currency?: string;
+  category?: string;
+  note?: string | null;
+  payer_member_id: string;
+  share_member_ids: string[];
+  day_of_month: number;
+  active?: boolean;
+};
+
 /** The records-panel filter as the API takes it; "" means "all" for each field. */
 export type ExpenseSearchQuery = {
   q?: string;
@@ -462,6 +495,19 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
       return request<ExpensesPageResponse>(`/groups/${groupId}/expenses${query ? `?${query}` : ""}`, {
         method: "GET",
       });
+    },
+    listRecurring(groupId: string) {
+      return request<{ recurring: RecurringExpense[] }>(`/groups/${groupId}/recurring`, { method: "GET" });
+    },
+    /** Creates, or updates when `payload.id` is set. */
+    upsertRecurring(groupId: string, payload: RecurringExpenseInput) {
+      return request<{ recurring: RecurringExpense }>(`/groups/${groupId}/recurring`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    deleteRecurring(groupId: string, id: string) {
+      return request<{ deleted: true }>(`/groups/${groupId}/recurring/${id}`, { method: "DELETE" });
     },
     /**
      * The records-panel filter, run against the group's whole history rather

@@ -15,6 +15,14 @@ import { UI_TEXT } from "./uiText";
  * fuller note in App.scan.test.tsx.
  */
 configure({ asyncUtilTimeout: 4_000 });
+// The 4s asyncUtilTimeout above only helps if the test is still alive when it
+// fires. Vitest's default 5s per-test budget left ~1s of headroom, and under a
+// fully loaded suite that is not enough: the test was killed first, replacing
+// testing-library's "unable to find X" with a bare timeout that says nothing.
+// Raising the budget does not hide a hang — the 4s wait still wins the race and
+// still reports what it was looking for. It just makes that the outcome every
+// time instead of most of the time.
+vi.setConfig({ testTimeout: 15_000 });
 
 beforeEach(() => {
   stubBrowser();

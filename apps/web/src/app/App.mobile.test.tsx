@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
 import { UI_TEXT } from "./uiText";
+
+// Same lazy-chunk problem as App.test.tsx / App.scan.test.tsx: the panels and
+// drawers asserted on here are dynamic imports, and testing-library's 1s
+// default is only enough when this file runs alone. See the fuller note in
+// App.scan.test.tsx.
+configure({ asyncUtilTimeout: 4_000 });
+vi.setConfig({ testTimeout: 15_000 });
 
 const app = UI_TEXT.app;
 

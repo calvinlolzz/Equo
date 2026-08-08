@@ -93,6 +93,7 @@ import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
 import { getSpendBreakdownRoute } from "../routes/spendRoutes.js";
+import { deleteRecurringRoute, listRecurringRoute, upsertRecurringRoute } from "../routes/recurringRoutes.js";
 import {
   deleteNotificationsRoute,
   listNotificationsRoute,
@@ -558,6 +559,33 @@ export function createHttpRuntime(options: RuntimeOptions) {
           kind: queryParam(request, "kind"),
           key: queryParam(request, "key"),
         });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/recurring$/,
+      label: "GET /api/v1/groups/:groupId/recurring",
+      async handle(request, match) {
+        const result = await listRecurringRoute(routeOptions(options, request), match[1]);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/recurring$/,
+      label: "POST /api/v1/groups/:groupId/recurring",
+      async handle(request, match) {
+        const result = await upsertRecurringRoute(routeOptions(options, request), match[1], body(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/recurring\/([^/]+)$/,
+      label: "DELETE /api/v1/groups/:groupId/recurring/:id",
+      async handle(request, match) {
+        const result = await deleteRecurringRoute(routeOptions(options, request), match[1], match[2]);
         return jsonResponse(result.status, result.body);
       },
     },

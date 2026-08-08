@@ -24,6 +24,14 @@ vi.mock("jsqr", () => ({ default: () => ({ data: "https://equo-mu.vercel.app/?in
  * what it was looking for instead of blowing the test timeout.
  */
 configure({ asyncUtilTimeout: 4_000 });
+// The 4s asyncUtilTimeout above only helps if the test is still alive when it
+// fires. Vitest's default 5s per-test budget left ~1s of headroom, and under a
+// fully loaded suite that is not enough: the test was killed first, replacing
+// testing-library's "unable to find X" with a bare timeout that says nothing.
+// Raising the budget does not hide a hang — the 4s wait still wins the race and
+// still reports what it was looking for. It just makes that the outcome every
+// time instead of most of the time.
+vi.setConfig({ testTimeout: 15_000 });
 
 /**
  * The two camera entry points and the invite QR, driven through the real <App />.

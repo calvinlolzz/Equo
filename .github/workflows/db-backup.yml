@@ -114,6 +114,20 @@ jobs:
           set -euo pipefail
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_read_notifications(7);"
 
+      # 循環支出: turn every rule that has come due into a real expense. Same
+      # reasoning as the purge above for living here rather than in pg_cron —
+      # a failure has to be visible. Idempotent by construction (each period
+      # writes a deterministic client_request_id, so a re-run returns the
+      # existing expense instead of double-billing), which is what makes it
+      # safe to sit in a workflow that can be re-run by hand.
+      - name: Materialise due recurring expenses
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+            "select public.materialise_recurring_expenses();"
+
       - name: Upload encrypted dump
         uses: actions/upload-artifact@v4
         with:
