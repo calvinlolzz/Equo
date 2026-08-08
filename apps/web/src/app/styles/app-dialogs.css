@@ -1682,3 +1682,66 @@
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* Swipe-left row actions (mobile). The row slides over a tray pinned to the
+   right edge; the wrapper clips it so the tray only ever shows through the gap
+   the row leaves behind. */
+.record-swipe {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.record-swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  /* Matches ROW_REVEAL_WIDTH in RecordsPanel.tsx — two 72px targets. */
+  width: 144px;
+}
+
+.record-swipe-action {
+  flex: 1 0 72px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  padding: 0;
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.record-swipe-action.danger {
+  color: rgb(var(--fg));
+  background: rgb(var(--danger));
+}
+
+.record-swipe-action:active {
+  opacity: 0.82;
+}
+
+/* The row keeps its own background so the tray never shows through it, and
+   sits above the tray in the stacking order. */
+.record-swipe > .record-dialog-row {
+  position: relative;
+  z-index: 1;
+  background: rgb(var(--surf) / 0.07);
+  /* The gesture is horizontal; tell the browser so it can keep vertical
+     scrolling on the compositor instead of waiting on our touch handler. */
+  touch-action: pan-y;
+}
+
+/* content-visibility skips rendering for offscreen rows, which would also skip
+   the translated row mid-swipe. Only safe while the row is parked. */
+.record-swipe.open > .record-dialog-row {
+  content-visibility: visible;
+}
+
+/* Desktop has no swipe, so the tray is dead weight there — the detail dialog is
+   the route to these actions. */
+@media (min-width: 621px) {
+  .record-swipe-actions {
+    display: none;
+  }
+}

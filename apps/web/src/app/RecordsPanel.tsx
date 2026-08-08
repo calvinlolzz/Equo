@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { HandCoins, History, ReceiptText, Search, SlidersHorizontal, X } from "lucide-react";
+import { HandCoins, History, Pencil, ReceiptText, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { formatActivityTime, formatDayLabel } from "./appDates";
 import type { Activity, Expense, Member } from "./appTypes";
 import {
@@ -15,6 +15,7 @@ import { formatAmount } from "./formatAmount";
 import { categoryLabel } from "./catalog";
 import { UI_TEXT } from "./uiText";
 import { useExpenseSearch } from "./useExpenseSearch";
+import { useSwipeRowActions } from "./useSwipeRowActions";
 
 type Searcher = Parameters<typeof useExpenseSearch>[0]["searchExpenses"];
 
@@ -54,6 +55,10 @@ type RecordsPanelProps = {
   onLoadMore: () => void;
   onExportCsv: () => void;
   onOpenExpense: (expenseId: string) => void;
+  /** Swipe-row shortcuts. Same handlers the detail dialog uses — the gesture is
+      a shortcut to them, not a second path with its own rules. */
+  onEditExpense: (expense: Expense) => void;
+  onDeleteExpense: (expense: Expense) => void;
   /** Server-side search over the whole history; null when offline/signed out. */
   searchExpenses: Searcher | null;
   describeError: (error: unknown) => string;
@@ -74,6 +79,8 @@ export function RecordsPanel({
   onLoadMore,
   onExportCsv,
   onOpenExpense,
+  onEditExpense,
+  onDeleteExpense,
   searchExpenses,
   describeError,
 }: RecordsPanelProps) {
@@ -82,6 +89,8 @@ export function RecordsPanel({
 
   const [rowLimit, setRowLimit] = useState(RENDER_WINDOW_STEP);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  /** The one row currently swiped open — at most one, like every native list. */
+  const [openRowId, setOpenRowId] = useState<string | null>(null);
 
   const filterActive = isExpenseFilterActive(filter);
   const search = useExpenseSearch({ searchExpenses, filter, enabled: true, describeError });
@@ -128,6 +137,8 @@ export function RecordsPanel({
   // back up the list mid-scroll.
   useEffect(() => {
     setRowLimit(RENDER_WINDOW_STEP);
+    // The row that was open may not even be in the new list.
+    setOpenRowId(null);
   }, [filter]);
 
   // Re-observing on every bump is what keeps this chaining: an observer only
@@ -292,37 +303,23 @@ export function RecordsPanel({
                   <b>{formatAmount(group.subtotalMinor, currency)}</b>
                 </div>
                 {group.expenses.map((expense) => (
-                  <button className="record-dialog-row" type="button" key={expense.id} onClick={() => onOpenExpense(expense.id)}>
-                    {expense.imageUrl ? (
-                      <span className="record-dialog-thumb">
-                        <img src={expense.imageUrl} alt="" loading="lazy" decoding="async" />
-                      </span>
-                    ) : (
-                      <span className="record-dialog-icon">
-                        {expense.kind === "settlement" ? (
-                          <History aria-hidden="true" size={18} />
-                        ) : expense.kind === "income" ? (
-                          <HandCoins aria-hidden="true" size={18} />
-                        ) : (
-                          <ReceiptText aria-hidden="true" size={18} />
-                        )}
-                      </span>
-                    )}
-                    <span>
-                      <strong>
-                        {expense.title}
-                        {pendingWriteIds.has(expense.id) ? (
-                          <em className="record-pending-badge">{text.offlinePendingBadge}</em>
-                        ) : null}
-                      </strong>
-                      <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
-                    </span>
-                    <b className={expense.kind === "income" ? "amount-income" : undefined}>
-                      {expense.kind === "income"
-                        ? `+${formatAmount(expense.amountMinor, expense.currency)}`
-                        : formatAmount(expense.amountMinor, expense.currency)}
-                    </b>
-                  </button>
+                  <ExpenseRow
+                    key={expense.id}
+                    expense={expense}
+                    pending={pendingWriteIds.has(expense.id)}
+                    open={openRowId === expense.id}
+                    onOpenRow={() => setOpenRowId(expense.id)}
+                    onCloseRow={() => setOpenRowId((current) => (current === expense.id ? null : current))}
+                    onOpenExpense={() => onOpenExpense(expense.id)}
+                    onEdit={() => {
+                      setOpenRowId(null);
+                      onEditExpense(expense);
+                    }}
+                    onDelete={() => {
+                      setOpenRowId(null);
+                      onDeleteExpense(expense);
+                    }}
+                  />
                 ))}
               </div>
             ))}
@@ -380,5 +377,110 @@ export function RecordsPanel({
         )}
       </div>
     </>
+  );
+}
+
+type ExpenseRowProps = {
+  expense: Expense;
+  pending: boolean;
+  open: boolean;
+  onOpenRow: () => void;
+  onCloseRow: () => void;
+  onOpenExpense: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+/** How far a row slides to uncover 編輯 + 刪除. Two 72px targets. */
+const ROW_REVEAL_WIDTH = 144;
+
+/**
+ * One expense row, with the actions that sit behind it on mobile.
+ *
+ * The row is still an ordinary button that opens the detail dialog — on
+ * desktop, for keyboard users, and for anyone who never discovers the gesture.
+ * The swipe only adds a shortcut to the two things people do most.
+ */
+function ExpenseRow({
+  expense,
+  pending,
+  open,
+  onOpenRow,
+  onCloseRow,
+  onOpenExpense,
+  onEdit,
+  onDelete,
+}: ExpenseRowProps) {
+  const { swipeProps } = useSwipeRowActions({
+    revealWidth: ROW_REVEAL_WIDTH,
+    open,
+    onOpen: onOpenRow,
+    onClose: onCloseRow,
+  });
+
+  return (
+    <div className={open ? "record-swipe open" : "record-swipe"}>
+      {/* aria-hidden while closed: the same two actions are in the detail
+          dialog, so exposing a second copy to a screen reader would just be
+          duplicate controls with no visible counterpart. */}
+      <div className="record-swipe-actions" aria-hidden={!open}>
+        <button className="record-swipe-action" type="button" tabIndex={open ? 0 : -1} onClick={onEdit}>
+          <Pencil aria-hidden="true" size={16} />
+          {text.editExpenseAction}
+        </button>
+        <button
+          className="record-swipe-action danger"
+          type="button"
+          tabIndex={open ? 0 : -1}
+          onClick={onDelete}
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          {UI_TEXT.app.deleteExpense}
+        </button>
+      </div>
+      <button
+        className="record-dialog-row"
+        type="button"
+        {...swipeProps}
+        onClick={() => {
+          // An open row swallows the tap to close itself — otherwise the first
+          // tap after a swipe would open the detail dialog, which is exactly
+          // what the user was trying to avoid.
+          if (open) {
+            onCloseRow();
+            return;
+          }
+          onOpenExpense();
+        }}
+      >
+        {expense.imageUrl ? (
+          <span className="record-dialog-thumb">
+            <img src={expense.imageUrl} alt="" loading="lazy" decoding="async" />
+          </span>
+        ) : (
+          <span className="record-dialog-icon">
+            {expense.kind === "settlement" ? (
+              <History aria-hidden="true" size={18} />
+            ) : expense.kind === "income" ? (
+              <HandCoins aria-hidden="true" size={18} />
+            ) : (
+              <ReceiptText aria-hidden="true" size={18} />
+            )}
+          </span>
+        )}
+        <span>
+          <strong>
+            {expense.title}
+            {pending ? <em className="record-pending-badge">{text.offlinePendingBadge}</em> : null}
+          </strong>
+          <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
+        </span>
+        <b className={expense.kind === "income" ? "amount-income" : undefined}>
+          {expense.kind === "income"
+            ? `+${formatAmount(expense.amountMinor, expense.currency)}`
+            : formatAmount(expense.amountMinor, expense.currency)}
+        </b>
+      </button>
+    </div>
   );
 }

@@ -96,6 +96,8 @@ function renderPanel(expenses: Expense[], overrides: Partial<Parameters<typeof R
       // stays dormant; the cases that exercise it pass their own searcher.
       searchExpenses={null}
       describeError={(error) => String(error)}
+      onEditExpense={vi.fn()}
+      onDeleteExpense={vi.fn()}
       {...overrides}
     />,
   );
@@ -187,5 +189,79 @@ describe("records list render window", () => {
     // ...so its header subtotal is the real 60 x $100 day total, and the
     // second day has not been mounted.
     expect(screen.getByText("$6,000")).toBeTruthy();
+  });
+});
+
+describe("swipe-row actions", () => {
+  function swipeLeft(row: HTMLElement) {
+    act(() => {
+      fireEvent.touchStart(row, { touches: [{ clientX: 300, clientY: 0 }] });
+      fireEvent.touchMove(row, { touches: [{ clientX: 180, clientY: 0 }] });
+      fireEvent.touchEnd(row, { touches: [] });
+    });
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query.includes("620px"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    );
+  });
+
+  test("swiping a row reaches the same edit handler the detail dialog uses", () => {
+    const onEditExpense = vi.fn();
+    renderPanel(dailyExpenses(3), { onEditExpense });
+
+    const row = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"))[0];
+    swipeLeft(row);
+
+    fireEvent.click(screen.getAllByText(UI_TEXT.app.editExpenseAction)[0]);
+
+    expect(onEditExpense).toHaveBeenCalledTimes(1);
+    expect(onEditExpense.mock.calls[0][0].id).toBe("e0");
+  });
+
+  test("swiping reaches delete too", () => {
+    const onDeleteExpense = vi.fn();
+    renderPanel(dailyExpenses(3), { onDeleteExpense });
+
+    const row = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"))[0];
+    swipeLeft(row);
+
+    fireEvent.click(screen.getAllByText(UI_TEXT.app.deleteExpense)[0]);
+
+    expect(onDeleteExpense).toHaveBeenCalledTimes(1);
+    expect(onDeleteExpense.mock.calls[0][0].id).toBe("e0");
+  });
+
+  test("the tap that closes an open row does not also open the detail dialog", () => {
+    const onOpenExpense = vi.fn();
+    renderPanel(dailyExpenses(3), { onOpenExpense });
+
+    const row = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"))[0];
+    swipeLeft(row);
+    fireEvent.click(row);
+
+    expect(onOpenExpense).not.toHaveBeenCalled();
+    // ...and the row is closed, so the next tap behaves normally again.
+    fireEvent.click(row);
+    expect(onOpenExpense).toHaveBeenCalledTimes(1);
+  });
+
+  test("only one row is ever open", () => {
+    renderPanel(dailyExpenses(3));
+    const rows = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"));
+
+    swipeLeft(rows[0]);
+    expect(rows[0].style.transform).toBe("translateX(-144px)");
+
+    swipeLeft(rows[1]);
+    expect(rows[1].style.transform).toBe("translateX(-144px)");
+    expect(rows[0].style.transform).toBe("");
   });
 });

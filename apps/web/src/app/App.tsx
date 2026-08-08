@@ -1980,6 +1980,8 @@ export function App() {
                   onLoadMore={handleLoadMoreExpenses}
                   onExportCsv={handleExportCsv}
                   onOpenExpense={openExpenseDetail}
+                  onEditExpense={openExpenseEdit}
+                  onDeleteExpense={deleteExpense}
                   searchExpenses={searchExpensesInGroup}
                   describeError={describeCloudActionError}
                 />
