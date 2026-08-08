@@ -496,7 +496,19 @@ describe("searching the records panel", () => {
     expense_shares: [{ member_id: "member_alice", share_type: "fixed", amount_minor: 25000 }],
   });
 
-  async function openRecords() {
+  /**
+   * The search endpoint answers over the whole history, so the fake has to be
+   * told what the server would find - it cannot be derived from the two rows
+   * the detail call seeded. Omitting `searchResult` leaves the route unlisted,
+   * which makes fetch reject: that is the offline/degraded path, where the
+   * panel falls back to filtering what it already has.
+   */
+  async function openRecords(searchResult?: {
+    expenses: ExpenseSummary[];
+    match_count: number;
+    match_total_minor: number;
+    has_more?: boolean;
+  }) {
     signIn();
     fakeApi([
       { route: "GET /groups", body: { groups: [group()] } },
@@ -504,6 +516,14 @@ describe("searching the records panel", () => {
         route: "GET /groups/group_1",
         body: groupDetail({ expenses: [expenseRow(), taxi], expense_count: 2, spend_total_minor: 145000 }),
       },
+      ...(searchResult
+        ? [
+            {
+              route: "GET /groups/group_1/expenses/search",
+              body: { has_more: false, ...searchResult },
+            },
+          ]
+        : []),
     ]);
 
     renderApp();
@@ -535,15 +555,56 @@ describe("searching the records panel", () => {
   });
 
   test("a search with no matches says so and can be cleared back to the full list", async () => {
-    const search = await openRecords();
+    const search = await openRecords({ expenses: [], match_count: 0, match_total_minor: 0 });
 
     fireEvent.change(search, { target: { value: "壽司" } });
-    expect(screen.getByText("沒有符合的紀錄")).toBeTruthy();
+
+    // "沒有符合的紀錄" is only claimed once the server has actually answered -
+    // until then the panel has not seen the rows outside its window and says
+    // nothing it cannot back up.
+    expect(await screen.findByText("沒有符合的紀錄")).toBeTruthy();
 
     fireEvent.click(screen.getByText("清除篩選"));
 
     await waitFor(() => expect(screen.queryByText("沒有符合的紀錄")).toBeNull());
     expect(screen.getAllByText("計程車").length).toBeGreaterThan(0);
+  });
+
+  test("finds a match that is older than the loaded window", async () => {
+    // The row the server returns was never in the group-detail response, so
+    // the old in-memory filter could not have produced it however long the
+    // user stared at the screen.
+    const oldRamen = expenseRow({
+      id: "expense_old",
+      title: "去年的拉麵",
+      amount_minor: 88000,
+      expense_date: "2025-01-09",
+      created_at: "2025-01-09T10:00:00.000Z",
+      client_request_id: "seed_old",
+    });
+    const search = await openRecords({
+      expenses: [oldRamen],
+      match_count: 1,
+      match_total_minor: 88000,
+    });
+
+    fireEvent.change(search, { target: { value: "拉麵" } });
+
+    expect(await screen.findByText("去年的拉麵")).toBeTruthy();
+    // The summary counts the server's matches, not the loaded window's.
+    expect(screen.getByText("符合 1 筆・$880")).toBeTruthy();
+  });
+
+  test("a failed search degrades to filtering what is loaded rather than showing nothing", async () => {
+    // No search route -> fetch rejects, the way an unreachable server looks.
+    const search = await openRecords();
+
+    fireEvent.change(search, { target: { value: "計程" } });
+
+    await waitFor(() => {
+      const rows = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"));
+      expect(rows.some((row) => row.textContent?.includes("計程車"))).toBe(true);
+    });
   });
 });
 

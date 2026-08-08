@@ -79,6 +79,28 @@ export type ExpensePageCursor = {
   beforeCreatedAt: string;
 };
 
+/**
+ * The six records-panel filter fields, normalised for SQL: "" (the UI's
+ * "all") becomes null so the RPC can skip that clause entirely.
+ */
+export type ExpenseSearchFilter = {
+  query: string;
+  memberId: string | null;
+  category: string | null;
+  kind: string | null;
+  from: string | null;
+  to: string | null;
+};
+
+export type ExpenseSearchResult = {
+  expenses: ExpenseRecord[];
+  /** Matches across the entire history, not just this page. */
+  match_count: number;
+  /** Summed amount of the kind="expense" matches only (settlements move money, they don't spend it). */
+  match_total_minor: number;
+  has_more: boolean;
+};
+
 export type ExpenseRepository = {
   createExpense(
     context: AuthenticatedContext,
@@ -97,6 +119,21 @@ export type ExpenseRepository = {
     groupId: string,
     options: { limit: number; cursor?: ExpensePageCursor },
   ): Promise<ExpenseRecord[]>;
+  /**
+   * The records panel's filter, evaluated over the group's WHOLE history
+   * rather than the loaded window - see search_expenses' migration for why
+   * that distinction matters and for the clause-by-clause mapping onto
+   * expenseFilter.ts's filterExpenses.
+   *
+   * Null when the caller is not an active member (the RPC owns that check,
+   * unlike listExpensesPage which needs an explicit one).
+   */
+  searchExpenses(
+    userId: string,
+    groupId: string,
+    filter: ExpenseSearchFilter,
+    options: { limit: number; cursor?: ExpensePageCursor },
+  ): Promise<ExpenseSearchResult | null>;
   softDeleteExpense(
     context: AuthenticatedContext,
     groupId: string,

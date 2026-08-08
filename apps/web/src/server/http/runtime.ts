@@ -74,6 +74,7 @@ import {
   createExpenseRoute,
   deleteExpenseRoute,
   listExpensesPageRoute,
+  searchExpensesRoute,
   replaceExpenseRoute,
 } from "../routes/expenseRoutes.js";
 import { updateMyAvatarRoute, uploadGroupImageRoute } from "../routes/imageRoutes.js";
@@ -556,6 +557,28 @@ export function createHttpRuntime(options: RuntimeOptions) {
         const result = await getSpendBreakdownRoute(routeOptions(options, request), match[1], {
           kind: queryParam(request, "kind"),
           key: queryParam(request, "key"),
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      // Registered before the plain /expenses route so "search" is never
+      // mistaken for a page cursor on it.
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses\/search$/,
+      label: "GET /api/v1/groups/:groupId/expenses/search",
+      async handle(request, match) {
+        const limitParam = queryParam(request, "limit");
+        const result = await searchExpensesRoute(routeOptions(options, request), match[1], {
+          q: queryParam(request, "q"),
+          member_id: queryParam(request, "member_id"),
+          category: queryParam(request, "category"),
+          kind: queryParam(request, "kind"),
+          from: queryParam(request, "from"),
+          to: queryParam(request, "to"),
+          limit: limitParam ? Number(limitParam) : undefined,
+          before_date: queryParam(request, "before_date"),
+          before_created_at: queryParam(request, "before_created_at"),
         });
         return jsonResponse(result.status, result.body);
       },

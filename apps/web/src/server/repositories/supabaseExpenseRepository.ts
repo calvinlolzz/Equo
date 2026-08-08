@@ -24,6 +24,7 @@ import {
   type ExpensePaymentRecord,
   type ExpenseRecord,
   type ExpenseRepository,
+  type ExpenseSearchResult,
   type ExpenseShareRecord,
 } from "./expenseRepository.js";
 
@@ -247,6 +248,27 @@ export function createSupabaseExpenseRepository(
 
     listExpensesPage(groupId: string, options: { limit: number; cursor?: ExpensePageCursor }) {
       return listExpenseRows(groupId, options);
+    },
+
+    async searchExpenses(userId, groupId, filter, options) {
+      // No enrichExpensesWithPaymentsAndShares pass here: the RPC already
+      // stitches payments/shares into each row (same shape get_group_detail
+      // returns), so the page arrives complete in one round trip.
+      const result = await client.rpc<ExpenseSearchResult | null>("search_expenses", {
+        p_group_id: groupId,
+        p_user_id: userId,
+        p_query: filter.query,
+        p_member_id: filter.memberId,
+        p_category: filter.category,
+        p_kind: filter.kind,
+        p_from: filter.from,
+        p_to: filter.to,
+        p_limit: options.limit,
+        p_before_date: options.cursor?.beforeDate ?? null,
+        p_before_created_at: options.cursor?.beforeCreatedAt ?? null,
+      });
+
+      return result ?? null;
     },
 
     async recordClientRequest(groupId: string, client_request_id: string, resourceId: string) {

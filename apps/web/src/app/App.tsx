@@ -606,6 +606,15 @@ export function App() {
   // day scrolled into view (today starts at the far end).
   const dateStripRef = useDragScrollX(selectedDateKey);
 
+  // The records panel owns the filter state, so it gets a searcher already
+  // bound to the active group rather than the group id plus a raw client.
+  // Memoised because the search hook's debounce effect keys on its identity.
+  const searchExpensesInGroup = useMemo(() => {
+    if (!cloudStore || !activeGroupId) return null;
+    return (search: Parameters<typeof cloudStore.searchExpenses>[1]) =>
+      cloudStore.searchExpenses(activeGroupId, search);
+  }, [cloudStore, activeGroupId]);
+
   // 分析 panel's period stats. Fetched only while that panel is open - the
   // numbers span the group's whole history, which no other screen shows.
   const spendBreakdown = useSpendBreakdown({
@@ -1955,6 +1964,8 @@ export function App() {
                   onLoadMore={handleLoadMoreExpenses}
                   onExportCsv={handleExportCsv}
                   onOpenExpense={openExpenseDetail}
+                  searchExpenses={searchExpensesInGroup}
+                  describeError={describeCloudActionError}
                 />
                 </Suspense>
               ) : null}

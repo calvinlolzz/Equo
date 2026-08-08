@@ -138,6 +138,27 @@ export type ExpensesPageResponse = {
   expenses: ExpenseSummary[];
 };
 
+/** The records-panel filter as the API takes it; "" means "all" for each field. */
+export type ExpenseSearchQuery = {
+  q?: string;
+  memberId?: string;
+  category?: string;
+  kind?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  beforeDate?: string;
+  beforeCreatedAt?: string;
+};
+
+export type ExpenseSearchResponse = {
+  expenses: ExpenseSummary[];
+  /** Matches across the whole history — NOT just the returned page. */
+  match_count: number;
+  match_total_minor: number;
+  has_more: boolean;
+};
+
 /** 每年統計 / 每月統計 — the two bucketings the 分析 period picker offers. */
 export type SpendPeriodKind = "year" | "month";
 
@@ -439,6 +460,28 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
       if (options.beforeCreatedAt) params.set("before_created_at", options.beforeCreatedAt);
       const query = params.toString();
       return request<ExpensesPageResponse>(`/groups/${groupId}/expenses${query ? `?${query}` : ""}`, {
+        method: "GET",
+      });
+    },
+    /**
+     * The records-panel filter, run against the group's whole history rather
+     * than the ~100 expenses the client happens to hold. `match_count` and
+     * `match_total_minor` cover every match, so the summary line can state a
+     * real number instead of "however many of these are in memory".
+     */
+    searchExpenses(groupId: string, search: ExpenseSearchQuery) {
+      const params = new URLSearchParams();
+      if (search.q) params.set("q", search.q);
+      if (search.memberId) params.set("member_id", search.memberId);
+      if (search.category) params.set("category", search.category);
+      if (search.kind) params.set("kind", search.kind);
+      if (search.from) params.set("from", search.from);
+      if (search.to) params.set("to", search.to);
+      if (search.limit !== undefined) params.set("limit", String(search.limit));
+      if (search.beforeDate) params.set("before_date", search.beforeDate);
+      if (search.beforeCreatedAt) params.set("before_created_at", search.beforeCreatedAt);
+      const query = params.toString();
+      return request<ExpenseSearchResponse>(`/groups/${groupId}/expenses/search${query ? `?${query}` : ""}`, {
         method: "GET",
       });
     },

@@ -5,6 +5,7 @@ import {
   type ArchivedGroupSummary,
   type BalanceSummary,
   type EquoApiClient,
+  type ExpenseSearchQuery,
   type GroupDetail,
   type SpendPeriodKind,
 } from "./apiClient";
@@ -97,6 +98,7 @@ export type ApiClientLike = Pick<
   | "listExpensesPage"
   | "markGroupRead"
   | "getSpendBreakdown"
+  | "searchExpenses"
 >;
 
 function toArchivedGroupData(summary: ArchivedGroupSummary): ArchivedGroupData {
@@ -952,12 +954,32 @@ export function createCloudGroupsStore({
     return apiClient.getSpendBreakdown(groupId, options);
   }
 
+  /**
+   * Server-side records search. Like fetchSpendBreakdown this stays out of the
+   * store's state: results belong to whatever the filter currently says, and
+   * caching them would mean deciding when a keystroke invalidates them.
+   *
+   * The rows are mapped through toExpense so the panel renders search hits
+   * with exactly the same component as the in-memory list - a search result
+   * and a loaded row are the same thing to everything downstream.
+   */
+  async function searchExpenses(groupId: string, search: ExpenseSearchQuery) {
+    const result = await apiClient.searchExpenses(groupId, search);
+    return {
+      expenses: result.expenses.map(toExpense),
+      matchCount: result.match_count,
+      matchTotalMinor: result.match_total_minor,
+      hasMore: result.has_more,
+    };
+  }
+
   return {
     getState,
     subscribe,
     refreshGroups,
     refreshGroupDetail,
     fetchSpendBreakdown,
+    searchExpenses,
     markGroupRead,
     createGroup,
     renameGroup,

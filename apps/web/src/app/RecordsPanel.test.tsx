@@ -92,6 +92,10 @@ function renderPanel(expenses: Expense[], overrides: Partial<Parameters<typeof R
       onLoadMore={onLoadMore}
       onExportCsv={vi.fn()}
       onOpenExpense={vi.fn()}
+      // These render-window tests never turn a filter on, so the search path
+      // stays dormant; the cases that exercise it pass their own searcher.
+      searchExpenses={null}
+      describeError={(error) => String(error)}
       {...overrides}
     />,
   );

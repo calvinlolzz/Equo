@@ -225,3 +225,69 @@ export async function listExpensesPageRoute(
 
   return { ok: true, status: 200, body: { expenses } };
 }
+
+export type SearchExpensesQuery = {
+  q?: string;
+  member_id?: string;
+  category?: string;
+  kind?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  before_date?: string;
+  before_created_at?: string;
+};
+
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const KINDS = new Set(["expense", "income", "settlement", "transfer"]);
+
+/** "" is the UI's "all" for every dropdown; null tells the RPC to skip the clause. */
+function orNull(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * GET /api/v1/groups/:groupId/expenses/search - the records-panel filter run
+ * against the whole history instead of the loaded window.
+ *
+ * Unlike listExpensesPageRoute there is no explicit membership query here:
+ * search_expenses does that check itself and returns null, which is the same
+ * collapse of not-a-member and no-such-group used elsewhere.
+ *
+ * Malformed values are dropped rather than rejected - a bad date in a URL
+ * should widen the search, not 400 at somebody mid-typing.
+ */
+export async function searchExpensesRoute(options: RouteOptions, groupId: string, query: SearchExpensesQuery) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  const kind = orNull(query.kind);
+  const cursor: ExpensePageCursor | undefined =
+    query.before_date && query.before_created_at
+      ? { beforeDate: query.before_date, beforeCreatedAt: query.before_created_at }
+      : undefined;
+
+  const result = await createSupabaseExpenseRepository(options.client).searchExpenses(
+    auth.context.user.id,
+    groupId,
+    {
+      query: query.q?.trim() ?? "",
+      memberId: orNull(query.member_id),
+      category: orNull(query.category),
+      kind: kind && KINDS.has(kind) ? kind : null,
+      from: DATE_KEY.test(query.from ?? "") ? (query.from as string) : null,
+      to: DATE_KEY.test(query.to ?? "") ? (query.to as string) : null,
+    },
+    { limit: Math.max(1, Math.min(query.limit ?? 50, 200)), cursor },
+  );
+
+  if (!result) {
+    return forbidden("req_expenses_search");
+  }
+
+  return { ok: true, status: 200, body: result };
+}

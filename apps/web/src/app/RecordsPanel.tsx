@@ -14,6 +14,9 @@ import { groupExpensesByDay, takeDayGroupsWithin } from "./expenseDayGroups";
 import { formatAmount } from "./formatAmount";
 import { categoryLabel } from "./catalog";
 import { UI_TEXT } from "./uiText";
+import { useExpenseSearch } from "./useExpenseSearch";
+
+type Searcher = Parameters<typeof useExpenseSearch>[0]["searchExpenses"];
 
 const text = UI_TEXT.app;
 
@@ -51,6 +54,9 @@ type RecordsPanelProps = {
   onLoadMore: () => void;
   onExportCsv: () => void;
   onOpenExpense: (expenseId: string) => void;
+  /** Server-side search over the whole history; null when offline/signed out. */
+  searchExpenses: Searcher | null;
+  describeError: (error: unknown) => string;
 };
 
 /** The 支出記錄 bottom-sheet content (stats, search/filter, CSV export, expense rows, recent activity). */
@@ -68,6 +74,8 @@ export function RecordsPanel({
   onLoadMore,
   onExportCsv,
   onOpenExpense,
+  searchExpenses,
+  describeError,
 }: RecordsPanelProps) {
   const [filter, setFilter] = useState<ExpenseFilter>(EMPTY_EXPENSE_FILTER);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -76,8 +84,37 @@ export function RecordsPanel({
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const filterActive = isExpenseFilterActive(filter);
-  const visibleExpenses = useMemo(() => filterExpenses(expenses, filter), [expenses, filter]);
-  const summary = useMemo(() => summariseFilteredExpenses(visibleExpenses), [visibleExpenses]);
+  const search = useExpenseSearch({ searchExpenses, filter, enabled: true, describeError });
+
+  // With a filter on, the server answers over the whole history. Without one
+  // the in-memory list stays authoritative, which is what keeps optimistic and
+  // still-queued offline rows visible the instant they are written.
+  //
+  // The local fallback while a search is in flight is deliberate: it is the
+  // same filter over a subset, so it can only under-report, never invent a
+  // row - and the summary line below reads from `search` regardless, so the
+  // count on screen is the true one even during that moment.
+  // A failed search falls back to filtering what is loaded rather than showing
+  // an empty list: a degraded answer beats "no records" when the network is
+  // the thing that broke. The empty state below surfaces the error itself.
+  const serverResults = filterActive && search.active && !search.pending && search.error === null;
+  const visibleExpenses = useMemo(
+    () => (serverResults ? search.expenses : filterExpenses(expenses, filter)),
+    [serverResults, search.expenses, expenses, filter],
+  );
+  const localSummary = useMemo(() => summariseFilteredExpenses(visibleExpenses), [visibleExpenses]);
+  // Gated on the same `serverResults` as the list: the count and the rows it
+  // describes have to change over together, or the line briefly reports 0
+  // matches above a list that is visibly showing some.
+  const summary = serverResults ? { count: search.matchCount, totalMinor: search.matchTotalMinor } : localSummary;
+
+  // Paging is whichever list is on screen: the search's own cursor, or the
+  // group's expense window.
+  const canPageMore = serverResults ? search.hasMore : canLoadMoreExpenses;
+  const pagingBusy = serverResults
+    ? search.loadingMore
+    : pendingAction === "loadMoreExpenses" || loadingMoreExpenses;
+  const pageMore = serverResults ? search.loadMore : onLoadMore;
 
   // Day grouping runs over the *whole* filtered list so each header's subtotal
   // is the real day total; only the mounting is windowed.
@@ -291,32 +328,33 @@ export function RecordsPanel({
             ))}
             {hasUnmountedRows ? (
               <div className="records-render-sentinel" ref={sentinelRef} aria-hidden="true" />
-            ) : canLoadMoreExpenses ? (
-              // Only offer the server's next page once everything already
-              // loaded is on screen - otherwise 載入更多 would fetch more rows
-              // while local ones are still waiting behind the window.
-              <button
-                className="text-action records-load-more"
-                type="button"
-                disabled={pendingAction === "loadMoreExpenses" || loadingMoreExpenses}
-                onClick={onLoadMore}
-              >
-                {pendingAction === "loadMoreExpenses" || loadingMoreExpenses ? text.processing : text.loadMoreRecords}
+            ) : canPageMore ? (
+              // Only offer the next page once everything already loaded is on
+              // screen - otherwise 載入更多 would fetch more rows while local
+              // ones are still waiting behind the render window.
+              <button className="text-action records-load-more" type="button" disabled={pagingBusy} onClick={pageMore}>
+                {pagingBusy ? text.processing : text.loadMoreRecords}
               </button>
             ) : null}
           </>
         ) : (
           <>
-            <p className="dialog-empty">{filterActive ? "沒有符合的紀錄" : text.noRecords}</p>
-            {/* A filtered-to-nothing window may still have matches further back. */}
-            {filterActive && canLoadMoreExpenses ? (
-              <button
-                className="text-action records-load-more"
-                type="button"
-                disabled={pendingAction === "loadMoreExpenses" || loadingMoreExpenses}
-                onClick={onLoadMore}
-              >
-                {pendingAction === "loadMoreExpenses" || loadingMoreExpenses ? text.processing : text.loadMoreRecords}
+            {/* "沒有符合的紀錄" is now a statement about the whole group, not
+                about the loaded window - the search behind it has seen every
+                expense. The only case that still needs hedging is a search
+                that has not answered yet, or one that failed. */}
+            <p className="dialog-empty">
+              {search.error
+                ? search.error
+                : search.pending
+                  ? text.processing
+                  : filterActive
+                    ? "沒有符合的紀錄"
+                    : text.noRecords}
+            </p>
+            {search.error ? (
+              <button className="text-action records-load-more" type="button" onClick={search.retry}>
+                {"重試"}
               </button>
             ) : null}
           </>
