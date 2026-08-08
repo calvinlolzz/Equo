@@ -116,7 +116,9 @@ export const UI_TEXT = {
     // used to improve the service, and a receipt carries where you were, when,
     // and what you bought.
     scanConsentTitle: "掃描收據會用到 AI 辨識",
-    scanConsentBody: "拍下的收據會傳送到第三方 AI 服務辨識金額與品項。目前使用的免費方案，服務商可能會保留內容、由人工檢視，並用於改善他們的服務。",
+    // ⚠️ Names the provider, so it has to change whenever the model does —
+    // see the same warning on legalContent.ts's privacy section 3.
+    scanConsentBody: "拍下的收據會傳送到 Google Gemini 辨識金額與品項。目前使用的是免費方案，Google 可能會保留內容、由人工檢視，並用於改善他們的服務。",
     scanConsentNote: "不想這樣做也沒關係：用表單裡的相機／相簿按鈕附上照片，照片只會存在你的群組裡，不會送去辨識。",
     scanConsentPrivacyLink: "詳見隱私權政策",
     scanConsentAccept: "我了解，開始掃描",

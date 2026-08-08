@@ -3365,8 +3365,9 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
             <p className="admin-warning">
               <strong>Gemini 免費層會用你送出的內容訓練 Google 的模型，且真人可能閱讀。</strong>
               Google 條款明文寫著「請勿向免費服務提交敏感、機密或個人資訊」，而收據上有消費地點、時間、品項與卡號末四碼——那是使用者的個資，不是你的測試資料。
-              隱私權政策第 3 節目前寫的是 Google Gemini 免費方案——換成別家或改用付費方案時，
-              記得回去改那一段（<code>legalContent.ts</code>），否則政策會與實際不符。
+              換成別家或改用付費方案時，有<strong>兩個</strong>地方寫死了「Google Gemini 免費方案」，都要改，
+              否則說法會與實際不符：隱私權政策第 3 節（<code>legalContent.ts</code>），
+              以及掃描前的同意對話框（<code>uiText.ts</code> 的 <code>scanConsentBody</code>）。
             </p>
           )}
 

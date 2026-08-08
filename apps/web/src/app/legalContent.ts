@@ -18,6 +18,10 @@
  * it — which is a materially different promise from an ordinary sub-processor.
  * Changing the provider or moving to a paid plan makes that text wrong, so the
  * admin console's model picker carries a reminder to come back here.
+ *
+ * The provider is named in ONE other place: uiText.ts's scanConsentBody, the
+ * dialog shown before the camera opens. Both have to move together — the
+ * admin console's reminder lists both files.
  */
 
 export const LEGAL_CONTACT_EMAIL = "support@equomu.com";
