@@ -58,6 +58,44 @@ const CURL_STRENGTH = 2.3; // peak rotation (radians) at the centre
 const CURL_FALLOFF = 1.5; // how fast the curl fades toward the edges
 const CURL_SPIN = 0.05; // slow continuous roll of the whole spiral
 
+// How long the field keeps animating after the last interaction before it
+// freezes on its current frame. A fullscreen fragment shader is a constant GPU
+// load, and on a phone that load is what turns a long session into a hot,
+// throttled one — the app gets progressively less responsive the longer it is
+// left open. Nobody is watching the backdrop while they read their expenses, so
+// after a few seconds of no touching it holds the last frame (identical pixels,
+// zero draw calls) and picks up again on the next scroll or tap. The drift is
+// slow enough that the freeze and the resume are both invisible.
+export const IDLE_FREEZE_MS = 6_000;
+
+/** Everything that can stop the field drawing. See shouldAnimate. */
+export interface AnimationGate {
+  /** The canvas is intersecting the viewport (IntersectionObserver). */
+  visible: boolean;
+  /** document.hidden — the tab is backgrounded. */
+  documentHidden: boolean;
+  /** A sheet/dialog/drawer is covering the field (data-overlay on <html>). */
+  overlayPaused: boolean;
+  /** Milliseconds since the last scroll, tap, key or pointer move. */
+  msSinceInteraction: number;
+}
+
+/**
+ * Whether the loop should be running. Extracted because this is the whole of
+ * the power story and the one part of the scene worth testing on its own — the
+ * rest needs a real GL context, and a headless tab never runs rAF at all.
+ *
+ * Every reason is independent and every one of them is a veto.
+ */
+export function shouldAnimate(gate: AnimationGate): boolean {
+  return (
+    gate.visible &&
+    !gate.documentHidden &&
+    !gate.overlayPaused &&
+    gate.msSinceInteraction <= IDLE_FREEZE_MS
+  );
+}
+
 const VERT_SRC = `
 attribute vec2 position;
 varying vec2 vUv;
@@ -312,6 +350,11 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   let targetX = 0; // raw pointer target (fine pointer only)
   let targetY = 0;
   let lastActive = -1e9; // timestamp of last pointer activity; starts "idle"
+  // Distinct from lastActive: that one drives the cursor->ambient blend and is
+  // deliberately seeded in the past so the field opens on its own drift. This
+  // one is the idle-freeze clock, so it starts now — a freshly opened app is
+  // "active" and animates for IDLE_FREEZE_MS before settling.
+  let lastInteraction = performance.now();
   let tapX = 0; // last tap location (touch only)
   let tapY = 0;
   let tapEnergy = 0; // decaying impulse from a tap (touch only)
@@ -328,19 +371,46 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     aspect = w / h;
     gl.uniform1f(u.aspect, aspect);
     writeBlobs();
+    // Resizing a canvas clears it. While paused there is no frame coming to
+    // refill it, so a resize would leave the backdrop blank until something
+    // resumed the loop — and one of the pause reasons is now "idle", which can
+    // last indefinitely. Redraw once from the uniforms already in place: that
+    // is exactly the frozen frame, at the new size.
+    if (!running) gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /**
+   * Restart the idle-freeze clock, and unfreeze if it had already fired.
+   * `sync()` re-checks every pause reason, so this can't resume a field that is
+   * offscreen, backgrounded or behind a sheet.
+   */
+  function markActive() {
+    lastInteraction = performance.now();
+    if (!running) sync();
   }
 
   function onPointerMove(e: PointerEvent) {
     targetX = e.clientX / window.innerWidth - 0.5;
     targetY = e.clientY / window.innerHeight - 0.5;
     lastActive = e.timeStamp;
+    markActive();
   }
+
+  // Touch scrolling is the one interaction that does NOT reliably produce
+  // pointermove — the browser takes the gesture over and fires pointercancel —
+  // so scrolling a list would otherwise leave the backdrop frozen behind it.
+  // Capture phase: the scrollers that matter (records list, sheets) are nested,
+  // and their scroll events don't bubble to window.
+  const onScroll = () => markActive();
 
   // A tap drops an impulse: the colour swirl surges toward the touch point and
   // the flow briefly speeds up, then eases back to the ambient drift. This is
   // intentionally touch-only — on web (fine pointer) a click does nothing, so
   // there's no bounce/flash from clicking.
   function onPointerDown(e: PointerEvent) {
+    // Before the touch-only guard: a tap has to un-freeze the field on every
+    // device, even where it doesn't drop a swirl impulse.
+    markActive();
     if (!opts.autoMouse) return;
     tapX = e.clientX / window.innerWidth - 0.5;
     tapY = e.clientY / window.innerHeight - 0.5;
@@ -350,6 +420,15 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
 
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
+    // Settle: hold the current frame once nothing has happened for a while.
+    // stop() cancels the request just scheduled above, so this really does end
+    // the loop rather than idling one no-op callback per vsync. Only the idle
+    // clock is checked here — the other three gates have their own events and
+    // go through sync().
+    if (performance.now() - lastInteraction > IDLE_FREEZE_MS) {
+      stop();
+      return;
+    }
     if (frameInterval > 0 && now - lastFrame < frameInterval) return;
     const dt = lastFrame ? Math.min((now - lastFrame) / 1000, 0.1) : 0.016;
     lastFrame = now;
@@ -400,11 +479,16 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     raf = 0;
   }
 
-  // Three independent reasons to not be drawing: scrolled out of view, the tab
-  // is backgrounded, or an overlay is covering the field. start()/stop() are
-  // both idempotent, so this can be called from any of them.
+  // Four independent reasons to not be drawing (see shouldAnimate). start() and
+  // stop() are both idempotent, so this can be called from any of them.
   function sync() {
-    if (visible && !document.hidden && !overlayPaused) start();
+    const animate = shouldAnimate({
+      visible,
+      documentHidden: document.hidden,
+      overlayPaused,
+      msSinceInteraction: performance.now() - lastInteraction,
+    });
+    if (animate) start();
     else stop();
   }
 
@@ -417,10 +501,18 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   );
   io.observe(canvas);
 
-  const onVisibility = () => sync();
+  // Coming back to the tab counts as interaction: otherwise a session parked
+  // for a minute would return to a field that is already past its idle window
+  // and stays frozen until the first touch.
+  const onVisibility = () => {
+    if (!document.hidden) lastInteraction = performance.now();
+    sync();
+  };
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  window.addEventListener("keydown", onScroll);
 
   resize();
   sync();
@@ -438,6 +530,10 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     setOverlayPaused(paused: boolean) {
       if (overlayPaused === paused) return;
       overlayPaused = paused;
+      // Closing a sheet is an interaction, and it re-exposes the field — reset
+      // the idle clock so it animates again rather than coming back frozen
+      // because the idle window elapsed while the sheet was up.
+      if (!paused) lastInteraction = performance.now();
       // Resuming leaves `clock` where it stopped and start() clears lastFrame,
       // so the first frame back uses a nominal dt rather than the whole time
       // the sheet was open - the field picks up exactly where it froze.
@@ -449,6 +545,8 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("scroll", onScroll, { capture: true });
+      window.removeEventListener("keydown", onScroll);
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
       gl.deleteShader(vert);
