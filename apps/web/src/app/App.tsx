@@ -23,7 +23,10 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { syncAppBadge } from "./appBadge";
 import { clearShortcutParam, readShortcutAction, type ShortcutAction } from "./appShortcuts";
+import { clearShareParam, hasSharedReceipt, takeSharedReceiptFile } from "./sharedReceipt";
+import { downscaleImageFileToDataUrl, RECEIPT_MAX_EDGE_PX } from "./expenseImage";
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
@@ -728,6 +731,51 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, activeGroup]);
 
+  /**
+   * A photo shared into Equo from the OS share sheet (see sharedReceipt.ts).
+   *
+   * Same shape as the add-expense shortcut above — wait for a session and a
+   * group, then consume the intent exactly once — but with a file to collect
+   * from the worker's handover cache first.
+   *
+   * Recognition is gated on the consent the user has already given (or not) for
+   * the scan button, and for the same reason: sharing a photo into the app is
+   * not consent to forward it to a third-party model. Without that consent the
+   * photo is simply attached, which is precisely what the composer's own 相機
+   * button does — the expense still gets its receipt, the amount gets typed.
+   */
+  const sharedReceiptRef = useRef(hasSharedReceipt(window.location.search));
+
+  useEffect(() => {
+    if (!session || !sharedReceiptRef.current || !activeGroup) return;
+    sharedReceiptRef.current = false;
+    clearShareParam();
+
+    let cancelled = false;
+    void (async () => {
+      const file = await takeSharedReceiptFile();
+      if (!file || cancelled) return;
+
+      let dataUrl: string;
+      try {
+        dataUrl = await downscaleImageFileToDataUrl(file, RECEIPT_MAX_EDGE_PX);
+      } catch {
+        // Something that claimed to be an image and wasn't decodable. Nothing
+        // to attach, and nothing worth interrupting the launch over.
+        return;
+      }
+      if (cancelled) return;
+
+      if (scanConsentGranted) void handleReceiptCaptured(dataUrl);
+      else openExpenseFromReceipt({ imageDataUrl: dataUrl, scan: null });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, activeGroup]);
+
   useEffect(() => {
     if (!session) return;
     if (!cloudState || cloudState.loadingGroups) return;
@@ -802,6 +850,28 @@ export function App() {
     if (!cloudStore || !activeGroupId || activeGroupUnread === 0) return;
     cloudStore.markGroupRead(activeGroupId);
   }, [activeGroupId, activeGroupUnread, cloudStore]);
+
+  /**
+   * The same unread total, on the installed app's icon (see appBadge.ts).
+   *
+   * Everything the app itself calls unread counts: group activity plus the
+   * bell's inbox. Note this uses the *total* across groups rather than the
+   * top-bar's otherGroupsUnread — the icon is read from outside the app, where
+   * "the group you happen to have open" isn't a meaningful exclusion. The
+   * active group is marked read by the effect above within a tick anyway, so in
+   * practice the two agree.
+   *
+   * Signed out is an explicit zero, not a skip: leaving the previous account's
+   * count on the icon after a logout would be a small privacy leak on a shared
+   * phone, and would be plain wrong on the next login.
+   */
+  useEffect(() => {
+    if (!session) {
+      syncAppBadge(0);
+      return;
+    }
+    syncAppBadge(otherGroupsUnread + activeGroupUnread + notifications.unread);
+  }, [session, otherGroupsUnread, activeGroupUnread, notifications.unread]);
 
   // Near-realtime auto-sync: background focus/interval revalidation while
   // logged in. Reads activeGroupId/cloudStore via refs (rather than as
