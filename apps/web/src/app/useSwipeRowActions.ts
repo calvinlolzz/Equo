@@ -44,12 +44,27 @@ export function useSwipeRowActions({ revealWidth, open, onOpen, onClose }: Optio
   const horizontal = useRef<boolean | null>(null);
   const detach = useRef<(() => void) | null>(null);
 
-  const applyOffset = useCallback((x: number, animate: boolean) => {
-    const el = node.current;
-    if (!el) return;
-    el.style.transition = animate ? "transform 180ms cubic-bezier(0.4, 0, 0.2, 1)" : "none";
-    el.style.transform = x !== 0 ? `translateX(${x}px)` : "";
-  }, []);
+  const applyOffset = useCallback(
+    (x: number, animate: boolean) => {
+      const el = node.current;
+      if (!el) return;
+      el.style.transition = animate ? "transform 180ms cubic-bezier(0.4, 0, 0.2, 1)" : "none";
+      el.style.transform = x !== 0 ? `translateX(${x}px)` : "";
+
+      // How much of the tray the row has actually uncovered. The tray is
+      // clipped to exactly this, because nothing here is opaque enough to hide
+      // it the other way round: every surface in this app is translucent glass
+      // over the animated background, so a tray parked "behind" the row shows
+      // straight through it. Revealing it through the gap needs no colour to
+      // match and cannot leak.
+      const parent = el.parentElement;
+      if (parent) {
+        const revealed = Math.min(Math.max(-x, 0), revealWidth);
+        parent.style.setProperty("--reveal", `${revealed}px`);
+      }
+    },
+    [revealWidth],
+  );
 
   // The list closes rows by flipping `open` (opening another row, scrolling,
   // or acting on this one), so the animation back has to live here.
@@ -122,6 +137,11 @@ export function useSwipeRowActions({ revealWidth, open, onOpen, onClose }: Optio
     horizontal.current = null;
     offset.current = 0;
     if (!next) return;
+    // Seed it explicitly rather than leaning on the var() fallback in the CSS:
+    // a closed row must reveal nothing, and that should not depend on a default
+    // a future edit could drop. The open effect below overwrites this when the
+    // row mounts already open.
+    next.parentElement?.style.setProperty("--reveal", "0px");
     const onNativeMove = (event: TouchEvent) => {
       if (startX.current === null || !horizontal.current) return;
       if (event.cancelable) event.preventDefault();

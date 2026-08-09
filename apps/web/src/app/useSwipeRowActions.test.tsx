@@ -17,11 +17,19 @@ function stubViewport(mobile: boolean) {
 
 function Row({ open, onOpen, onClose }: { open: boolean; onOpen: () => void; onClose: () => void }) {
   const { swipeProps } = useSwipeRowActions({ revealWidth: 144, open, onOpen, onClose });
+  // The wrapper is what carries --reveal; the hook reaches it via parentElement.
   return (
-    <button data-testid="row" type="button" {...swipeProps}>
-      {"品項"}
-    </button>
+    <div data-testid="wrap">
+      <button data-testid="row" type="button" {...swipeProps}>
+        {"品項"}
+      </button>
+    </div>
   );
+}
+
+/** What the CSS clips the tray with — 0px means "not visible at all". */
+function revealed() {
+  return screen.getByTestId("wrap").style.getPropertyValue("--reveal");
 }
 
 function touch(node: HTMLElement, type: "start" | "move" | "end", x: number, y = 0) {
@@ -152,5 +160,62 @@ describe("useSwipeRowActions", () => {
     view.rerender(<Row open={false} onOpen={vi.fn()} onClose={vi.fn()} />);
 
     expect(screen.getByTestId("row").style.transform).toBe("");
+  });
+
+  /**
+   * The bug this suite missed the first time: the tray was parked behind the
+   * row and assumed hidden, but every surface in this app is translucent glass,
+   * so it showed through on every closed row. Position and z-index were all
+   * correct — "is it actually invisible" was never asserted.
+   */
+  test("a closed row reveals none of the tray", () => {
+    setup();
+
+    expect(revealed()).toBe("0px");
+  });
+
+  test("the reveal tracks the finger, so the tray only shows in the gap", () => {
+    const { row } = setup();
+
+    act(() => {
+      touch(row, "start", 300);
+      touch(row, "move", 240); // 60px of travel
+    });
+
+    expect(revealed()).toBe("60px");
+  });
+
+  test("the reveal never exceeds the tray, even while rubber-banding", () => {
+    const { row } = setup();
+
+    act(() => {
+      touch(row, "start", 400);
+      touch(row, "move", 0);
+    });
+
+    // The row rubber-bands to -168, but there are only 144px of tray to show.
+    expect(row.style.transform).toBe("translateX(-168px)");
+    expect(revealed()).toBe("144px");
+  });
+
+  test("an open row reveals the whole tray, and closing hides it again", () => {
+    const { view } = setup(true, true);
+    expect(revealed()).toBe("144px");
+
+    view.rerender(<Row open={false} onOpen={vi.fn()} onClose={vi.fn()} />);
+
+    expect(revealed()).toBe("0px");
+  });
+
+  test("a vertical drag reveals nothing", () => {
+    const { row } = setup();
+
+    act(() => {
+      touch(row, "start", 300, 100);
+      touch(row, "move", 296, 180);
+      touch(row, "end", 296, 180);
+    });
+
+    expect(revealed()).toBe("0px");
   });
 });

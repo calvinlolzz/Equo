@@ -19,6 +19,13 @@ type FakeObserver = {
   disconnected: boolean;
 };
 
+// Each row now carries a swipe hook and its own non-passive touchmove
+// listener, so mounting 200 of them costs more than it did when a row was a
+// bare button — enough to tip this file past vitest's 5s default under a loaded
+// suite. Same treatment as the other integration files; the app itself only
+// ever mounts RENDER_WINDOW_STEP (40) rows at a time.
+vi.setConfig({ testTimeout: 15_000 });
+
 let observers: FakeObserver[] = [];
 
 /** Fire the newest live observer as if its sentinel had scrolled into range. */

@@ -1698,6 +1698,18 @@
   display: flex;
   /* Matches ROW_REVEAL_WIDTH in RecordsPanel.tsx — two 72px targets. */
   width: 144px;
+  /* Shown only through the gap the row has actually vacated. Parking it behind
+     the row does NOT work: every surface here is translucent glass over the
+     animated background (the row is rgb(var(--surf) / 0.07)), so a tray sitting
+     underneath shows straight through it — which is exactly what it did. The
+     hook writes --reveal from the live drag offset. */
+  clip-path: inset(0 0 0 calc(144px - var(--reveal, 0px)));
+  /* Nothing to tap until the row is actually open, clip or no clip. */
+  pointer-events: none;
+}
+
+.record-swipe.open .record-swipe-actions {
+  pointer-events: auto;
 }
 
 .record-swipe-action {
@@ -1721,12 +1733,8 @@
   opacity: 0.82;
 }
 
-/* The row keeps its own background so the tray never shows through it, and
-   sits above the tray in the stacking order. */
 .record-swipe > .record-dialog-row {
   position: relative;
-  z-index: 1;
-  background: rgb(var(--surf) / 0.07);
   /* The gesture is horizontal; tell the browser so it can keep vertical
      scrolling on the compositor instead of waiting on our touch handler. */
   touch-action: pan-y;
