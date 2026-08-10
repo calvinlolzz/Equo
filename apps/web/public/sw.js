@@ -128,10 +128,10 @@ self.addEventListener("fetch", (event) => {
 // ---------------------------------------------------------------------------
 //
 // The payload is the JSON the server encrypted (see server/push/pushNotification):
-// { title, body, url, tag }. Anything unreadable still produces a notification —
-// on Chrome, a push event that ends without showNotification() gets the browser's
-// own "This site has been updated in the background" instead, which is worse
-// than a generic line of our own.
+// { title, body, url, tag, actions? }. Anything unreadable still produces a
+// notification — on Chrome, a push event that ends without showNotification()
+// gets the browser's own "This site has been updated in the background" instead,
+// which is worse than a generic line of our own.
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
@@ -139,6 +139,18 @@ self.addEventListener("push", (event) => {
   } catch {
     payload = {};
   }
+
+  // Action buttons, each carrying its own destination. showNotification only
+  // accepts {action, title}, so the urls ride along in `data` and are read back
+  // on click. Capped at the platform's own limit (2 on Android, 0 where actions
+  // aren't supported at all — an over-long list is silently truncated, and the
+  // urls of the dropped ones would just be dead entries in `data`).
+  const declared = Array.isArray(payload.actions) ? payload.actions.filter((a) => a && a.action && a.url) : [];
+  const maxActions = typeof Notification !== "undefined" && Notification.maxActions >= 0 ? Notification.maxActions : 2;
+  const actions = declared.slice(0, maxActions);
+
+  const actionUrls = {};
+  for (const entry of actions) actionUrls[entry.action] = entry.url;
 
   const title = payload.title || "Equo";
   const options = {
@@ -149,7 +161,8 @@ self.addEventListener("push", (event) => {
     renotify: Boolean(payload.tag),
     icon: "/icons/equo-icon-192.png",
     badge: "/icons/equo-icon-192.png",
-    data: { url: payload.url || "/" },
+    actions: actions.map((entry) => ({ action: entry.action, title: entry.title })),
+    data: { url: payload.url || "/", actionUrls },
   };
 
   event.waitUntil(
@@ -180,14 +193,25 @@ self.addEventListener("push", (event) => {
 // disorienting and loses whatever was on screen.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || "/";
+  const data = event.notification.data || {};
+  // An action button goes where the button says; the body goes where the
+  // notification says. An unknown action id (a notification shown by an older
+  // worker, then clicked after an update) falls back to the body's target
+  // rather than dropping the tap on the floor.
+  const target = (event.action && data.actionUrls && data.actionUrls[event.action]) || data.url || "/";
+  const targetUrl = new URL(target, self.location.origin);
 
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
 
       for (const client of windows) {
-        if (new URL(client.url).pathname === target) {
+        const clientUrl = new URL(client.url);
+        // Search as well as path: an action target differs from the body's only
+        // by its ?shortcut=, and a window already sitting on the bare group is
+        // NOT where "記一筆" was asking to go. Matching on pathname alone would
+        // focus that window and never open the composer.
+        if (clientUrl.pathname === targetUrl.pathname && clientUrl.search === targetUrl.search) {
           return client.focus();
         }
       }

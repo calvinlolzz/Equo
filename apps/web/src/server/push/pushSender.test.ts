@@ -61,7 +61,41 @@ describe("buildExpenseNotification", () => {
       body: "Alice 記了一筆：拉麵 $320",
       url: "/group/group_1",
       tag: "group-group_1",
+      actions: [{ action: "add-expense", title: "記一筆", url: "/group/group_1?shortcut=add-expense" }],
     });
+  });
+
+  test("the 記一筆 button opens the composer, not just the group the body tap opens", () => {
+    const payload = buildExpenseNotification({
+      groupId: "group_9",
+      groupName: "G",
+      actorName: "A",
+      title: "a",
+      amountMinor: 1,
+      currency: "TWD",
+      kind: "expense",
+    });
+
+    const [action] = payload.actions ?? [];
+    expect(action.url).not.toBe(payload.url);
+    // Reuses the manifest shortcut the app already handles (see appShortcuts.ts);
+    // a value the app doesn't recognise would open the group and do nothing.
+    expect(new URL(action.url, "https://equo.test").searchParams.get("shortcut")).toBe("add-expense");
+    expect(new URL(action.url, "https://equo.test").pathname).toBe("/group/group_9");
+  });
+
+  test("a settlement reminder carries no buttons", () => {
+    const payload = buildNudgeNotification({
+      groupId: "group_1",
+      groupName: "G",
+      fromName: "Alice",
+      balanceMinor: -30000,
+      currency: "TWD",
+    });
+
+    // Deliberate: the group screen it opens already has 結清 on it, and a
+    // one-tap "paid" button on a lock screen writes to the ledger unchecked.
+    expect(payload.actions).toBeUndefined();
   });
 
   test("wording follows the kind", () => {

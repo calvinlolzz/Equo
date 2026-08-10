@@ -3,6 +3,23 @@
 // makes people distrust both.
 import { formatAmount } from "../../app/formatAmount.js";
 
+/**
+ * A button under the notification.
+ *
+ * Carries its own destination rather than an id the worker has to know how to
+ * translate: the notification is built here, and a worker that had to keep a
+ * table of action ids in sync with this file would drift the first time one was
+ * added. `url` is stashed in the notification's `data` and read back on click.
+ */
+export type PushNotificationAction = {
+  /** Id echoed back as event.action. */
+  action: string;
+  /** Button label. */
+  title: string;
+  /** Same-origin path this button opens. */
+  url: string;
+};
+
 export type PushNotificationPayload = {
   title: string;
   body: string;
@@ -13,6 +30,12 @@ export type PushNotificationPayload = {
    * each other on the lock screen instead of stacking into a wall.
    */
   tag: string;
+  /**
+   * Optional buttons. Only worth adding where the button goes somewhere the
+   * notification body wouldn't have — a second route to the same screen is
+   * clutter on a lock screen, not a feature.
+   */
+  actions?: PushNotificationAction[];
 };
 
 const FALLBACK_GROUP_NAME = "Equo";
@@ -59,6 +82,12 @@ export function buildExpenseNotification({
     body,
     url: `/group/${groupId}`,
     tag: `group-${groupId}`,
+    // The one action worth a button anywhere in this file. "Somebody recorded
+    // the lunch" is most often read by the person who paid for the coffee, and
+    // the thing they want next is the composer, not the group screen the body
+    // tap already gives them. Reuses the existing ?shortcut= entry point, so
+    // there is nothing new for the app to understand.
+    actions: [{ action: "add-expense", title: "記一筆", url: `/group/${groupId}?shortcut=add-expense` }],
   };
 }
 
@@ -74,6 +103,12 @@ export function buildExpenseNotification({
  *
  * Its own tag, so a reminder never silently replaces (or is replaced by) the
  * group's entry notifications.
+ *
+ * No action button, deliberately. The group screen the body tap opens already
+ * shows this debt with its 結清 button on it, so "去結清" would be a second
+ * route to the same place; and the button that would genuinely help — marking
+ * it paid from the lock screen — moves money in the ledger on a single stray
+ * tap, with no chance to check the amount. That belongs behind the app.
  */
 export function buildNudgeNotification({
   groupId,
