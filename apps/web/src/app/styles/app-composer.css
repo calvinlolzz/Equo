@@ -778,7 +778,7 @@
   .composer-backdrop {
     /* Dynamic (visible) viewport height — see .modal-backdrop below. */
     height: 100vh;
-    height: 100dvh;
+    height: calc(100dvh - var(--keyboard-inset, 0px));
     padding: 0;
   }
 
@@ -791,10 +791,20 @@
        between the browser's bars, so the sheet fills the visible space with no
        clipping. (The "往下跳" bounce is handled by overscroll-behavior: none.) */
     height: 100vh;
-    height: 100dvh;
+    /* ...with one thing dvh does not cover: the on-screen keyboard. iOS Safari
+       leaves dvh at full screen height when the keyboard opens, which would put
+       the bottom of the sheet — and the 儲存 button pinned to it — underneath
+       the keys. --keyboard-inset is that overlap, 0 everywhere it isn't a
+       problem (desktop, and Android, which shrinks the viewport itself).
+       See keyboardInset.ts. */
+    height: calc(100dvh - var(--keyboard-inset, 0px));
     /* Reserve the home-indicator strip so a bottom-sheet dialog's rounded edge
        and its action buttons never sit under it. */
-    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    /* The home-indicator strip, but only while it is actually exposed: once
+       the keyboard is up it is behind the keys, and the sheet's own height
+       has already been pulled clear of them. Reserving it twice would eat
+       the bottom of the sheet. */
+    padding: 10px 10px calc(10px + max(0px, env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px)));
     transition: opacity 240ms ease;
   }
 
@@ -809,7 +819,13 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(
+      100dvh - 40px - env(safe-area-inset-top, 0px) -
+        /* Whichever is actually taking up the bottom of the screen: the home
+           indicator, or the keyboard covering it. Never both — adding them
+           would shrink the sheet by a strip that isn't there. */
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-inset, 0px))
+    );
     overflow-y: auto;
     border-radius: 18px 18px 14px 14px;
   }
@@ -820,7 +836,13 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(
+      100dvh - 40px - env(safe-area-inset-top, 0px) -
+        /* Whichever is actually taking up the bottom of the screen: the home
+           indicator, or the keyboard covering it. Never both — adding them
+           would shrink the sheet by a strip that isn't there. */
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-inset, 0px))
+    );
   }
 
   .flow-dialog,
@@ -857,10 +879,16 @@
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
        bar / Dynamic Island where it can't be reached. */
-    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(
+      100dvh - 40px - env(safe-area-inset-top, 0px) -
+        /* Whichever is actually taking up the bottom of the screen: the home
+           indicator, or the keyboard covering it. Never both — adding them
+           would shrink the sheet by a strip that isn't there. */
+        max(env(safe-area-inset-bottom, 0px), var(--keyboard-inset, 0px))
+    );
     /* Full-bleed bottom sheet: keep the keypad's bottom row and the 儲存 button
        clear of the home indicator. */
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(16px + max(0px, env(safe-area-inset-bottom, 0px) - var(--keyboard-inset, 0px)));
     border-radius: 22px 22px 0 0;
   }
 

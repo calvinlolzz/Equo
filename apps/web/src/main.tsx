@@ -5,6 +5,7 @@ import "./app/App.css";
 import { App } from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { installErrorReporter } from "./app/errorReporter";
+import { installKeyboardInset } from "./app/keyboardInset";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { initTheme } from "./app/themeStore";
 
@@ -43,6 +44,11 @@ if (!isAdminPath) {
 // load; see errorReporter.ts). Installed before render so even a crash
 // during the first mount gets reported.
 installErrorReporter(isAdminPath ? "admin" : "web");
+
+// Publish --keyboard-inset for the bottom sheets to size against (see
+// keyboardInset.ts). Both surfaces have forms, and it is a no-op wherever
+// there is no on-screen keyboard, so it is not gated on the path.
+installKeyboardInset();
 
 createRoot(root).render(
   <React.StrictMode>
