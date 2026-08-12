@@ -6,6 +6,7 @@ import { App } from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
+import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { initTheme } from "./app/themeStore";
 
@@ -23,15 +24,22 @@ if (!root) {
 // regular users never download it, and the admin page skips the WebGL
 // backdrop entirely.
 const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
-const AdminApp = React.lazy(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
+const AdminApp = lazyChunk(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
 
 // The animated backdrop is decoration: a WebGL shader that nobody interacts
 // with and that the app is fully usable without. Loading it in the entry chunk
 // meant the first screen waited on it; as a lazy sibling it arrives a beat
 // later behind an already-interactive page, and the CSS gradient underneath
 // covers the gap.
-const GlassBackground = React.lazy(() =>
-  import("./app/GlassBackground").then((module) => ({ default: module.GlassBackground })),
+// Note this one is a sibling of <ErrorBoundary>, not a child: nothing upstream
+// catches for it, so a rejected import here takes the whole root down with it —
+// a white screen because the decoration failed to arrive. It gets a fallback of
+// its own rather than lazyChunk's reload: the app is fully usable without the
+// backdrop, and the CSS gradient underneath already covers the gap.
+const GlassBackground = React.lazy<React.ComponentType>(() =>
+  import("./app/GlassBackground")
+    .then((module) => ({ default: module.GlassBackground as React.ComponentType }))
+    .catch(() => ({ default: (() => null) as React.ComponentType })),
 );
 
 // Apply the persisted day/night theme to <html> before first paint (no flash).

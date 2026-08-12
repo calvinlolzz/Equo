@@ -6,7 +6,7 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     { "source": "/api/v1/(.*)", "destination": "/api/v1/[...path]" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

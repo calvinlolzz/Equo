@@ -90,8 +90,18 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/assets/")) {
     event.respondWith(
       caches.match(request).then((cached) => cached ?? fetch(request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        // Only store a real asset. A chunk whose hash is gone after a deploy
+        // does not come back as a clean miss: the SPA rewrite used to answer
+        // with index.html and a 200, and caching THAT under a .js filename
+        // would pin "this chunk is HTML" for as long as the cache lives.
+        // (vercel.json now excludes /assets/ from that rewrite, so it 404s
+        // instead — this check also covers the 404, and covers workers still
+        // running against an older deployment.)
+        const type = response.headers.get("content-type") || "";
+        if (response.ok && !type.includes("text/html")) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+        }
         return response;
       })),
     );

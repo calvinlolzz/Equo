@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { syncAppBadge } from "./appBadge";
+import { lazyChunk } from "./lazyChunk";
 import { clearShortcutParam, readShortcutAction, type ShortcutAction } from "./appShortcuts";
 import { clearShareParam, hasSharedReceipt, takeSharedReceiptFile } from "./sharedReceipt";
 import { downscaleImageFileToDataUrl, RECEIPT_MAX_EDGE_PX } from "./expenseImage";
@@ -105,26 +106,26 @@ const templates = [
  * intermediate state - a spinner would flash for a chunk that is usually
  * already warm (see prefetchOverlayChunks).
  */
-const AnalysisPanel = lazy(() => import("./AnalysisPanel").then((m) => ({ default: m.AnalysisPanel })));
-const ArchivedListPanel = lazy(() => import("./ArchivedListPanel").then((m) => ({ default: m.ArchivedListPanel })));
-const ExpenseComposerSheet = lazy(() =>
+const AnalysisPanel = lazyChunk(() => import("./AnalysisPanel").then((m) => ({ default: m.AnalysisPanel })));
+const ArchivedListPanel = lazyChunk(() => import("./ArchivedListPanel").then((m) => ({ default: m.ArchivedListPanel })));
+const ExpenseComposerSheet = lazyChunk(() =>
   import("./ExpenseComposerSheet").then((m) => ({ default: m.ExpenseComposerSheet })),
 );
-const ExpenseDetailDialog = lazy(() =>
+const ExpenseDetailDialog = lazyChunk(() =>
   import("./ExpenseDetailDialog").then((m) => ({ default: m.ExpenseDetailDialog })),
 );
-const FeedbackDialog = lazy(() => import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })));
-const RecurringPanel = lazy(() => import("./RecurringPanel").then((m) => ({ default: m.RecurringPanel })));
-const NotificationsPanel = lazy(() =>
+const FeedbackDialog = lazyChunk(() => import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })));
+const RecurringPanel = lazyChunk(() => import("./RecurringPanel").then((m) => ({ default: m.RecurringPanel })));
+const NotificationsPanel = lazyChunk(() =>
   import("./NotificationsPanel").then((m) => ({ default: m.NotificationsPanel })),
 );
-const ProfileDialog = lazy(() => import("./ProfileDialog").then((m) => ({ default: m.ProfileDialog })));
-const RecordsPanel = lazy(() => import("./RecordsPanel").then((m) => ({ default: m.RecordsPanel })));
+const ProfileDialog = lazyChunk(() => import("./ProfileDialog").then((m) => ({ default: m.ProfileDialog })));
+const RecordsPanel = lazyChunk(() => import("./RecordsPanel").then((m) => ({ default: m.RecordsPanel })));
 // The QR encoder and the camera/decoder are each behind a tap and are dead
 // weight for everyone who never opens them - the decoder alone outweighs the
 // rest of this list.
-const InviteQrCode = lazy(() => import("./InviteQrCode").then((m) => ({ default: m.InviteQrCode })));
-const ScanSheet = lazy(() => import("./ScanSheet").then((m) => ({ default: m.ScanSheet })));
+const InviteQrCode = lazyChunk(() => import("./InviteQrCode").then((m) => ({ default: m.InviteQrCode })));
+const ScanSheet = lazyChunk(() => import("./ScanSheet").then((m) => ({ default: m.ScanSheet })));
 
 /**
  * Warm the two chunks a user reaches for first, once the browser is idle.
@@ -137,8 +138,12 @@ const ScanSheet = lazy(() => import("./ScanSheet").then((m) => ({ default: m.Sca
  */
 function prefetchOverlayChunks(): void {
   const warm = () => {
-    void import("./ExpenseComposerSheet");
-    void import("./ExpenseDetailDialog");
+    // Swallowed, unlike the render-time imports: this is speculative warming,
+    // and a stale chunk here is neither worth an entry in the error log nor
+    // worth reloading the page out from under someone who has not asked for
+    // either sheet yet. The real import when they do tap is what recovers.
+    void import("./ExpenseComposerSheet").catch(() => {});
+    void import("./ExpenseDetailDialog").catch(() => {});
   };
 
   if (typeof window.requestIdleCallback === "function") {
