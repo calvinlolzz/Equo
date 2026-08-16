@@ -47,8 +47,130 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Equo" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Launch screen. Inline on purpose: this has to paint from the HTML alone,
+         because the whole point is the stretch BEFORE the entry chunk has been
+         fetched, parsed and run — the React tree (skeletons included) cannot
+         cover that, and what was there instead was a flat empty page.
+
+         Held to the brand's own colour rather than the day/night theme, in both
+         senses deliberately: the theme lives in localStorage and the CSP here is
+         `script-src 'self'` with no inline scripts to read it before paint, and
+         a launch screen conventionally *is* fixed-brand — this matches
+         background_color in site.webmanifest, which is exactly what Android
+         already shows when the installed app is opened.
+
+         pointer-events:none throughout, so the one failure mode that would
+         matter — a splash that never lifts — degrades to an invisible overlay
+         rather than one that eats every tap. -->
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #07110f;
+        pointer-events: none;
+        /* Backstop for "the module never ran at all": give up and get out of
+           the way rather than sitting on a dead page forever. */
+        animation: equo-splash-giveup 0s linear 12s forwards;
+      }
+
+      #app-splash svg {
+        width: 96px;
+        height: 96px;
+        /* Starts after the draw finishes, so a slow load keeps breathing
+           instead of freezing on a finished mark. */
+        animation: equo-splash-breathe 2.4s ease-in-out 0.85s infinite;
+      }
+
+      /* The two arcs of the Equo mark, drawn on. 307 is the measured path length
+         (getTotalLength), not an eyeballed round number: each arc looks like a
+         semicircle but isn't — its chord is 218 against a diameter of 222, so it
+         subtends 158°, and r × θ = 111 × 2.763 ≈ 306.5. Rounding this up to a
+         semicircle's 349 would leave the mark finished before the animation was,
+         with the tail of the duration spent drawing nothing. */
+      #app-splash path {
+        fill: none;
+        stroke-width: 54;
+        stroke-linecap: round;
+        stroke-dasharray: 307;
+        stroke-dashoffset: 307;
+        /* Ease-in-out, not the sheet-arrival curve used elsewhere in the app:
+           that one is deliberately front-loaded, which is right for a panel
+           flying in and wrong for a stroke being drawn — it put three quarters
+           of the line down in the first fifth of the time and read as a snap.
+           This spreads the motion, so it looks like it is being written. */
+        animation: equo-splash-draw 0.7s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+      }
+
+      #app-splash .splash-arc-mint {
+        stroke: #6de2b8;
+      }
+
+      /* Staggered, so the two halves arrive one after the other rather than as
+         one shape — which is the mark's whole idea. */
+      #app-splash .splash-arc-gold {
+        stroke: #ffd67a;
+        animation-delay: 0.12s;
+      }
+
+      #app-splash.is-ready {
+        animation: none;
+        opacity: 0;
+        transform: scale(1.04);
+        transition:
+          opacity 260ms ease,
+          transform 260ms ease;
+      }
+
+      @keyframes equo-splash-draw {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      @keyframes equo-splash-breathe {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.045);
+        }
+      }
+
+      @keyframes equo-splash-giveup {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash svg,
+        #app-splash path {
+          animation: none;
+        }
+        #app-splash path {
+          stroke-dashoffset: 0;
+        }
+        #app-splash.is-ready {
+          transform: none;
+          transition: opacity 120ms linear;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="app-splash" role="status" aria-label="Equo 載入中">
+      <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="512" height="512" rx="116" fill="#0c1613" />
+        <path class="splash-arc-mint" d="M233 365 A111 111 0 0 1 233 147" />
+        <path class="splash-arc-gold" d="M279 147 A111 111 0 0 1 279 365" />
+      </svg>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

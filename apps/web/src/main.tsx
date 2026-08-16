@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/react";
 import "./app/App.css";
 import { App } from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
+import { dismissAppSplash } from "./app/appSplash";
 import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
@@ -84,6 +85,17 @@ createRoot(root).render(
     )}
   </React.StrictMode>,
 );
+
+// Lift the launch screen (see index.html) — two frames deep, not one. The first
+// callback runs before the browser paints what React just rendered; the second
+// runs after. Dismissing on the first would uncover an empty page for a frame,
+// which is the exact thing the splash is there to prevent.
+//
+// There is always something real in that first paint: the session is read
+// synchronously from storage (useAuthSession's lazy initial state) and the group
+// data is seeded synchronously from the cloud cache, so the app lands on either
+// the login screen or a populated home — never a blank one.
+requestAnimationFrame(() => requestAnimationFrame(() => dismissAppSplash()));
 
 // Register the PWA service worker in production builds only, after the page
 // has finished loading so it never competes with the initial render/fetch.
