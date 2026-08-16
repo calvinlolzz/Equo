@@ -27,7 +27,7 @@ import { syncAppBadge } from "./appBadge";
 import { lazyChunk } from "./lazyChunk";
 import { clearShortcutParam, readShortcutAction, type ShortcutAction } from "./appShortcuts";
 import { clearShareParam, hasSharedReceipt, takeSharedReceiptFile } from "./sharedReceipt";
-import { downscaleImageFileToDataUrl, RECEIPT_MAX_EDGE_PX } from "./expenseImage";
+import { downscaleDataUrl, downscaleImageFileToDataUrl, RECEIPT_MAX_EDGE_PX } from "./expenseImage";
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
@@ -761,9 +761,14 @@ export function App() {
       const file = await takeSharedReceiptFile();
       if (!file || cancelled) return;
 
+      // Sized for what is about to happen to it: the recognition-grade capture
+      // only when recognition is actually going to run (handleReceiptCaptured
+      // cuts it back down before storing), otherwise straight to the ordinary
+      // photo size, since nothing is going to read the small print.
+      const maxEdge = scanConsentGranted ? RECEIPT_MAX_EDGE_PX : undefined;
       let dataUrl: string;
       try {
-        dataUrl = await downscaleImageFileToDataUrl(file, RECEIPT_MAX_EDGE_PX);
+        dataUrl = await downscaleImageFileToDataUrl(file, maxEdge);
       } catch {
         // Something that claimed to be an image and wasn't decodable. Nothing
         // to attach, and nothing worth interrupting the launch over.
@@ -1111,6 +1116,12 @@ export function App() {
    * Recognition is a shortcut, not a gate - a failed or unconfigured scan still
    * leaves the user in the composer with the photo attached, which is exactly
    * where the 相機 button in the composer would have put them.
+   *
+   * The capture arrives at RECEIPT_MAX_EDGE_PX because recognition has to read
+   * the small print; what gets attached to the expense is cut back to the
+   * ordinary photo size first. Recognition is kicked off against the big one
+   * before that happens, so the extra decode costs the sheet a few tens of
+   * milliseconds and costs the five-second round trip nothing.
    */
   async function handleReceiptCaptured(dataUrl: string) {
     if (!activeGroup) return;
@@ -1119,20 +1130,27 @@ export function App() {
     const { currency } = activeGroup;
 
     setScanMode(null);
-    openExpenseFromReceipt({ imageDataUrl: dataUrl, scan: null });
     setScanBusy(true);
 
-    let scan: ReceiptPrefill["scan"] = null;
-    try {
-      scan = await createApiClient().scanReceipt({
+    const scanRequest = createApiClient()
+      .scanReceipt({
         client_request_id: crypto.randomUUID(),
         data_url: dataUrl,
         currency,
+      })
+      .catch(() => {
+        // Null: RECEIPT_SCAN_UNAVAILABLE, offline, rate-limited - all the same
+        // downgrade from the user's point of view.
+        return null;
       });
-    } catch {
-      // Left null: RECEIPT_SCAN_UNAVAILABLE, offline, rate-limited - all the
-      // same downgrade from the user's point of view.
-    }
+
+    // Best effort by contract: this resolves to the capture itself rather than
+    // failing or hanging, so the sheet opens either way. An oversized photo on
+    // the expense is a cost; a sheet that never arrives is a broken feature.
+    const storedDataUrl = await downscaleDataUrl(dataUrl);
+    openExpenseFromReceipt({ imageDataUrl: storedDataUrl, scan: null });
+
+    const scan: ReceiptPrefill["scan"] = await scanRequest;
 
     setScanBusy(false);
     setReceiptScan(scan);
