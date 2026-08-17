@@ -9,7 +9,7 @@
 const SPLASH_ID = "app-splash";
 
 /** Matches the transition in index.html; the timer below is its safety net. */
-const FADE_MS = 260;
+const FADE_MS = 300;
 
 /**
  * Fade the splash out and remove it.
