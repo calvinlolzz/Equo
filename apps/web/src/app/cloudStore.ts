@@ -67,7 +67,26 @@ export type ArchivedGroupData = {
 export type CloudGroupsState = {
   groups: Group[];
   groupDetails: Record<string, CloudGroupData>;
+  /**
+   * A FIRST groups load is in flight - i.e. there is nothing to show yet.
+   * Drives GroupHomeSkeleton, so it must NOT be set by background
+   * revalidation: autoSync refreshes the list on every focus and every third
+   * sync, and flipping this each time blanked the whole group list back to a
+   * skeleton every minute and on every return to the app. See groupsLoaded.
+   */
   loadingGroups: boolean;
+  /**
+   * Whether there is a list worth showing - a load completed, or the cloud
+   * cache seeded one from a previous session. Governs the skeleton only.
+   */
+  groupsLoaded: boolean;
+  /**
+   * Whether the SERVER's list has arrived in this session. Deliberately
+   * distinct from groupsLoaded: routing decisions ("this group id isn't yours",
+   * "give up on the pending invite link") may only be made against server
+   * truth, never against a cache that predates the group being asked for.
+   */
+  groupsSynced: boolean;
   loadingGroupIds: Record<string, boolean>;
   /** Busy flags for loadMoreExpenses, keyed by groupId - see the records panel's 載入更多 button. */
   loadingMoreExpenseIds: Record<string, boolean>;
@@ -132,12 +151,43 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Deep equality by serialisation, used to drop no-op updates from the polling
+ * revalidation. Nearly every poll returns exactly what is already in the store,
+ * and applying it anyway is not free: it hands React brand-new arrays (so the
+ * whole group screen, up to 100 expense rows, re-renders) and it dirties
+ * {groups, groupDetails}, which schedules another full serialisation of the
+ * cloud cache into localStorage. Every 20 seconds, forever, on a phone.
+ *
+ * JSON.stringify is normally a poor equality test, but it is sound here: both
+ * sides are built by the same toGroup / toGroupUiData mappers, so key order is
+ * deterministic, and neither side holds a Date, a Map, a function or a cycle.
+ */
+function sameJson(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Options shared by the two revalidating reads. */
+export type RefreshOptions = {
+  /**
+   * A poll rather than something the user is waiting on: suppresses the
+   * loading flags that drive skeletons, since there is already a rendered
+   * screen that must not flash.
+   */
+  background?: boolean;
+};
+
 function initialState(userId?: string, cacheStorage?: CacheStorage): CloudGroupsState {
   const cached = userId ? loadCloudCache(userId, cacheStorage) : null;
   return {
     groups: cached?.groups ?? [],
     groupDetails: cached?.groupDetails ?? {},
     loadingGroups: false,
+    // A cache hit means a load completed in an earlier session, so the very
+    // first refresh of this one is already a background revalidate: show the
+    // cached list immediately instead of a skeleton over the top of it.
+    groupsLoaded: cached !== null,
+    groupsSynced: false,
     loadingGroupIds: {},
     loadingMoreExpenseIds: {},
     pendingWrites: userId ? loadQueue(userId, cacheStorage) : [],
@@ -268,7 +318,7 @@ export function createCloudGroupsStore({
   function resyncInBackground(groupId?: string) {
     refreshGroups().catch(() => {});
     if (groupId) {
-      refreshGroupDetail(groupId).catch(() => {});
+      refreshGroupDetail(groupId, { background: true }).catch(() => {});
     }
   }
 
@@ -500,21 +550,29 @@ export function createCloudGroupsStore({
       if (touchedGroupIds.size > 0) {
         refreshGroups().catch(() => {});
         touchedGroupIds.forEach((groupId) => {
-          refreshGroupDetail(groupId).catch(() => {});
+          refreshGroupDetail(groupId, { background: true }).catch(() => {});
         });
       }
     }
   }
 
   async function refreshGroups() {
-    setState({ loadingGroups: true });
+    // Only the first load gets the skeleton - see CloudGroupsState.loadingGroups.
+    const firstLoad = !state.groupsLoaded;
+    if (firstLoad) setState({ loadingGroups: true });
     try {
       const { groups: summaries } = await apiClient.listGroups();
-      setState({ groups: summaries.map(toGroup) });
+      const next = summaries.map(toGroup);
+      const changed = !sameJson(state.groups, next);
+      // Unchanged AND both flags already set means there is nothing at all to
+      // publish: skip the notify, the re-render and the cache write.
+      if (changed || !state.groupsLoaded || !state.groupsSynced) {
+        setState({ groups: changed ? next : state.groups, groupsLoaded: true, groupsSynced: true });
+      }
     } catch (error) {
       handleError(error);
     } finally {
-      setState({ loadingGroups: false });
+      if (firstLoad) setState({ loadingGroups: false });
     }
   }
 
@@ -543,25 +601,41 @@ export function createCloudGroupsStore({
     }
   }
 
-  async function refreshGroupDetail(groupId: string): Promise<CloudGroupData> {
-    setGroupLoading(groupId, true);
+  async function refreshGroupDetail(groupId: string, options: RefreshOptions = {}): Promise<CloudGroupData> {
+    // A poll toggles this twice per request; nothing reads it while a detail is
+    // already on screen (the skeleton is gated on there being none), so all it
+    // ever bought in the background was two extra renders of the group screen.
+    const background = options.background === true;
+    if (!background) setGroupLoading(groupId, true);
     try {
       const detail: GroupDetail = await apiClient.getGroupDetail(groupId);
       // Server truth knows nothing about writes still sitting in the queue, so
       // replay them on top - otherwise a background refresh makes every offline
       // entry blink out of existence until the flush lands.
       const data = applyQueuedWrites(toGroupUiData(detail), state.pendingWrites);
+      // The detail is revalidated more often than the list (see autoSync's
+      // groupsListEveryNTicks), so this is usually the fresher number.
+      const nextGroups = groupsWithDetailBalance(state.groups, groupId, data);
+      const current = state.groupDetails[groupId];
+
+      if (current && sameJson(current, data)) {
+        // Nothing moved server-side. Keep the existing reference so React sees
+        // the same objects it already rendered - see sameJson. The list balance
+        // is still checked: a refreshGroups in between may have overwritten it
+        // with the list's own (staler) number.
+        if (!sameJson(state.groups, nextGroups)) setState({ groups: nextGroups });
+        return current;
+      }
+
       setState({
         groupDetails: { ...state.groupDetails, [groupId]: data },
-        // The detail is revalidated more often than the list (see autoSync's
-        // groupsListEveryNTicks), so this is usually the fresher number.
-        groups: groupsWithDetailBalance(state.groups, groupId, data),
+        groups: nextGroups,
       });
       return data;
     } catch (error) {
       return handleError(error);
     } finally {
-      setGroupLoading(groupId, false);
+      if (!background) setGroupLoading(groupId, false);
     }
   }
 

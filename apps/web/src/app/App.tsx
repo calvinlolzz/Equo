@@ -788,12 +788,17 @@ export function App() {
 
   useEffect(() => {
     if (!session) return;
-    if (!cloudState || cloudState.loadingGroups) return;
+    // groupsSynced, NOT loadingGroups: every branch below decides something
+    // about a group id (land on it, forward to it, or throw it away with a
+    // 「群組不存在」 toast), and those may only be judged against the server's
+    // list. The cloud cache can seed a list from a previous session that
+    // predates the very group a fresh invite link points at.
+    if (!cloudState || !cloudState.groupsSynced) return;
     const routeId = readRouteGroupId();
     if (!routeId) {
       // Root URL: land the user on their most-recent group instead of the
       // create-first-group start flow. Groups are loaded here (the guard
-      // above cleared loadingGroups); a null landing means zero groups, so
+      // above waited for the server list); a null landing means zero groups, so
       // fall through to the StartFlow empty state. Once forwarded, the route
       // is no longer empty, so this branch won't re-fire (no redirect loop).
       // A deep link that went through the login wall lands here at the bare
@@ -832,7 +837,7 @@ export function App() {
     closeGroup("replace");
     showToast(text.groupNotFound);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroupId, cloudGroups, session, cloudState?.loadingGroups]);
+  }, [activeGroupId, cloudGroups, session, cloudState?.groupsSynced]);
 
   useEffect(() => {
     if (!session || !cloudStore || !activeGroupId) return;
@@ -904,7 +909,7 @@ export function App() {
           if (actionGuardRef.current.current) return Promise.resolve();
           const groupId = activeGroupIdRef.current;
           if (!groupId) return Promise.resolve();
-          return cloudStore.refreshGroupDetail(groupId);
+          return cloudStore.refreshGroupDetail(groupId, { background: true });
         },
         refreshGroups: () => {
           if (actionGuardRef.current.current) return Promise.resolve();

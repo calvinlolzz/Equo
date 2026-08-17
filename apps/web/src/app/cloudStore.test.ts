@@ -1043,4 +1043,226 @@ describe("createCloudGroupsStore", () => {
       }
     });
   });
+
+  describe("background revalidation", () => {
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((settle) => {
+        resolve = settle;
+      });
+      return { promise, resolve };
+    }
+
+    test("the first groups load raises loadingGroups, so the skeleton still shows on a cold start", () => {
+      const gate = deferred<{ groups: (typeof group1)[] }>();
+      const apiClient = makeFakeApiClient({ listGroups: vi.fn(() => gate.promise) });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+      const inFlight = store.refreshGroups();
+      expect(store.getState().loadingGroups).toBe(true);
+      expect(store.getState().groupsLoaded).toBe(false);
+      expect(store.getState().groupsSynced).toBe(false);
+
+      gate.resolve({ groups: [group1] });
+      return inFlight.then(() => {
+        expect(store.getState().loadingGroups).toBe(false);
+        expect(store.getState().groupsLoaded).toBe(true);
+        expect(store.getState().groupsSynced).toBe(true);
+      });
+    });
+
+    test("a background groups refresh never flips loadingGroups back on", async () => {
+      const gate = deferred<{ groups: (typeof group1)[] }>();
+      let call = 0;
+      const apiClient = makeFakeApiClient({
+        listGroups: vi.fn(() => {
+          call += 1;
+          return call === 1 ? Promise.resolve({ groups: [group1] }) : gate.promise;
+        }),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+      await store.refreshGroups();
+
+      // This is the one that used to blank the whole group list back to
+      // GroupHomeSkeleton — every 60s, and on every return to the app.
+      const inFlight = store.refreshGroups();
+      expect(store.getState().loadingGroups).toBe(false);
+      expect(store.getState().groups).toHaveLength(1);
+
+      gate.resolve({ groups: [group1] });
+      await inFlight;
+      expect(store.getState().loadingGroups).toBe(false);
+    });
+
+    test("a cache-seeded store treats even its very first refresh as background", async () => {
+      vi.useFakeTimers();
+      try {
+        const cacheStorage = memoryStorage();
+        const warm = createCloudGroupsStore({
+          apiClient: makeFakeApiClient(),
+          onSessionExpired: vi.fn(),
+          userId: "user_1",
+          cacheStorage,
+        });
+        await warm.refreshGroups();
+        await vi.advanceTimersByTimeAsync(300);
+
+        const gate = deferred<{ groups: (typeof group1)[] }>();
+        const apiClient = makeFakeApiClient({ listGroups: vi.fn(() => gate.promise) });
+        const reopened = createCloudGroupsStore({
+          apiClient,
+          onSessionExpired: vi.fn(),
+          userId: "user_1",
+          cacheStorage,
+        });
+
+        // Cached groups are on screen, so the revalidation behind them must not
+        // cover them with a skeleton...
+        expect(reopened.getState().groups).toHaveLength(1);
+        expect(reopened.getState().groupsLoaded).toBe(true);
+        // ...but nothing may route off a cache that predates this session.
+        expect(reopened.getState().groupsSynced).toBe(false);
+
+        const inFlight = reopened.refreshGroups();
+        expect(reopened.getState().loadingGroups).toBe(false);
+
+        gate.resolve({ groups: [group1] });
+        await inFlight;
+        expect(reopened.getState().groupsSynced).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("an unchanged groups poll publishes nothing at all", async () => {
+      const apiClient = makeFakeApiClient();
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      await store.refreshGroups();
+
+      const before = store.getState().groups;
+      let notified = 0;
+      store.subscribe(() => {
+        notified += 1;
+      });
+
+      await store.refreshGroups();
+
+      expect(notified).toBe(0);
+      expect(store.getState().groups).toBe(before);
+    });
+
+    test("...but a changed groups poll still lands", async () => {
+      let call = 0;
+      const apiClient = makeFakeApiClient({
+        listGroups: vi.fn(async () => {
+          call += 1;
+          return { groups: [call === 1 ? group1 : { ...group1, name: "Osaka Trip" }] };
+        }),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      await store.refreshGroups();
+
+      let notified = 0;
+      store.subscribe(() => {
+        notified += 1;
+      });
+
+      await store.refreshGroups();
+
+      expect(notified).toBeGreaterThan(0);
+      expect(store.getState().groups[0].name).toBe("Osaka Trip");
+    });
+
+    test("an unchanged detail poll keeps the very same objects and notifies nobody", async () => {
+      const apiClient = makeFakeApiClient();
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      const first = await store.refreshGroupDetail("group_1");
+
+      let notified = 0;
+      store.subscribe(() => {
+        notified += 1;
+      });
+
+      const second = await store.refreshGroupDetail("group_1", { background: true });
+
+      // Same reference, so React re-renders nothing and the cloud cache is not
+      // re-serialised to localStorage.
+      expect(second).toBe(first);
+      expect(store.getState().groupDetails.group_1).toBe(first);
+      expect(notified).toBe(0);
+    });
+
+    test("...but a detail poll that actually changed replaces the data", async () => {
+      let call = 0;
+      const apiClient = makeFakeApiClient({
+        getGroupDetail: vi.fn(async () => {
+          call += 1;
+          if (call === 1) return makeGroupDetail({ members: [member1] });
+          return makeGroupDetail({
+            members: [member1],
+            expenses: [
+              {
+                id: "expense_1",
+                group_id: "group_1",
+                title: "Dinner",
+                kind: "expense",
+                amount_minor: 1200,
+                currency: "TWD",
+                expense_date: "2026-08-17",
+                version: 1,
+                client_request_id: "req_1",
+                expense_payments: [{ payer_member_id: "member_1", amount_minor: 1200, currency: "TWD" }],
+                expense_shares: [{ member_id: "member_1", share_type: "fixed", amount_minor: 1200 }],
+              },
+            ],
+            spend_total_minor: 1200,
+          });
+        }),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      const first = await store.refreshGroupDetail("group_1");
+
+      let notified = 0;
+      store.subscribe(() => {
+        notified += 1;
+      });
+
+      const second = await store.refreshGroupDetail("group_1", { background: true });
+
+      expect(second).not.toBe(first);
+      expect(second.expenses).toHaveLength(1);
+      expect(second.expenses[0].title).toBe("Dinner");
+      expect(store.getState().groupDetails.group_1).toBe(second);
+      expect(notified).toBeGreaterThan(0);
+    });
+
+    test("background:true suppresses the per-group loading flag; the default still sets it", async () => {
+      const gate = deferred<GroupDetail>();
+      let call = 0;
+      const apiClient = makeFakeApiClient({
+        getGroupDetail: vi.fn(() => {
+          call += 1;
+          return call === 1 ? Promise.resolve(makeGroupDetail({ members: [member1] })) : gate.promise;
+        }),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      await store.refreshGroupDetail("group_1");
+
+      const background = store.refreshGroupDetail("group_1", { background: true });
+      expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
+
+      gate.resolve(makeGroupDetail({ members: [member1] }));
+      await background;
+
+      const gate2 = deferred<GroupDetail>();
+      apiClient.getGroupDetail = vi.fn(() => gate2.promise);
+      const foreground = store.refreshGroupDetail("group_1");
+      expect(store.getState().loadingGroupIds.group_1).toBe(true);
+
+      gate2.resolve(makeGroupDetail({ members: [member1] }));
+      await foreground;
+      expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
+    });
+  });
 });

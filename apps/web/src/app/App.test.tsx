@@ -278,6 +278,38 @@ describe("coming back from the OAuth redirect", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/group/group_2"));
   });
 
+  test("a shared group link survives a cloud cache that has never heard of that group", async () => {
+    // The same round-trip, but this user has been here before, so the cloud
+    // cache seeds a group list from an earlier session - one recorded before
+    // they were ever invited to group_2. The landing effect must wait for the
+    // SERVER's list: judging the pending route against the cache would decide
+    // group_2 isn't theirs and drop them on group_1 instead.
+    window.history.replaceState(null, "", "/group/group_2");
+    stashPendingRoute();
+    arriveWithFragment("#access_token=supabase-jwt&token_type=bearer");
+
+    window.localStorage.setItem(
+      "equo.clean.cloud_cache",
+      JSON.stringify({
+        version: 1,
+        userId: "user_alice",
+        groups: [{ id: "group_1", name: "東京旅行", currency: "TWD" }],
+        groupDetails: {},
+      }),
+    );
+
+    fakeApi([
+      { route: "POST /auth/supabase", body: supabaseSession },
+      { route: "GET /groups", body: { groups: [group(), group({ id: "group_2", name: "室友開銷" })] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+      { route: "GET /groups/group_2", body: groupDetail({ group: group({ id: "group_2", name: "室友開銷" }) }) },
+    ]);
+
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_2"));
+  });
+
   test("an OAuth error in the fragment is surfaced rather than swallowed", async () => {
     // Supabase puts the human-readable reason in error_description; that is what
     // the user needs to see, not the machine code beside it.
