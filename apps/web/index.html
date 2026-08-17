@@ -86,7 +86,7 @@
         height: clamp(112px, min(34vw, 24vh), 168px);
         /* Starts after the draw finishes, so a slow load keeps breathing
            instead of freezing on a finished mark. */
-        animation: equo-splash-breathe 3s ease-in-out 1.35s infinite;
+        animation: equo-splash-breathe 3s ease-in-out 1.15s infinite;
       }
 
       /* The two arcs of the Equo mark, drawn on. 307 is the measured path length
@@ -106,7 +106,7 @@
            flying in and wrong for a stroke being drawn — it put three quarters
            of the line down in the first fifth of the time and read as a snap.
            This spreads the motion, so it looks like it is being written. */
-        animation: equo-splash-draw 1.1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+        animation: equo-splash-draw 0.9s cubic-bezier(0.65, 0, 0.35, 1) forwards;
       }
 
       #app-splash .splash-arc-mint {
