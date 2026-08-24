@@ -226,6 +226,99 @@ export type HealthTile = {
 const BACKUP_STALE_HOURS = 36;
 
 /**
+ * The nightly jobs the console EXPECTS to hear from, beyond the backup (which
+ * gets its own richer tile).
+ *
+ * The expectation is the whole point. ops_heartbeats only has rows for jobs
+ * that have run at least once, so a job that never ran — because a failed dump
+ * aborted the workflow before reaching it, or because GitHub disabled the
+ * schedule after 60 days of repo inactivity — is simply ABSENT from the data.
+ * Listing what should be there turns that absence into a red tile instead of
+ * nothing at all.
+ *
+ * Same 36-hour window as the backup: all of these fire at 02:30 daily, so a day
+ * and a half means it stopped, not that it ran late.
+ */
+type ScheduledJob = {
+  kind: string;
+  label: string;
+  /** One line of what it did last night, from the heartbeat's detail. */
+  describe: (detail: Record<string, unknown>) => string;
+  /** Ran, but not cleanly — worth a warn even when the timestamp is fresh. */
+  degraded?: (detail: Record<string, unknown>) => boolean;
+};
+
+function count(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Sums every `deleted`/`logs_deleted` in the retention job's nested per-table results. */
+function totalDeleted(detail: Record<string, unknown>): number {
+  return Object.values(detail ?? {}).reduce<number>((total, entry) => {
+    if (!entry || typeof entry !== "object") return total;
+    const row = entry as Record<string, unknown>;
+    return total + count(row.deleted) + count(row.logs_deleted) + count(row.status_rows_deleted);
+  }, 0);
+}
+
+export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
+  {
+    kind: "recurring_expenses",
+    label: "循環支出",
+    describe: (detail) => {
+      const failed = count(detail?.failed);
+      const created = count(detail?.created);
+      // A failed rule is deactivated with its error stored, so it stops
+      // producing expenses quietly. Say so here or nobody finds out.
+      return failed > 0 ? `新增 ${created} 筆・${failed} 條規則失敗` : `上次新增 ${created} 筆`;
+    },
+    degraded: (detail) => count(detail?.failed) > 0,
+  },
+  {
+    kind: "retention",
+    label: "資料保留",
+    describe: (detail) => {
+      const deleted = totalDeleted(detail);
+      return deleted > 0 ? `上次清理 ${deleted.toLocaleString("zh-TW")} 列` : "沒有到期的資料";
+    },
+  },
+];
+
+/**
+ * An ABSENT `jobs` field and an EMPTY one mean opposite things, and conflating
+ * them turns this whole feature into a false alarm.
+ *
+ *   undefined -> the API predates this field. It knows nothing about job
+ *                heartbeats, so the console must say nothing about them.
+ *   []        -> the API does report them and there are none. That is the real
+ *                "never ran", and the thing worth shouting about.
+ *
+ * Same convention as `errors.open_groups`.
+ */
+export function scheduledJobTiles(health: AdminHealthSummary, nowMs: number): HealthTile[] {
+  const jobs = health.jobs;
+
+  if (!jobs) return [];
+
+  return SCHEDULED_JOBS.map((job) => {
+    const beat = jobs.find((entry) => entry.kind === job.kind);
+    const ageHours = beat ? (nowMs - Date.parse(beat.last_success_at)) / 3_600_000 : null;
+    const degraded = beat ? Boolean(job.degraded?.(beat.detail)) : false;
+
+    return {
+      key: `job:${job.kind}`,
+      label: job.label,
+      value: beat ? describeLastSeen(beat.last_success_at, nowMs) : "從未",
+      // "Never" is not "unknown": it means this job has not run once, which is
+      // the state that used to be invisible.
+      hint: beat ? job.describe(beat.detail) : "每日 02:30 排程，但從未回報",
+      tone: ageHours === null ? "bad" : ageHours > BACKUP_STALE_HOURS ? "warn" : degraded ? "warn" : "ok",
+    };
+  });
+}
+
+/**
  * The ops card. Each tile answers one question that currently requires opening
  * a different dashboard: did last night's backup run, is the rate limiter
  * turning anyone away, is the app throwing errors, is feedback piling up.
@@ -273,6 +366,7 @@ export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTi
       // confirmed a backup exists, which is the worst of the three states.
       tone: backupAgeHours === null ? "bad" : backupAgeHours > BACKUP_STALE_HOURS ? "warn" : "ok",
     },
+    ...scheduledJobTiles(health, nowMs),
     {
       key: "errors",
       label: "前端錯誤（24 小時）",
@@ -357,6 +451,32 @@ export function inboxItems(health: AdminHealthSummary, nowMs: number): InboxItem
       route: null,
       tone: "bad",
     });
+  }
+
+  // Same undefined-vs-empty distinction as scheduledJobTiles: an API that does
+  // not report heartbeats must not produce "never ran" alarms.
+  for (const job of health.jobs ? SCHEDULED_JOBS : []) {
+    const beat = health.jobs!.find((entry) => entry.kind === job.kind);
+    const ageHours = beat ? (nowMs - Date.parse(beat.last_success_at)) / 3_600_000 : null;
+
+    if (ageHours === null || ageHours > BACKUP_STALE_HOURS) {
+      items.push({
+        key: `job:${job.kind}`,
+        label: ageHours === null ? `${job.label}從未執行` : `${job.label}排程已逾時`,
+        count: null,
+        // Fixed in GitHub Actions, like the backup - no tab to link to.
+        route: null,
+        tone: "bad",
+      });
+    } else if (job.degraded?.(beat!.detail)) {
+      items.push({
+        key: `job:${job.kind}:degraded`,
+        label: `${job.label}有失敗的項目`,
+        count: null,
+        route: null,
+        tone: "warn",
+      });
+    }
   }
 
   return items;

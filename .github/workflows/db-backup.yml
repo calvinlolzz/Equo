@@ -102,58 +102,62 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
             "select public.record_ops_heartbeat('db_backup', jsonb_build_object('bytes', ${{ env.backup_bytes }}::bigint, 'artifact', 'equo-db-${{ env.stamp }}', 'run_id', '${{ github.run_id }}'));"
 
-      # Retention for the in-app inbox. Deliberately AFTER the dump, so anything
-      # this removes is already inside tonight's backup — and here rather than
-      # in pg_cron so a failure turns this workflow red instead of going quiet
-      # inside the database. Only READ notifications age out; an unread one has
-      # not done its job yet.
-      - name: Purge read notifications older than 7 days
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          set -euo pipefail
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_read_notifications(7);"
-
-      # Retention for the receipt-scan usage ledger. Same placement and same
-      # reasoning as the purge above: after the dump, and here rather than in
-      # pg_cron so a failure is visible. A year is well past the console's
-      # widest window (180 days), so nothing this removes was still readable.
-      - name: Purge receipt scan logs older than a year
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          set -euo pipefail
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_receipt_scan_logs(365);"
-
-      # The three tables that used to have no retention at all: crash reports,
-      # idempotency keys, and dead invite codes. One step rather than three so
-      # the run log shows all three counts together, and after the dump like
-      # everything else here — anything this removes is already inside tonight's
-      # backup.
+      # Everything past its retention window, in one step and under one
+      # heartbeat.
       #
-      # Only DEAD invites are eligible (revoked / used up / expired); a live
-      # code is never deleted however old, because the link is still in
-      # somebody's chat. See the migration for the reasoning on each window.
+      # Deliberately AFTER the dump, and inheriting the default "a failed step
+      # aborts the job": these are DELETES, so they must not run on a night the
+      # backup did not succeed. That ordering is the whole reason they live here
+      # rather than in pg_cron, where a failure would go quiet inside the
+      # database instead of turning this workflow red.
+      #
+      # Only READ notifications age out (an unread one has not done its job),
+      # and only DEAD invites (revoked / used up / expired) — a live invite code
+      # is never deleted however old, because the link is still sitting in
+      # somebody's chat. See the migrations for the window on each table.
+      #
+      # The counts ride out as the heartbeat's detail, so the console can show
+      # what last night actually removed.
       - name: Purge records past their retention window
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1             -c "select public.purge_error_logs(90);"             -c "select public.purge_client_requests(90);"             -c "select public.purge_dead_invites(90);"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            select public.record_ops_heartbeat('retention', jsonb_build_object(
+              'notifications',   public.purge_read_notifications(7),
+              'scan_logs',       public.purge_receipt_scan_logs(365),
+              'error_logs',      public.purge_error_logs(90),
+              'client_requests', public.purge_client_requests(90),
+              'invites',         public.purge_dead_invites(90)
+            ));"
 
-      # 循環支出: turn every rule that has come due into a real expense. Same
-      # reasoning as the purge above for living here rather than in pg_cron —
-      # a failure has to be visible. Idempotent by construction (each period
-      # writes a deterministic client_request_id, so a re-run returns the
-      # existing expense instead of double-billing), which is what makes it
-      # safe to sit in a workflow that can be re-run by hand.
+      # 循環支出: turn every rule that has come due into a real expense.
+      #
+      # `if: always()` is the point of this step's existence being separate from
+      # the ones above. This is the only USER-FACING thing the nightly run does
+      # — somebody's rent showing up in their ledger — and it was silently
+      # hostage to the backup: the steps run in sequence, so a failed dump
+      # aborted the job and the rent simply never appeared, with the only signal
+      # being an alert about backups. Creating an expense does not need a fresh
+      # dump to be safe, so it runs either way and reports separately.
+      #
+      # Idempotent by construction (each period writes a deterministic
+      # client_request_id, so a re-run returns the existing expense instead of
+      # double-billing), which is what makes it safe to run unconditionally and
+      # to re-run by hand.
+      #
+      # The function's own {created, failed, skipped} becomes the heartbeat
+      # detail. `failed` is worth watching: a rule that raises is deactivated
+      # with its error stored, so without this it would stop producing expenses
+      # and nobody would know.
       - name: Materialise due recurring expenses
+        if: always()
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
-            "select public.materialise_recurring_expenses();"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.record_ops_heartbeat('recurring_expenses', public.materialise_recurring_expenses());"
 
       - name: Upload encrypted dump
         uses: actions/upload-artifact@v4

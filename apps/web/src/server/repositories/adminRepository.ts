@@ -29,6 +29,15 @@ export type AdminHealthRecord = {
   /** null until the backup workflow has recorded its first success. */
   backup: { last_success_at: string; detail: Record<string, unknown> } | null;
   /**
+   * Every ops_heartbeats row, db_backup included. Which jobs are EXPECTED (and
+   * how stale is too stale) is the console's call, not the database's — a job
+   * that has never run has no row here at all, and that absence is exactly the
+   * failure worth showing.
+   *
+   * Optional so a console deployed ahead of the migration renders without it.
+   */
+  jobs?: Array<{ kind: string; last_success_at: string; detail: Record<string, unknown> }>;
+  /**
    * Receipt recognition's live configuration. `configured` is a property of the
    * deployment (is ANTHROPIC_API_KEY set) and `enabled` is the console's own
    * switch — kept apart because the fixes are completely different, and both

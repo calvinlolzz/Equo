@@ -1057,6 +1057,8 @@ export type AdminTrendsSummary = {
 export type AdminHealthSummary = {
   /** null until the backup workflow has recorded its first success. */
   backup: { last_success_at: string; detail: Record<string, unknown> } | null;
+  /** Every ops_heartbeats row. Absent on an API deployed before this shipped. */
+  jobs?: Array<{ kind: string; last_success_at: string; detail: Record<string, unknown> }>;
   rate_limit: { active_buckets: number; blocked_24h: number };
   errors: {
     last_24h: number;

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  scheduledJobTiles,
+  inboxItems,
+  healthTiles,
   adminRoleLabel,
   auditActionLabel,
   auditTargetText,
@@ -332,5 +335,93 @@ describe("the receipt-scan usage panel", () => {
 
     expect(tiles.find((tile) => tile.key === "recognised")?.value).toBe("—");
     expect(tiles.find((tile) => tile.key === "failed")?.value).toBe("—");
+  });
+});
+
+describe("scheduled job heartbeats", () => {
+  const now = Date.parse("2026-08-24T03:00:00.000Z");
+  const fresh = "2026-08-23T18:30:00.000Z"; // last night's 02:30 Taipei run
+
+  const health = {
+    backup: { last_success_at: fresh, detail: { bytes: 77_904 } },
+    jobs: [
+      { kind: "db_backup", last_success_at: fresh, detail: { bytes: 77_904 } },
+      { kind: "recurring_expenses", last_success_at: fresh, detail: { created: 2, failed: 0, skipped: 0 } },
+      { kind: "retention", last_success_at: fresh, detail: { invites: { deleted: 3 }, error_logs: { logs_deleted: 4 } } },
+    ],
+    rate_limit: { active_buckets: 0, blocked_24h: 0 },
+    errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
+    feedback: { open: 0 },
+  };
+
+  test("a job that has never run reads as bad, not as absent", () => {
+    // THE case this exists for: a failed dump aborts the workflow before the
+    // recurring step, so ops_heartbeats simply has no row - and until now that
+    // showed as nothing at all while somebody's rent quietly never appeared.
+    const tiles = scheduledJobTiles({ ...health, jobs: [health.jobs[0]] }, now);
+    const recurring = tiles.find((tile) => tile.key === "job:recurring_expenses");
+
+    expect(recurring).toMatchObject({ value: "從未", tone: "bad" });
+  });
+
+  test("a fresh run is ok and says what it did", () => {
+    const tiles = scheduledJobTiles(health, now);
+
+    expect(tiles.find((tile) => tile.key === "job:recurring_expenses")).toMatchObject({
+      tone: "ok",
+      hint: "上次新增 2 筆",
+    });
+    expect(tiles.find((tile) => tile.key === "job:retention")?.hint).toBe("上次清理 7 列");
+  });
+
+  test("a run older than a day and a half has stopped, not run late", () => {
+    const stale = [{ kind: "recurring_expenses", last_success_at: "2026-08-20T18:30:00.000Z", detail: {} }];
+    const tiles = scheduledJobTiles({ ...health, jobs: stale }, now);
+
+    expect(tiles.find((tile) => tile.key === "job:recurring_expenses")?.tone).toBe("warn");
+  });
+
+  test("a fresh run that deactivated a rule still warns", () => {
+    // The rule is switched off with its error stored, so it stops producing
+    // expenses silently. A green tile over that would be a lie.
+    const jobs = [{ kind: "recurring_expenses", last_success_at: fresh, detail: { created: 1, failed: 2 } }];
+    const tiles = scheduledJobTiles({ ...health, jobs }, now);
+
+    expect(tiles.find((tile) => tile.key === "job:recurring_expenses")).toMatchObject({
+      tone: "warn",
+      hint: "新增 1 筆・2 條規則失敗",
+    });
+  });
+
+  test("an absent jobs field says nothing, an empty one says never-run", () => {
+    // These mean opposite things. `undefined` is an API that predates the
+    // field and knows nothing about heartbeats - claiming every job has never
+    // run would be a false alarm on every old deployment. `[]` is an API that
+    // does report them and has none, which is the real failure.
+    expect(scheduledJobTiles({ ...health, jobs: undefined }, now)).toEqual([]);
+    expect(inboxItems({ ...health, jobs: undefined }, now)).toEqual([]);
+
+    const empty = scheduledJobTiles({ ...health, jobs: [] }, now);
+    expect(empty).toHaveLength(2);
+    expect(empty.every((tile) => tile.tone === "bad")).toBe(true);
+    expect(inboxItems({ ...health, jobs: [] }, now)).toHaveLength(2);
+  });
+
+  test("the health tiles carry the jobs alongside the backup", () => {
+    const keys = healthTiles(health, now).map((tile) => tile.key);
+
+    expect(keys).toContain("backup");
+    expect(keys).toContain("job:recurring_expenses");
+    expect(keys).toContain("job:retention");
+  });
+
+  test("a stopped job becomes something to do, not just a colour", () => {
+    const items = inboxItems({ ...health, jobs: [health.jobs[0]] }, now);
+
+    expect(items.map((item) => item.label)).toContain("循環支出從未執行");
+  });
+
+  test("a good night leaves the inbox empty", () => {
+    expect(inboxItems(health, now)).toEqual([]);
   });
 });
