@@ -125,6 +125,22 @@ jobs:
           set -euo pipefail
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_receipt_scan_logs(365);"
 
+      # The three tables that used to have no retention at all: crash reports,
+      # idempotency keys, and dead invite codes. One step rather than three so
+      # the run log shows all three counts together, and after the dump like
+      # everything else here — anything this removes is already inside tonight's
+      # backup.
+      #
+      # Only DEAD invites are eligible (revoked / used up / expired); a live
+      # code is never deleted however old, because the link is still in
+      # somebody's chat. See the migration for the reasoning on each window.
+      - name: Purge records past their retention window
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1             -c "select public.purge_error_logs(90);"             -c "select public.purge_client_requests(90);"             -c "select public.purge_dead_invites(90);"
+
       # 循環支出: turn every rule that has come due into a real expense. Same
       # reasoning as the purge above for living here rather than in pg_cron —
       # a failure has to be visible. Idempotent by construction (each period

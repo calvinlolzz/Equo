@@ -31,6 +31,7 @@
 - `pg_dump --schema=public --no-owner --no-privileges` → GPG AES-256 加密 → 上傳成 workflow artifact，保留 **30 天**。
 - 明文 dump 在上傳前就刪掉；artifact 只有 repo 協作者看得到，但因為裡面是所有使用者的財務資料，仍然加密。
 - pg_dump 主版本鎖 **17**（對齊伺服器；client 比 server 舊會直接拒絕）。
+- dump 之後同一個 job 還會跑資料保留（第 2 節）與循環支出的產生。**順序是刻意的**：清掉的東西一定已經在今晚的備份裡。
 
 ### 還原
 
@@ -50,7 +51,31 @@ psql "$TARGET_DB_URL" -f equo.sql
 
 ---
 
-## 2. Uptime 監控
+## 2. 資料保留
+
+沒有保留期的表會一直長。free plan 只有 500 MB，而備份是 workflow artifact，也得小到傳得上去。
+
+清理全部掛在**每晚的備份 workflow**裡，不放 `pg_cron`——理由跟備份本身一樣：跑掛了要看得見（workflow 變紅），而不是安靜地死在資料庫裡。
+
+| 表 | 保留 | 條件 | 函式 |
+|---|---|---|---|
+| `user_notifications` | 7 天 | 只清**已讀**；未讀的還沒完成它的任務 | `purge_read_notifications` |
+| `receipt_scan_logs` | 365 天 | 全部 | `purge_receipt_scan_logs` |
+| `app_error_logs` | 90 天 | 全部，並順帶清掉沒有任何 log 對應的 `app_error_group_status` | `purge_error_logs` |
+| `client_requests` | 90 天 | 全部 | `purge_client_requests` |
+| `invites` | 90 天 | **只清死掉的**（已撤銷／用完／已過期） | `purge_dead_invites` |
+
+三件下手前要知道的事：
+
+1. **`client_requests` 是冪等鍵，刪掉的唯一後果是「重送會變成重複的支出」。** 90 天遠大於真實的重送窗口——危險情境只有「伺服器寫成功了、回應掉了、client 重送」，而離線佇列是一連上線就送，所以重送是幾分鐘幾小時的事，不是幾個月。離線很久的裝置反而沒有風險：伺服器根本沒收過那筆，那是第一次到達不是重播。
+2. **`invites` 絕不能用「超過 N 天就刪」。** 正式庫 29 筆邀請**全部** `expires_at IS NULL`（API 收得下到期時間，app 從來沒送過），所以「清過期的」會一筆都清不到，而「清舊的」會把還能用的邀請連結刪掉——那個連結還躺在別人的聊天室裡。條件必須是「死了」而不是「舊了」。
+3. **每支函式都有 30 天下限**（`greatest(p_days, 30)`），手滑打成 `purge_error_logs(1)` 不會清掉上週的資料。
+
+改動這些函式之後，用「`DO` 區塊裡跑完再 `RAISE` 回滾」驗證，零殘留：把資料 backdate、跑 purge、把數字用 `RAISE EXCEPTION` 帶出來，整個交易回滾。
+
+---
+
+## 3. Uptime 監控
 
 ### 為什麼不要只監控首頁
 
@@ -87,7 +112,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 ---
 
-## 3. 目前沒做的（要花錢或需要決策）
+## 4. 目前沒做的（要花錢或需要決策）
 
 - Supabase Pro + PITR（完整備份、含 `auth.*`、可還原到任意時間點）
 - 錯誤告警：錯誤有寫進 DB 並可在 `/admin` 查看，但沒有主動推播
