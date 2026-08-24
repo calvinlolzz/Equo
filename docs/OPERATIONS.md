@@ -98,7 +98,20 @@ psql "$TARGET_DB_URL" -f equo.sql
 
 ---
 
-## 4. Uptime 監控
+## 4. 索引：advisor 說的不能照單全收
+
+Supabase 的 performance advisor 有兩條規則會互相打架，2026-08-24 補完外鍵索引之後就同時出現了：
+
+- **`unindexed_foreign_keys`**：八個外鍵沒有覆蓋索引。**這條值得修**，但理由不是它的名字暗示的那個——那八個欄位**沒有任何查詢會讀**。它們的用途是反方向：**父列被刪掉時，Postgres 要證明沒有子列還參照它**，沒索引就是整張子表 seq scan。實測 20 萬列的子表，刪一列父列 **16.9 ms → 0.4 ms**。碰到全部八個的操作只有一個：刪帳號。
+- **`unused_index`**：同樣那八個索引「從未被使用」。**這條要無視。** 它們是為了「刪父列」而存在的，而正式庫還沒有人刪過帳號；等到有人刪的時候才建就太晚了。`user_notifications_batch_idx` / `read_at_idx` 同理——它們服務的是保留期清理，在只有幾列的表上 Postgres 本來就會選 seq scan。
+
+判準：**索引為了「會發生但還沒發生」的操作而存在時，`unused_index` 沒有資訊量。** 要判斷該不該留，看的是有沒有一條真實路徑會用到它，不是 `pg_stat_user_indexes` 的計數器。
+
+稀疏欄位用**部分索引**（`WHERE col IS NOT NULL`）：`col = $1` 永遠不會配到 NULL，所以排除 NULL 沒有代價，而索引大小只跟「可能配到的列」成正比——那張 20 萬列的子表只有 1% 非 NULL，索引 32 kB。`expenses.payer_id` / `created_by` 是 FloatPay 時代的遺留欄位，`create_expense` 根本不寫，所以會永遠停在 7 列。
+
+---
+
+## 5. Uptime 監控
 
 ### 為什麼不要只監控首頁
 
@@ -135,7 +148,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 ---
 
-## 5. 目前沒做的（要花錢或需要決策）
+## 6. 目前沒做的（要花錢或需要決策）
 
 - Supabase Pro + PITR（完整備份、含 `auth.*`、可還原到任意時間點）
 - 錯誤告警：錯誤有寫進 DB 並可在 `/admin` 查看，但沒有主動推播
