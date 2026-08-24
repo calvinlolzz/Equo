@@ -12,6 +12,7 @@ import {
   handleAdminSaveCurrency,
   handleAdminSetRateOverride,
   handleAdminGetReceiptScanSettings,
+  handleAdminReceiptScanUsage,
   handleAdminGroupDetail,
   handleAdminHealth,
   handleAdminMergeUsers,
@@ -192,6 +193,16 @@ export async function adminRemoveAdminRoute(options: RouteOptions, userId: strin
   }
 
   return handleAdminRemoveAdmin(createSupabaseAdminRepository(options.client), auth.context, userId);
+}
+
+export async function adminReceiptScanUsageRoute(options: RouteOptions, days: string | undefined) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminReceiptScanUsage(createSupabaseAdminRepository(options.client), auth.context, days);
 }
 
 export async function adminStorageRoute(options: RouteOptions) {

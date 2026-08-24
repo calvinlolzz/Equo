@@ -27,6 +27,7 @@ import type {
   AdminHealthRecord,
   AdminOverviewRecord,
   AdminRepository,
+  AdminScanUsageRecord,
   AdminStorageRecord,
   AdminTrendsRecord,
   AdminUserDetailRecord,
@@ -84,6 +85,10 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
 
     getStorage() {
       return client.rpc<AdminStorageRecord>("admin_console_storage", {});
+    },
+
+    getReceiptScanUsage(days) {
+      return client.rpc<AdminScanUsageRecord>("admin_console_receipt_scan_usage", { p_days: days });
     },
 
     listUsers(search, limit, offset) {

@@ -13,6 +13,21 @@ export type ReceiptScanModel = {
    * because that is the only reason anybody switches.
    */
   note: string;
+  /**
+   * List price in USD per million tokens, used to turn a scan's token counts
+   * into the console's spend estimate.
+   *
+   * Deliberately here rather than in the database: the price belongs to the
+   * model, the model list is already a property of the deployed code, and a
+   * pricing table somebody has to remember to update separately is a pricing
+   * table that goes stale silently.
+   *
+   * An estimate, and it rounds up rather than down. Claude Sonnet 5 carries
+   * introductory pricing ($2/$10) until 2026-08-31; the standard rate is used
+   * so the number never under-reports what the next invoice will say.
+   */
+  usdPerMTokIn: number;
+  usdPerMTokOut: number;
 };
 
 /**
@@ -29,12 +44,15 @@ export type ReceiptScanModel = {
  * option the one model this endpoint cannot run on.
  */
 export const RECEIPT_SCAN_MODELS: readonly ReceiptScanModel[] = [
-  { id: "claude-haiku-4-5", provider: "anthropic", note: "付費・最便宜，約 US$0.003 一次" },
-  { id: "claude-sonnet-5", provider: "anthropic", note: "付費・辨識較準，模糊或小字收據用" },
-  { id: "claude-opus-5", provider: "anthropic", note: "付費・最準也最貴" },
+  { id: "claude-haiku-4-5", provider: "anthropic", note: "付費・最便宜，約 US$0.003 一次", usdPerMTokIn: 1, usdPerMTokOut: 5 },
+  { id: "claude-sonnet-5", provider: "anthropic", note: "付費・辨識較準，模糊或小字收據用", usdPerMTokIn: 3, usdPerMTokOut: 15 },
+  { id: "claude-opus-5", provider: "anthropic", note: "付費・最準也最貴", usdPerMTokIn: 5, usdPerMTokOut: 25 },
   // Free of charge, and not free of consequences - see the terms warning the
   // console shows next to it. Kept last so it is a deliberate choice.
-  { id: "gemini-3.6-flash", provider: "google", note: "免費層・Google 會用來訓練且真人可能閱讀" },
+  // Zero-rated on purpose: the free tier's price really is nothing, and the
+  // console's spend chart going flat while scan volume climbs is the honest
+  // picture of what switching to it did.
+  { id: "gemini-3.6-flash", provider: "google", note: "免費層・Google 會用來訓練且真人可能閱讀", usdPerMTokIn: 0, usdPerMTokOut: 0 },
 ];
 
 /** Cheapest paid option; recognition is perception, not reasoning. */
@@ -303,6 +321,16 @@ async function callAnthropic(apiKey: string, { dataUrl, currency, model }: ScanI
     throw new ReceiptScanUnavailableError(`Receipt recognition upstream failed: ${(error as Error).message}`);
   }
 
+  // Recorded before the refusal check below: a declined request still spent
+  // input tokens, and a scan that cost money has to appear in the spend report
+  // whether or not it produced an answer.
+  lastScanUsage = {
+    ...EMPTY_USAGE,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    attempts: 1,
+  };
+
   // Safety classifiers answer with a 200 and an empty content array, so
   // reading content[0] before checking stop_reason would throw on a refusal.
   if (response.stop_reason === "refusal") {
@@ -315,13 +343,6 @@ async function callAnthropic(apiKey: string, { dataUrl, currency, model }: ScanI
 
 type GeminiStep = { type?: string; content?: Array<{ type?: string; text?: string }> };
 
-/** How many attempts the last Gemini call needed. Read by the route for the log line. */
-let lastGeminiAttempts = 0;
-
-export function readLastGeminiAttempts(): number {
-  return lastGeminiAttempts;
-}
-
 type GeminiUsage = {
   total_thought_tokens?: number;
   total_output_tokens?: number;
@@ -331,18 +352,77 @@ type GeminiUsage = {
 };
 
 /**
- * What the last Gemini call spent on thinking, for the route to log.
+ * What the last scan spent, in the one shape both providers can fill.
+ *
+ * Anything a provider does not report stays null rather than becoming 0: a
+ * missing number and a genuine zero mean opposite things on a spend chart, and
+ * Anthropic does not break out image tokens the way Gemini does.
+ */
+export type ScanUsage = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  /** Reasoning tokens. Gemini reports these separately; Anthropic folds them into output. */
+  thoughtTokens: number | null;
+  /**
+   * Image tokens, not bytes, are what a vision model actually spends time on:
+   * an 87 KB JPEG can still be 1600px on its long edge and cost a pile of
+   * tiles. Gemini-only — this is what tells downscaling apart from everything else.
+   */
+  imageTokens: number | null;
+  /** How many upstream attempts this scan needed (Gemini retries once when unanswered). */
+  attempts: number;
+};
+
+const EMPTY_USAGE: ScanUsage = {
+  inputTokens: null,
+  outputTokens: null,
+  thoughtTokens: null,
+  imageTokens: null,
+  attempts: 0,
+};
+
+/**
+ * What the last scan cost, for the route to log and record.
  *
  * Module-level and overwritten per call, which is fine because it is only ever
  * read immediately afterwards by the same request - and it keeps the scanner's
- * return type the response contract rather than a diagnostics envelope. If
- * thinking_level were being ignored these numbers would stay high, which is the
- * only way to tell from outside.
+ * return type the response contract rather than a diagnostics envelope.
+ *
+ * Reset at the top of every scan, so a failed call reports its own emptiness
+ * instead of the previous request's numbers. That matters more now than when
+ * this was only a log line: these figures are written to receipt_scan_logs, and
+ * a failure inheriting the last success's token counts would bill a scan that
+ * never happened.
  */
-let lastGeminiUsage: GeminiUsage = {};
+let lastScanUsage: ScanUsage = EMPTY_USAGE;
 
-export function readLastGeminiUsage(): GeminiUsage {
-  return lastGeminiUsage;
+export function readLastScanUsage(): ScanUsage {
+  return lastScanUsage;
+}
+
+function findModality(usage: GeminiUsage, modality: string): number | null {
+  return usage.input_tokens_by_modality?.find((entry) => entry.modality === modality)?.tokens ?? null;
+}
+
+/**
+ * The estimated cost of one scan, in millionths of a USD.
+ *
+ * Micro-dollars because a Haiku scan is roughly US$0.0005 — in cents it would
+ * round to zero, and a column of zeros is not a cost report. An integer, so the
+ * database column can be one too and a month's total never drifts the way a
+ * summed float does. Unknown token counts return null rather than 0: "we did
+ * not measure this" is not "this was free".
+ */
+export function estimateScanCostMicros(model: string, usage: ScanUsage): number | null {
+  const entry = findReceiptScanModel(model);
+
+  if (!entry || usage.inputTokens === null || usage.outputTokens === null) return null;
+
+  // Gemini's thought tokens are billed as output where they are billed at all;
+  // on the free tier every rate is zero and this whole sum collapses anyway.
+  const output = usage.outputTokens + (usage.thoughtTokens ?? 0);
+  const usd = (usage.inputTokens * entry.usdPerMTokIn + output * entry.usdPerMTokOut) / 1_000_000;
+  return Math.round(usd * 1_000_000);
 }
 
 /** Thrown by a single attempt when nothing came back at all, so the caller knows a retry is worth it. */
@@ -405,7 +485,14 @@ async function callGeminiOnce(apiKey: string, { dataUrl, currency, model }: Scan
   }
 
   const body = (await response.json()) as { steps?: GeminiStep[]; usage?: GeminiUsage };
-  lastGeminiUsage = body.usage ?? {};
+  const usage = body.usage ?? {};
+  lastScanUsage = {
+    inputTokens: usage.total_input_tokens ?? null,
+    outputTokens: usage.total_output_tokens ?? null,
+    thoughtTokens: usage.total_thought_tokens ?? null,
+    imageTokens: findModality(usage, "image"),
+    attempts: lastScanUsage.attempts,
+  };
   // Search for the model_output step instead of indexing steps[0]: the array is
   // a timeline that can also carry thoughts and tool steps, and which of those
   // appear is not ours to control.
@@ -436,7 +523,9 @@ async function callGemini(apiKey: string, input: ScanInput): Promise<string> {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
-    lastGeminiAttempts = attempt;
+    // Set before the call, so callGeminiOnce carries it through when it
+    // overwrites the record with the usage the upstream reported.
+    lastScanUsage = { ...lastScanUsage, attempts: attempt };
     try {
       return await callGeminiOnce(apiKey, input);
     } catch (error) {
@@ -479,6 +568,10 @@ export function createReceiptScanner(keys: ReceiptScanKeys): ReceiptScanner | un
     // Guard here as well as at the route: this is the last point before a real
     // request is spent, and an unknown model id fails as a 404 per scan rather
     // than anywhere a user would see.
+    // Clear the previous call's numbers first: everything below can throw, and
+    // a failure must not inherit the last success's token counts.
+    lastScanUsage = EMPTY_USAGE;
+
     const entry = findReceiptScanModel(model) ?? findReceiptScanModel(RECEIPT_SCAN_DEFAULT_MODEL)!;
     const apiKey = entry.provider === "anthropic" ? keys.anthropic : keys.google;
 

@@ -114,6 +114,17 @@ jobs:
           set -euo pipefail
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_read_notifications(7);"
 
+      # Retention for the receipt-scan usage ledger. Same placement and same
+      # reasoning as the purge above: after the dump, and here rather than in
+      # pg_cron so a failure is visible. A year is well past the console's
+      # widest window (180 days), so nothing this removes was still readable.
+      - name: Purge receipt scan logs older than a year
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c             "select public.purge_receipt_scan_logs(365);"
+
       # 循環支出: turn every rule that has come due into a real expense. Same
       # reasoning as the purge above for living here rather than in pg_cron —
       # a failure has to be visible. Idempotent by construction (each period

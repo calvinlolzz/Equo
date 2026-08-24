@@ -3,6 +3,7 @@ import type {
   AdminExpenseRow,
   AdminHealthSummary,
   AdminOverviewSummary,
+  AdminScanUsage,
   AdminStorageSummary,
   AdminTrendPoint,
 } from "./apiClient";
@@ -60,6 +61,93 @@ export function storageTiles(storage: AdminStorageSummary): StorageTile[] {
       value: storage.orphan_count.toLocaleString("zh-TW"),
       hint: storage.orphan_count > 0 ? `占用 ${formatBytes(storage.orphan_bytes)}` : "沒有未引用的圖片",
       danger: storage.orphan_count > 0,
+    },
+  ];
+}
+
+/**
+ * Spend, from millionths of a USD to something a person reads.
+ *
+ * The scale spans four orders of magnitude — one Haiku scan is US$0.0005 and a
+ * busy month is a few dollars — so a fixed number of decimals is wrong at one
+ * end or the other. Sub-cent totals get four decimals rather than rounding to
+ * "$0.00", which would read as "this is free" when it is not.
+ */
+export function formatUsdMicros(micros: number): string {
+  if (!Number.isFinite(micros) || micros <= 0) return "$0";
+  const usd = micros / 1_000_000;
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+/** Latency in the unit it is read in: milliseconds under a second, seconds above. */
+export function formatLatency(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "—";
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+/**
+ * Share of scans that failed outright, as a percentage.
+ *
+ * Only 'failed' counts. An 'unrecognised' scan is the model working correctly
+ * and reporting an unreadable photo — folding it in here would make a blurry
+ * camera look like an outage.
+ */
+export function scanFailureRate(summary: AdminScanUsage["summary"]): number {
+  return summary.scans === 0 ? 0 : Math.round((summary.failed / summary.scans) * 1000) / 10;
+}
+
+export type ScanUsageTile = {
+  key: string;
+  label: string;
+  value: string;
+  hint?: string;
+  danger?: boolean;
+};
+
+/**
+ * The scan panel's headline row.
+ *
+ * The failure tile turns red past 10%: below that a receipt endpoint is having
+ * a normal day (photos are taken in restaurants, in the dark, at an angle);
+ * above it something upstream is wrong and somebody should look.
+ */
+export function scanUsageTiles(usage: AdminScanUsage): ScanUsageTile[] {
+  const { summary } = usage;
+  const failureRate = scanFailureRate(summary);
+
+  return [
+    {
+      key: "scans",
+      label: "掃描次數",
+      value: summary.scans.toLocaleString("zh-TW"),
+      hint: `${summary.users} 位使用者`,
+    },
+    {
+      key: "recognised",
+      label: "成功辨識",
+      value: summary.scans === 0 ? "—" : `${Math.round((summary.recognised / summary.scans) * 100)}%`,
+      hint: `讀不出來 ${summary.unrecognised} 次`,
+    },
+    {
+      key: "failed",
+      label: "失敗率",
+      value: summary.scans === 0 ? "—" : `${failureRate}%`,
+      hint: `${summary.failed} 次呼叫失敗`,
+      danger: failureRate > 10,
+    },
+    {
+      key: "latency",
+      label: "辨識耗時（中位數）",
+      value: formatLatency(summary.p50_ms),
+      hint: `p95 ${formatLatency(summary.p95_ms)}`,
+    },
+    {
+      key: "cost",
+      label: "估算花費",
+      value: formatUsdMicros(summary.cost_micros),
+      hint: `近 ${usage.days} 天`,
     },
   ];
 }

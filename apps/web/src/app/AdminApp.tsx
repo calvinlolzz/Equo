@@ -24,6 +24,7 @@ import {
   type AdminSentNotificationPage,
   type AdminOverviewSummary,
   type AdminReceiptScanSettings,
+  type AdminScanUsage,
   type AdminStorageSummary,
   type AdminTrendsSummary,
   type AdminUserDetail,
@@ -53,6 +54,8 @@ import {
   formatDate,
   formatDateTime,
   formatExpenseAmount,
+  formatLatency,
+  formatUsdMicros,
   healthTiles,
   inboxItems,
   inviteStatus,
@@ -60,6 +63,7 @@ import {
   overviewTiles,
   pageInfo,
   payerSummary,
+  scanUsageTiles,
   shareTypeLabel,
   storageTiles,
   trendChart,
@@ -3386,8 +3390,169 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
         </form>
       )}
 
+      <ScanUsageSection client={client} />
+
       <CatalogSection client={client} canEdit={canEdit} />
     </section>
+  );
+}
+
+/**
+ * What receipt recognition actually did, and what it cost.
+ *
+ * Directly under the switch that controls it, because the two are one thought:
+ * the reason the kill switch exists is per-call spend, and until now the switch
+ * was here while every number about it was in Vercel's log drain — ageing out,
+ * un-aggregatable, and invisible to whoever had to decide whether to flip it.
+ *
+ * The rate limit (30/hour/user) had the same blind spot: enforced, with no way
+ * to see whether anybody was hitting it. That is what 掃描最多的使用者 answers.
+ */
+function ScanUsageSection({ client }: { client: EquoApiClient }) {
+  const [days, setDays] = useState(30);
+  const [usage, setUsage] = useState<AdminScanUsage | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    setUsage(null);
+    client
+      .adminScanUsage(days)
+      .then((result) => {
+        if (!cancelled) setUsage(result);
+      })
+      .catch(() => {
+        if (!cancelled) setError("用量載入失敗，可能是資料庫尚未套用 receipt_scan_logs migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, days]);
+
+  return (
+    <div className="admin-settings-card">
+      <div className="admin-subheading-row">
+        <h3 className="admin-subheading">辨識用量</h3>
+        <div className="admin-chips">
+          {TREND_WINDOWS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={option === days ? "admin-chip admin-chip--active" : "admin-chip"}
+              onClick={() => setDays(option)}
+            >
+              {`${option} 日`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <p className="admin-error">{error}</p>}
+      {!usage && !error && <p className="admin-loading">載入中…</p>}
+
+      {usage && (
+        <>
+          <div className="admin-tiles">
+            {scanUsageTiles(usage).map((tile) => (
+              <article key={tile.key} className={tile.danger ? "admin-tile admin-tile--danger" : "admin-tile"}>
+                <p className="admin-tile__label">{tile.label}</p>
+                <p className="admin-tile__value">{tile.value}</p>
+                {tile.hint && <p className="admin-tile__hint">{tile.hint}</p>}
+              </article>
+            ))}
+          </div>
+
+          {usage.summary.scans === 0 ? (
+            <p className="admin-muted">{`近 ${usage.days} 天沒有任何掃描。`}</p>
+          ) : (
+            <>
+              {/* Per model, because switching model is the one lever this panel
+                  informs — and the only way to see what the last switch did. */}
+              <h4 className="admin-subheading admin-subheading--spaced">依模型</h4>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>模型</th>
+                      <th className="admin-table__num">次數</th>
+                      <th className="admin-table__num">失敗</th>
+                      <th className="admin-table__num">中位耗時</th>
+                      <th className="admin-table__num">花費</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.by_model.map((row) => (
+                      <tr key={row.model}>
+                        <td>{row.model}</td>
+                        <td className="admin-table__num">{row.scans}</td>
+                        <td className="admin-table__num">{row.failed}</td>
+                        <td className="admin-table__num">{formatLatency(row.p50_ms)}</td>
+                        <td className="admin-table__num">{formatUsdMicros(row.cost_micros)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <h4 className="admin-subheading admin-subheading--spaced">掃描最多的使用者</h4>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>使用者</th>
+                      <th className="admin-table__num">次數</th>
+                      <th className="admin-table__num">失敗</th>
+                      <th className="admin-table__num">花費</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.top_users.map((row) => (
+                      <tr key={row.user_id ?? row.email}>
+                        <td>{row.email}</td>
+                        <td className="admin-table__num">{row.scans}</td>
+                        <td className="admin-table__num">{row.failed}</td>
+                        <td className="admin-table__num">{formatUsdMicros(row.cost_micros)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* "12% 失敗" is where the question starts; the upstream's own
+                  message is usually where it ends. */}
+              {usage.recent_failures.length > 0 && (
+                <>
+                  <h4 className="admin-subheading admin-subheading--spaced">最近的失敗</h4>
+                  <div className="admin-table-wrap">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>時間</th>
+                          <th>模型</th>
+                          <th>使用者</th>
+                          <th>原因</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usage.recent_failures.map((row) => (
+                          <tr key={`${row.created_at}_${row.email}`}>
+                            <td>{formatDateTime(row.created_at)}</td>
+                            <td>{row.model}</td>
+                            <td>{row.email}</td>
+                            <td>{row.failure_reason || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

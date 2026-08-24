@@ -84,6 +84,33 @@ const baseRoutes: AdminRoutes = {
     feedback: { open: 0 },
   },
   "GET /admin/trends": { days: 30, points: [] },
+  "GET /admin/scan-usage": {
+    days: 30,
+    summary: {
+      scans: 40,
+      recognised: 30,
+      unrecognised: 6,
+      failed: 4,
+      users: 3,
+      cost_micros: 114_000,
+      p50_ms: 4400,
+      p95_ms: 11800,
+      latest_at: "2026-08-24T01:00:00.000Z",
+    },
+    by_day: [{ day: "2026-08-24", scans: 40, failed: 4, cost_micros: 114_000 }],
+    by_model: [
+      { model: "claude-haiku-4-5", provider: "anthropic", scans: 40, failed: 4, cost_micros: 114_000, p50_ms: 4400 },
+    ],
+    top_users: [{ user_id: "user_alice", email: "alice@example.com", scans: 25, failed: 1, cost_micros: 71_000 }],
+    recent_failures: [
+      {
+        created_at: "2026-08-24T01:00:00.000Z",
+        model: "claude-haiku-4-5",
+        failure_reason: "upstream returned 429",
+        email: "alice@example.com",
+      },
+    ],
+  },
   "GET /admin/users": {
     total: 1,
     users: [
@@ -515,6 +542,47 @@ describe("the settings tab", () => {
 
     await waitFor(() => expect(urls).toContain("PUT /admin/settings/receipt-scan"));
     await screen.findByText(/已關閉收據辨識/);
+  });
+
+  test("shows what recognition actually did and what it cost", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": settings });
+    renderAdmin("?tab=settings");
+
+    // The switch is here because the feature costs money per call; the numbers
+    // that justify flipping it have to be on the same screen.
+    // Wait on a tile, not the heading: the heading is part of the loading state
+    // too, so awaiting it races the fetch and only loses on a slow machine.
+    expect(await screen.findByText("3 位使用者")).toBeTruthy();
+    expect(screen.getByText("辨識用量")).toBeTruthy();
+    // Sub-cent spend stays legible instead of rounding to "$0.00".
+    expect(screen.getAllByText("$0.114").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("4.4 s").length).toBeGreaterThan(0);
+    expect(screen.getByText("4 次呼叫失敗")).toBeTruthy();
+    // Who is spending it — the only way to notice one runaway client.
+    expect(screen.getAllByText("alice@example.com").length).toBeGreaterThan(0);
+    expect(screen.getByText("upstream returned 429")).toBeTruthy();
+  });
+
+  test("a missing usage ledger does not take the kill switch down with it", async () => {
+    const routes: AdminRoutes = { ...baseRoutes, "GET /admin/settings/receipt-scan": settings };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
+        // A console deployed ahead of the migration: this one endpoint 500s
+        // while every other request on the page answers normally.
+        if (path === "/admin/scan-usage") throw new Error("function does not exist");
+        const body = routes[`GET ${path}`];
+        if (body === undefined) throw new Error(`No fake route for "GET ${path}"`);
+        return { ok: true, status: 200, json: async () => body } as Response;
+      }),
+    );
+    renderAdmin("?tab=settings");
+
+    expect(await screen.findByText(/receipt_scan_logs migration/)).toBeTruthy();
+    // The control that stops the spend still works, which is the point.
+    expect(screen.getByLabelText("辨識模型")).toBeTruthy();
   });
 
   test("nothing to save until something actually changed", async () => {

@@ -14,6 +14,7 @@ import {
   handleAdminSetFeedbackStatus,
   handleAdminMe,
   handleAdminOverview,
+  handleAdminReceiptScanUsage,
   handleAdminStorage,
   handleAdminTrends,
   handleAdminHealth,
@@ -145,6 +146,44 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
       return {
         days,
         points: [{ day: "2026-07-29", new_users: 1, active_users: 2, new_groups: 0, expenses: 4 }],
+      };
+    },
+    async getReceiptScanUsage(days) {
+      return {
+        days,
+        summary: {
+          scans: 3,
+          recognised: 1,
+          unrecognised: 1,
+          failed: 1,
+          users: 2,
+          cost_micros: 2850,
+          p50_ms: 4400,
+          p95_ms: 12000,
+          latest_at: "2026-08-24T01:00:00.000Z",
+        },
+        by_day: [{ day: "2026-08-24", scans: 3, failed: 1, cost_micros: 2850 }],
+        by_model: [
+          {
+            model: "claude-haiku-4-5",
+            provider: "anthropic",
+            scans: 2,
+            failed: 1,
+            cost_micros: 2850,
+            p50_ms: 4400,
+          },
+        ],
+        top_users: [
+          { user_id: "user_1", email: "one@example.com", scans: 2, failed: 0, cost_micros: 2850 },
+        ],
+        recent_failures: [
+          {
+            created_at: "2026-08-24T01:00:00.000Z",
+            model: "claude-haiku-4-5",
+            failure_reason: "upstream returned 429",
+            email: "one@example.com",
+          },
+        ],
       };
     },
     async getHealth() {
@@ -286,6 +325,7 @@ describe("admin handlers", () => {
       handleAdminListGroups(repository, context),
       handleAdminStorage(repository, context),
       handleAdminTrends(repository, context, "30"),
+      handleAdminReceiptScanUsage(repository, context, "30"),
       handleAdminHealth(repository, context),
       handleAdminGroupDetail(repository, context, "group_1"),
       handleAdminListGroupExpenses(repository, context, "group_1"),
@@ -308,6 +348,16 @@ describe("admin handlers", () => {
       expect(result.status).toBe(403);
       expect((result.body as { error: { code: string } }).error.code).toBe("ADMIN_FORBIDDEN");
     }
+  });
+
+  test("scan usage answers the requested window, not an arbitrary one", async () => {
+    const wide = await handleAdminReceiptScanUsage(makeRepository(), context, "90");
+    expect((wide.body as { days: number }).days).toBe(90);
+
+    // A hand-typed p_days is a free knob for scanning the whole table, so
+    // anything that is not one of the console's own buttons falls back to 30.
+    const bogus = await handleAdminReceiptScanUsage(makeRepository(), context, "137");
+    expect((bogus.body as { days: number }).days).toBe(30);
   });
 
   test("trends returns the requested window", async () => {

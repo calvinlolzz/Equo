@@ -3,13 +3,16 @@ import type { ScanReceiptRequest } from "../../contracts/schemas.js";
 import { validateScanReceiptRequest } from "../../contracts/validation.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
+import type { ScanLogEntry } from "../repositories/scanLogRepository.js";
+import { createSupabaseScanLogRepository } from "../repositories/supabaseScanLogRepository.js";
 import { createSupabaseSettingsRepository } from "../repositories/supabaseSettingsRepository.js";
 import {
   RECEIPT_SCAN_DEFAULT_MODEL,
   ReceiptScanUnavailableError,
+  estimateScanCostMicros,
+  findReceiptScanModel,
   isReceiptScanModel,
-  readLastGeminiAttempts,
-  readLastGeminiUsage,
+  readLastScanUsage,
   type ReceiptScanner,
 } from "../runtime/receiptScanner.js";
 
@@ -66,6 +69,10 @@ export async function scanReceiptRoute(options: RouteOptions, request: ScanRecei
     return { ok: false, status: 401, body: auth.error };
   }
 
+  // Read out here rather than inside record(): TypeScript does not carry the
+  // union narrowing above into a nested function, and the id is all it needs.
+  const scanUserId = auth.context.user.id;
+
   if (!options.scanReceipt) {
     return unavailable("Receipt recognition is not configured on this deployment.", request.client_request_id);
   }
@@ -91,29 +98,69 @@ export async function scanReceiptRoute(options: RouteOptions, request: ScanRecei
   const model = isReceiptScanModel(settings.model) ? settings.model : fallbackModel;
   const startedAt = Date.now();
 
-  try {
-    const result = await options.scanReceipt({ dataUrl: request.data_url, currency: request.currency, model });
-    // The one number worth having when somebody says "辨識好慢": it separates
-    // the upstream's time from the round trip carrying a ~400 KB photo to get
-    // here, which are fixed in completely different places.
-    const usage = readLastGeminiUsage();
-    // Image tokens, not bytes, are what a vision model actually spends time on:
-    // an 87 KB JPEG can still be 1600px on its long edge and cost a pile of
-    // tiles. Logging both is what tells downscaling apart from everything else.
-    const imageTokens =
-      usage.input_tokens_by_modality?.find((entry) => entry.modality === "image")?.tokens ?? "n/a";
-    console.log(
-      `Receipt scan: model=${model} upstream_ms=${Date.now() - startedAt} bytes=${request.data_url.length} ` +
-        `image_tokens=${imageTokens} input_tokens=${usage.total_input_tokens ?? "n/a"} ` +
-        `thought_tokens=${usage.total_thought_tokens ?? "n/a"} output_tokens=${usage.total_output_tokens ?? "n/a"} ` +
-        `attempts=${readLastGeminiAttempts()} ` +
-        `recognised=${result.recognised}`,
-    );
-    return { ok: true, status: 200, body: result };
-  } catch (error) {
+  /**
+   * Log the call, then record it.
+   *
+   * Both, not one or the other: the log line is what somebody greps during an
+   * incident, and the row is what the console aggregates a month later. The
+   * write is awaited rather than left floating — a serverless function can be
+   * frozen the moment it responds, which drops a detached promise — and it is
+   * one indexed insert in the same region against a call that just spent
+   * seconds upstream.
+   *
+   * Recording is best-effort by design. A scan the user has already paid for
+   * must not turn into an error because the bookkeeping failed, and a
+   * deployment running ahead of this migration has no function to call.
+   */
+  async function record(outcome: ScanLogEntry["outcome"], failureReason?: string) {
+    const usage = readLastScanUsage();
+    const elapsed = Date.now() - startedAt;
+    const costMicros = estimateScanCostMicros(model, usage);
+
     // The photo itself is never logged - a receipt carries a card's last four
     // digits and where somebody was at what time.
-    console.warn(`Receipt recognition failed after ${Date.now() - startedAt}ms:`, (error as Error).message);
+    //
+    // Failures stay at warn so they keep showing up under a log-level filter,
+    // which is how this line was read before it also became a table row.
+    const write = outcome === "failed" ? console.warn : console.log;
+    write(
+      `Receipt scan: model=${model} outcome=${outcome} upstream_ms=${elapsed} bytes=${request.data_url.length} ` +
+        `image_tokens=${usage.imageTokens ?? "n/a"} input_tokens=${usage.inputTokens ?? "n/a"} ` +
+        `thought_tokens=${usage.thoughtTokens ?? "n/a"} output_tokens=${usage.outputTokens ?? "n/a"} ` +
+        `attempts=${usage.attempts} cost_micros=${costMicros ?? "n/a"}` +
+        (failureReason ? ` reason=${failureReason}` : ""),
+    );
+
+    try {
+      await createSupabaseScanLogRepository(options.client).record({
+        userId: scanUserId,
+        model,
+        provider: findReceiptScanModel(model)?.provider ?? "unknown",
+        outcome,
+        failureReason,
+        upstreamMs: elapsed,
+        imageBytes: request.data_url.length,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        thoughtTokens: usage.thoughtTokens,
+        imageTokens: usage.imageTokens,
+        attempts: usage.attempts,
+        costMicros,
+      });
+    } catch (error) {
+      console.warn("Receipt scan usage not recorded:", (error as Error).message);
+    }
+  }
+
+  try {
+    const result = await options.scanReceipt({ dataUrl: request.data_url, currency: request.currency, model });
+    // "Answered, but could not read it" is kept apart from "recognised": it is
+    // the number that says whether the camera guidance is working, and folding
+    // it into either success or failure hides it in both.
+    await record(result.recognised ? "recognised" : "unrecognised");
+    return { ok: true, status: 200, body: result };
+  } catch (error) {
+    await record("failed", (error as Error).message);
     return unavailable(
       error instanceof ReceiptScanUnavailableError
         ? "Receipt recognition is temporarily unavailable."

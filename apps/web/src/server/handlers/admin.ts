@@ -40,6 +40,7 @@ import type {
   AdminHealthRecord,
   AdminOverviewRecord,
   AdminRepository,
+  AdminScanUsageRecord,
   AdminStorageRecord,
   AdminTrendsRecord,
   AdminUserDetailRecord,
@@ -289,6 +290,28 @@ export async function handleAdminHealth(
 
   const health = await repository.getHealth();
   return { ok: true, status: 200, body: receiptScan ? { ...health, receipt_scan: receiptScan } : health };
+}
+
+/**
+ * Receipt recognition's usage, outcomes and spend.
+ *
+ * Reuses resolveTrendDays for the same reason it exists there: an arbitrary
+ * p_days is a free knob for scanning the whole table, and the console only ever
+ * asks for the three windows it has buttons for.
+ */
+export async function handleAdminReceiptScanUsage(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  days: string | undefined,
+): Promise<HandlerResult<AdminScanUsageRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const usage = await repository.getReceiptScanUsage(resolveTrendDays(days));
+  return { ok: true, status: 200, body: usage };
 }
 
 export async function handleAdminStorage(

@@ -69,6 +69,44 @@ export type AdminStorageRecord = {
   orphan_bytes: number;
 };
 
+/**
+ * Receipt recognition's usage ledger, rolled up for the console.
+ *
+ * Spend is carried in millionths of a USD everywhere below. A single Haiku scan
+ * costs about US$0.0005, which rounds to zero in cents; the client divides once
+ * at the point of display.
+ */
+export type AdminScanUsageRecord = {
+  /** The window actually returned, after the server clamped the request. */
+  days: number;
+  summary: {
+    scans: number;
+    recognised: number;
+    /** The model answered and said it could not read the photo. A camera problem, not an outage. */
+    unrecognised: number;
+    failed: number;
+    /** Distinct users who scanned in the window. */
+    users: number;
+    cost_micros: number;
+    /** Median and p95 upstream latency; null when nothing was scanned. */
+    p50_ms: number | null;
+    p95_ms: number | null;
+    latest_at: string | null;
+  };
+  by_day: Array<{ day: string; scans: number; failed: number; cost_micros: number }>;
+  by_model: Array<{
+    model: string;
+    provider: string;
+    scans: number;
+    failed: number;
+    cost_micros: number;
+    p50_ms: number | null;
+  }>;
+  /** The ten heaviest users — enough to spot one runaway client. */
+  top_users: Array<{ user_id: string | null; email: string; scans: number; failed: number; cost_micros: number }>;
+  recent_failures: Array<{ created_at: string; model: string; failure_reason: string; email: string }>;
+};
+
 export type AdminUserSummaryRecord = {
   id: string;
   email: string;
@@ -501,6 +539,8 @@ export type AdminRepository = {
   /** Backup freshness, rate-limiter activity, error volume - the ops card. */
   getHealth(): Promise<AdminHealthRecord>;
   getStorage(): Promise<AdminStorageRecord>;
+  /** Receipt-scan volume, outcomes, latency and spend for the last `days` days. */
+  getReceiptScanUsage(days: number): Promise<AdminScanUsageRecord>;
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
   getUserDetail(userId: string): Promise<AdminUserDetailRecord | null>;
   listGroups(search: string, limit: number, offset: number, filter: AdminGroupFilter): Promise<AdminGroupListRecord>;

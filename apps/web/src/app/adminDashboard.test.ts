@@ -11,8 +11,12 @@ import {
   formatDate,
   formatDateTime,
   formatExpenseAmount,
+  formatLatency,
+  formatUsdMicros,
   inviteStatus,
   inviteStatusLabel,
+  scanFailureRate,
+  scanUsageTiles,
   overviewTiles,
   storageTiles,
   pageInfo,
@@ -272,5 +276,61 @@ describe("adminRoleLabel", () => {
     expect(auditActionLabel("admin.grant")).toBe("新增管理員");
     expect(auditActionLabel("admin.role_change")).toBe("變更管理員角色");
     expect(auditActionLabel("admin.remove")).toBe("移除管理員");
+  });
+});
+
+describe("the receipt-scan usage panel", () => {
+  const summary = {
+    scans: 100,
+    recognised: 80,
+    unrecognised: 12,
+    failed: 8,
+    users: 5,
+    cost_micros: 285_000,
+    p50_ms: 4400,
+    p95_ms: 11800,
+    latest_at: "2026-08-24T01:00:00.000Z",
+  };
+  const usage = { days: 30, summary, by_day: [], by_model: [], top_users: [], recent_failures: [] };
+
+  test("keeps a sub-cent total readable instead of rounding it to nothing", () => {
+    // One Haiku scan. "$0.00" would read as "this feature is free", which is
+    // the one conclusion this panel exists to prevent.
+    expect(formatUsdMicros(2850)).toBe("$0.0029");
+    expect(formatUsdMicros(285_000)).toBe("$0.285");
+    expect(formatUsdMicros(4_120_000)).toBe("$4.12");
+    expect(formatUsdMicros(0)).toBe("$0");
+  });
+
+  test("reads latency in the unit it is measured in", () => {
+    expect(formatLatency(430)).toBe("430 ms");
+    expect(formatLatency(4400)).toBe("4.4 s");
+    // Nothing scanned yet is not "0 ms".
+    expect(formatLatency(null)).toBe("—");
+  });
+
+  test("counts only real failures, so a blurry photo is not an outage", () => {
+    expect(scanFailureRate(summary)).toBe(8);
+    // 12 unrecognised scans are the model working correctly.
+    expect(scanFailureRate({ ...summary, unrecognised: 50 })).toBe(8);
+    expect(scanFailureRate({ ...summary, scans: 0, failed: 0 })).toBe(0);
+  });
+
+  test("flags the failure tile only once failures stop looking like bad photos", () => {
+    const calm = scanUsageTiles(usage).find((tile) => tile.key === "failed");
+    expect(calm).toMatchObject({ value: "8%", danger: false });
+
+    const alarming = scanUsageTiles({ ...usage, summary: { ...summary, failed: 30 } }).find(
+      (tile) => tile.key === "failed",
+    );
+    expect(alarming).toMatchObject({ value: "30%", danger: true });
+  });
+
+  test("shows dashes rather than 0% when nothing has been scanned", () => {
+    const empty = { ...usage, summary: { ...summary, scans: 0, recognised: 0, unrecognised: 0, failed: 0 } };
+    const tiles = scanUsageTiles(empty);
+
+    expect(tiles.find((tile) => tile.key === "recognised")?.value).toBe("—");
+    expect(tiles.find((tile) => tile.key === "failed")?.value).toBe("—");
   });
 });

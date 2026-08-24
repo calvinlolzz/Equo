@@ -642,6 +642,9 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminHealth() {
       return request<AdminHealthSummary>("/admin/health", { method: "GET" });
     },
+    adminScanUsage(days: number) {
+      return request<AdminScanUsage>(`/admin/scan-usage?days=${days}`, { method: "GET" });
+    },
     adminListUsers(options: AdminListOptions = {}) {
       return request<AdminUserListPage>(`/admin/users${adminListQuery(options)}`, { method: "GET" });
     },
@@ -1108,6 +1111,39 @@ export type AdminReceiptScanSettings = {
   configured: boolean;
   /** Every model this build knows, runnable or not. */
   models: AdminReceiptScanModel[];
+};
+
+/**
+ * What receipt recognition actually did, and what it cost.
+ *
+ * Every spend figure is in millionths of a USD — one Haiku scan is about
+ * US$0.0005, which rounds to zero in cents. Divide once at the point of display.
+ */
+export type AdminScanUsage = {
+  days: number;
+  summary: {
+    scans: number;
+    recognised: number;
+    /** Answered, but could not read the photo. A camera problem, not an outage. */
+    unrecognised: number;
+    failed: number;
+    users: number;
+    cost_micros: number;
+    p50_ms: number | null;
+    p95_ms: number | null;
+    latest_at: string | null;
+  };
+  by_day: Array<{ day: string; scans: number; failed: number; cost_micros: number }>;
+  by_model: Array<{
+    model: string;
+    provider: string;
+    scans: number;
+    failed: number;
+    cost_micros: number;
+    p50_ms: number | null;
+  }>;
+  top_users: Array<{ user_id: string | null; email: string; scans: number; failed: number; cost_micros: number }>;
+  recent_failures: Array<{ created_at: string; model: string; failure_reason: string; email: string }>;
 };
 
 export type AdminUserRow = {

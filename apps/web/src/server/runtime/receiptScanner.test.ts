@@ -4,8 +4,10 @@ import {
   availableReceiptScanModels,
   ReceiptScanUnavailableError,
   createReceiptScanner,
+  estimateScanCostMicros,
   findReceiptScanModel,
   normaliseReceiptResult,
+  readLastScanUsage,
 } from "./receiptScanner.js";
 
 describe("normaliseReceiptResult", () => {
@@ -300,4 +302,102 @@ describe("the Gemini call", () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  test("carries the usage the upstream reported, so the scan can be costed", async () => {
+    stubFetch({
+      steps: [{ type: "model_output", content: [{ type: "text", text: JSON.stringify(modelOutput) }] }],
+      usage: {
+        total_input_tokens: 1500,
+        total_output_tokens: 40,
+        total_thought_tokens: 12,
+        input_tokens_by_modality: [
+          { modality: "text", tokens: 210 },
+          { modality: "image", tokens: 1290 },
+        ],
+      },
+    });
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+
+    await scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" });
+
+    expect(readLastScanUsage()).toEqual({
+      inputTokens: 1500,
+      outputTokens: 40,
+      thoughtTokens: 12,
+      // The image entry specifically, not the first modality in the list.
+      imageTokens: 1290,
+      attempts: 1,
+    });
+  });
+
+  test("a failed scan reports its own emptiness instead of the last success's tokens", async () => {
+    // Without the reset in createReceiptScanner this failure would be recorded
+    // with 1500 input tokens and a real cost - billing a call that never ran.
+    stubFetch({
+      steps: [{ type: "model_output", content: [{ type: "text", text: JSON.stringify(modelOutput) }] }],
+      usage: { total_input_tokens: 1500, total_output_tokens: 40 },
+    });
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+    await scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" });
+    expect(readLastScanUsage().inputTokens).toBe(1500);
+
+    stubFetch({ error: { message: "quota exceeded" } }, false, 429);
+    await expect(scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" })).rejects.toBeInstanceOf(
+      ReceiptScanUnavailableError,
+    );
+
+    expect(readLastScanUsage()).toMatchObject({
+      inputTokens: null,
+      outputTokens: null,
+      // The attempt still happened and is still worth recording.
+      attempts: 1,
+    });
+  });
+
+  test("counts the retry, so a scan that needed two attempts does not look like one", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new Error("socket hang up");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const scan = createReceiptScanner({ google: "gemini-test" })!;
+
+    await expect(scan({ dataUrl, currency: "TWD", model: "gemini-3.6-flash" })).rejects.toBeInstanceOf(
+      ReceiptScanUnavailableError,
+    );
+
+    expect(readLastScanUsage().attempts).toBe(2);
+  });
 });
+
+describe("estimateScanCostMicros", () => {
+  const usage = { inputTokens: 1800, outputTokens: 210, thoughtTokens: null, imageTokens: null, attempts: 1 };
+
+  test("prices a scan from the model's own published rates", () => {
+    // Haiku 4.5 is $1/MTok in and $5/MTok out: 1800 + 210 x 5 = 2850 millionths.
+    expect(estimateScanCostMicros("claude-haiku-4-5", usage)).toBe(2850);
+  });
+
+  test("a more expensive model costs more for the identical call", () => {
+    // Opus 5 at $5/$25 is five times Haiku's rate on both sides.
+    expect(estimateScanCostMicros("claude-opus-5", usage)).toBe(2850 * 5);
+  });
+
+  test("bills reasoning tokens at the output rate, where they are billed at all", () => {
+    expect(estimateScanCostMicros("claude-haiku-4-5", { ...usage, thoughtTokens: 100 })).toBe(2850 + 100 * 5);
+  });
+
+  test("the free tier really is free, however many tokens it reports", () => {
+    expect(estimateScanCostMicros("gemini-3.6-flash", { ...usage, thoughtTokens: 900 })).toBe(0);
+  });
+
+  test("reports null rather than 0 when the provider gave no token counts", () => {
+    // "We did not measure this" is not "this was free" - a zero here would
+    // quietly under-report the month.
+    expect(estimateScanCostMicros("claude-haiku-4-5", { ...usage, inputTokens: null })).toBeNull();
+    expect(estimateScanCostMicros("claude-haiku-4-5", { ...usage, outputTokens: null })).toBeNull();
+  });
+
+  test("reports null for a model this build has no price for", () => {
+    expect(estimateScanCostMicros("claude-retired-9", usage)).toBeNull();
+  });
+});
+

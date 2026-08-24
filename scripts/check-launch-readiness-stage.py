@@ -30,7 +30,14 @@ REQUIRED = {
         # through to the rule above (rewrites replaced the legacy routes block
         # so the headers block below could be added - the two keys are mutually
         # exclusive in vercel.json).
-        '"source": "/((?!api/).*)"',
+        #
+        # The marker is the negative lookahead alone, not the whole rule. It
+        # used to pin the exact string, which meant adding a second exclusion
+        # (`|assets/`, in 7f84cd6, so a stale tab's chunk request 404s instead
+        # of being handed index.html) turned this guard red on main for a week
+        # while the thing it guards was never at risk. What must not vanish is
+        # the API exclusion; further exclusions are ordinary routing changes.
+        '"source": "/((?!api/',
         '"destination": "/index.html"',
         # Security headers (review report issue 4). CSP must stay present.
         '"Content-Security-Policy"',

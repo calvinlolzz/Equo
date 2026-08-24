@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { scanReceiptRoute } from "./receiptRoutes.js";
 import { createFakePostgrest } from "../db/fakePostgrest.js";
 import { ReceiptScanUnavailableError, type ReceiptScanner } from "../runtime/receiptScanner.js";
@@ -24,10 +24,22 @@ const recognised = {
 
 type Settings = { enabled: boolean; model: string } | "unavailable";
 
-function makeClient(settings: Settings = { enabled: true, model: "claude-haiku-4-5" }) {
+/** Rows the route wrote to receipt_scan_logs during a test. */
+type LoggedScan = Record<string, unknown>;
+
+function makeClient(
+  settings: Settings = { enabled: true, model: "claude-haiku-4-5" },
+  logged: LoggedScan[] = [],
+  logFails = false,
+) {
   return createFakePostgrest({
     select: (table) => (table === "users" ? [{ id: "user_alice", deleted_at: null }] : []),
-    rpc: (fn) => {
+    rpc: (fn, args) => {
+      if (fn === "log_receipt_scan") {
+        if (logFails) throw new Error("function does not exist");
+        logged.push((args as { p_payload: LoggedScan }).p_payload);
+        return null;
+      }
       if (fn !== "receipt_scan_settings") throw new Error(`Unexpected rpc ${fn}`);
       if (settings === "unavailable") throw new Error("function does not exist");
       return { ...settings, updated_at: null, updated_by_email: null };
@@ -43,8 +55,8 @@ const verifier = async (idToken: string) => ({
   resolved_user_id: idToken,
 });
 
-function options(scanReceipt?: ReceiptScanner, settings?: Settings) {
-  return { client: makeClient(settings), verifier, idToken: "user_alice", scanReceipt };
+function options(scanReceipt?: ReceiptScanner, settings?: Settings, logged?: LoggedScan[], logFails?: boolean) {
+  return { client: makeClient(settings, logged, logFails), verifier, idToken: "user_alice", scanReceipt };
 }
 
 function fakeScanner() {
@@ -52,6 +64,12 @@ function fakeScanner() {
 }
 
 describe("scanReceiptRoute", () => {
+  beforeEach(() => {
+    // Every scan writes a diagnostics line now; the assertions below are about
+    // what was recorded, not what was printed.
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
   test("returns the recognised receipt to an authenticated caller", async () => {
     const scanReceipt = fakeScanner();
 
@@ -153,6 +171,71 @@ describe("scanReceiptRoute", () => {
     const result = await scanReceiptRoute(options(scanReceipt), validRequest);
 
     expect(JSON.stringify(result.body)).not.toContain("sk-ant-secret");
+    vi.restoreAllMocks();
+  });
+  test("records a successful scan against the user and the model that ran", async () => {
+    const logged: LoggedScan[] = [];
+
+    const result = await scanReceiptRoute(
+      options(fakeScanner(), { enabled: true, model: "claude-sonnet-5" }, logged),
+      validRequest,
+    );
+
+    expect(result.status).toBe(200);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      user_id: "user_alice",
+      model: "claude-sonnet-5",
+      provider: "anthropic",
+      outcome: "recognised",
+      image_bytes: validRequest.data_url.length,
+    });
+    // Measured, not guessed: the route times the upstream call itself.
+    expect(typeof logged[0].upstream_ms).toBe("number");
+  });
+
+  test("keeps an unreadable photo apart from a failure, because the fixes differ", async () => {
+    const logged: LoggedScan[] = [];
+    const unreadable = vi.fn<ReceiptScanner>(async () => ({ ...recognised, recognised: false as const }));
+
+    const result = await scanReceiptRoute(options(unreadable, undefined, logged), validRequest);
+
+    // The call worked - the user just gets no auto-fill.
+    expect(result.status).toBe(200);
+    expect(logged[0]).toMatchObject({ outcome: "unrecognised" });
+  });
+
+  test("records a failed scan with the upstream's reason, and still degrades gracefully", async () => {
+    const logged: LoggedScan[] = [];
+    const scanReceipt = vi.fn<ReceiptScanner>(async () => {
+      throw new ReceiptScanUnavailableError("upstream returned 429");
+    });
+
+    const result = await scanReceiptRoute(options(scanReceipt, undefined, logged), validRequest);
+
+    expect(result.status).toBe(503);
+    expect(logged[0]).toMatchObject({ outcome: "failed", failure_reason: "upstream returned 429" });
+  });
+
+  test("records nothing when the kill switch stopped the call", async () => {
+    const logged: LoggedScan[] = [];
+
+    await scanReceiptRoute(options(fakeScanner(), { enabled: false, model: "claude-haiku-4-5" }, logged), validRequest);
+
+    // Nothing was spent, so there is nothing to account for.
+    expect(logged).toHaveLength(0);
+  });
+
+  test("a scan still succeeds when the usage ledger cannot be written", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logged: LoggedScan[] = [];
+
+    // A deployment running ahead of the migration has no function to call. The
+    // user has already paid for this scan; bookkeeping must not take it away.
+    const result = await scanReceiptRoute(options(fakeScanner(), undefined, logged, true), validRequest);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual(recognised);
     vi.restoreAllMocks();
   });
 });
