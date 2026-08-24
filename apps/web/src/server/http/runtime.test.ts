@@ -148,15 +148,6 @@ function makeClient(): PostgrestClient {
       }
       if (fn === "soft_delete_expense") return { ...expenseRow, version: 2 };
       if (fn === "accept_invite") return { group: groupRow, member: ownerMember, claimed: false };
-      if (fn === "create_settlement") {
-        return {
-          id: "settlement_1",
-          group_id: args.p_group_id,
-          settlement_version: args.p_settlement_version,
-          calculated_version: 1,
-          status: "draft",
-        };
-      }
       return null;
     },
   });

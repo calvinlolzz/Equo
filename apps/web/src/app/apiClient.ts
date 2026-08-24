@@ -1,5 +1,4 @@
 import type {
-  ConfirmSettlementRequest,
   AcceptInviteRequest,
   CreateVirtualMemberRequest,
   CreateExpenseRequest,
@@ -86,15 +85,6 @@ export type ExpenseSummary = {
 export type BalanceSummary = {
   memberId: string;
   balance: {
-    amount_minor: number;
-    currency: string;
-  };
-};
-
-export type SettlementTransferSummary = {
-  fromMemberId: string;
-  toMemberId: string;
-  amount: {
     amount_minor: number;
     currency: string;
   };
@@ -596,24 +586,6 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
       return request<{ ok: true }>("/me", {
         method: "DELETE",
       });
-    },
-    calculateSettlement(groupId: string) {
-      return request<{
-        settlement: { id: string; settlement_version: number; status: string };
-        transfers: SettlementTransferSummary[];
-      }>(`/groups/${groupId}/settlement/calculate`, {
-        method: "POST",
-        body: JSON.stringify({ client_request_id: crypto.randomUUID() }),
-      });
-    },
-    confirmSettlement(groupId: string, settlementId: string, payload: ConfirmSettlementRequest) {
-      return request<{ settlement: { id: string; status: string } }>(
-        `/groups/${groupId}/settlement/${settlementId}/confirm`,
-        {
-          method: "POST",
-          body: JSON.stringify(payload),
-        },
-      );
     },
     createFeedback(payload: { type: string; message: string; contact?: string; page?: string }) {
       return request<{ feedback: { id: string } }>("/feedback", {

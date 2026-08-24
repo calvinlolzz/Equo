@@ -65,19 +65,4 @@ export const apiContracts: ApiContract[] = [
     // key, is what stops a double tap from arriving twice.
     requiresClientRequestId: false,
   },
-  {
-    method: "POST",
-    path: "/api/v1/groups/:groupId/settlement/calculate",
-    purpose: "Calculate the current settlement draft.",
-    requiresAuth: true,
-    requiresClientRequestId: false,
-  },
-  {
-    method: "POST",
-    path: "/api/v1/groups/:groupId/settlement/:settlementId/confirm",
-    purpose: "Confirm a settlement with version conflict protection.",
-    requiresAuth: true,
-    requiresClientRequestId: true,
-    idempotencyField: "client_request_id",
-  },
 ];

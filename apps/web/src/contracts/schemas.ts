@@ -101,10 +101,6 @@ export type ScanReceiptResponse = {
   items: ScanReceiptLineItem[];
 };
 
-export type ConfirmSettlementRequest = IdempotentRequest & {
-  settlement_version: number;
-};
-
 export type ApiResourceId = {
   id: string;
 };

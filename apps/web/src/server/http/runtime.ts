@@ -1,7 +1,6 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AcceptInviteRequest,
-  ConfirmSettlementRequest,
   CreateExpenseRequest,
   CreateGroupRequest,
   CreateInviteRequest,
@@ -106,7 +105,6 @@ import { createSupabasePushRepository } from "../repositories/supabasePushReposi
 import { notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
 import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
 import { healthRoute } from "../routes/healthRoutes.js";
-import { calculateSettlementRoute, confirmSettlementRoute } from "../routes/settlementRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
@@ -1210,29 +1208,6 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "DELETE /api/v1/admin/users/:userId",
       async handle(request, match) {
         const result = await adminDeleteUserRoute(routeOptions(options, request), match[1]);
-        return jsonResponse(result.status, result.body);
-      },
-    },
-    {
-      method: "POST",
-      pattern: /^\/api\/v1\/groups\/([^/]+)\/settlement\/calculate$/,
-      label: "POST /api/v1/groups/:groupId/settlement/calculate",
-      async handle(request, match) {
-        const result = await calculateSettlementRoute(routeOptions(options, request), match[1]);
-        return jsonResponse(result.status, result.body);
-      },
-    },
-    {
-      method: "POST",
-      pattern: /^\/api\/v1\/groups\/([^/]+)\/settlement\/([^/]+)\/confirm$/,
-      label: "POST /api/v1/groups/:groupId/settlement/:settlementId/confirm",
-      async handle(request, match) {
-        const result = await confirmSettlementRoute(
-          routeOptions(options, request),
-          match[1],
-          match[2],
-          body<ConfirmSettlementRequest>(request),
-        );
         return jsonResponse(result.status, result.body);
       },
     },
