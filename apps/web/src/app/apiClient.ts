@@ -48,6 +48,8 @@ export type GroupMemberSummary = {
   role: "owner" | "member";
   status: "active" | "removed";
   avatar_url?: string | null;
+  /** 收款資訊 — free text saying where to send this member their money. */
+  payment_note?: string | null;
 };
 
 export type ExpensePaymentSummary = {
@@ -585,6 +587,12 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     deleteMyAccount() {
       return request<{ ok: true }>("/me", {
         method: "DELETE",
+      });
+    },
+    setMemberPaymentNote(groupId: string, memberId: string, paymentNote: string) {
+      return request<{ member: GroupMemberSummary }>(`/groups/${groupId}/members/${memberId}/payment-note`, {
+        method: "PUT",
+        body: JSON.stringify({ payment_note: paymentNote }),
       });
     },
     createFeedback(payload: { type: string; message: string; contact?: string; page?: string }) {

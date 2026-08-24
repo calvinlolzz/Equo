@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CloudGroupsStore } from "./cloudStore";
+import { copyText } from "./copyText";
 import { describeCloudActionError } from "./describeCloudActionError";
 import type { DialogMode, Group } from "./appTypes";
 import type { StoredSession } from "./sessionStore";
@@ -104,12 +105,7 @@ export function useInviteFlow({
 
   async function copyInviteText(value: string) {
     if (!value) return;
-    try {
-      await navigator.clipboard?.writeText(value);
-      showToast("已複製到剪貼簿。");
-    } catch {
-      showToast("剪貼簿無法使用，請手動複製。");
-    }
+    showToast(await copyText(value) ? text.copied : text.copyUnavailable);
   }
 
   async function submitInviteInput() {

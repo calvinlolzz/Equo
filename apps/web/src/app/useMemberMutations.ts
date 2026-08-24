@@ -37,11 +37,15 @@ export function useMemberMutations({
   const [renamingMemberId, setRenamingMemberId] = useState("");
   const [renameMemberValue, setRenameMemberValue] = useState("");
   const [confirmingRemoveMemberId, setConfirmingRemoveMemberId] = useState("");
+  const [editingPaymentNoteMemberId, setEditingPaymentNoteMemberId] = useState("");
+  const [paymentNoteValue, setPaymentNoteValue] = useState("");
 
   function resetMemberManagement() {
     setRenamingMemberId("");
     setRenameMemberValue("");
     setConfirmingRemoveMemberId("");
+    setEditingPaymentNoteMemberId("");
+    setPaymentNoteValue("");
   }
 
   async function addVirtualMember() {
@@ -64,8 +68,45 @@ export function useMemberMutations({
 
   function startRenameMember(member: Member) {
     setConfirmingRemoveMemberId("");
+    setEditingPaymentNoteMemberId("");
     setRenamingMemberId(member.id);
     setRenameMemberValue(member.name);
+  }
+
+  function startEditPaymentNote(member: Member) {
+    // Same mutual exclusion as rename/remove: one editor per row at a time.
+    setConfirmingRemoveMemberId("");
+    setRenamingMemberId("");
+    setEditingPaymentNoteMemberId(member.id);
+    setPaymentNoteValue(member.paymentNote ?? "");
+  }
+
+  function cancelEditPaymentNote() {
+    setEditingPaymentNoteMemberId("");
+    setPaymentNoteValue("");
+  }
+
+  async function submitPaymentNote(member: Member) {
+    if (!activeGroup || !cloudStore) return;
+    const note = paymentNoteValue.trim();
+    // Re-saving the value already stored would be a write that changes nothing.
+    if (note === (member.paymentNote?.trim() ?? "")) {
+      cancelEditPaymentNote();
+      return;
+    }
+    if (!beginAction(`paymentNote:${member.id}`)) return;
+
+    try {
+      await cloudStore.setMemberPaymentNote(activeGroup.id, member.id, note);
+      cancelEditPaymentNote();
+      showToast(note ? UI_TEXT.paymentNote.saved : UI_TEXT.paymentNote.cleared);
+    } catch (error) {
+      // The editor deliberately stays open with what they typed - an account
+      // number is annoying to retype.
+      showToast(describeCloudActionError(error));
+    } finally {
+      endAction();
+    }
   }
 
   function cancelRenameMember() {
@@ -130,11 +171,17 @@ export function useMemberMutations({
     renameMemberValue,
     setRenameMemberValue,
     confirmingRemoveMemberId,
+    editingPaymentNoteMemberId,
+    paymentNoteValue,
+    setPaymentNoteValue,
     resetMemberManagement,
     addVirtualMember,
     startRenameMember,
     cancelRenameMember,
     submitRenameMember,
+    startEditPaymentNote,
+    cancelEditPaymentNote,
+    submitPaymentNote,
     removeMember,
   };
 }

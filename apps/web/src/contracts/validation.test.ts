@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { CreateExpenseRequest, UploadGroupImageRequest } from "./schemas.js";
 import {
+  validateSetMemberPaymentNoteRequest,
   decodedBase64Size,
   imageExtensionFromDataUrl,
   validateCreateExpenseRequest,
@@ -243,5 +244,28 @@ describe("imageExtensionFromDataUrl", () => {
 
   test("returns null for a non-matching data URL", () => {
     expect(imageExtensionFromDataUrl("data:text/plain;base64,aGVsbG8=")).toBeNull();
+  });
+});
+
+describe("validateSetMemberPaymentNoteRequest", () => {
+  test("accepts a note within the column's limit", () => {
+    expect(validateSetMemberPaymentNoteRequest({ payment_note: "玉山 808 末五碼 12345" }).ok).toBe(true);
+  });
+
+  test("accepts an empty string, which is how the note is cleared", () => {
+    expect(validateSetMemberPaymentNoteRequest({ payment_note: "" }).ok).toBe(true);
+  });
+
+  test("rejects an absent field rather than treating it as a clear", () => {
+    // A client that forgets the field must not silently wipe somebody's
+    // account details.
+    expect(validateSetMemberPaymentNoteRequest({} as never).ok).toBe(false);
+  });
+
+  test("rejects a note past the length the CHECK constraint allows", () => {
+    // Matching the constraint here is what turns this into a 400 the UI can
+    // explain instead of a 500 out of Postgres.
+    expect(validateSetMemberPaymentNoteRequest({ payment_note: "x".repeat(201) }).ok).toBe(false);
+    expect(validateSetMemberPaymentNoteRequest({ payment_note: "x".repeat(200) }).ok).toBe(true);
   });
 });

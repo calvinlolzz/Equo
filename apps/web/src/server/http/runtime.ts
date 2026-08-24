@@ -6,6 +6,7 @@ import type {
   CreateInviteRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  SetMemberPaymentNoteRequest,
   ScanReceiptRequest,
   UpdateGroupRequest,
   UpdateMyAvatarRequest,
@@ -27,6 +28,7 @@ import {
   markGroupReadRoute,
   removeGroupMemberRoute,
   renameGroupMemberRoute,
+  setMemberPaymentNoteRoute,
   unarchiveGroupRoute,
   updateGroupRoute,
 } from "../routes/groupRoutes.js";
@@ -359,6 +361,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[1],
           match[2],
           body<RenameGroupMemberRequest>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/members\/([^/]+)\/payment-note$/,
+      label: "PUT /api/v1/groups/:groupId/members/:memberId/payment-note",
+      async handle(request, match) {
+        const result = await setMemberPaymentNoteRoute(
+          routeOptions(options, request),
+          match[1],
+          match[2],
+          body<SetMemberPaymentNoteRequest>(request),
         );
         return jsonResponse(result.status, result.body);
       },

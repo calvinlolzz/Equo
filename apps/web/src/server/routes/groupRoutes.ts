@@ -5,11 +5,13 @@ import type {
   AcceptInviteRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  SetMemberPaymentNoteRequest,
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
 import {
   validateCreateVirtualMemberRequest,
   validateRenameGroupMemberRequest,
+  validateSetMemberPaymentNoteRequest,
 } from "../../contracts/validation.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
@@ -29,6 +31,7 @@ import {
   handleMarkGroupRead,
   handleRemoveGroupMember,
   handleRenameGroupMember,
+  handleSetMemberPaymentNote,
   handleUnarchiveGroup,
   handleUpdateGroup,
 } from "../handlers/groups.js";
@@ -121,6 +124,33 @@ export async function createVirtualMemberRoute(
   }
 
   return handleCreateVirtualMember(createSupabaseGroupRepository(options.client), auth.context, groupId, request);
+}
+
+export async function setMemberPaymentNoteRoute(
+  options: RouteOptions,
+  groupId: string,
+  memberId: string,
+  request: SetMemberPaymentNoteRequest,
+) {
+  const validation = validateSetMemberPaymentNoteRequest(request);
+
+  if (!validation.ok) {
+    return { ok: false, status: 400, body: { issues: validation.issues } };
+  }
+
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleSetMemberPaymentNote(
+    createSupabaseGroupRepository(options.client),
+    auth.context,
+    groupId,
+    memberId,
+    request,
+  );
 }
 
 export async function renameGroupMemberRoute(

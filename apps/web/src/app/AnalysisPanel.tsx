@@ -25,7 +25,10 @@ type AnalysisPanelProps = {
   spendByDay: SpendByDayEntry[];
   selectedDateKey: string;
   pendingAction: string | null;
+  /** The logged-in user's own member row, so 收款資訊 shows only on rows they have to pay. */
+  currentMemberId?: string;
   onSelectDate: (key: string) => void;
+  onCopyPaymentNote?: (note: string) => void;
   onSettleTransfer: (fromMemberId: string, toMemberId: string, amountMinor: number) => void;
   /** Shared with the home screen's 消費 card so the two surfaces never disagree. */
   spendTab: "personal" | "group";
@@ -56,7 +59,9 @@ export function AnalysisPanel({
   spendByDay,
   selectedDateKey,
   pendingAction,
+  currentMemberId,
   onSelectDate,
+  onCopyPaymentNote,
   onSettleTransfer,
   spendTab,
   onSelectSpendTab,
@@ -158,28 +163,55 @@ export function AnalysisPanel({
           settlementTransfers.map((transfer) => {
             const from = members.find((member) => member.id === transfer.fromMemberId);
             const to = members.find((member) => member.id === transfer.toMemberId);
+            // 收款資訊 belongs on the row where the reader is the one paying:
+            // that is the moment they need an account number, and showing
+            // everybody's on every row would be noise, not help.
+            const owedByMe = Boolean(currentMemberId) && transfer.fromMemberId === currentMemberId;
+            const payeeNote = to?.paymentNote?.trim() ?? "";
             return (
-              <div className="settlement-suggestion-row" key={`${transfer.fromMemberId}_${transfer.toMemberId}`}>
-                <div className="settlement-suggestion-person">
-                  <MemberAvatar className="member-avatar lime" name={from?.name} avatarUrl={from?.avatarUrl} />
-                  <strong>{from?.name ?? ""}</strong>
+              <div className="settlement-suggestion-group" key={`${transfer.fromMemberId}_${transfer.toMemberId}`}>
+                <div className="settlement-suggestion-row">
+                  <div className="settlement-suggestion-person">
+                    <MemberAvatar className="member-avatar lime" name={from?.name} avatarUrl={from?.avatarUrl} />
+                    <strong>{from?.name ?? ""}</strong>
+                  </div>
+                  <b>{"→"}</b>
+                  <div className="settlement-suggestion-person">
+                    <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
+                    <strong>{to?.name ?? ""}</strong>
+                  </div>
+                  <span className="settlement-suggestion-amount">{formatAmount(transfer.amount.amount_minor, transfer.amount.currency)}</span>
+                  <button
+                    className="composer-mini-action"
+                    type="button"
+                    disabled={pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`}
+                    onClick={() => onSettleTransfer(transfer.fromMemberId, transfer.toMemberId, transfer.amount.amount_minor)}
+                  >
+                    {pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`
+                      ? text.processing
+                      : UI_TEXT.settlement.settleAction}
+                  </button>
                 </div>
-                <b>{"→"}</b>
-                <div className="settlement-suggestion-person">
-                  <MemberAvatar className="member-avatar photo" name={to?.name} avatarUrl={to?.avatarUrl} />
-                  <strong>{to?.name ?? ""}</strong>
-                </div>
-                <span className="settlement-suggestion-amount">{formatAmount(transfer.amount.amount_minor, transfer.amount.currency)}</span>
-                <button
-                  className="composer-mini-action"
-                  type="button"
-                  disabled={pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`}
-                  onClick={() => onSettleTransfer(transfer.fromMemberId, transfer.toMemberId, transfer.amount.amount_minor)}
-                >
-                  {pendingAction === `settle:${transfer.fromMemberId}:${transfer.toMemberId}`
-                    ? text.processing
-                    : UI_TEXT.settlement.settleAction}
-                </button>
+                {owedByMe &&
+                  (payeeNote ? (
+                    <div className="settlement-payment-note">
+                      <span className="settlement-payment-note__label">{UI_TEXT.paymentNote.payTo}</span>
+                      <span className="settlement-payment-note__value">{payeeNote}</span>
+                      {onCopyPaymentNote && (
+                        <button
+                          className="composer-mini-action"
+                          type="button"
+                          onClick={() => onCopyPaymentNote(payeeNote)}
+                        >
+                          {UI_TEXT.paymentNote.copy}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="settlement-payment-note settlement-payment-note--empty">
+                      {UI_TEXT.paymentNote.missing}
+                    </p>
+                  ))}
               </div>
             );
           })

@@ -3,6 +3,7 @@ import type {
   CreateExpenseRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  SetMemberPaymentNoteRequest,
   ScanReceiptRequest,
   UpdateMyAvatarRequest,
   UploadGroupImageRequest,
@@ -179,6 +180,32 @@ export function validateCreateVirtualMemberRequest(request: CreateVirtualMemberR
 
 export function validateRenameGroupMemberRequest(request: RenameGroupMemberRequest): ValidationResult {
   return validateMemberDisplayName(request);
+}
+
+/**
+ * Matches the group_members_payment_note_length CHECK constraint. Both exist:
+ * the constraint is the backstop for every write path, this is what turns a
+ * too-long note into a 400 the UI can explain rather than a 500 from Postgres.
+ */
+export const MAX_MEMBER_PAYMENT_NOTE_LENGTH = 200;
+
+export function validateSetMemberPaymentNoteRequest(
+  request: SetMemberPaymentNoteRequest,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const note = request?.payment_note;
+
+  // Absent is not the same as "" — clearing has to be explicit, so a client
+  // that forgets the field cannot silently wipe somebody's account details.
+  if (typeof note !== "string") {
+    issues.push(issue("INVALID_MEMBER", "payment_note is required"));
+  } else if (note.trim().length > MAX_MEMBER_PAYMENT_NOTE_LENGTH) {
+    issues.push(
+      issue("INVALID_MEMBER", `payment_note must be ${MAX_MEMBER_PAYMENT_NOTE_LENGTH} characters or fewer`),
+    );
+  }
+
+  return { ok: issues.length === 0, issues };
 }
 
 const DATA_URL_PATTERN = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;

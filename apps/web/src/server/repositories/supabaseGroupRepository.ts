@@ -34,7 +34,7 @@ import {
 /** The column list every GroupRecord-shaped read/write returns. */
 const GROUP_COLUMNS = "id,name,currency,owner_member_id,cover_image_url";
 /** The column list every GroupMemberRecord-shaped read/write returns. */
-const MEMBER_COLUMNS = "id,group_id,user_id,display_name,role,status";
+const MEMBER_COLUMNS = "id,group_id,user_id,display_name,role,status,payment_note";
 
 /**
  * A user's group list is capped here. The cap is on memberships, and it exists
@@ -475,6 +475,25 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
             columns(MEMBER_COLUMNS),
           ),
           { display_name: displayName, updated_at: nowIso() },
+        ),
+        "group member",
+      );
+    },
+
+    /**
+     * Who may write this is decided in the handler (your own row, or any
+     * virtual member) — unlike renameVirtualMember, which can hard-code
+     * `user_id is null` because only virtual members are ever renamed here.
+     * The scoping that stays is the part that is always true: the row must be
+     * an active member OF THIS GROUP, so a member id from another group cannot
+     * be written through this route.
+     */
+    async setMemberPaymentNote(groupId: string, memberId: string, note: string | null) {
+      return requireRow(
+        await client.update<GroupMemberRecord>(
+          "group_members",
+          query(eq("id", memberId), eq("group_id", groupId), eq("status", "active"), columns(MEMBER_COLUMNS)),
+          { payment_note: note, updated_at: nowIso() },
         ),
         "group member",
       );

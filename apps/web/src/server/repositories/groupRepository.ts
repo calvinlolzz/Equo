@@ -64,6 +64,11 @@ export type GroupMemberRecord = {
    * don't select it since nothing reads it off those paths yet.
    */
   avatar_url?: string | null;
+  /**
+   * 收款資訊 — free text saying where to send the money. Null when unset, and
+   * absent on the paths whose column list does not select it.
+   */
+  payment_note?: string | null;
 };
 
 /**
@@ -152,6 +157,8 @@ export type GroupRepository = {
   deleteGroup(groupId: string): Promise<GroupRecord>;
   createVirtualMember(groupId: string, displayName: string): Promise<GroupMemberRecord>;
   renameVirtualMember(groupId: string, memberId: string, displayName: string): Promise<GroupMemberRecord>;
+  /** Replace a member's 收款資訊; null clears it. Permission is the handler's call. */
+  setMemberPaymentNote(groupId: string, memberId: string, note: string | null): Promise<GroupMemberRecord>;
   removeVirtualMember(groupId: string, memberId: string): Promise<GroupMemberRecord>;
   findActiveMember(groupId: string, userId: string): Promise<GroupMemberRecord | null>;
   findMemberById(groupId: string, memberId: string): Promise<GroupMemberRecord | null>;

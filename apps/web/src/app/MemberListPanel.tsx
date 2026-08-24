@@ -1,4 +1,4 @@
-import { BellRing, Check, Inbox, Pencil, UserMinus, UserRound, X } from "lucide-react";
+import { BellRing, Check, Inbox, Pencil, UserMinus, UserRound, Wallet, X } from "lucide-react";
 import type { Member } from "./appTypes";
 import { formatSigned } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
@@ -12,6 +12,9 @@ type MemberListPanelProps = {
   currency: string;
   renamingMemberId: string;
   renameMemberValue: string;
+  /** Which row's 收款資訊 is mid-edit, and its draft value. */
+  editingPaymentNoteMemberId: string;
+  paymentNoteValue: string;
   confirmingRemoveMemberId: string;
   pendingAction: string | null;
   /** The logged-in user's own member row, so they aren't offered a reminder to themselves. */
@@ -23,6 +26,10 @@ type MemberListPanelProps = {
   onStartRename: (member: Member) => void;
   onCancelRename: () => void;
   onSubmitRename: (member: Member) => void;
+  onPaymentNoteValueChange: (value: string) => void;
+  onStartEditPaymentNote: (member: Member) => void;
+  onCancelEditPaymentNote: () => void;
+  onSubmitPaymentNote: (member: Member) => void;
   onRemove: (member: Member) => void;
   onInvite: () => void;
   onAddVirtualMember: () => void;
@@ -35,6 +42,8 @@ export function MemberListPanel({
   currency,
   renamingMemberId,
   renameMemberValue,
+  editingPaymentNoteMemberId,
+  paymentNoteValue,
   confirmingRemoveMemberId,
   pendingAction,
   currentMemberId,
@@ -44,6 +53,10 @@ export function MemberListPanel({
   onStartRename,
   onCancelRename,
   onSubmitRename,
+  onPaymentNoteValueChange,
+  onStartEditPaymentNote,
+  onCancelEditPaymentNote,
+  onSubmitPaymentNote,
   onRemove,
   onInvite,
   onAddVirtualMember,
@@ -76,10 +89,18 @@ export function MemberListPanel({
             (balances.get(member.id) ?? 0) < 0;
           const nudged = nudgedMemberIds.includes(member.id);
           const nudgePending = pendingAction === `nudge:${member.id}`;
+          // 收款資訊 is yours to write, or anybody's to write for a virtual
+          // member (which has nobody to speak for it). Owning the group is not
+          // a reason to publish someone else's account details - the server
+          // enforces the same rule.
+          const canEditPaymentNote = member.id === currentMemberId || Boolean(member.virtual);
+          const editingNote = editingPaymentNoteMemberId === member.id;
+          const notePending = pendingAction === `paymentNote:${member.id}`;
+          const note = member.paymentNote?.trim() ?? "";
           return (
+            <div className="member-dialog-entry" key={member.id}>
             <div
               className={manageable || nudgeable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
-              key={member.id}
             >
               <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
               {isRenaming ? (
@@ -166,6 +187,58 @@ export function MemberListPanel({
                   <b>{formatSigned(balances.get(member.id) ?? 0, currency)}</b>
                 </>
               )}
+            </div>
+            {editingNote ? (
+              <div className="member-payment-note member-payment-note--editing">
+                <input
+                  className="member-rename-input"
+                  value={paymentNoteValue}
+                  onChange={(event) => onPaymentNoteValueChange(event.target.value)}
+                  maxLength={200}
+                  placeholder={UI_TEXT.paymentNote.placeholder}
+                  aria-label={UI_TEXT.paymentNote.label}
+                  autoFocus
+                />
+                <span className="member-row-actions">
+                  <button
+                    className="member-icon-action confirm"
+                    type="button"
+                    aria-label={UI_TEXT.paymentNote.save}
+                    disabled={notePending}
+                    onClick={() => onSubmitPaymentNote(member)}
+                  >
+                    <Check aria-hidden="true" size={15} />
+                  </button>
+                  <button
+                    className="member-icon-action"
+                    type="button"
+                    aria-label={UI_TEXT.paymentNote.cancel}
+                    disabled={notePending}
+                    onClick={onCancelEditPaymentNote}
+                  >
+                    <X aria-hidden="true" size={15} />
+                  </button>
+                </span>
+              </div>
+            ) : note || canEditPaymentNote ? (
+              <div className="member-payment-note">
+                <Wallet aria-hidden="true" size={13} />
+                <span className={note ? "member-payment-note__value" : "member-payment-note__value is-empty"}>
+                  {note || UI_TEXT.paymentNote.empty}
+                </span>
+                {canEditPaymentNote && (
+                  <button
+                    className="member-icon-action"
+                    type="button"
+                    aria-label={note ? UI_TEXT.paymentNote.edit : UI_TEXT.paymentNote.add}
+                    disabled={notePending}
+                    onClick={() => onStartEditPaymentNote(member)}
+                  >
+                    <Pencil aria-hidden="true" size={13} />
+                  </button>
+                )}
+              </div>
+            ) : null}
             </div>
           );
         })}

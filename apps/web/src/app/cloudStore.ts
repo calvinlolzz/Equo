@@ -105,6 +105,7 @@ export type ApiClientLike = Pick<
   | "updateGroup"
   | "createVirtualMember"
   | "renameGroupMember"
+  | "setMemberPaymentNote"
   | "removeGroupMember"
   | "archiveGroup"
   | "unarchiveGroup"
@@ -722,6 +723,32 @@ export function createCloudGroupsStore({
     }
   }
 
+  /**
+   * Replace a member's 收款資訊.
+   *
+   * Rethrows rather than swallowing, unlike renameMember: this one is driven by
+   * a form the user is looking at, so a failure has to reach the caller to keep
+   * the editor open with what they typed. A silent resync would close it and
+   * lose the text.
+   */
+  async function setMemberPaymentNote(groupId: string, memberId: string, paymentNote: string) {
+    try {
+      const { member } = await apiClient.setMemberPaymentNote(groupId, memberId, paymentNote);
+      const current = state.groupDetails[groupId];
+      if (current) {
+        const [mapped] = toMembers([member]);
+        if (mapped) {
+          patchGroupDetail(groupId, {
+            members: current.members.map((existing) => (existing.id === memberId ? mapped : existing)),
+          });
+        }
+      }
+    } catch (error) {
+      resyncInBackground(groupId);
+      throw error;
+    }
+  }
+
   async function removeMember(groupId: string, memberId: string) {
     try {
       await apiClient.removeGroupMember(groupId, memberId, { client_request_id: crypto.randomUUID() });
@@ -1086,6 +1113,7 @@ export function createCloudGroupsStore({
     renameGroup,
     addVirtualMember,
     renameMember,
+    setMemberPaymentNote,
     removeMember,
     archiveGroup,
     listArchivedGroups,

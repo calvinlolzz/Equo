@@ -24,6 +24,12 @@ export type Member = {
   role?: "owner" | "member";
   virtual?: boolean;
   /**
+   * 收款資訊 — free text the payer can copy (bank code + last five, LINE Pay,
+   * a payment link). Undefined when unset; the settlement suggestions show it
+   * on the row where you are the one paying.
+   */
+  paymentNote?: string | null;
+  /**
    * The auth user id this member is linked to (Supabase session.user.id).
    * Null/undefined for virtual (payer-only) members that have no login.
    * Used to resolve "the current logged-in user" among a group's members -

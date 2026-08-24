@@ -13,6 +13,7 @@ import {
   handleMarkGroupRead,
   handleRemoveGroupMember,
   handleRenameGroupMember,
+  handleSetMemberPaymentNote,
   handleUnarchiveGroup,
   handleUpdateGroup,
 } from "./groups.js";
@@ -104,6 +105,17 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
         display_name: displayName,
         role: "member",
         status: "active",
+      };
+    },
+    async setMemberPaymentNote(groupId, memberId, note) {
+      return {
+        id: memberId,
+        group_id: groupId,
+        user_id: null,
+        display_name: "Bob",
+        role: "member",
+        status: "active",
+        payment_note: note,
       };
     },
     async removeVirtualMember(groupId, memberId) {
@@ -781,5 +793,112 @@ describe("group handlers", () => {
     expect(!positive.ok && positive.body.error.code).toBe("MEMBER_HAS_BALANCE");
     expect(negative.status).toBe(409);
     expect(!negative.ok && negative.body.error.code).toBe("MEMBER_HAS_BALANCE");
+  });
+});
+
+describe("收款資訊 (handleSetMemberPaymentNote)", () => {
+  /** The caller is member_owner / user_alice — see makeRepository's findActiveMember. */
+  function repositoryWithTarget(target: Partial<{ id: string; user_id: string | null; status: string }>) {
+    const saved: { note: string | null }[] = [];
+    const repository = makeRepository({
+      async findMemberById(groupId, memberId) {
+        return {
+          id: memberId,
+          group_id: groupId,
+          user_id: null,
+          display_name: "Target",
+          role: "member",
+          status: "active",
+          ...target,
+        } as never;
+      },
+      async setMemberPaymentNote(groupId, memberId, note) {
+        saved.push({ note });
+        return {
+          id: memberId,
+          group_id: groupId,
+          user_id: null,
+          display_name: "Target",
+          role: "member",
+          status: "active",
+          payment_note: note,
+        };
+      },
+    });
+    return { repository, saved };
+  }
+
+  test("you can set your own", async () => {
+    const { repository, saved } = repositoryWithTarget({ id: "member_owner", user_id: "user_alice" });
+
+    const result = await handleSetMemberPaymentNote(repository, context, "group_1", "member_owner", {
+      payment_note: "玉山 808 末五碼 12345",
+    });
+
+    expect(result.status).toBe(200);
+    expect(saved).toEqual([{ note: "玉山 808 末五碼 12345" }]);
+  });
+
+  test("anyone can set a virtual member's, because it has nobody to speak for it", async () => {
+    const { repository, saved } = repositoryWithTarget({ id: "member_virtual", user_id: null });
+
+    const result = await handleSetMemberPaymentNote(repository, context, "group_1", "member_virtual", {
+      payment_note: "現金",
+    });
+
+    expect(result.status).toBe(200);
+    expect(saved).toEqual([{ note: "現金" }]);
+  });
+
+  test("you cannot write another real member's account details", async () => {
+    // Even as the group owner, which the caller is here. Owning a group is not
+    // a reason to be able to publish somebody else's bank account to it.
+    const { repository, saved } = repositoryWithTarget({ id: "member_bob", user_id: "user_bob" });
+
+    const result = await handleSetMemberPaymentNote(repository, context, "group_1", "member_bob", {
+      payment_note: "attacker account",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(400);
+    expect(saved).toEqual([]);
+  });
+
+  test("a non-member is refused before anything is looked up", async () => {
+    const { repository, saved } = repositoryWithTarget({ id: "member_owner", user_id: "user_alice" });
+    const stranger = makeRepository({
+      ...repository,
+      async findActiveMember() {
+        return null;
+      },
+    });
+
+    const result = await handleSetMemberPaymentNote(stranger, context, "group_1", "member_owner", {
+      payment_note: "nope",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(403);
+    expect(saved).toEqual([]);
+  });
+
+  test("an empty note clears it, stored as null rather than an empty string", async () => {
+    // One representation for "not set", so every reader tests one condition.
+    const { repository, saved } = repositoryWithTarget({ id: "member_owner", user_id: "user_alice" });
+
+    await handleSetMemberPaymentNote(repository, context, "group_1", "member_owner", { payment_note: "   " });
+
+    expect(saved).toEqual([{ note: null }]);
+  });
+
+  test("a removed member is not a target", async () => {
+    const { repository, saved } = repositoryWithTarget({ id: "member_owner", user_id: "user_alice", status: "removed" });
+
+    const result = await handleSetMemberPaymentNote(repository, context, "group_1", "member_owner", {
+      payment_note: "x",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(saved).toEqual([]);
   });
 });

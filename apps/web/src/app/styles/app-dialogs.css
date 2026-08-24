@@ -462,6 +462,54 @@
 }
 
 .record-dialog-row,
+/* A member row plus their 收款資訊 line. */
+.member-dialog-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-payment-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 12px 8px 68px; /* aligns under the name, past the 44px avatar */
+  font-size: 12px;
+  color: rgb(var(--fg) / 0.7);
+}
+
+.member-payment-note__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.member-payment-note__value.is-empty {
+  color: rgb(var(--fg) / 0.55);
+}
+
+.member-payment-note--editing {
+  padding-left: 12px;
+  gap: 8px;
+}
+
+.member-payment-note--editing .member-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The inline-flex rule for these buttons is scoped to `.member-dialog-row
+   span.member-row-actions`, so inside the note editor - which is a SIBLING of
+   that row, not a child - they fell back to display:block and stacked
+   vertically, doubling the row height. */
+.member-payment-note--editing .member-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
 .member-dialog-row {
   width: 100%;
   min-height: 66px;

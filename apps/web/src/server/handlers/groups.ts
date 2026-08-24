@@ -5,6 +5,7 @@ import type {
   CreateInviteRequest,
   CreateVirtualMemberRequest,
   RenameGroupMemberRequest,
+  SetMemberPaymentNoteRequest,
   UpdateGroupRequest,
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
@@ -372,6 +373,55 @@ export async function handleRenameGroupMember(
     ok: true,
     status: 200,
     body: { member: renamed },
+  } satisfies HandlerResult<unknown>;
+}
+
+/**
+ * PUT a member's 收款資訊.
+ *
+ * Two people may write it, and the reasons are different:
+ *   * You, on your own row — it is your bank account.
+ *   * Any active member, on a VIRTUAL member's row — a payer-only member has
+ *     nobody to speak for it, which is the same rule rename already uses.
+ *
+ * Notably NOT the group owner on a real member's row: owning a group is not a
+ * reason to be able to publish somebody else's account details to it.
+ */
+export async function handleSetMemberPaymentNote(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  groupId: string,
+  memberId: string,
+  request: SetMemberPaymentNoteRequest,
+) {
+  const caller = await requireGroupMember(repository, context, groupId);
+
+  if (!caller) {
+    return forbidden("");
+  }
+
+  const target = await repository.findMemberById(groupId, memberId);
+
+  if (!target || target.status !== "active") {
+    return memberNotFound("");
+  }
+
+  const isOwnRow = target.id === caller.id;
+  const isVirtual = target.user_id === null;
+
+  if (!isOwnRow && !isVirtual) {
+    return invalidMember("You can only edit your own payment details.", "");
+  }
+
+  // Trimmed, and empty becomes null rather than "": one representation for
+  // "not set", so every reader can test a single condition.
+  const note = request.payment_note.trim();
+  const saved = await repository.setMemberPaymentNote(groupId, memberId, note === "" ? null : note);
+
+  return {
+    ok: true,
+    status: 200,
+    body: { member: saved },
   } satisfies HandlerResult<unknown>;
 }
 

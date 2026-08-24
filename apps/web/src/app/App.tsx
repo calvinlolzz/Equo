@@ -84,6 +84,7 @@ import { useAuthSession } from "./useAuthSession";
 import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
 import { useToast } from "./useToast";
 import { useCloudActivities } from "./useCloudActivities";
+import { copyText } from "./copyText";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -378,11 +379,17 @@ export function App() {
     renameMemberValue,
     setRenameMemberValue,
     confirmingRemoveMemberId,
+    editingPaymentNoteMemberId,
+    paymentNoteValue,
+    setPaymentNoteValue,
     resetMemberManagement,
     addVirtualMember,
     startRenameMember,
     cancelRenameMember,
     submitRenameMember,
+    startEditPaymentNote,
+    cancelEditPaymentNote,
+    submitPaymentNote,
     removeMember,
   } = useMemberMutations({
     activeGroup,
@@ -1014,6 +1021,11 @@ export function App() {
       return;
     }
     showToast(text.groupHome);
+  }
+
+  /** Hand the payee's 收款資訊 to the clipboard, so it can be pasted into a bank app. */
+  async function copyPaymentNote(note: string) {
+    showToast((await copyText(note)) ? UI_TEXT.paymentNote.copied : UI_TEXT.paymentNote.copyUnavailable);
   }
 
   async function settleTransfer(fromId: string, toId: string, amountMinor: number) {
@@ -2118,7 +2130,9 @@ export function App() {
                   spendByDay={aggregates.spendByDay}
                   selectedDateKey={selectedDateKey}
                   pendingAction={pendingAction}
+                  currentMemberId={currentMember?.id}
                   onSelectDate={setSelectedDateKey}
+                  onCopyPaymentNote={copyPaymentNote}
                   onSettleTransfer={settleTransfer}
                   spendTab={spendTab}
                   onSelectSpendTab={setSpendTab}
@@ -2269,6 +2283,12 @@ export function App() {
                   onStartRename={startRenameMember}
                   onCancelRename={cancelRenameMember}
                   onSubmitRename={submitRenameMember}
+                  editingPaymentNoteMemberId={editingPaymentNoteMemberId}
+                  paymentNoteValue={paymentNoteValue}
+                  onPaymentNoteValueChange={setPaymentNoteValue}
+                  onStartEditPaymentNote={startEditPaymentNote}
+                  onCancelEditPaymentNote={cancelEditPaymentNote}
+                  onSubmitPaymentNote={submitPaymentNote}
                   onRemove={removeMember}
                   onInvite={openInviteMembers}
                   onAddVirtualMember={() => setDialog("virtualMember")}

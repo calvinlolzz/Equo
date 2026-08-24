@@ -23,6 +23,16 @@ export type RenameGroupMemberRequest = IdempotentRequest & {
   display_name: string;
 };
 
+/**
+ * 收款資訊 — free text telling the payer where the money should go (a bank code
+ * plus the last five digits, a LINE Pay handle, a payment link). No
+ * client_request_id: this is a replace, so a retry writes the same value.
+ */
+export type SetMemberPaymentNoteRequest = {
+  /** Empty string clears it. */
+  payment_note: string;
+};
+
 export type RemoveGroupMemberRequest = IdempotentRequest;
 
 export type CreateInviteRequest = IdempotentRequest & {

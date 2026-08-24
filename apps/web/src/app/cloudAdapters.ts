@@ -57,6 +57,7 @@ export function toMembers(members: GroupMemberSummary[]): Member[] {
       virtual: member.user_id === null,
       userId: member.user_id,
       avatarUrl: member.avatar_url ?? undefined,
+      paymentNote: member.payment_note ?? undefined,
     }));
 }
 

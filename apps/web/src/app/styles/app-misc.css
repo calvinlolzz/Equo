@@ -405,6 +405,48 @@
   background: rgb(var(--surf) / 0.05);
 }
 
+/* A suggestion plus the payee's 收款資訊 underneath. The wrapper exists so the
+   note reads as belonging to that row rather than floating between two. */
+.settlement-suggestion-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settlement-payment-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgb(var(--surf) / 0.05);
+  font-size: 13px;
+  color: rgb(var(--fg) / 0.75);
+}
+
+.settlement-payment-note__label {
+  flex: none;
+  color: rgb(var(--fg) / 0.55);
+}
+
+/* The value is the part that gets copied into a bank app, so it stays
+   selectable and wraps rather than truncating - a half-shown account number is
+   worse than a wrapped one. */
+.settlement-payment-note__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgb(var(--fg));
+  font-weight: 600;
+  user-select: text;
+}
+
+.settlement-payment-note--empty {
+  color: rgb(var(--fg) / 0.55);
+  font-style: normal;
+}
+
 .settlement-suggestion-person {
   display: flex;
   align-items: center;
