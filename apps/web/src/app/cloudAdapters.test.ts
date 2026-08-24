@@ -3,6 +3,7 @@ import { validateCreateExpenseRequest } from "../contracts/validation";
 import type { GroupDetail } from "./apiClient";
 import {
   draftToExpense,
+  expenseKindToApiKind,
   settlementTransferToDraft,
   toCreateExpenseRequest,
   toExpense,
@@ -772,5 +773,35 @@ describe("settlementTransferToDraft", () => {
     expect(expense.payerId).toBe("member_1");
     expect(expense.shareMemberIds).toEqual(["member_2"]);
     expect(expense.amountMinor).toBe(500);
+  });
+});
+
+describe("expenseKindToApiKind", () => {
+  test("translates the one word the app and the column disagree on", () => {
+    // A 清償 is "settlement" in the UI and "transfer" in expenses.kind. Sending
+    // the app's word to a server-side filter matched NOTHING - which is what
+    // the records panel's 結算 filter did: an empty list for a group that had
+    // four settlements in it.
+    expect(expenseKindToApiKind("settlement")).toBe("transfer");
+  });
+
+  test("leaves the kinds that already agree alone", () => {
+    expect(expenseKindToApiKind("expense")).toBe("expense");
+    expect(expenseKindToApiKind("income")).toBe("income");
+  });
+
+  test("round-trips with toExpense, so a filtered row maps back to what was asked for", () => {
+    const mapped = toExpense({
+      id: "expense_1",
+      group_id: "group_1",
+      title: "清償轉帳",
+      kind: expenseKindToApiKind("settlement"),
+      amount_minor: 50_000,
+      currency: "TWD",
+      version: 1,
+      client_request_id: "req_1",
+    });
+
+    expect(mapped.kind).toBe("settlement");
   });
 });

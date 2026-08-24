@@ -84,6 +84,7 @@ function makeFakeApiClient(overrides: Partial<ApiClientLike> = {}): ApiClientLik
     })),
     deleteExpense: vi.fn(async () => ({ expense: { id: "expense_1" } })),
     uploadGroupImage: vi.fn(async () => ({ image: { url: "https://cdn.equo.local/image.jpg" } })),
+    searchExpenses: vi.fn(async () => ({ expenses: [], match_count: 0, match_total_minor: 0, has_more: false })),
     ...overrides,
   } as ApiClientLike;
 }
@@ -1265,4 +1266,39 @@ describe("createCloudGroupsStore", () => {
       expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
     });
   });
+
+  describe("searchExpenses kind translation", () => {
+    test("sends the column's word, not the app's, for a 清償 filter", async () => {
+      // expenses.kind stores 'transfer'; the UI calls it 結算/"settlement".
+      // Passing the app's word straight through matched nothing server-side,
+      // so the records panel's 結算 filter returned an empty list for groups
+      // that plainly had settlements in them.
+      const apiClient = makeFakeApiClient();
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+      await store.searchExpenses("group_1", { kind: "settlement" });
+
+      expect(apiClient.searchExpenses).toHaveBeenCalledWith("group_1", expect.objectContaining({ kind: "transfer" }));
+    });
+
+    test("leaves the kinds that already agree alone", async () => {
+      const apiClient = makeFakeApiClient();
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+      await store.searchExpenses("group_1", { kind: "expense" });
+
+      expect(apiClient.searchExpenses).toHaveBeenCalledWith("group_1", expect.objectContaining({ kind: "expense" }));
+    });
+
+    test("an absent kind stays absent rather than becoming a filter", async () => {
+      const apiClient = makeFakeApiClient();
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+      await store.searchExpenses("group_1", { q: "dinner" });
+
+      const [, sent] = (apiClient.searchExpenses as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(sent.kind).toBeUndefined();
+    });
+  });
+
 });

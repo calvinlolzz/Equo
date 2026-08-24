@@ -13,6 +13,7 @@ import {
 import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
 import {
   draftToExpense,
+  expenseKindToApiKind,
   settlementTransferToDraft,
   toCreateExpenseRequest,
   toExpense,
@@ -1069,7 +1070,13 @@ export function createCloudGroupsStore({
    * and a loaded row are the same thing to everything downstream.
    */
   async function searchExpenses(groupId: string, search: ExpenseSearchQuery) {
-    const result = await apiClient.searchExpenses(groupId, search);
+    // Callers speak the app's kinds; the column speaks the API's. Translating
+    // here keeps that asymmetry in the one place that already maps the response
+    // back the other way, so no caller has to remember 清償 is "transfer".
+    const result = await apiClient.searchExpenses(groupId, {
+      ...search,
+      kind: search.kind ? expenseKindToApiKind(search.kind) : search.kind,
+    });
     return {
       expenses: result.expenses.map(toExpense),
       matchCount: result.match_count,

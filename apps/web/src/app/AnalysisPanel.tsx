@@ -4,7 +4,7 @@ import { formatActivityTime } from "./appDates";
 import type { Member } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
-import type { SettlementRecord } from "./settlementHistory";
+import type { SettlementHistory } from "./useSettlementHistory";
 import { SpendBarChart } from "./SpendBarChart";
 import type { SpendByDayEntry, SpendChartDay } from "./spendChart";
 import { SpendPeriodSection } from "./SpendPeriodSection";
@@ -20,7 +20,8 @@ type AnalysisPanelProps = {
   maxBalanceMinor: number;
   debtAmountMinor: number;
   settlementTransfers: SettlementTransfer[];
-  settlementRecords: SettlementRecord[];
+  /** 清償紀錄 over the group's whole history — see useSettlementHistory. */
+  settlementHistory: SettlementHistory;
   dateChips: SpendChartDay[];
   spendByDay: SpendByDayEntry[];
   selectedDateKey: string;
@@ -54,7 +55,7 @@ export function AnalysisPanel({
   maxBalanceMinor,
   debtAmountMinor,
   settlementTransfers,
-  settlementRecords,
+  settlementHistory,
   dateChips,
   spendByDay,
   selectedDateKey,
@@ -221,8 +222,8 @@ export function AnalysisPanel({
       </div>
       <div className="dialog-section-list">
         <span className="dialog-list-title">{text.settlementHistoryTitle}</span>
-        {settlementRecords.length ? (
-          settlementRecords.map((record) => {
+        {settlementHistory.records.length ? (
+          settlementHistory.records.map((record) => {
             const from = members.find((member) => member.id === record.fromMemberId);
             const to = members.find((member) => member.id === record.toMemberId);
             return (
@@ -241,8 +242,19 @@ export function AnalysisPanel({
               </div>
             );
           })
+        ) : settlementHistory.loading ? (
+          <p className="dialog-empty">{UI_TEXT.settlement.historyLoading}</p>
         ) : (
           <p className="dialog-empty">{text.noSettlementHistory}</p>
+        )}
+        {/* The list is capped; say so rather than letting it look complete. */}
+        {settlementHistory.matchCount > settlementHistory.records.length && (
+          <p className="dialog-empty">
+            {`${UI_TEXT.settlement.historyTruncatedPrefix}${settlementHistory.matchCount}${UI_TEXT.settlement.historyTruncatedSuffix}${settlementHistory.records.length}${UI_TEXT.settlement.historyTruncatedTail}`}
+          </p>
+        )}
+        {settlementHistory.degraded && (
+          <p className="dialog-empty">{UI_TEXT.settlement.historyDegraded}</p>
         )}
       </div>
     </>

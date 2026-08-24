@@ -295,6 +295,12 @@ export const UI_TEXT = {
     moreTransfersSuffix: "筆清償建議",
     suggestionSectionTitle: "清償建議",
     settleAction: "清償",
+    /** The history list is capped; these compose "共 N 筆，顯示最近 M 筆". */
+    historyTruncatedPrefix: "共 ",
+    historyTruncatedSuffix: " 筆，顯示最近 ",
+    historyTruncatedTail: " 筆。",
+    historyLoading: "載入中…",
+    historyDegraded: "目前離線，只顯示本機已載入的紀錄。",
   },
   paymentNote: {
     label: "收款資訊",

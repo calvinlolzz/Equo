@@ -28,7 +28,7 @@ function renderPanel(overrides: Partial<Parameters<typeof AnalysisPanel>[0]> = {
     maxBalanceMinor: 50_000,
     debtAmountMinor: 50_000,
     settlementTransfers: [{ fromMemberId: "me", toMemberId: "bob", amount: twd }],
-    settlementRecords: [],
+    settlementHistory: { records: [], loading: false, matchCount: 0, degraded: false },
     dateChips: [],
     spendByDay: [],
     selectedDateKey: "",

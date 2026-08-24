@@ -52,6 +52,7 @@ import { useDragScrollX } from "./useDragScrollX";
 import { useSpendBreakdown } from "./useSpendBreakdown";
 import { useRecurringExpenses } from "./useRecurringExpenses";
 import { listSettlementRecords } from "./settlementHistory";
+import { useSettlementHistory } from "./useSettlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
@@ -459,7 +460,10 @@ export function App() {
 
   // 清償紀錄 for the analysis panel - settlement-kind entries from the loaded
   // expense window (older history pages in via the records panel's load-more).
-  const settlementRecords = useMemo(() => listSettlementRecords(expenses), [expenses]);
+  // Only the settlements inside the loaded expense window. The full history
+  // comes from the server (useSettlementHistory) and these are merged in, so a
+  // 清償 tapped a second ago shows before the fetch catches up.
+  const localSettlementRecords = useMemo(() => listSettlementRecords(expenses), [expenses]);
 
   // Pull-to-refresh on the mobile home screen: active only while no overlay
   // is open, so the gesture never fights dialogs, drawers, or the composer.
@@ -631,6 +635,13 @@ export function App() {
     return (search: Parameters<typeof cloudStore.searchExpenses>[1]) =>
       cloudStore.searchExpenses(activeGroupId, search);
   }, [cloudStore, activeGroupId]);
+
+  // 清償紀錄 over the whole history, fetched when the 分析 panel opens.
+  const settlementHistory = useSettlementHistory({
+    searchExpenses: searchExpensesInGroup,
+    enabled: dialog === "analysisPanel",
+    localRecords: localSettlementRecords,
+  });
 
   // 循環支出 rules, loaded only while their panel is open.
   const recurring = useRecurringExpenses({
@@ -2125,7 +2136,7 @@ export function App() {
                   maxBalanceMinor={maxBalanceMinor}
                   debtAmountMinor={debt?.amountMinor ?? 0}
                   settlementTransfers={settlementTransfers}
-                  settlementRecords={settlementRecords}
+                  settlementHistory={settlementHistory}
                   dateChips={dateChips}
                   spendByDay={aggregates.spendByDay}
                   selectedDateKey={selectedDateKey}

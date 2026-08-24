@@ -68,6 +68,20 @@ function apiKindToExpenseKind(kind: string): NonNullable<Expense["kind"]> {
   return "expense";
 }
 
+/**
+ * App-level Expense kind -> the value stored in expenses.kind, for anything
+ * that FILTERS on kind server-side.
+ *
+ * The inverse of apiKindToExpenseKind, and it has to exist because the app and
+ * the database disagree on one word: a 清償 is "settlement" in the UI and
+ * "transfer" in the column. Sending the app's word straight to the server
+ * silently matches nothing - which is exactly what the records panel's 結算
+ * filter did, returning an empty list for a group that had four of them.
+ */
+export function expenseKindToApiKind(kind: string): string {
+  return kind === "settlement" ? "transfer" : kind;
+}
+
 /** ExpenseDraft kind -> app-level Expense kind (transfer drafts become settlements). */
 function draftKindToExpenseKind(kind: ExpenseDraft["kind"]): NonNullable<Expense["kind"]> {
   if (kind === "transfer") return "settlement";

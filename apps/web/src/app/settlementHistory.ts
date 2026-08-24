@@ -39,3 +39,30 @@ export function listSettlementRecords(expenses: Expense[]): SettlementRecord[] {
 
   return records;
 }
+
+/**
+ * The list the panel renders: everything the server knows, plus anything the
+ * local expense window has that the server has not answered with yet.
+ *
+ * Both halves are needed. The server's copy is the only one that reaches past
+ * the loaded window - the whole reason this stopped being a pure derivation -
+ * but it is a snapshot taken when the panel opened, so a 清償 tapped a second
+ * ago exists only in the optimistic local list. Merging by id means the row
+ * appears immediately and does not double up once the fetch catches up.
+ *
+ * Newest first, matching every other list in the app.
+ */
+export function mergeSettlementRecords(
+  local: SettlementRecord[],
+  remote: SettlementRecord[],
+): SettlementRecord[] {
+  const byId = new Map<string, SettlementRecord>();
+
+  // Remote first so a locally-optimistic row overwrites it with the copy the
+  // UI is already showing - same id, and the local one cannot be staler.
+  for (const record of [...remote, ...local]) {
+    byId.set(record.id, record);
+  }
+
+  return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
