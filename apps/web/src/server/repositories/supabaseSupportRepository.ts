@@ -1,5 +1,5 @@
 import { columns, requireRow, type PostgrestClient } from "../db/postgrestClient.js";
-import type { SupportRepository } from "./supportRepository.js";
+import type { ErrorAlertClaim, SupportRepository } from "./supportRepository.js";
 
 export function createSupabaseSupportRepository(client: PostgrestClient): SupportRepository {
   return {
@@ -18,6 +18,14 @@ export function createSupabaseSupportRepository(client: PostgrestClient): Suppor
         ),
         "feedback",
       );
+    },
+
+    async claimErrorAlert(source, message) {
+      const result = await client.rpc<ErrorAlertClaim | null>("claim_error_alert", {
+        p_message: message,
+        p_source: source,
+      });
+      return result ?? { alert: false, reason: "unavailable" };
     },
 
     async recordClientError(userId, input) {

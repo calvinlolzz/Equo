@@ -29,4 +29,9 @@ export type PushRepository = {
    * the reminder, not from a second lookup.
    */
   targetsForMember(groupId: string, memberId: string): Promise<PushTargetsRecord>;
+  /**
+   * The console's owners and admins — the only notification aimed at operators
+   * rather than users. group_name/actor_name are always null; neither applies.
+   */
+  targetsForAdmins(): Promise<PushTargetsRecord>;
 };

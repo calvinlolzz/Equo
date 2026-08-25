@@ -160,3 +160,49 @@ export function buildMemberJoinedNotification({
     tag: `group-${groupId}`,
   };
 }
+
+/** How much of the crash message fits on a lock screen before it is just noise. */
+const ERROR_ALERT_MESSAGE_MAX = 90;
+
+/**
+ * "The app is throwing an error" -> the operators, not the users.
+ *
+ * The only notification in the product aimed at an administrator, and the one
+ * with a genuinely different job: the others tell you something happened, this
+ * one asks you to go and look. So it carries the two facts that decide whether
+ * to open the laptop now or after dinner — what broke, and whether it is
+ * happening to one person or to everyone — and links straight to the
+ * fingerprint's drill-down rather than the console's front page.
+ *
+ * The tag is per-fingerprint so a recurrence replaces the earlier card instead
+ * of stacking; the cooldown already means that is rare, but a lock screen with
+ * two copies of the same bug reads as twice the problem.
+ */
+export function buildErrorAlertNotification({
+  fingerprint,
+  message,
+  occurrences,
+  isNew,
+}: {
+  fingerprint: string;
+  message: string;
+  /** Occurrences in the last 24h, so one-off vs everyone-is-hitting-it is visible. */
+  occurrences: number;
+  /** First time this bug has ever been seen, as opposed to one that came back. */
+  isNew: boolean;
+}): PushNotificationPayload {
+  const trimmed = message.trim().replace(/\s+/g, " ");
+  const summary =
+    trimmed.length > ERROR_ALERT_MESSAGE_MAX
+      ? `${trimmed.slice(0, ERROR_ALERT_MESSAGE_MAX - 1)}…`
+      : trimmed;
+
+  return {
+    title: isNew ? "Equo 出現新錯誤" : "Equo 錯誤又出現了",
+    body: occurrences > 1 ? `${summary}（24 小時內 ${occurrences} 次）` : summary,
+    // The console reads the fingerprint from `err`, not `fingerprint` (see
+    // adminRoute.ts) — the obvious guess lands on the unfiltered error list.
+    url: `/admin?tab=errors&err=${encodeURIComponent(fingerprint)}`,
+    tag: `error-${fingerprint}`,
+  };
+}

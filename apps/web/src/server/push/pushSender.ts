@@ -1,5 +1,6 @@
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
 import {
+  buildErrorAlertNotification,
   buildExpenseNotification,
   buildMemberJoinedNotification,
   buildNudgeNotification,
@@ -268,6 +269,55 @@ export async function notifyMemberJoined({
     return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] join notify failed:", error);
+    return empty;
+  }
+}
+
+/**
+ * "The app is throwing an error" -> the console's owners and admins.
+ *
+ * Called from the crash-report path, which is anonymous, rate-limited, and must
+ * stay cheap — so like every other notify* here it swallows everything. The
+ * error row is already written; failing to page somebody about it is not a
+ * reason to turn a crash report into a 500 and lose the report as well.
+ *
+ * The decision of WHETHER to send is not made here: claim_error_alert made it
+ * atomically in the database (per-fingerprint, cooldown, global hourly cap), so
+ * this only fans out.
+ */
+export async function notifyErrorAlert({
+  repository,
+  vapid,
+  fingerprint,
+  message,
+  occurrences,
+  isNew,
+  send,
+}: {
+  repository: Pick<PushRepository, "targetsForAdmins" | "pruneSubscription">;
+  vapid: VapidKeys;
+  fingerprint: string;
+  message: string;
+  occurrences: number;
+  isNew: boolean;
+  send?: PushSendFn;
+}): Promise<PushDeliveryOutcome> {
+  const empty: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
+
+  try {
+    const targets = await repository.targetsForAdmins();
+
+    if (targets.subscriptions.length === 0) return empty;
+
+    return await deliverPush({
+      subscriptions: targets.subscriptions,
+      payload: buildErrorAlertNotification({ fingerprint, message, occurrences, isNew }),
+      vapid,
+      repository,
+      send,
+    });
+  } catch (error) {
+    console.error("[push] error alert failed:", error);
     return empty;
   }
 }

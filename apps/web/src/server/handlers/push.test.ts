@@ -30,6 +30,9 @@ function makeRepository(overrides: Partial<PushRepository> = {}): PushRepository
     async targetsForGroup() {
       return { group_name: null, actor_name: null, subscriptions: [] };
     },
+    async targetsForAdmins() {
+      return { group_name: null, actor_name: null, subscriptions: [] };
+    },
     async targetsForMember() {
       return { group_name: null, actor_name: null, subscriptions: [] };
     },

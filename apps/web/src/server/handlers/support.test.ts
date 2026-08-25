@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import type { CreateFeedbackInput, ReportErrorInput, SupportRepository } from "../repositories/supportRepository.js";
+import type {
+  CreateFeedbackInput,
+  ErrorAlertClaim,
+  ReportErrorInput,
+  SupportRepository,
+} from "../repositories/supportRepository.js";
 import { FEEDBACK_MESSAGE_MAX, handleCreateFeedback, handleReportError } from "./support.js";
 
 const context = {
@@ -11,9 +16,10 @@ const context = {
   },
 };
 
-function makeRepository() {
+function makeRepository(claim: Partial<ErrorAlertClaim> & { throws?: boolean } = {}) {
   const feedbackCalls: Array<{ userId: string; input: CreateFeedbackInput }> = [];
   const errorCalls: Array<{ userId: string | null; input: ReportErrorInput }> = [];
+  const claimCalls: Array<{ source: string; message: string }> = [];
 
   const repository: SupportRepository = {
     async createFeedback(userId, input) {
@@ -23,9 +29,14 @@ function makeRepository() {
     async recordClientError(userId, input) {
       errorCalls.push({ userId, input });
     },
+    async claimErrorAlert(source, message) {
+      claimCalls.push({ source, message });
+      if (claim.throws) throw new Error("function does not exist");
+      return { alert: false, reason: "cooldown", ...claim };
+    },
   };
 
-  return { repository, feedbackCalls, errorCalls };
+  return { repository, feedbackCalls, errorCalls, claimCalls };
 }
 
 describe("handleCreateFeedback", () => {
@@ -106,5 +117,68 @@ describe("handleReportError", () => {
 
     expect(result.ok).toBe(true);
     expect(errorCalls).toHaveLength(0);
+  });
+});
+
+describe("handleReportError alerting", () => {
+  test("asks whether this crash is worth an alert, using the stored message", async () => {
+    const { repository, claimCalls } = makeRepository();
+
+    await handleReportError(repository, null, { source: "web", message: "  TypeError: x  " });
+
+    // The clamped/trimmed message, so the fingerprint matches the row that was
+    // just written rather than the raw body.
+    expect(claimCalls).toEqual([{ source: "web", message: "TypeError: x" }]);
+  });
+
+  test("hands the runtime what it needs when the claim says send", async () => {
+    const { repository } = makeRepository({
+      alert: true,
+      reason: "new",
+      fingerprint: "fp_1",
+      occurrences_24h: 12,
+    });
+
+    const result = await handleReportError(repository, null, { source: "web", message: "boom" });
+
+    expect(result.alert).toEqual({ fingerprint: "fp_1", message: "boom", occurrences: 12, isNew: true });
+  });
+
+  test("a recurrence is not flagged as new", async () => {
+    const { repository } = makeRepository({ alert: true, reason: "recurring", fingerprint: "fp_1" });
+
+    const result = await handleReportError(repository, null, { source: "web", message: "boom" });
+
+    expect(result.alert?.isNew).toBe(false);
+  });
+
+  test("says nothing to the runtime when the claim refuses", async () => {
+    const { repository } = makeRepository({ alert: false, reason: "hourly_cap" });
+
+    const result = await handleReportError(repository, null, { source: "web", message: "boom" });
+
+    expect(result.alert).toBeUndefined();
+    expect(result.status).toBe(200);
+  });
+
+  test("a missing claim function costs the alert, never the error row", async () => {
+    // A deployment running ahead of the migration. Losing the crash report
+    // would be much worse than losing the page about it.
+    const { repository, errorCalls } = makeRepository({ throws: true });
+
+    const result = await handleReportError(repository, null, { source: "web", message: "boom" });
+
+    expect(result.status).toBe(200);
+    expect(result.alert).toBeUndefined();
+    expect(errorCalls).toHaveLength(1);
+  });
+
+  test("an empty report is not claimed at all", async () => {
+    const { repository, claimCalls, errorCalls } = makeRepository();
+
+    await handleReportError(repository, null, { source: "web", message: "   " });
+
+    expect(errorCalls).toEqual([]);
+    expect(claimCalls).toEqual([]);
   });
 });

@@ -104,7 +104,7 @@ import {
 import { getCatalogRoute } from "../routes/catalogRoutes.js";
 import type { AdminSendNotificationBody } from "../handlers/admin.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
-import { notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
+import { notifyErrorAlert, notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
 import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
 import { healthRoute } from "../routes/healthRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -764,6 +764,19 @@ export function createHttpRuntime(options: RuntimeOptions) {
           routeOptions(options, request),
           body<{ source?: string; message?: string; context?: string; page?: string }>(request),
         );
+
+        // Same rules as the other fan-outs: after the write, awaited, and
+        // unable to change the response. Whether to send at all was decided
+        // atomically in claim_error_alert - this only delivers.
+        if (result.ok && options.vapid && "alert" in result && result.alert) {
+          await notifyErrorAlert({
+            repository: createSupabasePushRepository(options.client),
+            vapid: options.vapid,
+            ...result.alert,
+            send: options.pushSend,
+          });
+        }
+
         return jsonResponse(result.status, result.body);
       },
     },

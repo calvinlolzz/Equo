@@ -1,8 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
-import { buildExpenseNotification, buildNudgeNotification } from "./pushNotification.js";
+import {
+  buildErrorAlertNotification,
+  buildExpenseNotification,
+  buildNudgeNotification,
+} from "./pushNotification.js";
 import {
   deliverPush,
+  notifyErrorAlert,
   notifyExpenseCreated,
   notifyMemberJoined,
   notifyNudge,
@@ -28,6 +33,9 @@ function makeRepository(overrides: Partial<PushRepository> = {}): PushRepository
     },
     async targetsForGroup() {
       return { group_name: "東京旅行", actor_name: "Alice", subscriptions: [subscription(1)] };
+    },
+    async targetsForAdmins() {
+      return { group_name: null, actor_name: null, subscriptions: [] };
     },
     async targetsForMember() {
       return { group_name: "東京旅行", actor_name: null, subscriptions: [subscription(1)] };
@@ -436,5 +444,132 @@ describe("notifyMemberJoined", () => {
     expect(outcome.sent).toBe(1);
     // targetsForGroup excludes the actor, so the joiner is not told they joined.
     expect(bodies).toEqual(["Bob 加入了群組"]);
+  });
+});
+
+describe("buildErrorAlertNotification", () => {
+  test("says what broke and how widely, which is what decides whether to open the laptop", () => {
+    const payload = buildErrorAlertNotification({
+      fingerprint: "fp_1",
+      message: "TypeError: cannot read balance of undefined",
+      occurrences: 24,
+      isNew: true,
+    });
+
+    expect(payload.title).toContain("新錯誤");
+    expect(payload.body).toContain("TypeError: cannot read balance of undefined");
+    expect(payload.body).toContain("24");
+  });
+
+  test("a single occurrence does not get a count", () => {
+    const payload = buildErrorAlertNotification({
+      fingerprint: "fp_1",
+      message: "boom",
+      occurrences: 1,
+      isNew: true,
+    });
+
+    expect(payload.body).toBe("boom");
+  });
+
+  test("a returning bug is titled differently from a new one", () => {
+    const back = buildErrorAlertNotification({ fingerprint: "fp_1", message: "boom", occurrences: 2, isNew: false });
+
+    expect(back.title).not.toContain("新錯誤");
+  });
+
+  test("links to the fingerprint's drill-down, using the parameter the console reads", () => {
+    // adminRoute.ts parses `err`, not `fingerprint` - the obvious guess lands
+    // on the unfiltered error list.
+    const payload = buildErrorAlertNotification({
+      fingerprint: "fp/1+2",
+      message: "boom",
+      occurrences: 1,
+      isNew: true,
+    });
+
+    expect(payload.url).toBe("/admin?tab=errors&err=fp%2F1%2B2");
+  });
+
+  test("a long message is truncated, not wrapped onto a lock screen", () => {
+    const payload = buildErrorAlertNotification({
+      fingerprint: "fp_1",
+      message: "x".repeat(300),
+      occurrences: 1,
+      isNew: true,
+    });
+
+    expect(payload.body.length).toBeLessThan(100);
+    expect(payload.body.endsWith("…")).toBe(true);
+  });
+
+  test("one tag per fingerprint, so a recurrence replaces rather than stacks", () => {
+    expect(buildErrorAlertNotification({ fingerprint: "fp_1", message: "a", occurrences: 1, isNew: true }).tag).toBe(
+      buildErrorAlertNotification({ fingerprint: "fp_1", message: "a", occurrences: 9, isNew: false }).tag,
+    );
+  });
+});
+
+describe("notifyErrorAlert", () => {
+  test("fans out to the console's admins", async () => {
+    const send = vi.fn(async () => ({ statusCode: 201 }));
+    const repository = makeRepository({
+      async targetsForAdmins() {
+        return { group_name: null, actor_name: null, subscriptions: [subscription(1), subscription(2)] };
+      },
+    });
+
+    const outcome = await notifyErrorAlert({
+      repository,
+      vapid,
+      fingerprint: "fp_1",
+      message: "boom",
+      occurrences: 3,
+      isNew: true,
+      send,
+    });
+
+    expect(outcome.sent).toBe(2);
+  });
+
+  test("no admin has enabled push -> nothing sent, nothing thrown", async () => {
+    const send = vi.fn(async () => ({ statusCode: 201 }));
+
+    const outcome = await notifyErrorAlert({
+      repository: makeRepository(),
+      vapid,
+      fingerprint: "fp_1",
+      message: "boom",
+      occurrences: 1,
+      isNew: true,
+      send,
+    });
+
+    expect(outcome).toEqual({ sent: 0, pruned: 0, failed: 0 });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test("a lookup failure never escapes into the crash-report path", async () => {
+    // The error row is already written. Failing to page somebody about it must
+    // not turn the report into a 500 and lose the report too.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const repository = makeRepository({
+      async targetsForAdmins() {
+        throw new Error("database is down");
+      },
+    });
+
+    await expect(
+      notifyErrorAlert({
+        repository,
+        vapid,
+        fingerprint: "fp_1",
+        message: "boom",
+        occurrences: 1,
+        isNew: true,
+      }),
+    ).resolves.toEqual({ sent: 0, pruned: 0, failed: 0 });
+
+    vi.restoreAllMocks();
   });
 });
