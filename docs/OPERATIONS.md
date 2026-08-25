@@ -66,6 +66,8 @@ psql "$TARGET_DB_URL" -f equo.sql
 | `app_error_logs` | 90 天 | 全部，並順帶清掉沒有任何 log 對應的 `app_error_group_status` | `purge_error_logs` |
 | `client_requests` | 90 天 | 全部 | `purge_client_requests` |
 | `invites` | 90 天 | **只清死掉的**（已撤銷／用完／已過期） | `purge_dead_invites` |
+| `app_error_alerts` | 90 天 | 全部（一年沒出現的 fingerprint 再出現時應該重新告警） | `purge_error_alerts` |
+| `push_delivery_logs` | 90 天 | 全部 | `purge_push_delivery_logs` |
 
 三件下手前要知道的事：
 
@@ -135,7 +137,24 @@ Supabase 的 performance advisor 有兩條規則會互相打架，2026-08-24 補
 
 ---
 
-## 6. Uptime 監控
+## 6. 推播健康
+
+推播的失敗模式是**安靜**。其他子系統壞掉都會講話：寫入失敗是 500、掃描壞了是 503、備份過期是紅卡片。推播沒有——VAPID 金鑰換錯、訂閱失效、瀏覽器悄悄不再認那個 endpoint，看起來全都跟「今天剛好沒人記帳」一模一樣。`deliverPush` 一直都回傳 `{sent, pruned, failed}`，而每一個呼叫端都把它丟掉。
+
+**錯誤告警上線之後這件事更重要**：那些告警本身就是推播，所以推播無聲壞掉會順便把告警一起帶走。
+
+現在每一次 fan-out 寫一列 `push_delivery_logs`（一次 fan-out 一列，不是一個裝置一列——一筆支出通知全群組，逐裝置只是把列數乘上群組人數，不會多出訊號）。記錄點放在 `deliverPush` 裡面而不是四個 `notify*`，因為那是唯一的收口，之後新增的通知不可能繞過去。
+
+後台健康卡兩張新卡片，回答兩個不同問題：
+
+- **推播送達（7 日）**：失敗率。超過 20% 是金鑰壞了或推播服務出事，不是運氣不好。**被清掉的失效 endpoint 不算失敗**——重裝過 app 的裝置本來就該被丟掉，算進失敗率會讓健康的一週看起來像壞掉。
+- **可通知的管理員**：`subscribed_admins / admins`。**0 是最糟的狀態**，而且會同時進待辦清單：告警找不到人，看起來跟「這週很平靜」一模一樣，比完全沒有告警更糟。
+
+> ⚠️ 跟 `health.jobs` 一樣，`health.push` **沒有這個欄位**（舊 API，什麼都別顯示）與**有欄位但數字是 0**（真的沒有）意思不同。
+
+---
+
+## 7. Uptime 監控
 
 ### 為什麼不要只監控首頁
 
@@ -172,7 +191,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 ---
 
-## 7. 目前沒做的（要花錢或需要決策）
+## 8. 目前沒做的（要花錢或需要決策）
 
 - Supabase Pro + PITR（完整備份、含 `auth.*`、可還原到任意時間點）
 - 自訂網域（目前仍是 `equo-mu.vercel.app`）

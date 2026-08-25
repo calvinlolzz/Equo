@@ -1059,6 +1059,17 @@ export type AdminHealthSummary = {
   backup: { last_success_at: string; detail: Record<string, unknown> } | null;
   /** Every ops_heartbeats row. Absent on an API deployed before this shipped. */
   jobs?: Array<{ kind: string; last_success_at: string; detail: Record<string, unknown> }>;
+  /** Push delivery health. Absent on an API deployed before this shipped. */
+  push?: {
+    subscriptions: number;
+    subscribed_users: number;
+    admins: number;
+    subscribed_admins: number;
+    sent_7d: number;
+    failed_7d: number;
+    pruned_7d: number;
+    last_delivery_at: string | null;
+  };
   rate_limit: { active_buckets: number; blocked_24h: number };
   errors: {
     last_24h: number;

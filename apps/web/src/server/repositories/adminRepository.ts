@@ -38,6 +38,22 @@ export type AdminHealthRecord = {
    */
   jobs?: Array<{ kind: string; last_success_at: string; detail: Record<string, unknown> }>;
   /**
+   * Push delivery, whose failure mode is silence: nothing else in the product
+   * reports "the notification did not arrive". Optional so a console deployed
+   * ahead of the migration renders without it.
+   */
+  push?: {
+    subscriptions: number;
+    subscribed_users: number;
+    /** owner+admin count, and how many of them could actually be reached. */
+    admins: number;
+    subscribed_admins: number;
+    sent_7d: number;
+    failed_7d: number;
+    pruned_7d: number;
+    last_delivery_at: string | null;
+  };
+  /**
    * Receipt recognition's live configuration. `configured` is a property of the
    * deployment (is ANTHROPIC_API_KEY set) and `enabled` is the console's own
    * switch — kept apart because the fixes are completely different, and both

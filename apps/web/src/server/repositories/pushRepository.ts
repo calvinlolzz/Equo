@@ -34,4 +34,10 @@ export type PushRepository = {
    * rather than users. group_name/actor_name are always null; neither applies.
    */
   targetsForAdmins(): Promise<PushTargetsRecord>;
+  /**
+   * Record what one fan-out achieved. Best-effort by contract: the caller is a
+   * write path that has already succeeded, and bookkeeping about a notification
+   * must never be able to undo it.
+   */
+  logDelivery(kind: string, outcome: { sent: number; pruned: number; failed: number }): Promise<void>;
 };

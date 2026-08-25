@@ -81,16 +81,19 @@ export const sendWithWebPush: PushSendFn = async (subscription, payload, vapid) 
  * notification is not a failed expense.
  */
 export async function deliverPush({
+  kind,
   subscriptions,
   payload,
   vapid,
   repository,
   send = sendWithWebPush,
 }: {
+  /** What this fan-out was for, so the console can tell alerting from chatter. */
+  kind: string;
   subscriptions: PushSubscriptionRecord[];
   payload: PushNotificationPayload;
   vapid: VapidKeys;
-  repository: Pick<PushRepository, "pruneSubscription">;
+  repository: Pick<PushRepository, "pruneSubscription" | "logDelivery">;
   send?: PushSendFn;
 }): Promise<PushDeliveryOutcome> {
   const outcome: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
@@ -123,6 +126,14 @@ export async function deliverPush({
     }
     outcome[result.value] += 1;
   }
+
+  // Recorded here rather than in each notify*: this is the one place every
+  // notification passes through, so nothing can be added later that quietly
+  // skips the bookkeeping. Swallowed for the same reason the sends are - the
+  // write that triggered this already succeeded.
+  await repository.logDelivery(kind, outcome).catch((error: unknown) => {
+    console.warn("[push] delivery not recorded:", (error as Error).message);
+  });
 
   return outcome;
 }
@@ -168,7 +179,7 @@ export async function notifyExpenseCreated({
       kind: expense.kind,
     });
 
-    return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
+    return await deliverPush({ kind: "expense", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] notify failed:", error);
     return empty;
@@ -223,7 +234,7 @@ export async function notifyNudge({
       currency,
     });
 
-    return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
+    return await deliverPush({ kind: "nudge", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] nudge notify failed:", error);
     return empty;
@@ -266,7 +277,7 @@ export async function notifyMemberJoined({
       memberName: targets.actor_name,
     });
 
-    return await deliverPush({ subscriptions: targets.subscriptions, payload, vapid, repository, send });
+    return await deliverPush({ kind: "member_joined", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] join notify failed:", error);
     return empty;
@@ -294,7 +305,7 @@ export async function notifyErrorAlert({
   isNew,
   send,
 }: {
-  repository: Pick<PushRepository, "targetsForAdmins" | "pruneSubscription">;
+  repository: Pick<PushRepository, "targetsForAdmins" | "pruneSubscription" | "logDelivery">;
   vapid: VapidKeys;
   fingerprint: string;
   message: string;
@@ -310,6 +321,7 @@ export async function notifyErrorAlert({
     if (targets.subscriptions.length === 0) return empty;
 
     return await deliverPush({
+      kind: "error_alert",
       subscriptions: targets.subscriptions,
       payload: buildErrorAlertNotification({ fingerprint, message, occurrences, isNew }),
       vapid,

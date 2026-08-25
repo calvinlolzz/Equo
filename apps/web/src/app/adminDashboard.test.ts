@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
+import type { AdminHealthSummary } from "./apiClient";
 import {
+  pushTiles,
   scheduledJobTiles,
   inboxItems,
   healthTiles,
@@ -423,5 +425,90 @@ describe("scheduled job heartbeats", () => {
 
   test("a good night leaves the inbox empty", () => {
     expect(inboxItems(health, now)).toEqual([]);
+  });
+});
+
+describe("push health", () => {
+  const base = {
+    backup: null,
+    rate_limit: { active_buckets: 0, blocked_24h: 0 },
+    errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
+    feedback: { open: 0 },
+  };
+
+  function withPush(push: Partial<NonNullable<AdminHealthSummary["push"]>>) {
+    return {
+      ...base,
+      push: {
+        subscriptions: 4,
+        subscribed_users: 2,
+        admins: 2,
+        subscribed_admins: 2,
+        sent_7d: 20,
+        failed_7d: 0,
+        pruned_7d: 1,
+        last_delivery_at: "2026-08-25T00:00:00.000Z",
+        ...push,
+      },
+    } as AdminHealthSummary;
+  }
+
+  test("clean delivery is green, and pruned endpoints are not failures", () => {
+    // A reinstalled app is SUPPOSED to be dropped; counting it as a failure
+    // would make a healthy week look broken.
+    const tile = pushTiles(withPush({ pruned_7d: 5 })).find((t) => t.key === "push_delivery");
+
+    expect(tile).toMatchObject({ value: "0%", tone: "ok" });
+    expect(tile?.hint).toContain("清掉失效 5");
+  });
+
+  test("a broken key shows as a high failure rate, not as silence", () => {
+    const tile = pushTiles(withPush({ sent_7d: 2, failed_7d: 18 })).find((t) => t.key === "push_delivery");
+
+    expect(tile).toMatchObject({ value: "90%", tone: "bad" });
+  });
+
+  test("an occasional failure warns rather than alarms", () => {
+    const tile = pushTiles(withPush({ sent_7d: 19, failed_7d: 1 })).find((t) => t.key === "push_delivery");
+
+    expect(tile?.tone).toBe("warn");
+  });
+
+  test("no traffic is not a failure rate", () => {
+    const tile = pushTiles(withPush({ sent_7d: 0, failed_7d: 0 })).find((t) => t.key === "push_delivery");
+
+    expect(tile).toMatchObject({ value: "—", tone: "ok" });
+  });
+
+  test("alerting that can reach nobody is the loudest tile on the card", () => {
+    // The whole reason this exists: an operator with no subscription makes
+    // error alerting look healthy while it shouts into a void.
+    const tile = pushTiles(withPush({ subscribed_admins: 0 })).find((t) => t.key === "push_admins");
+
+    expect(tile).toMatchObject({ value: "0/2", tone: "bad", hint: "沒有人收得到錯誤告警" });
+  });
+
+  test("some operators reachable is a warning, not an all-clear", () => {
+    const tile = pushTiles(withPush({ admins: 3, subscribed_admins: 1 })).find((t) => t.key === "push_admins");
+
+    expect(tile).toMatchObject({ value: "1/3", tone: "warn", hint: "2 位沒開推播" });
+  });
+
+  test("an API without the field renders nothing rather than inventing zeros", () => {
+    expect(pushTiles(base as AdminHealthSummary)).toEqual([]);
+  });
+
+  test("unreachable operators become something to do", () => {
+    const items = inboxItems(withPush({ subscribed_admins: 0 }), Date.parse("2026-08-25T01:00:00.000Z"));
+
+    expect(items.map((item) => item.label)).toContain("沒有管理員收得到錯誤告警");
+  });
+
+  test("no admins configured at all is not reported as unreachable", () => {
+    // A deployment with no owner/admin rows has nobody to page by definition;
+    // 0/0 is not a fault to shout about.
+    const items = inboxItems(withPush({ admins: 0, subscribed_admins: 0 }), Date.parse("2026-08-25T01:00:00.000Z"));
+
+    expect(items.map((item) => item.label)).not.toContain("沒有管理員收得到錯誤告警");
   });
 });

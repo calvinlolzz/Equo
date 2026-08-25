@@ -296,6 +296,60 @@ export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
  *
  * Same convention as `errors.open_groups`.
  */
+/**
+ * Push, whose failure mode is silence.
+ *
+ * Two tiles because they answer two different questions, and the second one is
+ * the reason this exists at all:
+ *
+ *   送達    is push working? A failure rate over a fifth is a broken VAPID key
+ *           or a push service having a bad day, not bad luck. Pruned endpoints
+ *           are NOT failures — a reinstalled app is supposed to be dropped —
+ *           so they sit in the hint rather than the rate.
+ *   可通知的管理員  can the error alerting reach a human? An operator with no
+ *           subscription makes alerting look healthy while it shouts into a
+ *           void, which is strictly worse than having no alerting at all.
+ *
+ * Absent `push` means an API older than this field: render nothing rather than
+ * invent a zero, the same rule as scheduledJobTiles.
+ */
+export function pushTiles(health: AdminHealthSummary): HealthTile[] {
+  const push = health.push;
+
+  if (!push) return [];
+
+  const attempted = push.sent_7d + push.failed_7d;
+  const failureRate = attempted === 0 ? 0 : Math.round((push.failed_7d / attempted) * 1000) / 10;
+  const unreachable = push.admins - push.subscribed_admins;
+
+  return [
+    {
+      key: "push_delivery",
+      label: "推播送達（7 日）",
+      value: attempted === 0 ? "—" : `${failureRate}%`,
+      hint:
+        attempted === 0
+          ? `訂閱 ${push.subscriptions} 個裝置，近 7 日沒有推播`
+          : `送出 ${push.sent_7d}・失敗 ${push.failed_7d}・清掉失效 ${push.pruned_7d}`,
+      tone: attempted === 0 ? "ok" : failureRate > 20 ? "bad" : failureRate > 0 ? "warn" : "ok",
+    },
+    {
+      key: "push_admins",
+      label: "可通知的管理員",
+      value: `${push.subscribed_admins}/${push.admins}`,
+      hint:
+        push.subscribed_admins === 0
+          ? "沒有人收得到錯誤告警"
+          : unreachable > 0
+            ? `${unreachable} 位沒開推播`
+            : "錯誤告警送得到",
+      // Zero is the bad one: alerting that can reach nobody looks exactly like
+      // a quiet week.
+      tone: push.subscribed_admins === 0 ? "bad" : unreachable > 0 ? "warn" : "ok",
+    },
+  ];
+}
+
 export function scheduledJobTiles(health: AdminHealthSummary, nowMs: number): HealthTile[] {
   const jobs = health.jobs;
 
@@ -367,6 +421,7 @@ export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTi
       tone: backupAgeHours === null ? "bad" : backupAgeHours > BACKUP_STALE_HOURS ? "warn" : "ok",
     },
     ...scheduledJobTiles(health, nowMs),
+    ...pushTiles(health),
     {
       key: "errors",
       label: "前端錯誤（24 小時）",
@@ -477,6 +532,17 @@ export function inboxItems(health: AdminHealthSummary, nowMs: number): InboxItem
         tone: "warn",
       });
     }
+  }
+
+  if (health.push && health.push.admins > 0 && health.push.subscribed_admins === 0) {
+    items.push({
+      key: "push:no_admin",
+      label: "沒有管理員收得到錯誤告警",
+      count: null,
+      // Fixed by an admin enabling notifications on their own device.
+      route: null,
+      tone: "bad",
+    });
   }
 
   return items;

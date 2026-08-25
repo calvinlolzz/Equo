@@ -130,7 +130,8 @@ jobs:
               'error_logs',      public.purge_error_logs(90),
               'client_requests', public.purge_client_requests(90),
               'invites',         public.purge_dead_invites(90),
-              'error_alerts',    public.purge_error_alerts(90)
+              'error_alerts',    public.purge_error_alerts(90),
+              'push_deliveries', public.purge_push_delivery_logs(90)
             ));"
 
       # 循環支出: turn every rule that has come due into a real expense.

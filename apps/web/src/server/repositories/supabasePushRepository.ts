@@ -44,6 +44,15 @@ export function createSupabasePushRepository(client: PostgrestClient): PushRepos
       };
     },
 
+    async logDelivery(kind, outcome) {
+      await client.rpc<null>("log_push_delivery", {
+        p_kind: kind,
+        p_sent: outcome.sent,
+        p_pruned: outcome.pruned,
+        p_failed: outcome.failed,
+      });
+    },
+
     async targetsForAdmins() {
       const result = await client.rpc<PushTargetsRecord>("push_targets_for_admins", {});
       return {

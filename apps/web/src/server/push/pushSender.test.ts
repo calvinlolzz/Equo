@@ -34,6 +34,7 @@ function makeRepository(overrides: Partial<PushRepository> = {}): PushRepository
     async targetsForGroup() {
       return { group_name: "東京旅行", actor_name: "Alice", subscriptions: [subscription(1)] };
     },
+    async logDelivery() {},
     async targetsForAdmins() {
       return { group_name: null, actor_name: null, subscriptions: [] };
     },
@@ -169,6 +170,7 @@ describe("deliverPush", () => {
     const send = vi.fn(async () => ({ statusCode: 201 }));
 
     const outcome = await deliverPush({
+      kind: "expense",
       subscriptions: [subscription(1), subscription(2)],
       payload,
       vapid,
@@ -190,6 +192,7 @@ describe("deliverPush", () => {
     });
 
     const outcome = await deliverPush({
+      kind: "expense",
       subscriptions: [subscription(1)],
       payload,
       vapid,
@@ -214,6 +217,7 @@ describe("deliverPush", () => {
     // A 429 or a 500 is the push service having a bad minute. Dropping the
     // subscription would make the user re-enable notifications by hand.
     const outcome = await deliverPush({
+      kind: "expense",
       subscriptions: [subscription(1)],
       payload,
       vapid,
@@ -236,6 +240,7 @@ describe("deliverPush", () => {
     };
 
     const outcome = await deliverPush({
+      kind: "expense",
       subscriptions: [subscription(1), subscription(2), subscription(3)],
       payload,
       vapid,
