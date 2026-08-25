@@ -54,6 +54,26 @@ export type AdminHealthRecord = {
     last_delivery_at: string | null;
   };
   /**
+   * 循環支出 rules that switched themselves off. `broken` counts rules with a
+   * stored error; a user pausing their own rule is not a fault and is not
+   * counted here. Absent on an API deployed before this shipped.
+   */
+  recurring?: {
+    rules: number;
+    active: number;
+    broken: number;
+    /** Newest failure first, capped at 10. */
+    broken_rules: Array<{
+      id: string;
+      title: string;
+      group_id: string;
+      group_name: string | null;
+      last_error: string | null;
+      last_run_at: string | null;
+      active: boolean;
+    }>;
+  };
+  /**
    * Receipt recognition's live configuration. `configured` is a property of the
    * deployment (is ANTHROPIC_API_KEY set) and `enabled` is the console's own
    * switch — kept apart because the fixes are completely different, and both

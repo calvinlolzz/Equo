@@ -350,6 +350,36 @@ export function pushTiles(health: AdminHealthSummary): HealthTile[] {
   ];
 }
 
+/**
+ * 循環支出 rules the nightly job switched off, ready to render.
+ *
+ * No tile: the job heartbeat already carries "N 條規則失敗", and a second
+ * counter saying the same thing would be noise. What was missing is WHICH — so
+ * this is the list, and on a good day it is empty and nothing renders.
+ *
+ * A rule the user paused themselves has no last_error and never appears here.
+ */
+export type BrokenRecurringRule = {
+  id: string;
+  title: string;
+  groupId: string;
+  groupName: string;
+  error: string;
+  lastRunAt: string | null;
+};
+
+export function brokenRecurringRules(health: AdminHealthSummary): BrokenRecurringRule[] {
+  return (health.recurring?.broken_rules ?? []).map((rule) => ({
+    id: rule.id,
+    title: rule.title,
+    groupId: rule.group_id,
+    // A rule whose group was hard-deleted still deserves a readable row.
+    groupName: rule.group_name?.trim() || "(群組已刪除)",
+    error: rule.last_error?.trim() || "（沒有記錄原因）",
+    lastRunAt: rule.last_run_at,
+  }));
+}
+
 export function scheduledJobTiles(health: AdminHealthSummary, nowMs: number): HealthTile[] {
   const jobs = health.jobs;
 
@@ -532,6 +562,19 @@ export function inboxItems(health: AdminHealthSummary, nowMs: number): InboxItem
         tone: "warn",
       });
     }
+  }
+
+  const broken = health.recurring?.broken ?? 0;
+  if (broken > 0) {
+    items.push({
+      key: "recurring:broken",
+      label: "循環支出規則已停用",
+      count: broken,
+      // No tab to send them to - the list sits under the health card, because
+      // acting on it means contacting the group, not clicking something here.
+      route: null,
+      tone: "warn",
+    });
   }
 
   if (health.push && health.push.admins > 0 && health.push.subscribed_admins === 0) {

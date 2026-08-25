@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { AdminHealthSummary } from "./apiClient";
 import {
+  brokenRecurringRules,
   pushTiles,
   scheduledJobTiles,
   inboxItems,
@@ -510,5 +511,79 @@ describe("push health", () => {
     const items = inboxItems(withPush({ admins: 0, subscribed_admins: 0 }), Date.parse("2026-08-25T01:00:00.000Z"));
 
     expect(items.map((item) => item.label)).not.toContain("沒有管理員收得到錯誤告警");
+  });
+});
+
+describe("broken 循環支出 rules", () => {
+  const base = {
+    backup: null,
+    rate_limit: { active_buckets: 0, blocked_24h: 0 },
+    errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
+    feedback: { open: 0 },
+  } as unknown as AdminHealthSummary;
+
+  function withRecurring(rules: Array<Record<string, unknown>>, broken = rules.length) {
+    return {
+      ...base,
+      recurring: { rules: rules.length, active: 0, broken, broken_rules: rules },
+    } as unknown as AdminHealthSummary;
+  }
+
+  const rule = {
+    id: "rule_1",
+    title: "每月房租",
+    group_id: "group_1",
+    group_name: "室友",
+    last_error: "INVALID_MEMBER:某位成員已離開群組",
+    last_run_at: "2026-08-25T00:00:00.000Z",
+    active: false,
+  };
+
+  test("carries what an operator needs to act: which rule, whose group, why", () => {
+    expect(brokenRecurringRules(withRecurring([rule]))[0]).toEqual({
+      id: "rule_1",
+      title: "每月房租",
+      groupId: "group_1",
+      groupName: "室友",
+      error: "INVALID_MEMBER:某位成員已離開群組",
+      lastRunAt: "2026-08-25T00:00:00.000Z",
+    });
+  });
+
+  test("a rule whose group is gone still reads as a row", () => {
+    const [mapped] = brokenRecurringRules(withRecurring([{ ...rule, group_name: null }]));
+
+    expect(mapped.groupName).toBe("(群組已刪除)");
+  });
+
+  test("a failure with no stored reason says so rather than rendering blank", () => {
+    const [mapped] = brokenRecurringRules(withRecurring([{ ...rule, last_error: "  " }]));
+
+    expect(mapped.error).toBe("（沒有記錄原因）");
+  });
+
+  test("nothing broken renders nothing", () => {
+    expect(brokenRecurringRules(withRecurring([], 0))).toEqual([]);
+    expect(brokenRecurringRules(base)).toEqual([]);
+  });
+
+  test("a stopped rule becomes something to do, counted", () => {
+    const items = inboxItems(withRecurring([rule]), Date.parse("2026-08-26T00:00:00.000Z"));
+    const entry = items.find((item) => item.key === "recurring:broken");
+
+    expect(entry).toMatchObject({ label: "循環支出規則已停用", count: 1, tone: "warn" });
+  });
+
+  test("a healthy recurring setup adds nothing to the inbox", () => {
+    // Asserting on the recurring key specifically: this fixture has no backup
+    // heartbeat, so the inbox is legitimately non-empty for another reason.
+    const healthy = {
+      ...base,
+      recurring: { rules: 5, active: 5, broken: 0, broken_rules: [] },
+    } as unknown as AdminHealthSummary;
+
+    const items = inboxItems(healthy, Date.parse("2026-08-26T00:00:00.000Z"));
+
+    expect(items.some((item) => item.key === "recurring:broken")).toBe(false);
   });
 });

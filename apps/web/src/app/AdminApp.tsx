@@ -42,6 +42,7 @@ import {
 } from "./adminCsv";
 import {
   auditActionLabel,
+  brokenRecurringRules,
   auditActionOptions,
   auditTargetText,
   describeLastSeen,
@@ -544,6 +545,46 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
                 <p className="admin-tile__hint">{tile.hint}</p>
               </article>
             ))}
+          </div>
+        </>
+      )}
+
+      {/* Only when something is broken. A good day shows nothing here, which is
+          the same rule the inbox above follows. */}
+      {health && brokenRecurringRules(health).length > 0 && (
+        <>
+          <h3 className="admin-subheading admin-subheading--spaced">已停用的循環支出</h3>
+          <p className="admin-muted">
+            {"這些規則在每晚產生帳目時失敗，已被自動停用——在群組成員修正原因之前不會再產生任何帳。"}
+          </p>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>規則</th>
+                  <th>群組</th>
+                  <th>原因</th>
+                  <th>最後嘗試</th>
+                </tr>
+              </thead>
+              <tbody>
+                {brokenRecurringRules(health).map((rule) => (
+                  // Whole-row navigation, the same affordance the users and
+                  // groups tables use - acting on this means going and looking
+                  // at the group.
+                  <tr
+                    key={rule.id}
+                    className="admin-table__row"
+                    onClick={() => onNavigate({ tab: "groups", groupId: rule.groupId })}
+                  >
+                    <td>{rule.title}</td>
+                    <td>{rule.groupName}</td>
+                    <td>{rule.error}</td>
+                    <td>{rule.lastRunAt ? formatDateTime(rule.lastRunAt) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

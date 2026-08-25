@@ -1070,6 +1070,26 @@ export type AdminHealthSummary = {
     pruned_7d: number;
     last_delivery_at: string | null;
   };
+  /**
+   * 循環支出 rules that switched themselves off. `broken` counts rules with a
+   * stored error; a user pausing their own rule is not a fault and is not
+   * counted here. Absent on an API deployed before this shipped.
+   */
+  recurring?: {
+    rules: number;
+    active: number;
+    broken: number;
+    /** Newest failure first, capped at 10. */
+    broken_rules: Array<{
+      id: string;
+      title: string;
+      group_id: string;
+      group_name: string | null;
+      last_error: string | null;
+      last_run_at: string | null;
+      active: boolean;
+    }>;
+  };
   rate_limit: { active_buckets: number; blocked_24h: number };
   errors: {
     last_24h: number;

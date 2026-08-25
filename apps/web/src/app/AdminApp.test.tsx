@@ -544,6 +544,48 @@ describe("the settings tab", () => {
     await screen.findByText(/已關閉收據辨識/);
   });
 
+  test("lists 循環支出 rules that switched themselves off, with the reason", async () => {
+    // The heartbeat tile already says "N 條規則失敗"; what was missing is which
+    // rule, whose group, and why - which is what makes it actionable.
+    fakeAdminApi({
+      ...baseRoutes,
+      "GET /admin/health": {
+        ...(baseRoutes["GET /admin/health"] as Record<string, unknown>),
+        recurring: {
+          rules: 3,
+          active: 2,
+          broken: 1,
+          broken_rules: [
+            {
+              id: "rule_1",
+              title: "每月房租",
+              group_id: "group_1",
+              group_name: "室友",
+              last_error: "INVALID_MEMBER:某位成員已離開群組",
+              last_run_at: "2026-08-25T00:00:00.000Z",
+              active: false,
+            },
+          ],
+        },
+      },
+    });
+    renderAdmin();
+
+    expect(await screen.findByText("已停用的循環支出")).toBeTruthy();
+    expect(screen.getByText("每月房租")).toBeTruthy();
+    expect(screen.getByText("INVALID_MEMBER:某位成員已離開群組")).toBeTruthy();
+    expect(screen.getByText("循環支出規則已停用")).toBeTruthy();
+  });
+
+  test("a good day shows no 循環支出 section at all", async () => {
+    fakeAdminApi(baseRoutes);
+    renderAdmin();
+
+    // Wait for the overview to settle before asserting on an absence.
+    await screen.findByText("系統狀態");
+    expect(screen.queryByText("已停用的循環支出")).toBeNull();
+  });
+
   test("shows what recognition actually did and what it cost", async () => {
     fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": settings });
     renderAdmin("?tab=settings");
