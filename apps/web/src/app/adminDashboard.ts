@@ -313,6 +313,67 @@ export const SCHEDULED_JOBS: readonly ScheduledJob[] = [
  * Absent `push` means an API older than this field: render nothing rather than
  * invent a zero, the same rule as scheduledJobTiles.
  */
+/**
+ * What the current billing plan allows. Here rather than in SQL because it is a
+ * property of the SUBSCRIPTION, not of the database — Postgres reports what is
+ * used, this says what is permitted. Changing plan is one edit.
+ *
+ * Supabase Free, confirmed against the plan's own quota table.
+ */
+export const FREE_PLAN_LIMITS = {
+  /** Exceeding this switches the database to READ-ONLY, not to a bigger bill. */
+  databaseBytes: 500 * 1024 * 1024,
+  storageBytes: 1024 * 1024 * 1024,
+};
+
+/**
+ * Thresholds.
+ *
+ * Higher than they would be for a cost overrun, because these are cliffs with
+ * a slow approach: usage grows with the ledger, so 70% is months of warning and
+ * 85% is still time to delete or upgrade before writes start failing.
+ */
+const QUOTA_WARN_PCT = 70;
+const QUOTA_BAD_PCT = 85;
+
+function quotaTile(key: string, label: string, used: number, limit: number, hint: string): HealthTile {
+  const pct = limit === 0 ? 0 : Math.round((used / limit) * 1000) / 10;
+
+  return {
+    key,
+    label,
+    value: `${pct}%`,
+    hint: `${formatBytes(used)} / ${formatBytes(limit)}・${hint}`,
+    tone: pct >= QUOTA_BAD_PCT ? "bad" : pct >= QUOTA_WARN_PCT ? "warn" : "ok",
+  };
+}
+
+/**
+ * How close the free plan's two hard limits are.
+ *
+ * The database one is the serious tile: at 500 MB Supabase switches the project
+ * to read-only and the app stops accepting expenses. It is not a bill, it is an
+ * outage with a bill's warning signs.
+ */
+export function quotaTiles(health: AdminHealthSummary): HealthTile[] {
+  const quota = health.quota;
+
+  if (!quota) return [];
+
+  return [
+    quotaTile(
+      "quota_database",
+      "資料庫用量",
+      quota.database_bytes,
+      FREE_PLAN_LIMITS.databaseBytes,
+      // Said on the tile because the consequence is not obvious from a
+      // percentage, and because deleting rows does not shrink it immediately.
+      "超過會轉唯讀",
+    ),
+    quotaTile("quota_storage", "儲存空間用量", quota.storage_bytes, FREE_PLAN_LIMITS.storageBytes, "圖片"),
+  ];
+}
+
 export function pushTiles(health: AdminHealthSummary): HealthTile[] {
   const push = health.push;
 
@@ -452,6 +513,7 @@ export function healthTiles(health: AdminHealthSummary, nowMs: number): HealthTi
     },
     ...scheduledJobTiles(health, nowMs),
     ...pushTiles(health),
+    ...quotaTiles(health),
     {
       key: "errors",
       label: "前端錯誤（24 小時）",
@@ -560,6 +622,21 @@ export function inboxItems(health: AdminHealthSummary, nowMs: number): InboxItem
         count: null,
         route: null,
         tone: "warn",
+      });
+    }
+  }
+
+  if (health.quota) {
+    const pct = (health.quota.database_bytes / FREE_PLAN_LIMITS.databaseBytes) * 100;
+
+    if (pct >= QUOTA_WARN_PCT) {
+      items.push({
+        key: "quota:database",
+        label: pct >= QUOTA_BAD_PCT ? "資料庫快滿了，超過會轉唯讀" : "資料庫用量偏高",
+        count: null,
+        // Fixed by deleting data or upgrading the plan; neither is in here.
+        route: null,
+        tone: pct >= QUOTA_BAD_PCT ? "bad" : "warn",
       });
     }
   }

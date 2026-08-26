@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import type { AdminHealthSummary } from "./apiClient";
 import {
+  FREE_PLAN_LIMITS,
+  quotaTiles,
   brokenRecurringRules,
   pushTiles,
   scheduledJobTiles,
@@ -585,5 +587,72 @@ describe("broken 循環支出 rules", () => {
     const items = inboxItems(healthy, Date.parse("2026-08-26T00:00:00.000Z"));
 
     expect(items.some((item) => item.key === "recurring:broken")).toBe(false);
+  });
+});
+
+describe("free plan quota", () => {
+  const base = {
+    backup: null,
+    rate_limit: { active_buckets: 0, blocked_24h: 0 },
+    errors: { last_24h: 0, last_7d: 0, latest_at: null, open_groups: 0 },
+    feedback: { open: 0 },
+  } as unknown as AdminHealthSummary;
+
+  function atDatabasePct(pct: number) {
+    return {
+      ...base,
+      quota: {
+        database_bytes: Math.round((FREE_PLAN_LIMITS.databaseBytes * pct) / 100),
+        storage_bytes: 0,
+      },
+    } as AdminHealthSummary;
+  }
+
+  test("reports usage as a share of what the plan allows", () => {
+    const tile = quotaTiles(atDatabasePct(50)).find((t) => t.key === "quota_database");
+
+    expect(tile).toMatchObject({ value: "50%", tone: "ok" });
+    // Both numbers on the tile, because a percentage alone does not say
+    // whether there is room to delete something.
+    expect(tile?.hint).toContain("250 MB / 500 MB");
+  });
+
+  test("says what actually happens at the limit, which is not a bill", () => {
+    expect(quotaTiles(atDatabasePct(10))[0].hint).toContain("超過會轉唯讀");
+  });
+
+  test("warns with months of runway, and alarms while there is still time", () => {
+    expect(quotaTiles(atDatabasePct(69)).find((t) => t.key === "quota_database")?.tone).toBe("ok");
+    expect(quotaTiles(atDatabasePct(70)).find((t) => t.key === "quota_database")?.tone).toBe("warn");
+    expect(quotaTiles(atDatabasePct(85)).find((t) => t.key === "quota_database")?.tone).toBe("bad");
+  });
+
+  test("storage is measured against its own, larger limit", () => {
+    const health = {
+      ...base,
+      quota: { database_bytes: 0, storage_bytes: FREE_PLAN_LIMITS.storageBytes / 2 },
+    } as AdminHealthSummary;
+
+    expect(quotaTiles(health).find((t) => t.key === "quota_storage")).toMatchObject({
+      value: "50%",
+      tone: "ok",
+    });
+  });
+
+  test("an API without the field renders nothing rather than inventing zeros", () => {
+    expect(quotaTiles(base)).toEqual([]);
+  });
+
+  test("a full database becomes an outage warning in the inbox", () => {
+    const items = inboxItems(atDatabasePct(90), Date.parse("2026-08-26T00:00:00.000Z"));
+    const entry = items.find((item) => item.key === "quota:database");
+
+    expect(entry).toMatchObject({ label: "資料庫快滿了，超過會轉唯讀", tone: "bad" });
+  });
+
+  test("plenty of room adds nothing to the inbox", () => {
+    const items = inboxItems(atDatabasePct(5), Date.parse("2026-08-26T00:00:00.000Z"));
+
+    expect(items.some((item) => item.key === "quota:database")).toBe(false);
   });
 });

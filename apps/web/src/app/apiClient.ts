@@ -1090,6 +1090,16 @@ export type AdminHealthSummary = {
       active: boolean;
     }>;
   };
+  /**
+   * Free-plan usage against the two hard limits. The LIMITS are not here — they
+   * belong to the billing plan, not the database (see FREE_PLAN_LIMITS).
+   * Absent on an API deployed before this shipped.
+   */
+  quota?: {
+    /** Sum over pg_database, matching the number Supabase enforces. */
+    database_bytes: number;
+    storage_bytes: number;
+  };
   rate_limit: { active_buckets: number; blocked_24h: number };
   errors: {
     last_24h: number;

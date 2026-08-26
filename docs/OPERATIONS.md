@@ -2,7 +2,16 @@
 
 正式站：<https://equo-mu.vercel.app> ｜ Supabase 專案：`cmfgptuzbayzdrxuoapm`（region `ap-southeast-1`）
 
-目前 Supabase 組織在 **free plan**，這決定了下面兩件事的做法。
+目前 Supabase 組織在 **free plan**（2026-08-26 對著 Management API 確認過），這決定了下面幾件事的做法。
+
+**兩個硬限制**（取自 Supabase 官方 quota 表）：
+
+| 項目 | Free 額度 | 超過會怎樣 |
+|---|---|---|
+| Database Size | **500 MB / 專案** | **專案轉唯讀**——`cannot execute INSERT in a read-only transaction`，等於 app 不能再記帳 |
+| Storage Size | 1 GB | 超額通知＋寬限期，之後套用 Fair Use 限制 |
+
+2026-08-26 實測：資料庫 **29 MB（5.9%）**、儲存 **1.5 MB（0.15%）**。兩個都還很空，但這是懸崖不是斜坡，所以後台現在會顯示（見第 8 節）。
 
 ---
 
@@ -168,7 +177,23 @@ Supabase 的 performance advisor 有兩條規則會互相打架，2026-08-24 補
 
 ---
 
-## 8. Uptime 監控
+## 8. 免費方案額度
+
+後台總覽的健康卡有兩張額度卡片，超過 70% 轉黃、85% 轉紅，資料庫那張同時會進待辦。
+
+**資料庫那張是嚴重的那個**：超過 500 MB 不是多付錢，是**專案轉唯讀、app 不能再記帳**。所以卡片上直接寫「超過會轉唯讀」——單看一個百分比說不出後果。
+
+幾個量測上的細節：
+
+- 用的是 Supabase 文件自己指定的那個查詢（`sum(pg_database_size(datname))` **over `pg_database`**，不是 `pg_database_size(current_database())`），所以後台顯示的數字跟平台實際拿來判定的是同一個。
+- 那個 sum **包含 `template0`／`template1`，約 15 MB**，誰都刪不掉——但它算進額度，所以後台也必須算進去。目前 29 MB 裡有一半是這個。
+- **刪資料不會馬上讓數字變小**：Postgres 要 vacuum 之後才會回收空間。所以第 2 節那些保留期清理跑完之後別預期立刻掉。
+
+**額度的數字寫在 console（`adminDashboard.ts` 的 `FREE_PLAN_LIMITS`）不寫在 SQL**：那是訂閱方案的性質，不是這個資料庫的性質。Postgres 只負責報「用了多少」，方案負責說「可以用多少」。升級方案時改一個常數。
+
+---
+
+## 9. Uptime 監控
 
 ### 為什麼不要只監控首頁
 
@@ -205,7 +230,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 ---
 
-## 9. 目前沒做的（要花錢或需要決策）
+## 10. 目前沒做的（要花錢或需要決策）
 
 - Supabase Pro + PITR（完整備份、含 `auth.*`、可還原到任意時間點）
 - 自訂網域（目前仍是 `equo-mu.vercel.app`）
