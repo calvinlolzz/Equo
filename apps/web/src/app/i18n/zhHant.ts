@@ -525,6 +525,14 @@ export const ZH_HANT = {
     confusing: "不好理解",
     other: "其他",
   },
+  notice: {
+    /** The default when the operator switched maintenance on without writing one. */
+    maintenanceFallback: "Equo 正在維護，暫時無法記帳。你的資料還在，稍後再試。",
+    /** Shown when a write is refused mid-window. */
+    maintenanceWriteBlocked: "維護中，暫時無法儲存。這筆會先留著，維護結束後自動送出。",
+    maintenanceLabel: "維護中",
+    dismiss: "知道了",
+  },
   errorBoundary: {
     title: "應用程式發生問題",
     body: "很抱歉，畫面出了點狀況。重新整理通常就能恢復。",

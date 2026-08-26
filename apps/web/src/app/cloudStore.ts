@@ -1,7 +1,7 @@
 import type { CreateGroupRequest } from "../contracts/schemas";
 import {
   createApiClient,
-  isNetworkError,
+  isRetryableError,
   type ArchivedGroupSummary,
   type BalanceSummary,
   type EquoApiClient,
@@ -546,7 +546,11 @@ export function createCloudGroupsStore({
         try {
           await sendQueuedWrite(write);
         } catch (error) {
-          if (isNetworkError(error)) return;
+          // Retryable, NOT just network: a maintenance window rejects the write
+          // with a 503 that has nothing to do with its contents, and dropping it
+          // would destroy an expense the app promised to keep. Stop draining and
+          // leave everything queued for the next attempt.
+          if (isRetryableError(error)) return;
           if (isUnauthenticatedError(error)) {
             onSessionExpired();
             return;
@@ -858,7 +862,10 @@ export function createCloudGroupsStore({
       const { expense } = await apiClient.createExpense(groupId, request);
       applyNewExpense(groupId, draftToExpense(draft, expense, expenseKind));
     } catch (error) {
-      if (isNetworkError(error) && !isUnauthenticatedError(error)) {
+      // Retryable covers maintenance as well as being offline: in a window the
+      // server refuses the write for reasons that have nothing to do with it, so
+      // queue it exactly as if there were no signal rather than losing it.
+      if (isRetryableError(error) && !isUnauthenticatedError(error)) {
         const queued = queueWrite({
           kind: "create",
           groupId,
@@ -939,7 +946,7 @@ export function createCloudGroupsStore({
         });
       }
     } catch (error) {
-      if (isNetworkError(error) && !isUnauthenticatedError(error) && queueEdit()) return;
+      if (isRetryableError(error) && !isUnauthenticatedError(error) && queueEdit()) return;
       resyncInBackground(groupId);
       handleError(error);
     }
@@ -977,7 +984,7 @@ export function createCloudGroupsStore({
         });
       }
     } catch (error) {
-      if (isNetworkError(error) && !isUnauthenticatedError(error) && queueDelete()) return;
+      if (isRetryableError(error) && !isUnauthenticatedError(error) && queueDelete()) return;
       resyncInBackground(groupId);
       handleError(error);
     }

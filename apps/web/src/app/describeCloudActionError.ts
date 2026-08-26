@@ -30,6 +30,14 @@ export function describeCloudActionError(error: unknown): string {
   if (code === "RATE_LIMITED") {
     return text.rateLimited;
   }
+  // Writes are paused for maintenance. The copy says the entry is kept rather
+  // than that something failed, because that is what happens: the write goes
+  // into the offline queue and drains when the window ends (see
+  // isRetryableError). Telling somebody their expense did not save, when it
+  // will, would make them record it twice.
+  if (code === "MAINTENANCE") {
+    return UI_TEXT.notice.maintenanceWriteBlocked;
+  }
   // Last admin-console owner tried to delete their account (409 from
   // DELETE /me) — a specific, actionable message, not the generic failure.
   if (code === "ACCOUNT_DELETE_BLOCKED") {

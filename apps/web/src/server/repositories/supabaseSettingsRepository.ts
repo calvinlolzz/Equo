@@ -16,6 +16,11 @@ export type AutoNudgeSettings = {
   updated_by_email: string | null;
 };
 
+export type SiteNotice = {
+  banner: { message: string; level: "info" | "warning"; ends_at: string | null; active: boolean };
+  maintenance: { enabled: boolean; message: string };
+};
+
 export type SettingsRepository = {
   getReceiptScan(defaultModel: string): Promise<ReceiptScanSettings>;
   setReceiptScan(
@@ -28,6 +33,17 @@ export type SettingsRepository = {
     actor: { id: string; email: string },
     settings: { enabled: boolean; overdueDays: number; cooldownDays: number },
   ): Promise<AutoNudgeSettings>;
+  getSiteNotice(): Promise<SiteNotice>;
+  setSiteNotice(
+    actor: { id: string; email: string },
+    settings: {
+      bannerMessage: string;
+      bannerLevel: "info" | "warning";
+      bannerEndsAt: string | null;
+      maintenanceEnabled: boolean;
+      maintenanceMessage: string;
+    },
+  ): Promise<SiteNotice>;
 };
 
 /**
@@ -56,6 +72,22 @@ export function createSupabaseSettingsRepository(client: PostgrestClient): Setti
         p_enabled: settings.enabled,
         p_overdue_days: settings.overdueDays,
         p_cooldown_days: settings.cooldownDays,
+      });
+    },
+
+    async getSiteNotice() {
+      return client.rpc<SiteNotice>("site_notice_settings", {});
+    },
+
+    async setSiteNotice(actor, settings) {
+      return client.rpc<SiteNotice>("admin_console_set_site_notice", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_banner_message: settings.bannerMessage,
+        p_banner_level: settings.bannerLevel,
+        p_banner_ends_at: settings.bannerEndsAt,
+        p_maintenance_enabled: settings.maintenanceEnabled,
+        p_maintenance_message: settings.maintenanceMessage,
       });
     },
 

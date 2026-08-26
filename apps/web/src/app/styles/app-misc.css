@@ -973,6 +973,98 @@
   box-shadow: 0 0 0 4px rgb(var(--accent) / 0.16);
 }
 
+/* ---- 站台公告／維護 ------------------------------------------------------ */
+
+/* In the flow rather than fixed, unlike .offline-banner: this one is
+   dismissible, so it has to be clickable (the offline pill sets
+   pointer-events: none to stay out of the way), and an announcement that
+   overlaps the content it is announcing about reads as broken. Sticky so it
+   survives a scroll without covering anything on the way. */
+.site-notice-stack {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: grid;
+  gap: 6px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  background: var(--page-1);
+}
+
+.site-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgb(var(--surf) / 0.16);
+  background: rgb(var(--surf) / 0.08);
+  color: rgb(var(--fg));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.site-notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.site-notice p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  /* Operator-authored free text: a pasted link or a long unbroken run has to
+     wrap rather than stretch the bar off the screen. */
+  overflow-wrap: anywhere;
+}
+
+.site-notice strong {
+  /* The 維護中 label sits inline before the message, so it needs its own
+     spacing rather than a separate element pushing the text to a second line. */
+  margin-right: 6px;
+}
+
+.site-notice button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: rgb(var(--fg) / 0.5);
+}
+
+.site-notice--info {
+  border-color: rgb(var(--brand) / 0.35);
+  background: rgb(var(--brand) / 0.1);
+}
+
+.site-notice--warning {
+  border-color: rgb(var(--gold) / 0.45);
+  background: rgb(var(--gold) / 0.12);
+}
+
+/* Maintenance is the one that explains why the app is refusing to save, so it
+   is the loudest of the three and never dismissible. */
+.site-notice--maintenance {
+  border-color: rgb(var(--danger) / 0.45);
+  background: rgb(var(--danger) / 0.12);
+}
+
+/* When a site notice is up, the offline pill stops floating and falls into the
+   flow underneath it.
+
+   Measured, not guessed: at 375px the fixed pill (top 10-47) lands squarely on
+   top of the notice bar (top 22-84), and that is the COMMON case rather than a
+   corner - maintenance queues writes, so "N 筆待送出" is showing precisely when
+   the maintenance bar is. Going static rather than nudging `top` by a magic
+   number means it stays correct for a one-line notice and a wrapped three-line
+   one alike. */
+.app-shell:has(.site-notice) .offline-banner {
+  position: static;
+  transform: none;
+  margin: 0 auto 8px;
+}
+
 .offline-banner {
   position: fixed;
   top: calc(10px + env(safe-area-inset-top));

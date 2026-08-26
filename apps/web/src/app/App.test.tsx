@@ -59,13 +59,31 @@ describe("the login wall", () => {
     expect(screen.queryByText(UI_TEXT.app.createGroup)).toBeNull();
   });
 
-  test("the wall makes no API calls at all - not even a groups fetch", async () => {
+  test("the wall fetches nothing but the public site notice", async () => {
+    // This used to assert NO calls at all. The site notice deliberately
+    // loosened it: a maintenance notice is most needed by the person who cannot
+    // get past the wall, and an announcement about the service has to reach the
+    // screen they are stuck on. It is unauthenticated, carries no user data,
+    // and is the only exception - everything that reads somebody's groups still
+    // waits until there is a session.
     const api = fakeApi([]);
 
     renderApp();
     await screen.findByText(UI_TEXT.login.googleLogin);
 
-    expect(api.calls).toEqual([]);
+    expect(api.calls).toEqual(["GET /site-notice"]);
+  });
+
+  test("and in particular fetches nothing about any user or group", async () => {
+    const api = fakeApi([]);
+
+    renderApp();
+    await screen.findByText(UI_TEXT.login.googleLogin);
+
+    const leaked = api.calls.filter(
+      (call) => call.includes("/groups") || call.includes("/me") || call.includes("/notifications"),
+    );
+    expect(leaked).toEqual([]);
   });
 
   test("an expired stored session is treated as no session", async () => {

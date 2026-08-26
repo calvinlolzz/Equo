@@ -93,6 +93,11 @@ export type ExpenseSummary = {
   expense_shares?: ExpenseShareSummary[];
 };
 
+export type SiteNoticeResponse = {
+  banner: { message: string; level: "info" | "warning"; ends_at: string | null; active: boolean };
+  maintenance: { enabled: boolean; message: string };
+};
+
 export type ExpenseCommentSummary = {
   id: string;
   expense_id: string;
@@ -276,6 +281,25 @@ export function isNetworkError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   if (code === "NETWORK_ERROR") return true;
   return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/** Writes are paused for maintenance. Temporary, and nothing to do with this request. */
+export function isMaintenanceError(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "MAINTENANCE";
+}
+
+/**
+ * Whether a failed write should stay in the queue and be tried again.
+ *
+ * The queue drops anything the server actively rejects, because replaying a
+ * rejected write forever would wedge every entry behind it. Maintenance is the
+ * one rejection that is not about the write at all - the same payload will be
+ * accepted in ten minutes - so it has to be on this side of the line. Without
+ * it, reconnecting during a maintenance window would silently delete the
+ * expenses somebody recorded offline.
+ */
+export function isRetryableError(error: unknown): boolean {
+  return isNetworkError(error) || isMaintenanceError(error);
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -497,6 +521,14 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         body: JSON.stringify(payload),
       });
     },
+    /**
+     * The operator's announcement and maintenance state. Unauthenticated: the
+     * banner has to reach the login screen, and during a maintenance window the
+     * people most in need of an explanation are the ones who cannot get past it.
+     */
+    getSiteNotice() {
+      return request<{ notice: SiteNoticeResponse }>("/site-notice", { method: "GET" });
+    },
     /** One entry's comment thread, oldest first. Fetched when its dialog opens. */
     listExpenseComments(groupId: string, expenseId: string) {
       return request<{ comments: ExpenseCommentSummary[] }>(
@@ -679,6 +711,21 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     },
     adminSetAutoNudge(payload: { enabled: boolean; overdue_days: number; cooldown_days: number }) {
       return request<AdminAutoNudgeSettings>("/admin/settings/auto-nudge", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    },
+    adminGetSiteNotice() {
+      return request<SiteNoticeResponse>("/admin/settings/site-notice", { method: "GET" });
+    },
+    adminSetSiteNotice(payload: {
+      banner_message: string;
+      banner_level: "info" | "warning";
+      banner_ends_at: string | null;
+      maintenance_enabled: boolean;
+      maintenance_message: string;
+    }) {
+      return request<SiteNoticeResponse>("/admin/settings/site-notice", {
         method: "PUT",
         body: JSON.stringify(payload),
       });

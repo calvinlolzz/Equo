@@ -18,6 +18,7 @@ import {
   type AdminGroupDetail,
   type AdminGroupFilterOption,
   type AdminAutoNudgeSettings,
+  type SiteNoticeResponse,
   type AdminGroupListPage,
   type AdminHealthSummary,
   type AdminMeSummary,
@@ -3433,6 +3434,8 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
         </form>
       )}
 
+      <SiteNoticeSection client={client} canEdit={canEdit} />
+
       <AutoNudgeSection client={client} canEdit={canEdit} />
 
       <ScanUsageSection client={client} />
@@ -3440,6 +3443,210 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
       <CatalogSection client={client} canEdit={canEdit} />
     </section>
   );
+}
+
+
+/**
+ * 站台公告與維護模式.
+ *
+ * The two live together because they are used together: you post the notice,
+ * you do the work, you take both down. Maintenance is the only switch in this
+ * console that stops everybody recording expenses, so it is the loudest control
+ * on the page and every change is written to the audit log.
+ */
+function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
+  const [saved, setSaved] = useState<SiteNoticeResponse | null>(null);
+  const [message, setMessage] = useState("");
+  const [level, setLevel] = useState<"info" | "warning">("info");
+  const [endsAt, setEndsAt] = useState("");
+  const [maintenance, setMaintenance] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function apply(next: SiteNoticeResponse) {
+    setSaved(next);
+    setMessage(next.banner.message);
+    setLevel(next.banner.level);
+    // <input type="datetime-local"> wants a local "YYYY-MM-DDTHH:mm" with no
+    // zone; the API speaks ISO UTC. Slice off the seconds and the Z after
+    // shifting into local time, or the operator sees a time that is not the one
+    // they set.
+    setEndsAt(next.banner.ends_at ? toLocalInputValue(next.banner.ends_at) : "");
+    setMaintenance(next.maintenance.enabled);
+    setMaintenanceMessage(next.maintenance.message);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    client
+      .adminGetSiteNotice()
+      .then((result) => {
+        if (!cancelled) apply(result);
+      })
+      .catch(() => {
+        if (!cancelled) setError("設定載入失敗，可能是資料庫尚未套用 site_notice migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  const dirty =
+    Boolean(saved) &&
+    (message !== saved?.banner.message ||
+      level !== saved?.banner.level ||
+      maintenance !== saved?.maintenance.enabled ||
+      maintenanceMessage !== saved?.maintenance.message ||
+      endsAt !== (saved?.banner.ends_at ? toLocalInputValue(saved.banner.ends_at) : ""));
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!dirty || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await client.adminSetSiteNotice({
+        banner_message: message,
+        banner_level: level,
+        banner_ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+        maintenance_enabled: maintenance,
+        maintenance_message: maintenanceMessage,
+      });
+      apply(next);
+      setNotice(
+        next.maintenance.enabled
+          ? "維護模式已開啟：所有人都還能看，但沒有人能記帳。最多 30 秒後全面生效。"
+          : next.banner.active
+            ? "公告已上架。"
+            : "已收起公告，維護模式關閉。",
+      );
+    } catch (err) {
+      const code = (err as ApiClientError).code;
+      setError(code === "ADMIN_FORBIDDEN" ? "只有管理員或擁有者能變更設定。" : "儲存失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="admin-settings-card">
+      <div className="admin-settings-head">
+        <h2>站台公告與維護</h2>
+        <p>
+          {"公告會顯示在所有人的畫面最上方（包含還沒登入的登入頁）。維護模式只擋寫入：大家還是看得到自己的帳，只是暫時記不了帳——後台本身不受影響，否則就關不掉了。"}
+        </p>
+      </div>
+
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+      {!saved && !error && <p className="admin-loading">載入中…</p>}
+
+      {saved && (
+        <form onSubmit={save}>
+          <label className="admin-settings-row">
+            <input
+              className="admin-text-input"
+              type="text"
+              maxLength={500}
+              value={message}
+              disabled={!canEdit || busy}
+              placeholder="例：8/30 22:00-23:00 會短暫維護"
+              aria-label="公告內容"
+              onChange={(event) => setMessage(event.target.value)}
+            />
+            <span>
+              <strong>公告內容</strong>
+              <small>留空就是沒有公告。這句話不會被翻譯，使用者看到的就是你寫的。</small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <select
+              value={level}
+              disabled={!canEdit || busy}
+              aria-label="公告樣式"
+              onChange={(event) => setLevel(event.target.value === "warning" ? "warning" : "info")}
+            >
+              <option value="info">一般</option>
+              <option value="warning">警告</option>
+            </select>
+            <span>
+              <strong>公告樣式</strong>
+              <small>只影響顏色，不影響是否顯示。</small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <input
+              className="admin-text-input"
+              type="datetime-local"
+              value={endsAt}
+              disabled={!canEdit || busy}
+              aria-label="公告結束時間"
+              onChange={(event) => setEndsAt(event.target.value)}
+            />
+            <span>
+              <strong>公告結束時間</strong>
+              <small>時間到就自動收起來。留空＝一直掛著——但沒有人會記得回來拿掉。</small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <input
+              type="checkbox"
+              checked={maintenance}
+              disabled={!canEdit || busy}
+              aria-label="啟用維護模式"
+              onChange={(event) => setMaintenance(event.target.checked)}
+            />
+            <span>
+              <strong>啟用維護模式</strong>
+              <small>
+                {"擋掉所有寫入（讀取照常）。使用者這時記的帳會排進離線佇列，維護結束後自動送出，不會不見。開關生效最多要 30 秒。"}
+              </small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <input
+              className="admin-text-input"
+              type="text"
+              maxLength={500}
+              value={maintenanceMessage}
+              disabled={!canEdit || busy}
+              placeholder="例：資料庫升級中，約 20 分鐘"
+              aria-label="維護說明"
+              onChange={(event) => setMaintenanceMessage(event.target.value)}
+            />
+            <span>
+              <strong>維護說明</strong>
+              <small>留空的話會用預設句子。</small>
+            </span>
+          </label>
+
+          <div className="admin-settings-actions">
+            {canEdit && (
+              <button className="admin-primary" type="submit" disabled={!dirty || busy}>
+                {busy ? "儲存中…" : "儲存"}
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** ISO UTC -> the local "YYYY-MM-DDTHH:mm" a datetime-local input expects. */
+function toLocalInputValue(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /**

@@ -56,6 +56,18 @@ export const errorCodes = [
   "NUDGE_COOLDOWN",
   /** Nothing to remind them about: the target's balance is settled or positive. */
   "NUDGE_NOT_NEEDED",
+  /**
+   * Writes are paused while the operator works on the database. Reads still
+   * succeed, so this is not an outage.
+   *
+   * **Retryable, and the client must treat it as such.** The offline queue
+   * drops any write the server actively rejects, on the reasoning that
+   * replaying a rejected write forever would wedge the queue - but a
+   * maintenance window is temporary, and dropping somebody's expense because
+   * they happened to reconnect during one would destroy data the app promised
+   * to keep. See isRetryableError in apiClient.ts.
+   */
+  "MAINTENANCE",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

@@ -55,6 +55,23 @@ function settings(saved = { enabled: true, model: DEFAULT_MODEL }) {
           updated_by_email: null,
         };
       },
+      async getSiteNotice() {
+        return {
+          banner: { message: "", level: "info" as const, ends_at: null, active: false },
+          maintenance: { enabled: false, message: "" },
+        };
+      },
+      async setSiteNotice(_actor, next) {
+        return {
+          banner: {
+            message: next.bannerMessage,
+            level: next.bannerLevel,
+            ends_at: next.bannerEndsAt,
+            active: next.bannerMessage !== "",
+          },
+          maintenance: { enabled: next.maintenanceEnabled, message: next.maintenanceMessage },
+        };
+      },
     } satisfies SettingsRepository,
     setReceiptScan,
   };

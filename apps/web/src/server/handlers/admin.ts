@@ -2,6 +2,7 @@ import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
   AutoNudgeSettings,
+  SiteNotice,
   ReceiptScanSettings,
   SettingsRepository,
 } from "../repositories/supabaseSettingsRepository.js";
@@ -1570,6 +1571,98 @@ export async function handleAdminSetAutoNudgeSettings(
     body: await settings.setAutoNudge(
       { id: context.user.id, email: context.user.email },
       { enabled, overdueDays, cooldownDays },
+    ),
+  };
+}
+
+export async function handleAdminGetSiteNotice(
+  repository: AdminRepository,
+  settings: SettingsRepository,
+  context: AuthenticatedContext,
+): Promise<HandlerResult<SiteNotice>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  return { ok: true, status: 200, body: await settings.getSiteNotice() };
+}
+
+/**
+ * Post an announcement, or pause writes for maintenance.
+ *
+ * Admin or owner only, and audited in the RPC. Maintenance is one of the very
+ * few switches in this console that changes whether everybody can record an
+ * expense right now, so who turned it on has to be answerable afterwards.
+ */
+export async function handleAdminSetSiteNotice(
+  repository: AdminRepository,
+  settings: SettingsRepository,
+  context: AuthenticatedContext,
+  body: {
+    banner_message?: unknown;
+    banner_level?: unknown;
+    banner_ends_at?: unknown;
+    maintenance_enabled?: unknown;
+    maintenance_message?: unknown;
+  },
+): Promise<HandlerResult<SiteNotice>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  const bannerMessage = typeof body?.banner_message === "string" ? body.banner_message : "";
+  const maintenanceMessage = typeof body?.maintenance_message === "string" ? body.maintenance_message : "";
+  const level = body?.banner_level === "warning" ? "warning" : "info";
+  const maintenanceEnabled = body?.maintenance_enabled === true;
+
+  // null and "" both mean "no end date"; anything else has to be a real
+  // timestamp, because an unparseable one would be stored and then silently
+  // treated as expired, hiding the announcement the operator just wrote.
+  const rawEndsAt = body?.banner_ends_at;
+  let bannerEndsAt: string | null = null;
+
+  if (typeof rawEndsAt === "string" && rawEndsAt !== "") {
+    const parsed = new Date(rawEndsAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return {
+        ok: false,
+        status: 400,
+        body: {
+          error: {
+            code: "INVALID_ADMIN",
+            message: "banner_ends_at must be an ISO timestamp, or empty for no end date",
+            request_id: "req_admin",
+          },
+        },
+      };
+    }
+    bannerEndsAt = parsed.toISOString();
+  }
+
+  if (bannerMessage.length > 500 || maintenanceMessage.length > 500) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_ADMIN",
+          message: "messages must be at most 500 characters",
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    body: await settings.setSiteNotice(
+      { id: context.user.id, email: context.user.email },
+      { bannerMessage, bannerLevel: level, bannerEndsAt, maintenanceEnabled, maintenanceMessage },
     ),
   };
 }

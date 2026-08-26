@@ -521,6 +521,14 @@ export const EN: UiDictionary = {
     confusing: "Hard to understand",
     other: "Other",
   },
+  notice: {
+    /** The default when the operator switched maintenance on without writing one. */
+    maintenanceFallback: "Equo is paused for maintenance, so nothing can be recorded right now. Your data is safe — please try again shortly.",
+    /** Shown when a write is refused mid-window. */
+    maintenanceWriteBlocked: "Paused for maintenance, so this could not be saved yet. It is queued and will go out when maintenance ends.",
+    maintenanceLabel: "Maintenance",
+    dismiss: "Got it",
+  },
   errorBoundary: {
     title: "Something went wrong",
     body: "Sorry - the screen ran into a problem. Refreshing usually fixes it.",

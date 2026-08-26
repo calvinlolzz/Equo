@@ -63,6 +63,8 @@ import {
   adminListUsersRoute,
   adminMeRoute,
   adminGetAutoNudgeRoute,
+  adminGetSiteNoticeRoute,
+  adminSetSiteNoticeRoute,
   adminHealthRoute,
   adminReceiptScanUsageRoute,
   adminSetAutoNudgeRoute,
@@ -124,6 +126,7 @@ import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js"
 import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from "./httpTypes.js";
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
 import { enforceRateLimit } from "./rateLimit.js";
+import { blocksRequest, loadSiteNotice } from "./maintenance.js";
 
 type RuntimeOptions = {
   client: PostgrestClient;
@@ -575,6 +578,18 @@ export function createHttpRuntime(options: RuntimeOptions) {
       },
     },
     {
+      // Public and unauthenticated on purpose: the banner has to reach the
+      // login screen too, and during maintenance the people most in need of
+      // an explanation are the ones who cannot get past it.
+      method: "GET",
+      pattern: /^\/api\/v1\/site-notice$/,
+      label: "GET /api/v1/site-notice",
+      async handle() {
+        const notice = await loadSiteNotice(options.client, options.now);
+        return jsonResponse(200, { notice });
+      },
+    },
+    {
       method: "GET",
       pattern: /^\/api\/v1\/push\/public-key$/,
       label: "GET /api/v1/push/public-key",
@@ -695,6 +710,33 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "PATCH /api/v1/me/avatar",
       async handle(request) {
         const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/settings\/site-notice$/,
+      label: "GET /api/v1/admin/settings/site-notice",
+      async handle(request) {
+        const result = await adminGetSiteNoticeRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/admin\/settings\/site-notice$/,
+      label: "PUT /api/v1/admin/settings/site-notice",
+      async handle(request) {
+        const result = await adminSetSiteNoticeRoute(
+          routeOptions(options, request),
+          body<{
+            banner_message?: unknown;
+            banner_level?: unknown;
+            banner_ends_at?: unknown;
+            maintenance_enabled?: unknown;
+            maintenance_message?: unknown;
+          }>(request),
+        );
         return jsonResponse(result.status, result.body);
       },
     },
@@ -1397,6 +1439,19 @@ export function createHttpRuntime(options: RuntimeOptions) {
           ...response,
           headers: { ...response.headers, "retry-after": String(limit.retryAfterSeconds) },
         };
+      }
+
+      // After the rate limit, before routing: an unknown path is turned away
+      // for maintenance too, so probing cannot map the API during a window.
+      const notice = await loadSiteNotice(options.client, options.now);
+
+      if (blocksRequest(notice, request.method, request.path)) {
+        return errorResponse(
+          503,
+          "MAINTENANCE",
+          notice.maintenance.message || "Equo is briefly paused for maintenance.",
+          "req_maintenance",
+        );
       }
 
       const route = routes.find((candidate) => {

@@ -55,6 +55,8 @@ import { listSettlementRecords } from "./settlementHistory";
 import { useSettlementHistory } from "./useSettlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { useExpenseComments } from "./useExpenseComments";
+import { useSiteNotice } from "./useSiteNotice";
+import { SiteNoticeBar } from "./SiteNoticeBar";
 import { monthDayLabel } from "./i18n/format";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
@@ -294,6 +296,11 @@ export function App() {
   // deploy. Held here rather than read at module load so the fetched copy
   // re-renders the composer that uses it.
   const catalog = useCatalog(pollingClient, Boolean(session));
+  // Not gated on the session, unlike the two above: an announcement has to
+  // reach the login screen, and during maintenance the people who most need the
+  // explanation are the ones who cannot get past it.
+  const fetchSiteNotice = useMemo(() => () => pollingClient.getSiteNotice(), [pollingClient]);
+  const siteNotice = useSiteNotice(fetchSiteNotice);
   const currencyOptions = catalog.currencies;
 
   const {
@@ -1275,6 +1282,7 @@ export function App() {
             ) : null}
           </div>
         ) : null}
+        <SiteNoticeBar notice={siteNotice} />
         <LoginScreen
           loading={authLoading}
           errorMessage={authError || undefined}
@@ -1286,6 +1294,7 @@ export function App() {
 
   return (
     <main className="app-shell">
+      <SiteNoticeBar notice={siteNotice} />
       {!online || pendingWriteCount > 0 ? (
         <div className="offline-banner" role="status" aria-live="polite">
           {!online ? text.offlineNotice : flushingWrites ? text.offlineSyncing : ""}

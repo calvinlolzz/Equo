@@ -12,6 +12,8 @@ import {
   handleAdminSaveCurrency,
   handleAdminSetRateOverride,
   handleAdminGetAutoNudgeSettings,
+  handleAdminGetSiteNotice,
+  handleAdminSetSiteNotice,
   handleAdminGetReceiptScanSettings,
   handleAdminSetAutoNudgeSettings,
   handleAdminReceiptScanUsage,
@@ -54,6 +56,7 @@ import {
   type AdminListQuery,
   type AdminSendNotificationBody,
 } from "../handlers/admin.js";
+import { resetSiteNoticeCache } from "../http/maintenance.js";
 
 type RouteOptions = {
   client: PostgrestClient;
@@ -227,6 +230,50 @@ export async function adminSetAutoNudgeRoute(
     auth.context,
     body,
   );
+}
+
+export async function adminGetSiteNoticeRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminGetSiteNotice(
+    createSupabaseAdminRepository(options.client),
+    createSupabaseSettingsRepository(options.client),
+    auth.context,
+  );
+}
+
+export async function adminSetSiteNoticeRoute(
+  options: RouteOptions,
+  body: {
+    banner_message?: unknown;
+    banner_level?: unknown;
+    banner_ends_at?: unknown;
+    maintenance_enabled?: unknown;
+    maintenance_message?: unknown;
+  },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  const result = await handleAdminSetSiteNotice(
+    createSupabaseAdminRepository(options.client),
+    createSupabaseSettingsRepository(options.client),
+    auth.context,
+    body,
+  );
+
+  // The gate caches for 30s; drop it so the operator sees their own change take
+  // effect on the very next request instead of wondering whether it saved.
+  resetSiteNoticeCache();
+
+  return result;
 }
 
 export async function adminReceiptScanUsageRoute(options: RouteOptions, days: string | undefined) {

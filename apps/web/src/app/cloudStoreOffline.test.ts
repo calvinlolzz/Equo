@@ -91,6 +91,18 @@ function unreachable() {
   });
 }
 
+function maintenanceError(): Error & { code?: string } {
+  const error: Error & { code?: string } = new Error("Equo is briefly paused for maintenance.");
+  error.code = "MAINTENANCE";
+  return error;
+}
+
+function inMaintenance() {
+  return vi.fn(async () => {
+    throw maintenanceError();
+  });
+}
+
 async function openedStore(
   overrides: Partial<ApiClientLike> = {},
   storeOverrides: { cacheStorage?: CacheStorage; onWriteDropped?: () => void } = {},
@@ -356,5 +368,100 @@ describe("offline queue: flushing", () => {
     expect(store.getState().pendingWrites).toEqual([]);
     const sentTitles = createExpense.mock.calls.slice(2).map((call) => (call[1] as { title: string }).title);
     expect(sentTitles).toEqual(["First", "Second"]);
+  });
+});
+
+
+/**
+ * Maintenance mode, from the queue's point of view.
+ *
+ * This is the pairing that makes the feature safe. The queue drops anything the
+ * server actively rejects, so a 503 that looked like any other rejection would
+ * delete the expenses somebody recorded offline the moment they reconnected
+ * during a maintenance window - silently, and with nothing to recover from.
+ */
+describe("offline queue: maintenance windows", () => {
+  test("a write refused for maintenance is queued, not lost", async () => {
+    const { store } = await openedStore({ createExpense: inMaintenance() });
+
+    // Resolves, like being offline does: the entry is recorded as far as the
+    // user is concerned, and goes out when the window ends.
+    await expect(store.addExpense("group_1", baseDraft, "TWD")).resolves.toBeUndefined();
+    expect(store.getState().pendingWrites).toHaveLength(1);
+    expect(store.getState().groupDetails.group_1.expenses).toHaveLength(1);
+  });
+
+  test("an edit refused for maintenance is queued too", async () => {
+    const { store } = await openedStore({
+      createExpense: vi.fn(async () => ({ expense: { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" } })),
+      replaceExpense: inMaintenance(),
+    });
+
+    await store.addExpense("group_1", baseDraft, "TWD");
+    await store.editExpense("group_1", "expense_1", { ...baseDraft, title: "Dinner" }, "TWD");
+
+    expect(store.getState().pendingWrites).toHaveLength(1);
+  });
+
+  test("a flush that hits a maintenance window keeps everything queued", async () => {
+    // The one that matters most: reconnecting mid-window must not drain the
+    // queue into nothing.
+    const onWriteDropped = vi.fn();
+    const createExpense = vi.fn(async () => {
+      throw maintenanceError();
+    });
+    const { store } = await openedStore({ createExpense }, { onWriteDropped });
+
+    await store.addExpense("group_1", baseDraft, "TWD");
+    expect(store.getState().pendingWrites).toHaveLength(1);
+
+    await store.flushPendingWrites();
+
+    expect(store.getState().pendingWrites).toHaveLength(1);
+    expect(onWriteDropped).not.toHaveBeenCalled();
+  });
+
+  test("and goes out once the window ends", async () => {
+    let paused = true;
+    const createExpense = vi.fn(async () => {
+      if (paused) throw maintenanceError();
+      return { expense: { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" } };
+    });
+    const { store } = await openedStore({ createExpense });
+
+    await store.addExpense("group_1", baseDraft, "TWD");
+    await store.flushPendingWrites();
+    expect(store.getState().pendingWrites).toHaveLength(1);
+
+    paused = false;
+    await store.flushPendingWrites();
+
+    expect(store.getState().pendingWrites).toEqual([]);
+  });
+
+  test("a genuine rejection is still dropped, so the queue cannot wedge", async () => {
+    // The exemption is for MAINTENANCE specifically, not for every 5xx: an
+    // actually-invalid write replayed forever would block everything behind it.
+    const onWriteDropped = vi.fn();
+    const rejected: Error & { code?: string } = new Error("Invalid expense");
+    rejected.code = "INVALID_EXPENSE";
+    let firstCall = true;
+    const createExpense = vi.fn(async () => {
+      if (firstCall) {
+        firstCall = false;
+        throw networkError();
+      }
+      throw rejected;
+    });
+
+    const { store } = await openedStore({ createExpense }, { onWriteDropped });
+
+    await store.addExpense("group_1", baseDraft, "TWD");
+    expect(store.getState().pendingWrites).toHaveLength(1);
+
+    await store.flushPendingWrites();
+
+    expect(store.getState().pendingWrites).toEqual([]);
+    expect(onWriteDropped).toHaveBeenCalledTimes(1);
   });
 });
