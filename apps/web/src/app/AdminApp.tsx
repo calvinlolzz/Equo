@@ -17,6 +17,7 @@ import {
   type AdminFeedbackPage,
   type AdminGroupDetail,
   type AdminGroupFilterOption,
+  type AdminAutoNudgeSettings,
   type AdminGroupListPage,
   type AdminHealthSummary,
   type AdminMeSummary,
@@ -3377,6 +3378,7 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
               type="checkbox"
               checked={enabled}
               disabled={!canEdit || busy}
+              aria-label="啟用收據辨識"
               onChange={(event) => setEnabled(event.target.checked)}
             />
             <span>
@@ -3431,10 +3433,165 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
         </form>
       )}
 
+      <AutoNudgeSection client={client} canEdit={canEdit} />
+
       <ScanUsageSection client={client} />
 
       <CatalogSection client={client} canEdit={canEdit} />
     </section>
+  );
+}
+
+/**
+ * 自動催繳 — the only thing in the product that messages somebody without a
+ * person deciding to, which is why it ships off and lives behind a switch an
+ * admin can reach in seconds.
+ *
+ * The reminder goes to the person who OWES, and carries no sender: it reads as
+ * "你還有 X 未結清", not as somebody chasing them.
+ */
+function AutoNudgeSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
+  const [saved, setSaved] = useState<AdminAutoNudgeSettings | null>(null);
+  const [enabled, setEnabled] = useState(false);
+  const [overdueDays, setOverdueDays] = useState(14);
+  const [cooldownDays, setCooldownDays] = useState(7);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    client
+      .adminGetAutoNudge()
+      .then((result) => {
+        if (cancelled) return;
+        setSaved(result);
+        setEnabled(result.enabled);
+        setOverdueDays(result.overdue_days);
+        setCooldownDays(result.cooldown_days);
+      })
+      .catch(() => {
+        if (!cancelled) setError("設定載入失敗，可能是資料庫尚未套用 auto_nudge migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  const dirty =
+    Boolean(saved) &&
+    (enabled !== saved?.enabled ||
+      overdueDays !== saved?.overdue_days ||
+      cooldownDays !== saved?.cooldown_days);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!dirty || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await client.adminSetAutoNudge({
+        enabled,
+        overdue_days: overdueDays,
+        cooldown_days: cooldownDays,
+      });
+      setSaved(next);
+      setEnabled(next.enabled);
+      setOverdueDays(next.overdue_days);
+      setCooldownDays(next.cooldown_days);
+      setNotice(
+        next.enabled
+          ? `已開啟：欠款超過 ${next.overdue_days} 天會自動提醒，每 ${next.cooldown_days} 天最多一次。`
+          : "已關閉自動催繳。",
+      );
+    } catch (err) {
+      const code = (err as ApiClientError).code;
+      setError(code === "ADMIN_FORBIDDEN" ? "只有管理員或擁有者能變更設定。" : "儲存失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="admin-settings-card">
+      <div className="admin-settings-head">
+        <h2>自動催繳</h2>
+        <p>
+          {"欠款超過一段時間就自動推播提醒。提醒送給「欠錢的人」，而且不具名——內容是「你還有 X 未結清」，不會寫成某個人在催你。"}
+        </p>
+      </div>
+
+      {error && <p className="admin-error">{error}</p>}
+      {notice && <p className="admin-notice">{notice}</p>}
+      {!saved && !error && <p className="admin-loading">載入中…</p>}
+
+      {saved && (
+        <form onSubmit={save}>
+          <label className="admin-settings-row">
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={!canEdit || busy}
+              aria-label="啟用自動催繳"
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span>
+              <strong>啟用自動催繳</strong>
+              <small>這是產品裡唯一不需要有人按下按鈕就會送出通知的功能，預設關閉。</small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <input
+              className="admin-number-input"
+              type="number"
+              min={1}
+              max={365}
+              value={overdueDays}
+              disabled={!canEdit || busy}
+              aria-label="欠款幾天後提醒"
+              onChange={(event) => setOverdueDays(Number(event.target.value))}
+            />
+            <span>
+              <strong>欠款幾天後提醒</strong>
+              <small>從「最舊一筆還沒結清的支出」算起。</small>
+            </span>
+          </label>
+
+          <label className="admin-settings-row">
+            <input
+              className="admin-number-input"
+              type="number"
+              min={1}
+              max={365}
+              value={cooldownDays}
+              disabled={!canEdit || busy}
+              aria-label="同一個人幾天內最多提醒一次"
+              onChange={(event) => setCooldownDays(Number(event.target.value))}
+            />
+            <span>
+              <strong>同一個人幾天內最多提醒一次</strong>
+              <small>手動的「提醒還款」也算進這個間隔，不會兩邊各送一次。</small>
+            </span>
+          </label>
+
+          <div className="admin-settings-foot">
+            <span className="admin-muted">
+              {saved.updated_at
+                ? `最後變更：${formatDateTime(saved.updated_at)}${saved.updated_by_email ? `（${saved.updated_by_email}）` : ""}`
+                : "尚未變更過，目前為預設值（關閉）"}
+            </span>
+            {canEdit && (
+              <button type="submit" disabled={!dirty || busy} aria-label="儲存自動催繳設定">
+                {busy ? "儲存中…" : "儲存"}
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 

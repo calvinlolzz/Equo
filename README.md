@@ -30,6 +30,7 @@ Equo 是一個手機優先的分帳 Web App：建立群組、記錄支出、多�
 
 - 推播：新增支出、有人加入群組、被提醒還款
 - 提醒還款：對欠款成員發推播，每位收款對象有 6 小時冷卻（`group_nudges`）
+- 自動催繳：欠款超過設定天數自動提醒欠款的人（不具名、與手動催繳共用冷卻）。**預設關閉**，在 `/admin` 開啟
 - 站內通知收件匣：已讀管理、自行刪除、已讀七天後自動清理
 
 **收據**
@@ -60,6 +61,7 @@ Equo 是一個手機優先的分帳 Web App：建立群組、記錄支出、多�
 - 回饋與前端錯誤（依 fingerprint 分組、可標記處理完成）
 - 站內通知發送
 - 收據辨識：緊急開關、切換模型、**用量與估算花費**
+- 自動催繳：開關與天數設定（預設關閉）
 - 主資料：分類、幣別、匯率覆寫
 - 稽核記錄
 
@@ -69,7 +71,7 @@ Equo 是一個手機優先的分帳 Web App：建立群組、記錄支出、多�
 - API：單一 Vercel Function `api/v1/[...path].ts` → `vercel-api/v1Handler.ts` → `apps/web/src/server`（routes → handlers → repositories）
 - 資料庫：Supabase Postgres（server 端以 service role 經 REST 存取；多語句寫入走交易式 RPC）
 - 認證：Supabase OAuth（Google）換發 Equo 自簽 session cookie（`equo_session`）
-- 排程：GitHub Actions 每晚跑備份、資料保留清理、循環支出產生（見 [docs/OPERATIONS.md](docs/OPERATIONS.md)）
+- 排程：GitHub Actions 每晚跑備份、資料保留清理、循環支出產生；Vercel Cron 每天跑自動催繳（見 [docs/OPERATIONS.md](docs/OPERATIONS.md)）
 - 測試：Vitest 三層——純函式／伺服器邏輯（node）、hook 測試、整頁元件測試（jsdom + Testing Library，mount 真的 `<App/>`）
 
 ## 開發
@@ -121,7 +123,7 @@ docs/                 部署、OAuth、Supabase、測試、營運等文件
 
 - [docs/TECH_STACK.md](docs/TECH_STACK.md) — 目前實際的架構
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — 部署流程與環境變數
-- [docs/OPERATIONS.md](docs/OPERATIONS.md) — 備份、資料保留、排程心跳、索引判準、監控
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — 備份、資料保留、排程心跳、錯誤告警、推播健康、額度、自動催繳、監控
 - [docs/OAUTH.md](docs/OAUTH.md) — Google / Supabase OAuth 設定
 - [docs/SUPABASE.md](docs/SUPABASE.md) — 資料庫說明
 - [docs/TESTING.md](docs/TESTING.md) — 測試流程

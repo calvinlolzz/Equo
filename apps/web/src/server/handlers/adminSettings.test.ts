@@ -1,7 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import type { AdminRepository } from "../repositories/adminRepository.js";
 import type { SettingsRepository } from "../repositories/supabaseSettingsRepository.js";
-import { handleAdminGetReceiptScanSettings, handleAdminSetReceiptScanSettings } from "./admin.js";
+import {
+  handleAdminGetAutoNudgeSettings,
+  handleAdminGetReceiptScanSettings,
+  handleAdminSetAutoNudgeSettings,
+  handleAdminSetReceiptScanSettings,
+} from "./admin.js";
 
 const DEFAULT_MODEL = "claude-haiku-4-5";
 /** A deployment with a Claude key and no Gemini one - the common shape. */
@@ -38,6 +43,18 @@ function settings(saved = { enabled: true, model: DEFAULT_MODEL }) {
         return { ...saved, updated_at: null, updated_by_email: null };
       },
       setReceiptScan,
+      async getAutoNudge() {
+        return { enabled: false, overdue_days: 14, cooldown_days: 7, updated_at: null, updated_by_email: null };
+      },
+      async setAutoNudge(_actor, next) {
+        return {
+          enabled: next.enabled,
+          overdue_days: next.overdueDays,
+          cooldown_days: next.cooldownDays,
+          updated_at: null,
+          updated_by_email: null,
+        };
+      },
     } satisfies SettingsRepository,
     setReceiptScan,
   };
@@ -190,5 +207,62 @@ describe("handleAdminSetReceiptScanSettings", () => {
     );
 
     expect(result.ok && result.body).toMatchObject({ enabled: true, model: "claude-sonnet-5", configured: true });
+  });
+});
+
+describe("自動催繳 settings", () => {
+  test("support can read the configuration without being able to change it", async () => {
+    const result = await handleAdminGetAutoNudgeSettings(repository(), settings().repo, context("user_support"));
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({ enabled: false });
+  });
+
+  test("support cannot turn it on", async () => {
+    // The switch on the one feature that messages people unprompted is an
+    // admin decision, not a triage one.
+    const result = await handleAdminSetAutoNudgeSettings(repository(), settings().repo, context("user_support"), {
+      enabled: true,
+      overdue_days: 14,
+      cooldown_days: 7,
+    });
+
+    expect(result.status).toBe(403);
+  });
+
+  test("an admin can, and both windows are saved", async () => {
+    const result = await handleAdminSetAutoNudgeSettings(repository(), settings().repo, context("user_admin"), {
+      enabled: true,
+      overdue_days: 30,
+      cooldown_days: 14,
+    });
+
+    expect(result.ok && result.body).toMatchObject({ enabled: true, overdue_days: 30, cooldown_days: 14 });
+  });
+
+  test("rejects a cooldown of zero rather than quietly clamping it", async () => {
+    // A zero cooldown means reminding somebody every single day, which is the
+    // exact failure the whole design is built around. Clamping would also show
+    // the console a number it did not save.
+    const result = await handleAdminSetAutoNudgeSettings(repository(), settings().repo, context("user_admin"), {
+      enabled: true,
+      overdue_days: 14,
+      cooldown_days: 0,
+    });
+
+    expect(result.status).toBe(400);
+  });
+
+  test("rejects non-integer and out-of-range windows", async () => {
+    const bad = [
+      { enabled: true, overdue_days: 1.5, cooldown_days: 7 },
+      { enabled: true, overdue_days: 400, cooldown_days: 7 },
+      { enabled: "yes", overdue_days: 14, cooldown_days: 7 },
+    ];
+
+    for (const body of bad) {
+      const result = await handleAdminSetAutoNudgeSettings(repository(), settings().repo, context("user_admin"), body);
+      expect(result.status).toBe(400);
+    }
   });
 });

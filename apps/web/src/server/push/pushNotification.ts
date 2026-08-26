@@ -136,6 +136,39 @@ export function buildNudgeNotification({
 }
 
 /**
+ * "You have owed this for a while" -> the person who owes it.
+ *
+ * Separate from buildNudgeNotification because that one always names a sender,
+ * falling back to 有人 — and "有人提醒你" would be a lie here: nobody did. This
+ * is the app noticing, so the sentence has no subject and reads as a personal
+ * reminder rather than social pressure.
+ */
+export function buildAutoNudgeNotification({
+  groupId,
+  groupName,
+  balanceMinor,
+  currency,
+}: {
+  groupId: string;
+  groupName: string | null;
+  /** Negative — only a debtor is reminded. */
+  balanceMinor: number;
+  currency: string;
+}): PushNotificationPayload {
+  const where = groupName?.trim() || FALLBACK_GROUP_NAME;
+  const amount = formatAmount(Math.abs(balanceMinor), currency);
+
+  return {
+    title: where,
+    body: `你還有 ${amount} 未結清`,
+    url: `/group/${groupId}`,
+    // Same tag as the manual nudge: two reminders about one debt should replace
+    // each other on the lock screen, not stack.
+    tag: `nudge-${groupId}`,
+  };
+}
+
+/**
  * "Somebody joined the group."
  *
  * Worth a notification because it is the one event where the people already in

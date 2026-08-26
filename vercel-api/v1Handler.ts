@@ -71,6 +71,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
     SESSION_SECRET: process.env.SESSION_SECRET,
+    CRON_SECRET: process.env.CRON_SECRET,
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
@@ -114,6 +115,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     ),
     sessionSecret: requiredEnv.SESSION_SECRET,
     vapid: readVapidKeys(runtimeEnv),
+    cronSecret: runtimeEnv.CRON_SECRET,
     scanReceipt: createReceiptScanner({
       anthropic: runtimeEnv.ANTHROPIC_API_KEY,
       google: runtimeEnv.GEMINI_API_KEY,

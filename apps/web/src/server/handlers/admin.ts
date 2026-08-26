@@ -1,6 +1,10 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
-import type { ReceiptScanSettings, SettingsRepository } from "../repositories/supabaseSettingsRepository.js";
+import type {
+  AutoNudgeSettings,
+  ReceiptScanSettings,
+  SettingsRepository,
+} from "../repositories/supabaseSettingsRepository.js";
 import {
   RECEIPT_SCAN_MODELS,
   availableReceiptScanModels,
@@ -1499,6 +1503,77 @@ export async function handleAdminSetRateOverride(
  * feature is on is diagnostic information, and it is the first thing to check
  * when somebody reports "掃描沒反應". Changing it needs admin (below).
  */
+/** Read the 自動催繳 configuration. Support can read it; changing it needs admin. */
+export async function handleAdminGetAutoNudgeSettings(
+  repository: AdminRepository,
+  settings: SettingsRepository,
+  context: AuthenticatedContext,
+): Promise<HandlerResult<AutoNudgeSettings>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  return { ok: true, status: 200, body: await settings.getAutoNudge() };
+}
+
+/**
+ * Change it. Admin or owner only — this is the switch on the one feature that
+ * messages people without a person deciding to.
+ */
+export async function handleAdminSetAutoNudgeSettings(
+  repository: AdminRepository,
+  settings: SettingsRepository,
+  context: AuthenticatedContext,
+  body: { enabled?: unknown; overdue_days?: unknown; cooldown_days?: unknown },
+): Promise<HandlerResult<AutoNudgeSettings>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  const enabled = body?.enabled;
+  const overdueDays = Number(body?.overdue_days);
+  const cooldownDays = Number(body?.cooldown_days);
+
+  // Bounded rather than clamped: a cooldown of 0 would remind somebody daily,
+  // which is the failure this whole feature is designed around, and a silent
+  // clamp would show the console a number it did not save.
+  const valid =
+    typeof enabled === "boolean" &&
+    Number.isInteger(overdueDays) &&
+    overdueDays >= 1 &&
+    overdueDays <= 365 &&
+    Number.isInteger(cooldownDays) &&
+    cooldownDays >= 1 &&
+    cooldownDays <= 365;
+
+  if (!valid) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_ADMIN",
+          message: "enabled must be a boolean, and both day counts whole numbers between 1 and 365",
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    body: await settings.setAutoNudge(
+      { id: context.user.id, email: context.user.email },
+      { enabled, overdueDays, cooldownDays },
+    ),
+  };
+}
+
 export async function handleAdminGetReceiptScanSettings(
   repository: AdminRepository,
   settings: SettingsRepository,

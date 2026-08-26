@@ -1,5 +1,6 @@
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
 import {
+  buildAutoNudgeNotification,
   buildErrorAlertNotification,
   buildExpenseNotification,
   buildMemberJoinedNotification,
@@ -330,6 +331,57 @@ export async function notifyErrorAlert({
     });
   } catch (error) {
     console.error("[push] error alert failed:", error);
+    return empty;
+  }
+}
+
+/**
+ * The automatic version of a nudge: same recipient, no sender.
+ *
+ * Its own kind in the delivery log so the console can tell reminders nobody
+ * asked for apart from ones a person actually sent.
+ */
+export async function notifyAutoNudge({
+  repository,
+  vapid,
+  groupId,
+  toMemberId,
+  groupName,
+  balanceMinor,
+  currency,
+  send,
+}: {
+  repository: Pick<PushRepository, "targetsForMember" | "pruneSubscription" | "logDelivery">;
+  vapid: VapidKeys;
+  groupId: string;
+  toMemberId: string;
+  groupName: string | null;
+  balanceMinor: number;
+  currency: string;
+  send?: PushSendFn;
+}): Promise<PushDeliveryOutcome> {
+  const empty: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
+
+  try {
+    const targets = await repository.targetsForMember(groupId, toMemberId);
+
+    if (targets.subscriptions.length === 0) return empty;
+
+    return await deliverPush({
+      kind: "auto_nudge",
+      subscriptions: targets.subscriptions,
+      payload: buildAutoNudgeNotification({
+        groupId,
+        groupName: targets.group_name ?? groupName,
+        balanceMinor,
+        currency,
+      }),
+      vapid,
+      repository,
+      send,
+    });
+  } catch (error) {
+    console.error("[push] auto nudge failed:", error);
     return empty;
   }
 }

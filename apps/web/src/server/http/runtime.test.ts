@@ -1188,3 +1188,56 @@ describe("web push wiring", () => {
     logged.mockRestore();
   });
 });
+
+describe("the scheduler endpoint", () => {
+  function runtimeWith(cronSecret?: string) {
+    return createHttpRuntime({
+      client: createFakePostgrest({
+        rpc: (fn) => {
+          if (fn === "auto_nudge_settings") return { enabled: false, overdue_days: 14, cooldown_days: 7 };
+          if (fn === "consume_rate_limit") return { allowed: true };
+          throw new Error(`Unexpected rpc ${fn}`);
+        },
+      }),
+      storage: makeStorage(),
+      verifier: alice,
+      sessionSecret: "session-secret",
+      cronSecret,
+    });
+  }
+
+  async function call(runtime: ReturnType<typeof createHttpRuntime>, authorization?: string) {
+    return runtime.handle({
+      method: "POST",
+      path: "/api/v1/internal/run-nudges",
+      headers: authorization ? { authorization } : {},
+      json: {},
+    });
+  }
+
+  test("is closed when no secret is configured", async () => {
+    // The failure direction matters: an unauthenticated trigger for something
+    // that sends notifications is worse than having no schedule at all.
+    expect((await call(runtimeWith(undefined), "Bearer anything")).status).toBe(401);
+  });
+
+  test("rejects a wrong secret", async () => {
+    expect((await call(runtimeWith("right"), "Bearer wrong")).status).toBe(401);
+  });
+
+  test("rejects a missing header", async () => {
+    expect((await call(runtimeWith("right"))).status).toBe(401);
+  });
+
+  test("rejects a bare secret without the Bearer scheme", async () => {
+    expect((await call(runtimeWith("right"), "right")).status).toBe(401);
+  });
+
+  test("runs for the right secret", async () => {
+    const response = await call(runtimeWith("right"), "Bearer right");
+
+    expect(response.status).toBe(200);
+    // Switched off in this fixture, so it reports that rather than sending.
+    expect(response.body).toMatchObject({ status: "disabled" });
+  });
+});

@@ -61,8 +61,10 @@ import {
   adminListGroupsRoute,
   adminListUsersRoute,
   adminMeRoute,
+  adminGetAutoNudgeRoute,
   adminHealthRoute,
   adminReceiptScanUsageRoute,
+  adminSetAutoNudgeRoute,
   adminOverviewRoute,
   adminStorageRoute,
   adminTrendsRoute,
@@ -105,6 +107,7 @@ import { getCatalogRoute } from "../routes/catalogRoutes.js";
 import type { AdminSendNotificationBody } from "../handlers/admin.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
 import { notifyErrorAlert, notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
+import { runAutoNudges } from "../routes/autoNudgeRoutes.js";
 import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
 import { healthRoute } from "../routes/healthRoutes.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
@@ -126,6 +129,12 @@ type RuntimeOptions = {
    * take the rest of the API down with it.
    */
   vapid?: VapidKeys;
+  /**
+   * Shared secret the scheduler presents on the internal run endpoint. Absent =
+   * the endpoint is closed, which is the safe state: an unauthenticated trigger
+   * for something that sends notifications is worse than no schedule.
+   */
+  cronSecret?: string;
   /** Test seam: the push transport. Defaults to web-push. */
   pushSend?: PushSendFn;
   /**
@@ -192,6 +201,23 @@ function receiptScanConfig(options: RuntimeOptions) {
  */
 function newErrorRequestId(): string {
   return `req_err_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Constant-time string compare for the scheduler secret.
+ *
+ * `a === b` on a secret leaks its prefix through timing. The window is tiny
+ * over a network and the secret is long, but this is three lines and the
+ * alternative is explaining why it was fine.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return diff === 0;
 }
 
 function queryParam(request: HttpRuntimeRequest, name: string): string | undefined {
@@ -664,6 +690,27 @@ export function createHttpRuntime(options: RuntimeOptions) {
     },
     {
       method: "GET",
+      pattern: /^\/api\/v1\/admin\/settings\/auto-nudge$/,
+      label: "GET /api/v1/admin/settings/auto-nudge",
+      async handle(request) {
+        const result = await adminGetAutoNudgeRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "PUT",
+      pattern: /^\/api\/v1\/admin\/settings\/auto-nudge$/,
+      label: "PUT /api/v1/admin/settings/auto-nudge",
+      async handle(request) {
+        const result = await adminSetAutoNudgeRoute(
+          routeOptions(options, request),
+          body<{ enabled?: unknown; overdue_days?: unknown; cooldown_days?: unknown }>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
       pattern: /^\/api\/v1\/admin\/settings\/receipt-scan$/,
       label: "GET /api/v1/admin/settings/receipt-scan",
       async handle(request) {
@@ -752,6 +799,28 @@ export function createHttpRuntime(options: RuntimeOptions) {
           routeOptions(options, request),
           body<{ type?: string; message?: string; contact?: string; page?: string }>(request),
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/internal\/run-nudges$/,
+      label: "POST /api/v1/internal/run-nudges",
+      async handle(request) {
+        // Not a user endpoint: no session, a shared secret instead. Closed
+        // entirely when the secret is unset rather than falling back to open.
+        const presented = request.headers.authorization ?? request.headers.Authorization ?? "";
+        const expected = options.cronSecret ? `Bearer ${options.cronSecret}` : "";
+
+        if (!expected || !presented || !timingSafeEqual(presented, expected)) {
+          return errorResponse(401, "UNAUTHENTICATED", "Missing or invalid scheduler credentials.", "req_cron");
+        }
+
+        const result = await runAutoNudges({
+          client: options.client,
+          vapid: options.vapid,
+          pushSend: options.pushSend,
+        });
         return jsonResponse(result.status, result.body);
       },
     },

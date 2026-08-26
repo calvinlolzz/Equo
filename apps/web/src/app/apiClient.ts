@@ -622,6 +622,15 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     adminHealth() {
       return request<AdminHealthSummary>("/admin/health", { method: "GET" });
     },
+    adminGetAutoNudge() {
+      return request<AdminAutoNudgeSettings>("/admin/settings/auto-nudge", { method: "GET" });
+    },
+    adminSetAutoNudge(payload: { enabled: boolean; overdue_days: number; cooldown_days: number }) {
+      return request<AdminAutoNudgeSettings>("/admin/settings/auto-nudge", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+    },
     adminScanUsage(days: number) {
       return request<AdminScanUsage>(`/admin/scan-usage?days=${days}`, { method: "GET" });
     },
@@ -1142,6 +1151,17 @@ export type AdminReceiptScanSettings = {
  * Every spend figure is in millionths of a USD — one Haiku scan is about
  * US$0.0005, which rounds to zero in cents. Divide once at the point of display.
  */
+/** 自動催繳 configuration. Off unless somebody turned it on. */
+export type AdminAutoNudgeSettings = {
+  enabled: boolean;
+  /** How long a debt sits before it earns a reminder. */
+  overdue_days: number;
+  /** How long before the same person hears about it again. */
+  cooldown_days: number;
+  updated_at: string | null;
+  updated_by_email: string | null;
+};
+
 export type AdminScanUsage = {
   days: number;
   summary: {

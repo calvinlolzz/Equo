@@ -11,7 +11,9 @@ import {
   handleAdminSaveCategory,
   handleAdminSaveCurrency,
   handleAdminSetRateOverride,
+  handleAdminGetAutoNudgeSettings,
   handleAdminGetReceiptScanSettings,
+  handleAdminSetAutoNudgeSettings,
   handleAdminReceiptScanUsage,
   handleAdminGroupDetail,
   handleAdminHealth,
@@ -193,6 +195,38 @@ export async function adminRemoveAdminRoute(options: RouteOptions, userId: strin
   }
 
   return handleAdminRemoveAdmin(createSupabaseAdminRepository(options.client), auth.context, userId);
+}
+
+export async function adminGetAutoNudgeRoute(options: RouteOptions) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminGetAutoNudgeSettings(
+    createSupabaseAdminRepository(options.client),
+    createSupabaseSettingsRepository(options.client),
+    auth.context,
+  );
+}
+
+export async function adminSetAutoNudgeRoute(
+  options: RouteOptions,
+  body: { enabled?: unknown; overdue_days?: unknown; cooldown_days?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminSetAutoNudgeSettings(
+    createSupabaseAdminRepository(options.client),
+    createSupabaseSettingsRepository(options.client),
+    auth.context,
+    body,
+  );
 }
 
 export async function adminReceiptScanUsageRoute(options: RouteOptions, days: string | undefined) {

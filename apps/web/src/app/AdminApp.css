@@ -442,6 +442,18 @@ button.admin-inbox__item:hover {
   color: inherit;
 }
 
+/* Day counts in the 自動催繳 card. Narrow, because a number between 1 and 365
+   in a field sized for prose reads as an open-ended text box. */
+.admin-number-input {
+  width: 84px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--surf) / 0.25);
+  background: rgb(var(--surf) / 0.08);
+  color: rgb(var(--fg));
+  font: inherit;
+}
+
 .admin-select {
   padding: 8px 12px;
   border: 1px solid #d5d9de;

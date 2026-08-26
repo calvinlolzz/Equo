@@ -8,6 +8,14 @@ export type ReceiptScanSettings = {
   updated_by_email: string | null;
 };
 
+export type AutoNudgeSettings = {
+  enabled: boolean;
+  overdue_days: number;
+  cooldown_days: number;
+  updated_at: string | null;
+  updated_by_email: string | null;
+};
+
 export type SettingsRepository = {
   getReceiptScan(defaultModel: string): Promise<ReceiptScanSettings>;
   setReceiptScan(
@@ -15,6 +23,11 @@ export type SettingsRepository = {
     enabled: boolean,
     model: string,
   ): Promise<ReceiptScanSettings>;
+  getAutoNudge(): Promise<AutoNudgeSettings>;
+  setAutoNudge(
+    actor: { id: string; email: string },
+    settings: { enabled: boolean; overdueDays: number; cooldownDays: number },
+  ): Promise<AutoNudgeSettings>;
 };
 
 /**
@@ -30,6 +43,20 @@ export function createSupabaseSettingsRepository(client: PostgrestClient): Setti
   return {
     async getReceiptScan(defaultModel) {
       return client.rpc<ReceiptScanSettings>("receipt_scan_settings", { p_default_model: defaultModel });
+    },
+
+    async getAutoNudge() {
+      return client.rpc<AutoNudgeSettings>("auto_nudge_settings", {});
+    },
+
+    async setAutoNudge(actor, settings) {
+      return client.rpc<AutoNudgeSettings>("admin_console_set_auto_nudge", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_enabled: settings.enabled,
+        p_overdue_days: settings.overdueDays,
+        p_cooldown_days: settings.cooldownDays,
+      });
     },
 
     async setReceiptScan(actor, enabled, model) {

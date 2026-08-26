@@ -84,6 +84,13 @@ const baseRoutes: AdminRoutes = {
     feedback: { open: 0 },
   },
   "GET /admin/trends": { days: 30, points: [] },
+  "GET /admin/settings/auto-nudge": {
+    enabled: false,
+    overdue_days: 14,
+    cooldown_days: 7,
+    updated_at: null,
+    updated_by_email: null,
+  },
   "GET /admin/scan-usage": {
     days: 30,
     summary: {
@@ -537,7 +544,7 @@ describe("the settings tab", () => {
 
     const model = await screen.findByLabelText("辨識模型");
     fireEvent.change(model, { target: { value: "claude-sonnet-5" } });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "啟用收據辨識" }));
     fireEvent.click(screen.getByRole("button", { name: "儲存" }));
 
     await waitFor(() => expect(urls).toContain("PUT /admin/settings/receipt-scan"));
@@ -584,6 +591,37 @@ describe("the settings tab", () => {
     // Wait for the overview to settle before asserting on an absence.
     await screen.findByText("系統狀態");
     expect(screen.queryByText("已停用的循環支出")).toBeNull();
+  });
+
+  test("自動催繳 is off until somebody turns it on", async () => {
+    fakeAdminApi({ ...baseRoutes, "GET /admin/settings/receipt-scan": settings });
+    renderAdmin("?tab=settings");
+
+    const toggle = (await screen.findByRole("checkbox", { name: "啟用自動催繳" })) as HTMLInputElement;
+
+    expect(toggle.checked).toBe(false);
+    expect(screen.getByText(/尚未變更過，目前為預設值（關閉）/)).toBeTruthy();
+  });
+
+  test("turning it on sends both windows, not just the switch", async () => {
+    const urls = fakeAdminApi({
+      ...baseRoutes,
+      "GET /admin/settings/receipt-scan": settings,
+      "PUT /admin/settings/auto-nudge": {
+        enabled: true,
+        overdue_days: 14,
+        cooldown_days: 7,
+        updated_at: "2026-08-26T00:00:00.000Z",
+        updated_by_email: "admin@example.com",
+      },
+    });
+    renderAdmin("?tab=settings");
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "啟用自動催繳" }));
+    fireEvent.click(screen.getByRole("button", { name: "儲存自動催繳設定" }));
+
+    await waitFor(() => expect(urls).toContain("PUT /admin/settings/auto-nudge"));
+    await screen.findByText(/已開啟：欠款超過 14 天/);
   });
 
   test("shows what recognition actually did and what it cost", async () => {
@@ -636,9 +674,9 @@ describe("the settings tab", () => {
 
     // Toggling away and back leaves the form clean again, rather than arming a
     // Save that would write the value already stored.
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "啟用收據辨識" }));
     expect((save as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "啟用收據辨識" }));
     expect((save as HTMLButtonElement).disabled).toBe(true);
   });
 

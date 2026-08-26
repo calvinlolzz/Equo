@@ -26,6 +26,13 @@ export type RuntimeEnv = {
   GEMINI_API_KEY?: string;
   /** Overrides the recognition model. Absent = the scanner's own default. */
   RECEIPT_SCAN_MODEL?: string;
+  /**
+   * Shared secret the scheduler presents on POST /internal/run-nudges.
+   * OPTIONAL, and absent from missingRuntimeEnv like the others - but note the
+   * failure direction is the opposite: no key means the endpoint is CLOSED, not
+   * that the feature runs unauthenticated.
+   */
+  CRON_SECRET?: string;
 };
 
 type EnvSource = Record<string, string | undefined>;
@@ -50,6 +57,10 @@ export function readRuntimeEnv(source: EnvSource): Partial<RuntimeEnv> {
     ANTHROPIC_API_KEY: cleanEnvValue(source.ANTHROPIC_API_KEY),
     GEMINI_API_KEY: cleanEnvValue(source.GEMINI_API_KEY),
     RECEIPT_SCAN_MODEL: cleanEnvValue(source.RECEIPT_SCAN_MODEL),
+    // Through cleanEnvValue like everything else, and it matters more here: a
+    // value piped into `vercel env add` can arrive with a BOM, and a secret
+    // that differs by one invisible character fails comparison with no clue.
+    CRON_SECRET: cleanEnvValue(source.CRON_SECRET),
   };
 }
 
