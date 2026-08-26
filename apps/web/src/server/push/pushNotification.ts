@@ -194,6 +194,49 @@ export function buildMemberJoinedNotification({
   };
 }
 
+/** How much of a comment fits on a lock screen before it is just noise. */
+const COMMENT_PREVIEW_MAX = 60;
+
+/**
+ * "Somebody said something about an entry" -> everyone else in the group.
+ *
+ * Quotes the comment rather than announcing that one exists. "有人留言了" makes
+ * opening the app the only way to find out whether it mattered, which is the
+ * opposite of what a lock screen is for — and most comments on a split bill are
+ * one short line ("這筆我請") that fits whole.
+ *
+ * Its own tag, per expense: a back-and-forth on one entry replaces itself
+ * instead of stacking up five cards, while a comment on a different entry still
+ * arrives as its own.
+ */
+export function buildCommentNotification({
+  groupId,
+  groupName,
+  actorName,
+  expenseTitle,
+  expenseId,
+  body,
+}: {
+  groupId: string;
+  groupName: string | null;
+  actorName: string | null;
+  expenseTitle: string;
+  expenseId: string;
+  body: string;
+}): PushNotificationPayload {
+  const who = actorName?.trim() || FALLBACK_ACTOR_NAME;
+  const entry = expenseTitle.trim();
+  const said = body.trim();
+  const preview = said.length > COMMENT_PREVIEW_MAX ? `${said.slice(0, COMMENT_PREVIEW_MAX)}…` : said;
+
+  return {
+    title: groupName?.trim() || FALLBACK_GROUP_NAME,
+    body: entry ? `${who} 在「${entry}」說：${preview}` : `${who} 說：${preview}`,
+    url: `/group/${groupId}?expense=${expenseId}`,
+    tag: `comment-${expenseId}`,
+  };
+}
+
 /** How much of the crash message fits on a lock screen before it is just noise. */
 const ERROR_ALERT_MESSAGE_MAX = 90;
 

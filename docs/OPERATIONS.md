@@ -77,6 +77,7 @@ psql "$TARGET_DB_URL" -f equo.sql
 | `invites` | 90 天 | **只清死掉的**（已撤銷／用完／已過期） | `purge_dead_invites` |
 | `app_error_alerts` | 90 天 | 全部（一年沒出現的 fingerprint 再出現時應該重新告警） | `purge_error_alerts` |
 | `push_delivery_logs` | 90 天 | 全部 | `purge_push_delivery_logs` |
+| `expense_comments` | 90 天 | **只清收回的**（`deleted_at` 有值）；還看得到的留言不清 | `purge_deleted_expense_comments` |
 
 三件下手前要知道的事：
 
@@ -217,7 +218,40 @@ Supabase 的 performance advisor 有兩條規則會互相打架，2026-08-24 補
 
 ---
 
-## 10. Uptime 監控
+## 10. 收據與留言
+
+支出可以掛**最多 5 張**收據，也可以被留言。兩件事在營運上各有一個要知道的地方。
+
+### 收據：`image_url` 是衍生欄位
+
+`expenses.image_urls` 是真的清單，`expenses.image_url` 是它的第一張，**唯一的寫入者是 `create_expense`**。列表縮圖、搜尋結果、後台都讀 `image_url`，因為它們只需要一張。要驗證兩者沒有漂移：
+
+```sql
+select count(*) from expenses
+where deleted_at is null and image_url is distinct from image_urls[1];
+```
+
+**上限 5 張是為了儲存空間**，那是免費方案先撞到的牆（見第 8 節），不是為了資料庫。同一個數字在三個地方：`expenses_image_urls_bounded` 這個 CHECK、`create_expense` 的 `TOO_MANY_IMAGES`、以及 `contracts/validation.ts` 的 `MAX_EXPENSE_IMAGES`。
+
+⚠️ **payload 有沒有 `image_urls` 這個鍵，跟它是不是空陣列，是兩件事。** 有鍵＝這份 payload 說了收據有哪些（空陣列＝使用者把收據刪光了）；沒有鍵＝這份 payload 沒在講收據，退回舊的單張 `image_url`。少了這個區分，離線佇列裡凍結的舊 payload 與快取住的舊 bundle 重送時會把收據清成空的。
+
+刪除與編輯時的孤兒清理算的是**集合差集**，不是比較第一張：編輯可以只拿掉第二張而留著第一張。
+
+### 留言：編輯支出會換 id
+
+`replace_expense` 是「軟刪除舊的、建一筆新的」，所以支出被編輯後 **id 會變**。收據沒事（隨 payload 重寫），但留言是掛在 `expense_id` 上的，所以 `replace_expense` 裡有一句 `update expense_comments set expense_id = ...` 把整串搬過去。**改動 `replace_expense` 時不要弄掉它**，否則使用者改一個錯字就會讓討論消失。
+
+其他幾點：
+
+- 每則留言都會**對整個群組推播**（扣掉作者本人），所以它比看起來的一列 INSERT 貴。限流因此有自己的桶子（`comment`，60 次/小時），比一般寫入嚴格。
+- 推播文字會**引用留言內容**（截斷到 60 字）。`tag` 是每筆支出一個，所以同一筆的來回討論會互相取代而不是疊成五張卡。
+- **重送不會重複推播**：`create_expense_comment` 走 `client_requests` 冪等，命中時回傳的 JSON 不帶 `expense_title`，而路由正是用「有沒有標題」判斷要不要送推播。
+- 刪除是軟刪除，由上面的保留規則在 90 天後真的清掉。
+- **刪帳號會刪掉這個人寫過的留言**（不是匿名化）。帳目留下來是因為錢是共同的；留言是他自己說的話。
+
+---
+
+## 11. Uptime 監控
 
 ### 為什麼不要只監控首頁
 
@@ -254,7 +288,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 ---
 
-## 11. 目前沒做的（要花錢或需要決策）
+## 12. 目前沒做的（要花錢或需要決策）
 
 - Supabase Pro + PITR（完整備份、含 `auth.*`、可還原到任意時間點）
 - 自訂網域（目前仍是 `equo-mu.vercel.app`）

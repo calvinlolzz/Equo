@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
 import {
+  buildCommentNotification,
   buildErrorAlertNotification,
   buildExpenseNotification,
   buildNudgeNotification,
@@ -8,6 +9,7 @@ import {
 import {
   deliverPush,
   notifyErrorAlert,
+  notifyExpenseCommented,
   notifyExpenseCreated,
   notifyMemberJoined,
   notifyNudge,
@@ -576,5 +578,124 @@ describe("notifyErrorAlert", () => {
     ).resolves.toEqual({ sent: 0, pruned: 0, failed: 0 });
 
     vi.restoreAllMocks();
+  });
+});
+
+
+describe("buildCommentNotification", () => {
+  const base = {
+    groupId: "group_1",
+    groupName: "東京旅行",
+    actorName: "Alice",
+    expenseTitle: "晚餐",
+    expenseId: "expense_1",
+  };
+
+  test("quotes what was said rather than announcing that something was said", () => {
+    // "有人留言了" makes opening the app the only way to find out whether it
+    // mattered, which is the opposite of what a lock screen is for.
+    const payload = buildCommentNotification({ ...base, body: "這筆我請" });
+
+    expect(payload.title).toBe("東京旅行");
+    expect(payload.body).toBe("Alice 在「晚餐」說：這筆我請");
+  });
+
+  test("deep links to the entry, so the tap lands on the thread", () => {
+    const payload = buildCommentNotification({ ...base, body: "這筆我請" });
+    expect(payload.url).toBe("/group/group_1?expense=expense_1");
+  });
+
+  test("tags per expense, so a back-and-forth replaces itself instead of stacking", () => {
+    const first = buildCommentNotification({ ...base, body: "一" });
+    const second = buildCommentNotification({ ...base, body: "二" });
+    const elsewhere = buildCommentNotification({ ...base, expenseId: "expense_2", body: "三" });
+
+    expect(first.tag).toBe(second.tag);
+    expect(elsewhere.tag).not.toBe(first.tag);
+  });
+
+  test("truncates a long comment instead of pushing a wall of text", () => {
+    const payload = buildCommentNotification({ ...base, body: "字".repeat(200) });
+
+    expect(payload.body).toContain("…");
+    expect(payload.body.length).toBeLessThan(100);
+  });
+
+  test("falls back when the group or the author has no name", () => {
+    const payload = buildCommentNotification({
+      ...base,
+      groupName: null,
+      actorName: null,
+      expenseTitle: "",
+      body: "這筆我請",
+    });
+
+    expect(payload.title).toBe("Equo");
+    expect(payload.body).toBe("有人 說：這筆我請");
+  });
+});
+
+describe("notifyExpenseCommented", () => {
+  test("sends to the group, minus the author", async () => {
+    const send = vi.fn<PushSendFn>(async () => ({ statusCode: 201 }));
+    const targetsForGroup = vi.fn(async () => ({
+      group_name: "東京旅行",
+      actor_name: "Alice",
+      subscriptions: [subscription(1), subscription(2)],
+    }));
+
+    const outcome = await notifyExpenseCommented({
+      repository: makeRepository({ targetsForGroup }),
+      vapid,
+      groupId: "group_1",
+      actorUserId: "user_1",
+      expenseId: "expense_1",
+      expenseTitle: "晚餐",
+      body: "這筆我請",
+      send,
+    });
+
+    expect(targetsForGroup).toHaveBeenCalledWith("group_1", "user_1");
+    expect(outcome.sent).toBe(2);
+  });
+
+  test("a push failure never surfaces - the comment is already saved", async () => {
+    const outcome = await notifyExpenseCommented({
+      repository: makeRepository({
+        async targetsForGroup() {
+          throw new Error("database unreachable");
+        },
+      }),
+      vapid,
+      groupId: "group_1",
+      actorUserId: "user_1",
+      expenseId: "expense_1",
+      expenseTitle: "晚餐",
+      body: "這筆我請",
+    });
+
+    expect(outcome).toEqual({ sent: 0, pruned: 0, failed: 0 });
+  });
+
+  test("nobody subscribed means no work, not an error", async () => {
+    const send = vi.fn<PushSendFn>(async () => ({ statusCode: 201 }));
+
+    const outcome = await notifyExpenseCommented({
+      repository: makeRepository({
+        async targetsForGroup() {
+          return { group_name: "東京旅行", actor_name: "Alice", subscriptions: [] };
+        },
+      }),
+      vapid,
+      groupId: "group_1",
+      actorUserId: "user_1",
+      expenseId: "expense_1",
+      expenseTitle: "晚餐",
+      body: "這筆我請",
+      send,
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(outcome.sent).toBe(0);
   });
 });

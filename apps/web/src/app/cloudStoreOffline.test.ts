@@ -329,13 +329,15 @@ describe("offline queue: flushing", () => {
       getGroupDetail: groupDetailFake("https://cdn.equo.local/receipt.jpg"),
     });
 
-    await store.addExpense("group_1", { ...baseDraft, imageDataUrl: "data:image/jpeg;base64,AAA" }, "TWD");
+    await store.addExpense("group_1", { ...baseDraft, imageDataUrls: ["data:image/jpeg;base64,AAA"] }, "TWD");
     expect(store.getState().groupDetails.group_1.expenses[0].imageUrl).toBe("data:image/jpeg;base64,AAA");
 
     await store.flushPendingWrites();
 
     expect(uploadGroupImage).toHaveBeenCalledTimes(1);
-    expect((createExpense.mock.calls[1][1] as { image_url?: string }).image_url).toBe("https://cdn.equo.local/receipt.jpg");
+    expect((createExpense.mock.calls[1][1] as { image_urls?: string[] }).image_urls).toEqual([
+      "https://cdn.equo.local/receipt.jpg",
+    ]);
     expect(store.getState().groupDetails.group_1.expenses[0].imageUrl).toBe("https://cdn.equo.local/receipt.jpg");
   });
 

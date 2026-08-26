@@ -133,16 +133,25 @@ export function useExpenseComposer({
     const editingId = editingExpense?.id;
 
     let finalDraft = draft;
-    if (draft.imageDataUrl) {
+    const pending = draft.imageDataUrls ?? [];
+
+    if (pending.length > 0) {
       setBusy(true);
       try {
-        const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "expense", draft.imageDataUrl);
-        finalDraft = { ...draft, imageUrl: uploadedUrl, imageDataUrl: undefined };
+        // Sequential, not Promise.all: order is what the user arranged, and a
+        // parallel batch that half-fails would leave some photos uploaded and
+        // the rest not, with no way to say which. One at a time means a failure
+        // is clean - everything after it is still a data URL for the queue.
+        const uploaded: string[] = [];
+        for (const dataUrl of pending) {
+          uploaded.push(await cloudStore.uploadGroupImage(activeGroup.id, "expense", dataUrl));
+        }
+        finalDraft = { ...draft, imageUrls: [...(draft.imageUrls ?? []), ...uploaded], imageDataUrls: [] };
       } catch (error) {
         setBusy(false);
-        // Unreachable network, not a rejected upload: keep the data URL on the
-        // draft and let cloudStore queue it - the photo is uploaded on flush,
-        // just before the expense itself. Any other failure still aborts.
+        // Unreachable network, not a rejected upload: keep the data URLs on the
+        // draft and let cloudStore queue them - the photos are uploaded on
+        // flush, just before the expense itself. Any other failure still aborts.
         if (!isNetworkError(error)) {
           showToast(text.imageUploadFailed);
           return;

@@ -1,10 +1,15 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
-import type { CreateExpenseRequest } from "../../contracts/schemas.js";
-import { validateCreateExpenseRequest } from "../../contracts/validation.js";
+import type { CreateExpenseCommentRequest, CreateExpenseRequest } from "../../contracts/schemas.js";
+import { MAX_COMMENT_LENGTH, validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import type { ExpensePageCursor } from "../repositories/expenseRepository.js";
-import { EXPENSE_NOT_FOUND, InvalidMemberError, NOT_A_GROUP_MEMBER } from "../repositories/expenseRepository.js";
+import {
+  COMMENT_NOT_FOUND,
+  EXPENSE_NOT_FOUND,
+  InvalidMemberError,
+  NOT_A_GROUP_MEMBER,
+} from "../repositories/expenseRepository.js";
 import { createSupabaseExpenseRepository } from "../repositories/supabaseExpenseRepository.js";
 import {
   createSupabaseGroupRepository,
@@ -73,6 +78,23 @@ function writeErrorResponse(error: unknown, request_id: string) {
         error: {
           code: "EXPENSE_NOT_FOUND" as const,
           message: "This entry no longer exists.",
+          request_id,
+        },
+      },
+    };
+  }
+
+  // Reuses EXPENSE_NOT_FOUND's code rather than introducing a comment-specific
+  // one: from the client's side both mean "the thing you pointed at is not
+  // there any more", and the dialog's response to either is to refetch.
+  if (message.includes(COMMENT_NOT_FOUND)) {
+    return {
+      ok: false,
+      status: 404,
+      body: {
+        error: {
+          code: "EXPENSE_NOT_FOUND" as const,
+          message: "This comment no longer exists.",
           request_id,
         },
       },
@@ -290,4 +312,105 @@ export async function searchExpensesRoute(options: RouteOptions, groupId: string
   }
 
   return { ok: true, status: 200, body: result };
+}
+
+
+/**
+ * GET /api/v1/groups/:groupId/expenses/:expenseId/comments
+ *
+ * Read on demand when the detail dialog opens. Deliberately not folded into
+ * get_group_detail: a thread is read on the one entry somebody tapped, and
+ * carrying every comment in the group would grow the payload that decides how
+ * fast the app starts, to serve a panel most opens never reach.
+ */
+export async function listExpenseCommentsRoute(options: RouteOptions, groupId: string, expenseId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  try {
+    const comments = await createSupabaseExpenseRepository(options.client).listExpenseComments(
+      auth.context,
+      groupId,
+      expenseId,
+    );
+
+    return { ok: true, status: 200, body: { comments } };
+  } catch (error) {
+    return writeErrorResponse(error, expenseId);
+  }
+}
+
+export async function createExpenseCommentRoute(
+  options: RouteOptions,
+  groupId: string,
+  expenseId: string,
+  request: CreateExpenseCommentRequest,
+) {
+  if (!request || typeof request !== "object" || typeof request.client_request_id !== "string") {
+    return { ok: false, status: 400, body: { issues: [{ code: "MALFORMED_REQUEST", message: "client_request_id is required" }] } };
+  }
+
+  // Trimmed here as well as in the RPC. The server is the one that decides, but
+  // answering "" with a 400 beats answering it with a database exception the
+  // client can only render as "something went wrong".
+  const body = typeof request.body === "string" ? request.body.trim() : "";
+
+  if (!body) {
+    return { ok: false, status: 400, body: { issues: [{ code: "MALFORMED_REQUEST", message: "body is required" }] } };
+  }
+
+  if (body.length > MAX_COMMENT_LENGTH) {
+    return {
+      ok: false,
+      status: 400,
+      body: { issues: [{ code: "MALFORMED_REQUEST", message: `body must be at most ${MAX_COMMENT_LENGTH} characters` }] },
+    };
+  }
+
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  try {
+    const { comment, expenseTitle } = await createSupabaseExpenseRepository(options.client).createExpenseComment(
+      auth.context,
+      groupId,
+      expenseId,
+      body,
+      request.client_request_id,
+    );
+
+    // Same shape as createExpenseRoute: the actor and the entry's title ride
+    // alongside the body so the caller can fan out a notification without a
+    // second session check or a second query, and the runtime drops both before
+    // the response goes out.
+    return { ok: true, status: 201, body: { comment }, actorUserId: auth.context.user.id, expenseTitle };
+  } catch (error) {
+    return writeErrorResponse(error, request.client_request_id);
+  }
+}
+
+export async function deleteExpenseCommentRoute(options: RouteOptions, groupId: string, commentId: string) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  try {
+    const deleted = await createSupabaseExpenseRepository(options.client).deleteExpenseComment(
+      auth.context,
+      groupId,
+      commentId,
+    );
+
+    return { ok: true, status: 200, body: { comment: deleted } };
+  } catch (error) {
+    return writeErrorResponse(error, commentId);
+  }
 }

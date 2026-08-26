@@ -79,11 +79,32 @@ export type ExpenseSummary = {
   note?: string | null;
   transfer_to_member_id?: string | null;
   image_url?: string | null;
+  /**
+   * Every receipt on the entry, in order. Optional because an older server
+   * does not send it - and absent must stay distinguishable from an empty
+   * list, or a read from such a server would look like "the receipts were
+   * removed" and an edit built on it would remove them for real.
+   */
+  image_urls?: string[];
   created_at?: string;
   version: number;
   client_request_id: string;
   expense_payments?: ExpensePaymentSummary[];
   expense_shares?: ExpenseShareSummary[];
+};
+
+export type ExpenseCommentSummary = {
+  id: string;
+  expense_id: string;
+  /**
+   * The author as a group member id. No name, no avatar: the client already
+   * holds the member list, so resolving it at render time keeps a rename or a
+   * new photo correct on every old comment instead of freezing a copy of
+   * somebody's profile onto each line.
+   */
+  member_id: string;
+  body: string;
+  created_at: string;
 };
 
 export type BalanceSummary = {
@@ -475,6 +496,29 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "DELETE",
         body: JSON.stringify(payload),
       });
+    },
+    /** One entry's comment thread, oldest first. Fetched when its dialog opens. */
+    listExpenseComments(groupId: string, expenseId: string) {
+      return request<{ comments: ExpenseCommentSummary[] }>(
+        `/groups/${groupId}/expenses/${expenseId}/comments`,
+        { method: "GET" },
+      );
+    },
+    createExpenseComment(
+      groupId: string,
+      expenseId: string,
+      payload: { client_request_id: string; body: string },
+    ) {
+      return request<{ comment: ExpenseCommentSummary }>(
+        `/groups/${groupId}/expenses/${expenseId}/comments`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+    },
+    deleteExpenseComment(groupId: string, expenseId: string, commentId: string) {
+      return request<{ comment: { id: string } }>(
+        `/groups/${groupId}/expenses/${expenseId}/comments/${commentId}`,
+        { method: "DELETE" },
+      );
     },
     /**
      * The records-panel "load more" page: older-than-cursor expenses once the

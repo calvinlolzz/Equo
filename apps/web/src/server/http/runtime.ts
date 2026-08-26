@@ -1,6 +1,7 @@
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AcceptInviteRequest,
+  CreateExpenseCommentRequest,
   CreateExpenseRequest,
   CreateGroupRequest,
   CreateInviteRequest,
@@ -76,7 +77,10 @@ import {
 } from "../routes/adminRoutes.js";
 import {
   createExpenseRoute,
+  createExpenseCommentRoute,
+  deleteExpenseCommentRoute,
   deleteExpenseRoute,
+  listExpenseCommentsRoute,
   listExpensesPageRoute,
   searchExpensesRoute,
   replaceExpenseRoute,
@@ -106,7 +110,13 @@ import {
 import { getCatalogRoute } from "../routes/catalogRoutes.js";
 import type { AdminSendNotificationBody } from "../handlers/admin.js";
 import { createSupabasePushRepository } from "../repositories/supabasePushRepository.js";
-import { notifyErrorAlert, notifyExpenseCreated, notifyMemberJoined, notifyNudge } from "../push/pushSender.js";
+import {
+  notifyErrorAlert,
+  notifyExpenseCommented,
+  notifyExpenseCreated,
+  notifyMemberJoined,
+  notifyNudge,
+} from "../push/pushSender.js";
 import { runAutoNudges } from "../routes/autoNudgeRoutes.js";
 import type { PushSendFn, VapidKeys } from "../push/pushSender.js";
 import { healthRoute } from "../routes/healthRoutes.js";
@@ -772,6 +782,66 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[2],
           body<CreateExpenseRequest>(request),
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses\/([^/]+)\/comments$/,
+      label: "GET /api/v1/groups/:groupId/expenses/:expenseId/comments",
+      async handle(request, match) {
+        const result = await listExpenseCommentsRoute(routeOptions(options, request), match[1], match[2]);
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses\/([^/]+)\/comments$/,
+      label: "POST /api/v1/groups/:groupId/expenses/:expenseId/comments",
+      async handle(request, match) {
+        const groupId = match[1];
+        const expenseId = match[2];
+        const result = await createExpenseCommentRoute(
+          routeOptions(options, request),
+          groupId,
+          expenseId,
+          body<CreateExpenseCommentRequest>(request),
+        );
+
+        // Same rules as the expense fan-out: after the write, awaited, and
+        // never able to change the response.
+        //
+        // A missing expenseTitle is the replay gate, not a missing name: the
+        // RPC leaves it off when client_requests already held this id, so an
+        // offline resend or a double tap returns the original comment WITHOUT
+        // pushing the same sentence to everyone a second time.
+        const actorUserId = "actorUserId" in result ? result.actorUserId : undefined;
+        const expenseTitle = "expenseTitle" in result ? result.expenseTitle : undefined;
+
+        if (result.ok && options.vapid && actorUserId && expenseTitle !== undefined && "comment" in result.body) {
+          const comment = result.body.comment as { body: string };
+
+          await notifyExpenseCommented({
+            repository: createSupabasePushRepository(options.client),
+            vapid: options.vapid,
+            groupId,
+            actorUserId,
+            expenseId,
+            expenseTitle,
+            body: comment.body,
+            send: options.pushSend,
+          });
+        }
+
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/groups\/([^/]+)\/expenses\/([^/]+)\/comments\/([^/]+)$/,
+      label: "DELETE /api/v1/groups/:groupId/expenses/:expenseId/comments/:commentId",
+      async handle(request, match) {
+        const result = await deleteExpenseCommentRoute(routeOptions(options, request), match[1], match[3]);
         return jsonResponse(result.status, result.body);
       },
     },

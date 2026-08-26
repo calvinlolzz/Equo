@@ -36,6 +36,18 @@ function malformed(message: string): ValidationResult {
 }
 
 /**
+ * Receipts are evidence for one purchase, not a photo album, and every one of
+ * them is a file in a bucket that counts against the free plan's storage - the
+ * wall this project reaches first (see docs/OPERATIONS.md). The same number is
+ * a CHECK on expenses.image_urls, so a caller going straight at the RPC hits it
+ * too; this one exists to answer with a 400 instead of a constraint violation.
+ */
+export const MAX_EXPENSE_IMAGES = 5;
+
+/** Longest a single comment may be, matching the CHECK on expense_comments.body. */
+export const MAX_COMMENT_LENGTH = 500;
+
+/**
  * The input is whatever JSON the caller sent. The routes reach it through
  * `body<CreateExpenseRequest>(request)`, which is an unchecked cast, not a
  * parse - so the static type is a claim about the request, not a fact about it.
@@ -94,6 +106,16 @@ export function validateCreateExpenseRequest(input: unknown): ValidationResult {
 
   if (request.expense_shares.length === 0 && request.kind !== "transfer") {
     issues.push(issue("EXPENSE_SHARE_TOTAL_MISMATCH", "expense_shares must include at least one member"));
+  }
+
+  // Absent is fine (an older client that only knows image_url). Present means
+  // it is authoritative, so it has to actually be a list of URLs.
+  if (request.image_urls !== undefined) {
+    if (!Array.isArray(request.image_urls) || request.image_urls.some((url) => typeof url !== "string" || !url.trim())) {
+      issues.push(issue("MALFORMED_REQUEST", "image_urls must be an array of non-empty strings"));
+    } else if (request.image_urls.length > MAX_EXPENSE_IMAGES) {
+      issues.push(issue("MALFORMED_REQUEST", `image_urls must hold at most ${MAX_EXPENSE_IMAGES} receipts`));
+    }
   }
 
   if (request.kind === "transfer" && !request.transfer_to_member_id?.trim()) {

@@ -29,7 +29,13 @@ export type ExpenseEditPrefill = {
   sharePercents: Record<string, string>;
   payments: Array<{ payerId: string; amount: string }>;
   transferToMemberId: string;
-  imageUrl: string;
+  /**
+   * Every receipt already on the entry, carried through the editor untouched
+   * unless the user changes them. This has to be the WHOLE list: an edit is a
+   * replace, so a prefill that only carried the first one would delete the rest
+   * the moment somebody fixed a typo in the title.
+   */
+  imageUrls: string[];
   note: string;
   dateTimeIso: string;
 };
@@ -59,8 +65,19 @@ export function buildExpenseDuplicatePrefill(
   return {
     ...buildExpenseEditPrefill(expense, groupCurrency),
     dateTimeIso: nowIso,
-    imageUrl: "",
+    imageUrls: [],
   };
+}
+
+/**
+ * An expense's receipts, tolerating a row that predates the list. Falls back to
+ * the single imageUrl so an entry read from a cached bundle (or an older
+ * server) still opens the editor with its photo attached rather than silently
+ * dropping it on save.
+ */
+function receiptUrls(expense: Expense): string[] {
+  if (expense.imageUrls) return expense.imageUrls;
+  return expense.imageUrl ? [expense.imageUrl] : [];
 }
 
 function minorToAmountString(amountMinor: number): string {
@@ -78,7 +95,7 @@ export function buildExpenseEditPrefill(expense: Expense, groupCurrency: string)
     currency,
     amount: minorToAmountString(amountMinor),
     exchangeRate: expense.exchangeRate ? expense.exchangeRate.toString() : "1",
-    imageUrl: expense.imageUrl ?? "",
+    imageUrls: receiptUrls(expense),
     note: expense.note ?? "",
     dateTimeIso: expense.createdAt,
   };

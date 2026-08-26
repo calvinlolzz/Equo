@@ -72,6 +72,15 @@ const RECEIPT_SCAN: RateLimitRule = { name: "receiptScan", limit: 30, windowSeco
  */
 const NUDGE: RateLimitRule = { name: "nudge", limit: 20, windowSeconds: HOUR, scope: "user" };
 
+/**
+ * Comments on an entry. Its own bucket, above the shared write budget in
+ * strictness for a reason the row itself does not show: every comment fans a
+ * web-push request out to each device in the group, so it costs more than the
+ * insert it looks like. One a minute for an hour is a real conversation and
+ * stays under; a script does not.
+ */
+const COMMENT: RateLimitRule = { name: "comment", limit: 60, windowSeconds: HOUR, scope: "user" };
+
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
@@ -89,6 +98,8 @@ export function resolveRateLimitRule(method: string, path: string): RateLimitRul
   if (path === "/api/v1/feedback") return FEEDBACK;
   if (path === "/api/v1/receipts/scan") return RECEIPT_SCAN;
   if (path.endsWith("/nudge")) return NUDGE;
+  // includes, not endsWith: a delete is .../comments/:commentId.
+  if (path.includes("/comments")) return COMMENT;
 
   return WRITE;
 }

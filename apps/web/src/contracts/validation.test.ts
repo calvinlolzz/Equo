@@ -27,6 +27,40 @@ const balancedExpense: CreateExpenseRequest = {
   ],
 };
 
+describe("validateCreateExpenseRequest: image_urls", () => {
+  test("accepts a request with no image_urls at all", () => {
+    // Absent is an older client that only knows image_url, and the server falls
+    // back to it. Rejecting here would break every cached bundle in the wild.
+    expect(validateCreateExpenseRequest(balancedExpense).ok).toBe(true);
+  });
+
+  test("accepts an explicitly empty list, which is how the last receipt is removed", () => {
+    expect(validateCreateExpenseRequest({ ...balancedExpense, image_urls: [] }).ok).toBe(true);
+  });
+
+  test("accepts up to five receipts", () => {
+    const five = ["a", "b", "c", "d", "e"].map((name) => `https://cdn/${name}.jpg`);
+    expect(validateCreateExpenseRequest({ ...balancedExpense, image_urls: five }).ok).toBe(true);
+  });
+
+  test("rejects a sixth, so the answer is a 400 and not a constraint violation", () => {
+    const six = ["a", "b", "c", "d", "e", "f"].map((name) => `https://cdn/${name}.jpg`);
+    const result = validateCreateExpenseRequest({ ...balancedExpense, image_urls: six });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toContain("MALFORMED_REQUEST");
+  });
+
+  test.each([
+    ["not an array", "https://cdn/a.jpg"],
+    ["holding a non-string", ["https://cdn/a.jpg", 7]],
+    ["holding an empty string", ["https://cdn/a.jpg", "   "]],
+  ])("rejects image_urls %s", (_label, value) => {
+    const result = validateCreateExpenseRequest({ ...balancedExpense, image_urls: value });
+    expect(result.ok).toBe(false);
+  });
+});
+
 describe("validateCreateExpenseRequest", () => {
   // The routes reach the body through an unchecked cast, so the static type is a
   // claim about the request, not a fact. Reading a field off a body that doesn't

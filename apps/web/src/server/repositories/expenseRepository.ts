@@ -1,4 +1,4 @@
-import type { CreateExpenseRequest } from "../../contracts/schemas.js";
+import type { CreateExpenseRequest, ExpenseCommentRecord } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 
 /**
@@ -56,6 +56,7 @@ export type ExpenseRecord = {
   note?: string | null;
   transfer_to_member_id?: string | null;
   image_url?: string | null;
+  image_urls?: string[];
   created_at?: string;
   version: number;
   client_request_id: string;
@@ -72,7 +73,15 @@ export type ExpenseRecord = {
  * by every query, so this narrows it to "definitely present on this
  * response" for that one call site.
  */
-export type DeletedExpenseRecord = ExpenseRecord & { image_url: string | null };
+export type DeletedExpenseRecord = ExpenseRecord & { image_url: string | null; image_urls?: string[] };
+
+/**
+ * Raised when a comment delete targets something that is not there, is in
+ * another group, is already withdrawn, or belongs to somebody else. All four
+ * collapse into one message on purpose: telling a caller apart "no such
+ * comment" from "not yours" is a way to probe for ids that exist.
+ */
+export const COMMENT_NOT_FOUND = "COMMENT_NOT_FOUND";
 
 export type ExpensePageCursor = {
   beforeDate: string;
@@ -157,6 +166,30 @@ export type ExpenseRepository = {
     request: CreateExpenseRequest,
   ): Promise<{ expense: ExpenseRecord; previous: DeletedExpenseRecord | null }>;
   recordClientRequest(groupId: string, client_request_id: string, resourceId: string): Promise<void>;
+  /**
+   * One expense's comment thread, oldest first. Fetched when the detail dialog
+   * opens rather than carried on every expense in the list: a thread is read on
+   * the one entry somebody tapped, and shipping every comment in the group with
+   * the group would grow the payload that decides how fast the app starts.
+   */
+  listExpenseComments(
+    context: AuthenticatedContext,
+    groupId: string,
+    expenseId: string,
+  ): Promise<ExpenseCommentRecord[]>;
+  createExpenseComment(
+    context: AuthenticatedContext,
+    groupId: string,
+    expenseId: string,
+    body: string,
+    client_request_id: string,
+  ): Promise<{ comment: ExpenseCommentRecord; expenseTitle?: string }>;
+  /** Withdraw one comment. Author or group owner only - the RPC owns that check. */
+  deleteExpenseComment(
+    context: AuthenticatedContext,
+    groupId: string,
+    commentId: string,
+  ): Promise<{ id: string }>;
 };
 
 export type ExpensePersistencePayload = {

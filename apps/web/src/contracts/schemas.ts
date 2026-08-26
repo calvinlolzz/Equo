@@ -76,9 +76,35 @@ export type CreateExpenseRequest = IdempotentRequest & {
   expense_date: string;
   note?: string;
   transfer_to_member_id?: string;
+  /**
+   * The first receipt, kept for one reason: an offline write frozen by an older
+   * build, or a cached bundle that has not picked up image_urls yet, still
+   * sends this. The server only falls back to it when image_urls is ABSENT -
+   * an explicitly empty image_urls means "no receipts", not "say nothing".
+   */
   image_url?: string;
+  /** Every receipt, in display order. Capped at MAX_EXPENSE_IMAGES. */
+  image_urls?: string[];
   expense_payments: ExpensePaymentInput[];
   expense_shares: ExpenseShareInput[];
+};
+
+export type ExpenseCommentRecord = {
+  id: string;
+  expense_id: string;
+  /**
+   * Who wrote it, as a group member id - no name and no avatar. The client
+   * already holds this group's member list, so resolving it there keeps a
+   * rename or a new photo showing correctly on every old comment; baking the
+   * name in would freeze a copy of somebody's profile onto each line.
+   */
+  member_id: string;
+  body: string;
+  created_at: string;
+};
+
+export type CreateExpenseCommentRequest = IdempotentRequest & {
+  body: string;
 };
 
 export type UploadGroupImageRequest = IdempotentRequest & {

@@ -199,8 +199,8 @@ describe("expenseToDraft", () => {
     const draft = expenseToDraft(expense);
     expect(draft.note).toBe("備註內容");
     expect(draft.category).toBe("transport");
-    expect(draft.imageUrl).toBe("https://cdn.equo.local/expense.jpg");
-    expect(draft.imageDataUrl).toBeUndefined();
+    expect(draft.imageUrls).toEqual(["https://cdn.equo.local/expense.jpg"]);
+    expect(draft.imageDataUrls).toBeUndefined();
     expect(draft.createdAt).toBe("2026-02-03T10:20:00.000Z");
   });
 

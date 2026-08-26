@@ -104,6 +104,9 @@ export type ApiClientLike = Pick<
   | "listArchivedGroups"
   | "getGroupDetail"
   | "updateGroup"
+  | "listExpenseComments"
+  | "createExpenseComment"
+  | "deleteExpenseComment"
   | "createVirtualMember"
   | "renameGroupMember"
   | "setMemberPaymentNote"
@@ -482,30 +485,40 @@ export function createCloudGroupsStore({
     }
 
     let request = write.request;
-    let uploadedImageUrl: string | undefined;
-    if (write.imageDataUrl) {
-      const { image } = await apiClient.uploadGroupImage(write.groupId, {
-        client_request_id: crypto.randomUUID(),
-        kind: "expense",
-        data_url: write.imageDataUrl,
-      });
-      uploadedImageUrl = image.url;
-      request = { ...request, image_url: image.url };
+    let uploadedImageUrls: string[] | undefined;
+    // Legacy single field: the queue is persisted, so the first flush after
+    // multi-receipt shipped can be draining a write the previous build made.
+    const legacyDataUrl = (write as { imageDataUrl?: string }).imageDataUrl;
+    const pendingDataUrls = write.imageDataUrls ?? (legacyDataUrl ? [legacyDataUrl] : []);
+
+    if (pendingDataUrls.length > 0) {
+      // Sequential for the same reason the online path is: a half-uploaded
+      // batch has no honest way to say which photos made it.
+      const uploaded: string[] = [];
+      for (const dataUrl of pendingDataUrls) {
+        const { image } = await apiClient.uploadGroupImage(write.groupId, {
+          client_request_id: crypto.randomUUID(),
+          kind: "expense",
+          data_url: dataUrl,
+        });
+        uploaded.push(image.url);
+      }
+      uploadedImageUrls = [...(request.image_urls ?? []), ...uploaded];
+      request = { ...request, image_urls: uploadedImageUrls };
     }
+
+    const patch = uploadedImageUrls
+      ? { imageUrl: uploadedImageUrls[0], imageUrls: uploadedImageUrls }
+      : {};
 
     if (write.kind === "replace") {
       await apiClient.replaceExpense(write.groupId, write.expenseId, request);
-      if (uploadedImageUrl) {
-        patchCachedExpense(write.groupId, write.expenseId, { imageUrl: uploadedImageUrl });
-      }
+      patchCachedExpense(write.groupId, write.expenseId, patch);
       return;
     }
 
     const { expense } = await apiClient.createExpense(write.groupId, request);
-    patchCachedExpense(write.groupId, write.expenseId, {
-      id: expense.id,
-      ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}),
-    });
+    patchCachedExpense(write.groupId, write.expenseId, { id: expense.id, ...patch });
   }
 
   /**
@@ -852,9 +865,9 @@ export function createCloudGroupsStore({
           expenseId: newLocalExpenseId(),
           queuedAt: new Date().toISOString(),
           request,
-          draft: { ...draft, imageDataUrl: undefined },
+          draft: { ...draft, imageDataUrls: [] },
           expenseKind,
-          imageDataUrl: draft.imageDataUrl,
+          imageDataUrls: draft.imageDataUrls,
         });
         if (queued) return;
       }
@@ -887,8 +900,8 @@ export function createCloudGroupsStore({
         expenseId,
         queuedAt: new Date().toISOString(),
         request,
-        draft: { ...draft, imageDataUrl: undefined },
-        imageDataUrl: draft.imageDataUrl,
+        draft: { ...draft, imageDataUrls: [] },
+        imageDataUrls: draft.imageDataUrls,
       });
 
     // An expense that has never reached the server has no id to PUT against.
@@ -1106,6 +1119,36 @@ export function createCloudGroupsStore({
   }
 
   /**
+   * One entry's comment thread. A read-through like searchExpenses: it stays
+   * out of the store's state because the only thing that looks at it is the
+   * dialog that asked for it, and holding every thread in the group would grow
+   * the cache that decides how fast the app starts to serve a panel most opens
+   * never reach.
+   */
+  async function listExpenseComments(groupId: string, expenseId: string) {
+    const { comments } = await apiClient.listExpenseComments(groupId, expenseId);
+    return comments;
+  }
+
+  async function addExpenseComment(groupId: string, expenseId: string, body: string) {
+    const { comment } = await apiClient.createExpenseComment(groupId, expenseId, {
+      client_request_id: crypto.randomUUID(),
+      body,
+    });
+    return comment;
+  }
+
+  /**
+   * Withdraw one. No offline queueing, unlike the expense writes: a comment is
+   * a remark in a conversation, and one that silently reappears days later
+   * because a queued delete finally drained would be worse than one that
+   * plainly failed to go while you had no signal.
+   */
+  async function removeExpenseComment(groupId: string, expenseId: string, commentId: string) {
+    await apiClient.deleteExpenseComment(groupId, expenseId, commentId);
+  }
+
+  /**
    * 循環支出 rules. Like the other two read-throughs these stay out of the
    * store's state — the panel that edits them is the only thing that looks at
    * them, and the expenses they generate arrive through the normal detail
@@ -1158,6 +1201,9 @@ export function createCloudGroupsStore({
     acceptInvite,
     uploadGroupImage,
     updateGroupCover,
+    listExpenseComments,
+    addExpenseComment,
+    removeExpenseComment,
   };
 }
 

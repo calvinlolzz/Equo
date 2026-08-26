@@ -198,9 +198,20 @@ describe("queuedExpense", () => {
     expect(expense?.expenseDate).toBe("2026-07-04");
   });
 
-  test("shows a queued receipt photo from its data URL", () => {
-    const expense = queuedExpense(createWrite("local-1", { imageDataUrl: "data:image/jpeg;base64,AAA" }));
+  test("shows queued receipt photos from their data URLs", () => {
+    const expense = queuedExpense(
+      createWrite("local-1", { imageDataUrls: ["data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"] }),
+    );
     expect(expense?.imageUrl).toBe("data:image/jpeg;base64,AAA");
+    expect(expense?.imageUrls).toEqual(["data:image/jpeg;base64,AAA", "data:image/jpeg;base64,BBB"]);
+  });
+
+  test("still renders a photo queued by an older build, which wrote a single imageDataUrl", () => {
+    // The queue lives in localStorage and survives a deploy, so the first flush
+    // after multi-receipt shipped can be draining entries in the old shape.
+    const legacy = { ...createWrite("local-1"), imageDataUrl: "data:image/jpeg;base64,OLD" };
+    const expense = queuedExpense(legacy as typeof legacy & { imageDataUrls?: string[] });
+    expect(expense?.imageUrl).toBe("data:image/jpeg;base64,OLD");
   });
 
   test("a delete has no row to render", () => {

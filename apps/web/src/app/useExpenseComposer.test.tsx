@@ -116,13 +116,45 @@ describe("useExpenseComposer", () => {
     const { hook, cloudStore } = setup();
 
     await act(async () => {
-      await hook.result.current.handleExpenseDraftSubmit(draft({ imageDataUrl: "data:image/png;base64,AAA" }));
+      await hook.result.current.handleExpenseDraftSubmit(draft({ imageDataUrls: ["data:image/png;base64,AAA"] }));
     });
 
     expect(cloudStore.uploadGroupImage).toHaveBeenCalledWith("group_1", "expense", "data:image/png;base64,AAA");
     const addArgs = (cloudStore.addExpense as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as ExpenseDraft;
-    expect(addArgs.imageUrl).toBe("https://cdn/img.png");
-    expect(addArgs.imageDataUrl).toBeUndefined();
+    expect(addArgs.imageUrls).toEqual(["https://cdn/img.png"]);
+    expect(addArgs.imageDataUrls).toEqual([]);
+  });
+
+  test("several picked photos are each uploaded, and stay in the order they were picked", async () => {
+    let uploaded = 0;
+    const { hook, cloudStore } = setup({
+      cloudStore: {
+        uploadGroupImage: vi.fn(async () => `https://cdn/img-${++uploaded}.png`),
+      },
+    });
+
+    await act(async () => {
+      await hook.result.current.handleExpenseDraftSubmit(
+        draft({ imageDataUrls: ["data:image/png;base64,AAA", "data:image/png;base64,BBB"] }),
+      );
+    });
+
+    expect(cloudStore.uploadGroupImage).toHaveBeenCalledTimes(2);
+    const addArgs = (cloudStore.addExpense as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as ExpenseDraft;
+    expect(addArgs.imageUrls).toEqual(["https://cdn/img-1.png", "https://cdn/img-2.png"]);
+  });
+
+  test("an edit keeps the receipts already on the entry and appends the newly picked one", async () => {
+    const { hook, cloudStore } = setup();
+
+    await act(async () => {
+      await hook.result.current.handleExpenseDraftSubmit(
+        draft({ imageUrls: ["https://cdn/kept.png"], imageDataUrls: ["data:image/png;base64,AAA"] }),
+      );
+    });
+
+    const addArgs = (cloudStore.addExpense as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as ExpenseDraft;
+    expect(addArgs.imageUrls).toEqual(["https://cdn/kept.png", "https://cdn/img.png"]);
   });
 
   test("an image upload failure aborts without writing the expense", async () => {
@@ -135,7 +167,7 @@ describe("useExpenseComposer", () => {
     });
 
     await act(async () => {
-      await hook.result.current.handleExpenseDraftSubmit(draft({ imageDataUrl: "data:image/png;base64,AAA" }));
+      await hook.result.current.handleExpenseDraftSubmit(draft({ imageDataUrls: ["data:image/png;base64,AAA"] }));
     });
 
     expect(cloudStore.addExpense).not.toHaveBeenCalled();

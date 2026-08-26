@@ -54,6 +54,7 @@ import { useRecurringExpenses } from "./useRecurringExpenses";
 import { listSettlementRecords } from "./settlementHistory";
 import { useSettlementHistory } from "./useSettlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
+import { useExpenseComments } from "./useExpenseComments";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
 import { readInviteToken } from "./inviteToken";
@@ -607,6 +608,14 @@ export function App() {
   // See resolveCurrentMember.ts for the matching/fallback rules.
   const currentMember = resolveCurrentMember(members, session?.user.id);
   const isCurrentMemberOwner = isGroupOwner(currentMember);
+
+  // Loaded whenever the detail dialog has an entry open, and cleared when it
+  // does not: the hook takes a null expenseId and holds nothing.
+  const expenseComments = useExpenseComments(
+    cloudStore,
+    activeGroupId,
+    dialog === "expenseDetail" ? selectedExpenseId : null,
+  );
 
   const dateChips = useMemo(() => lastEightDays(), []);
   // 群組消費 for the selected day = that day's spendByDay total; 個人消費 =
@@ -1973,6 +1982,9 @@ export function App() {
               ? () => setSelectedExpenseId(expenses[selectedExpenseIndex + 1].id)
               : undefined
           }
+          comments={cloudStore ? expenseComments : undefined}
+          currentMemberId={currentMember?.id}
+          isGroupOwner={isCurrentMemberOwner}
         />
         </Suspense>
       ) : null}

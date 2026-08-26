@@ -23,9 +23,9 @@ import type { ExpenseDraft } from "./ExpenseComposerSheet";
  * stored - over createdAt, which for cloud-fetched expenses is the
  * INSERTION timestamp and would re-date a backdated expense to its deletion
  * day. Optimistic local expenses have no expenseDate; their createdAt IS
- * the picked date, so the fallback is exact. imageUrl (an already-uploaded
- * cloud photo URL) is preserved as-is - never imageDataUrl, which would
- * trigger a re-upload. Foreign-currency source fields are carried through
+ * the picked date, so the fallback is exact. imageUrls (already-uploaded cloud
+ * photo URLs) are preserved as-is - never imageDataUrls, which would trigger a
+ * re-upload of files that are already in the bucket. Foreign-currency source fields are carried through
  * for fidelity, though toCreateExpenseRequest drops them for cloud sync
  * (group-currency v1).
  */
@@ -36,7 +36,10 @@ export function expenseToDraft(expense: Expense): ExpenseDraft {
     createdAt: expense.expenseDate ?? expense.createdAt,
     category: expense.category ?? "general",
     note: expense.note,
-    imageUrl: expense.imageUrl,
+    // The whole list, not the first: an undone delete is re-created through the
+    // same replace path, so carrying one URL back would restore the entry with
+    // its other receipts missing.
+    imageUrls: expense.imageUrls ?? (expense.imageUrl ? [expense.imageUrl] : []),
   };
 
   if (expense.kind === "settlement") {

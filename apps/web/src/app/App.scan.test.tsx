@@ -165,7 +165,7 @@ describe("掃描收據", () => {
     await waitFor(() => expect(screen.getByLabelText(app.amount)).toHaveProperty("value", "125.5"));
     expect(screen.getByLabelText(app.title)).toHaveProperty("value", "全家便利商店");
     // The photo rides along on the same expense, recognised or not.
-    expect(screen.getByRole("button", { name: app.removePhoto })).toBeTruthy();
+    expect(screen.getByRole("button", { name: `${app.removePhoto} 1` })).toBeTruthy();
   });
 
   test("opens the composer at once instead of waiting on recognition", async () => {
@@ -184,7 +184,7 @@ describe("掃描收據", () => {
 
     // Composer up, photo attached, amount blank and typeable - all before the
     // upstream has said anything.
-    await waitFor(() => expect(screen.getByRole("button", { name: app.removePhoto })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: `${app.removePhoto} 1` })).toBeTruthy());
     expect(screen.getByLabelText(app.amount)).toHaveProperty("value", "");
     expect(screen.getByText(app.scanReading)).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: app.scanReceipt })).toBeNull();
@@ -242,7 +242,7 @@ describe("掃描收據", () => {
     // Losing the photo because the model was unreachable would be far worse
     // than losing the auto-fill, so the composer must still come up.
     await waitFor(() => expect(screen.getByText(app.scanReceiptFailed)).toBeTruthy());
-    await waitFor(() => expect(screen.getByRole("button", { name: app.removePhoto })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: `${app.removePhoto} 1` })).toBeTruthy());
     // Nothing invented: the amount is left blank for the user to type.
     expect(screen.getByLabelText(app.amount)).toHaveProperty("value", "");
   });

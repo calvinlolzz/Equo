@@ -13,6 +13,7 @@ import {
   type ComposerSplitMode,
 } from "./expenseEditPrefill";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { MAX_EXPENSE_IMAGES } from "../contracts/validation";
 import { buildReceiptComposerPrefill, type ReceiptPrefill } from "./receiptPrefill";
 import { formatAmount, formatAmountInputDisplay, stripAmountInput } from "./formatAmount";
 import {
@@ -112,8 +113,10 @@ export type ExpenseDraft = {
   category: string;
   kind?: "expense" | "income" | "transfer";
   note?: string;
-  imageDataUrl?: string;
-  imageUrl?: string;
+  /** Newly picked photos, still local - the submit flow uploads them. */
+  imageDataUrls?: string[];
+  /** Receipts already in the bucket, carried through an edit unchanged. */
+  imageUrls?: string[];
   shareAmountsMinor?: Record<string, number>;
   shareType?: "fixed" | "percent";
   sharePercents?: Record<string, number>;
@@ -248,8 +251,15 @@ export function ExpenseComposerSheet({
     (editPrefill?.payments ?? []).map((payment, index) => ({ key: index, payerId: payment.payerId, amount: payment.amount })),
   );
   const payerRowKeyRef = useRef(editPrefill?.payments.length ?? 0);
-  const [composerImageDataUrl, setComposerImageDataUrl] = useState<string>(receiptPrefill?.imageDataUrl ?? "");
-  const [composerImageUrl, setComposerImageUrl] = useState<string>(editPrefill?.imageUrl ?? "");
+  // Two lists, not one: a freshly picked photo has to be uploaded before the
+  // entry can be written, while an existing one is already in the bucket and
+  // must be carried through untouched. Merging them would either re-upload
+  // files that are already stored or try to save a data: URL as a receipt.
+  const [composerImageDataUrls, setComposerImageDataUrls] = useState<string[]>(
+    receiptPrefill?.imageDataUrl ? [receiptPrefill.imageDataUrl] : [],
+  );
+  const [composerImageUrls, setComposerImageUrls] = useState<string[]>(editPrefill?.imageUrls ?? []);
+  const composerImageCount = composerImageUrls.length + composerImageDataUrls.length;
   const [composerNote, setComposerNote] = useState(editPrefill?.note ?? "");
   const [composerSubmitting, setComposerSubmitting] = useState(false);
   // Synchronous double-submit guard: composerSubmitting is React state, so
@@ -277,8 +287,8 @@ export function ExpenseComposerSheet({
     shareAmounts: composerShareAmounts,
     sharePercents: composerSharePercents,
     payerRows: composerPayerRows,
-    imageDataUrl: composerImageDataUrl,
-    imageUrl: composerImageUrl,
+    imageDataUrls: composerImageDataUrls,
+    imageUrls: composerImageUrls,
     note: composerNote,
   };
   // Mutable on purpose: an auto-filled exchange rate is not the user's work,
@@ -598,18 +608,31 @@ export function ExpenseComposerSheet({
 
   async function handleComposerImagePick(file: File | null) {
     if (!file) return;
+    // Checked here as well as on the server so the cap is felt as "the button
+    // is gone", not as a rejected save after the work of picking.
+    if (composerImageCount >= MAX_EXPENSE_IMAGES) return;
     try {
       const dataUrl = await downscaleImageFileToDataUrl(file);
-      setComposerImageDataUrl(dataUrl);
-      setComposerImageUrl("");
+      setComposerImageDataUrls((current) => [...current, dataUrl]);
     } catch {
       onImageError?.();
     }
   }
 
-  function removeComposerImage() {
-    setComposerImageDataUrl("");
-    setComposerImageUrl("");
+  /**
+   * Remove one receipt. The two lists are addressed as if they were one - the
+   * uploaded ones first, then the pending ones - because that is the order the
+   * user sees, and asking the UI which list a thumbnail came from would put the
+   * split between "stored" and "not yet stored" on screen, where it means
+   * nothing to anybody.
+   */
+  function removeComposerImage(index: number) {
+    if (index < composerImageUrls.length) {
+      setComposerImageUrls((current) => current.filter((_, at) => at !== index));
+      return;
+    }
+    const pendingIndex = index - composerImageUrls.length;
+    setComposerImageDataUrls((current) => current.filter((_, at) => at !== pendingIndex));
   }
 
   function buildDraft(): ExpenseDraft | null {
@@ -641,8 +664,12 @@ export function ExpenseComposerSheet({
         category: composerCategory,
         kind: composerMode,
         note: composerNote.trim() || undefined,
-        imageDataUrl: composerImageDataUrl || undefined,
-        imageUrl: composerImageDataUrl ? undefined : composerImageUrl || undefined,
+        // Both always present, even when empty. An empty list is a statement -
+        // "this entry has no receipts" - and the server only falls back to the
+        // legacy single field when the list is ABSENT, so omitting them here
+        // would make removing the last photo silently fail to save.
+        imageDataUrls: composerImageDataUrls,
+        imageUrls: composerImageUrls,
       };
       if (composerSplitMode === "amount") {
         draft.shareAmountsMinor = composerCustomShareAmountsMinor;
@@ -1071,19 +1098,36 @@ export function ExpenseComposerSheet({
     <div className="composer-card-section composer-photo-note-row">
       <div className="composer-photo-picker">
         <span className="composer-section-head-label">{text.photo}</span>
-        {composerImageDataUrl || composerImageUrl ? (
-          <div className="composer-photo-preview">
-            <img src={composerImageDataUrl || composerImageUrl} alt="" />
-            <button className="composer-photo-remove" type="button" aria-label={text.removePhoto} onClick={removeComposerImage}>
+        {[...composerImageUrls, ...composerImageDataUrls].map((src, index) => (
+          <div className="composer-photo-preview" key={`${src.slice(0, 48)}-${index}`}>
+            <img src={src} alt="" />
+            <button
+              className="composer-photo-remove"
+              type="button"
+              aria-label={`${text.removePhoto} ${index + 1}`}
+              onClick={() => removeComposerImage(index)}
+            >
               <X aria-hidden="true" size={14} />
             </button>
           </div>
-        ) : (
+        ))}
+        {composerImageCount < MAX_EXPENSE_IMAGES ? (
           <label className="composer-photo-add">
             <Plus aria-hidden="true" size={22} />
-            <input type="file" accept="image/*" onChange={(event) => handleComposerImagePick(event.target.files?.[0] ?? null)} />
+            <input
+              type="file"
+              accept="image/*"
+              aria-label={text.photo}
+              onChange={(event) => {
+                void handleComposerImagePick(event.target.files?.[0] ?? null);
+                // Cleared so picking the SAME file again still fires a change
+                // event - otherwise the second of two identical photos never
+                // arrives, which looks like the button quietly breaking.
+                event.target.value = "";
+              }}
+            />
           </label>
-        )}
+        ) : null}
       </div>
       <label className="composer-note-field">
         <span>{text.note}</span>

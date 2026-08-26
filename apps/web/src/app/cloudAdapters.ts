@@ -160,8 +160,10 @@ function resolveIncomeBeneficiaryPayments(draft: ExpenseDraft): Array<{ payerId:
  *   working unmodified), "income" -> "income", anything else -> "expense".
  * - transfer_to_member_id passes through for settlement rows (from -> to
  *   display); older display code still falls back to shareMemberIds[0].
- * - imageUrl passes through from image_url (a cloud-hosted photo URL, if
- *   the expense has one).
+ * - imageUrls carries every receipt; imageUrl stays as the first of them for
+ *   the list thumbnail. When the server sends no image_urls at all (an older
+ *   deployment) the single image_url is promoted into a one-item list, so the
+ *   editor still reopens with the photo attached instead of dropping it.
  */
 export function toExpense(summary: ExpenseSummary): Expense {
   const payments = summary.expense_payments ?? [];
@@ -193,6 +195,7 @@ export function toExpense(summary: ExpenseSummary): Expense {
     category: summary.category,
     note: summary.note ?? undefined,
     imageUrl: summary.image_url ?? undefined,
+    imageUrls: summary.image_urls ?? (summary.image_url ? [summary.image_url] : []),
     shareAmountsMinor,
   };
 
@@ -300,10 +303,15 @@ function toExpenseShareInputs(draft: ExpenseDraft): ExpenseShareInput[] {
  *   - income: a single share for the collector holding the full amount.
  * - kind "transfer" requires transfer_to_member_id -> draft.transferToMemberId.
  *
- * draft.imageUrl (an already-uploaded cloud photo URL) passes straight
- * through as image_url. Uploading a newly-picked draft.imageDataUrl happens
- * in the caller (App's submit flow) before this request is built, since it
- * requires a groupId and a network round-trip this pure adapter can't do.
+ * draft.imageUrls (already-uploaded cloud photo URLs) pass straight through as
+ * image_urls. Uploading newly-picked draft.imageDataUrls happens in the caller
+ * (App's submit flow) before this request is built, since it requires a groupId
+ * and network round-trips this pure adapter can't do.
+ *
+ * image_urls is always sent, even empty. The server treats an absent key as
+ * "this payload is not talking about receipts" and falls back to the legacy
+ * single field - so omitting an empty list would make deleting the last photo
+ * do nothing.
  */
 export function toCreateExpenseRequest(draft: ExpenseDraft, groupCurrency: string): CreateExpenseRequest {
   const kind = draft.kind ?? "expense";
@@ -316,7 +324,7 @@ export function toCreateExpenseRequest(draft: ExpenseDraft, groupCurrency: strin
     currency: groupCurrency,
     expense_date: toDateOnly(draft.createdAt),
     note: draft.note,
-    image_url: draft.imageUrl,
+    image_urls: draft.imageUrls ?? [],
   };
 
   const toPaymentInput = (payment: { payerId: string; amountMinor: number }): ExpensePaymentInput => ({
@@ -458,7 +466,8 @@ export function draftToExpense(
     kind,
     category: draft.category,
     note: draft.note,
-    imageUrl: draft.imageUrl,
+    imageUrl: draft.imageUrls?.[0],
+    imageUrls: draft.imageUrls ?? [],
   };
 
   if (kind === "settlement") {

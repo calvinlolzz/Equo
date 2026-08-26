@@ -81,7 +81,15 @@ export type Expense = {
   kind?: "expense" | "income" | "settlement";
   category?: string;
   note?: string;
+  /**
+   * The first receipt. Derived from imageUrls, never set apart from it - the
+   * records list and the admin console want one thumbnail, and having them read
+   * imageUrls[0] would spread the same decision across four call sites. Mirrors
+   * the expenses.image_url column, which the database derives the same way.
+   */
   imageUrl?: string;
+  /** Every receipt, in display order. */
+  imageUrls?: string[];
   sourceCurrency?: string;
   sourceAmountMinor?: number;
   exchangeRate?: number;

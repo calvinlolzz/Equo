@@ -494,6 +494,36 @@
   opacity: 0.85;
 }
 
+/* One receipt keeps the full-width look it has always had. Several become a
+   horizontally scrolling strip rather than a stack: five receipts stacked would
+   push the amount - the thing the dialog is actually about - off the screen. */
+.expense-detail-images.multiple {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  /* Momentum scrolling without a visible bar on the platforms that show one. */
+  scrollbar-width: none;
+}
+
+.expense-detail-images.multiple::-webkit-scrollbar {
+  display: none;
+}
+
+.expense-detail-images.multiple .expense-detail-image {
+  flex: 0 0 auto;
+  width: 42%;
+  max-height: 140px;
+  scroll-snap-align: start;
+}
+
+.expense-detail-images.multiple .expense-detail-image img {
+  max-height: 140px;
+  /* cover here, unlike the single case: at thumbnail size a contained receipt
+     is mostly empty margin, and these are chosen from, not read. */
+  object-fit: cover;
+}
+
 /* The X sits over the (optional) receipt image at the top of the sheet, so give
    it a solid dark chip that stays visible and tappable over any photo. */
 .expense-detail-dialog .dialog-close {
@@ -532,6 +562,173 @@
   border-radius: 50%;
   color: #fff;
   background: rgba(255, 255, 255, 0.18);
+}
+
+/* Paging controls for a multi-receipt lightbox, pinned to the bottom so they
+   never sit over the middle of the photo being looked at. */
+.image-lightbox-nav {
+  position: absolute;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.image-lightbox-nav button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.image-lightbox-nav button:disabled {
+  opacity: 0.3;
+}
+
+.image-lightbox-nav span {
+  min-width: 46px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 留言 ---------------------------------------------------------------- */
+
+.expense-comments {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(var(--surf) / 0.14);
+}
+
+.expense-comments h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: rgb(var(--fg) / 0.7);
+}
+
+.expense-comments h4 span {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-align: center;
+  color: rgb(var(--fg) / 0.6);
+  background: rgb(var(--surf) / 0.14);
+}
+
+.expense-comments-note {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: rgb(var(--fg) / 0.5);
+}
+
+.expense-comments-error {
+  color: rgb(var(--danger));
+}
+
+.expense-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.expense-comments-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.expense-comments-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.expense-comment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 2px;
+}
+
+.expense-comment-head strong {
+  font-size: 13px;
+}
+
+.expense-comment-head small {
+  font-size: 11px;
+  color: rgb(var(--fg) / 0.45);
+}
+
+.expense-comment-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  /* A comment is free text: a pasted URL or an unbroken run of characters must
+     wrap rather than stretch the dialog sideways. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.expense-comment-remove {
+  flex: 0 0 auto;
+  /* 32px, matching .composer-photo-remove - the app's size for a small
+     destructive affordance that sits inside a row it must not dominate. */
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: rgb(var(--fg) / 0.4);
+}
+
+.expense-comment-form {
+  display: flex;
+  gap: 8px;
+}
+
+.expense-comment-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--surf) / 0.18);
+  background: rgb(var(--surf) / 0.08);
+  /* 16px so iOS does not zoom the whole dialog on focus - same rule as every
+     other input in the app under 620px. */
+  font-size: 16px;
+}
+
+.expense-comment-form button {
+  flex: 0 0 auto;
+  width: 44px;
+  /* Stretches to whatever the input's height works out to rather than pinning a
+     number that drifts the moment its padding or font changes - a send button
+     six pixels shorter than the box it sits beside reads as misaligned. Pill
+     radius, not 50%, because the result is not square. */
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: rgb(var(--accent-fg));
+  background: rgb(var(--accent));
+}
+
+.expense-comment-form button:disabled {
+  opacity: 0.4;
 }
 
 .expense-detail-settlement-row {

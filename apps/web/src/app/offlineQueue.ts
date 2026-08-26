@@ -53,17 +53,17 @@ export type QueuedWrite =
        */
       expenseKind?: Expense["kind"];
       /**
-       * A receipt photo picked while offline. The image upload endpoint was
-       * unreachable, so the data URL rides along in the queue and is uploaded
+       * Receipt photos picked while offline. The image upload endpoint was
+       * unreachable, so the data URLs ride along in the queue and are uploaded
        * at flush time, just before the create - see flushQueuedWrite.
        */
-      imageDataUrl?: string;
+      imageDataUrls?: string[];
     })
   | (QueuedWriteBase & {
       kind: "replace";
       request: CreateExpenseRequest;
       draft: ExpenseDraft;
-      imageDataUrl?: string;
+      imageDataUrls?: string[];
     })
   | (QueuedWriteBase & {
       kind: "delete";
@@ -175,7 +175,7 @@ export function appendWrite(writes: QueuedWrite[], write: QueuedWrite): QueuedWr
       ...existing,
       request: { ...write.request, client_request_id: existing.request.client_request_id },
       draft: write.draft,
-      imageDataUrl: write.imageDataUrl,
+      imageDataUrls: write.imageDataUrls,
     };
     return [...without, merged];
   }
@@ -200,6 +200,22 @@ export function countWritesForGroup(writes: QueuedWrite[], groupId: string): num
  * Built through draftToExpense with a synthesised response so the optimistic
  * row is byte-for-byte the same shape as the one an online write produces.
  */
+/**
+ * Every receipt a queued write will end up with: the ones already in the bucket
+ * followed by the ones still waiting to be uploaded.
+ *
+ * Reads a legacy single `imageDataUrl` too. A queue is persisted in
+ * localStorage and survives a deploy, so the first flush after this shipped can
+ * be draining entries written by the previous build - and dropping their photo
+ * would lose a file the user cannot get back.
+ */
+function queuedReceipts(write: QueuedWrite): string[] {
+  if (write.kind === "delete") return [];
+  const legacy = (write as { imageDataUrl?: string }).imageDataUrl;
+  const pending = write.imageDataUrls ?? (legacy ? [legacy] : []);
+  return [...(write.draft.imageUrls ?? []), ...pending];
+}
+
 export function queuedExpense(write: QueuedWrite): Expense | null {
   if (write.kind === "delete") return null;
   const expense = draftToExpense(
@@ -215,9 +231,13 @@ export function queuedExpense(write: QueuedWrite): Expense | null {
   return {
     ...expense,
     expenseDate: write.request.expense_date,
-    // A receipt picked offline has no uploaded URL yet; show the local data
-    // URL so the row/detail render the photo instead of an empty thumbnail.
-    ...(write.imageDataUrl ? { imageUrl: write.imageDataUrl } : {}),
+    // Receipts picked offline have no uploaded URL yet; show the local data
+    // URLs so the row and the detail dialog render the photos instead of an
+    // empty thumbnail. They go after the already-uploaded ones, matching the
+    // order the composer showed and the order the flush uploads them in.
+    ...(queuedReceipts(write).length > 0
+      ? { imageUrl: queuedReceipts(write)[0], imageUrls: queuedReceipts(write) }
+      : {}),
   };
 }
 

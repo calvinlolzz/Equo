@@ -51,6 +51,30 @@ describe("resolveRateLimitRule", () => {
     expect(nudge!.limit / nudge!.windowSeconds).toBeLessThan(write.limit / write.windowSeconds);
   });
 
+  test("gives comments their own budget, because each one fans out a push", () => {
+    const comment = resolveRateLimitRule("POST", "/api/v1/groups/group_1/expenses/expense_1/comments");
+    const write = resolveRateLimitRule("POST", "/api/v1/groups")!;
+
+    expect(comment).toMatchObject({ name: "comment", scope: "user" });
+    // Tighter than the general write budget: the row is cheap, the web-push
+    // request per device in the group is not.
+    expect(comment!.limit / comment!.windowSeconds).toBeLessThan(write.limit / write.windowSeconds);
+  });
+
+  test("a comment withdrawal is capped by the same bucket", () => {
+    // The delete path is .../comments/:commentId, so an endsWith match would
+    // silently drop it back into the general write budget.
+    expect(
+      resolveRateLimitRule("DELETE", "/api/v1/groups/group_1/expenses/expense_1/comments/comment_1"),
+    ).toMatchObject({ name: "comment" });
+  });
+
+  test("reading a thread is not capped at all, like every other GET", () => {
+    expect(
+      resolveRateLimitRule("GET", "/api/v1/groups/group_1/expenses/expense_1/comments"),
+    ).toBeNull();
+  });
+
   test.each([
     ["POST", "/api/v1/groups"],
     ["PATCH", "/api/v1/groups/group_1"],

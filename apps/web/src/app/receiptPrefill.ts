@@ -76,7 +76,7 @@ export function buildReceiptComposerPrefill(
     sharePercents: {},
     payments: [],
     transferToMemberId: "",
-    imageUrl: "",
+    imageUrls: [],
     note: buildItemNote(scan),
     dateTimeIso: mergeReceiptDate(scan?.purchased_at ?? null, nowIso),
   };

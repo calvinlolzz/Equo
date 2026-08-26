@@ -1,4 +1,4 @@
-import type { CreateExpenseRequest } from "../../contracts/schemas.js";
+import type { CreateExpenseRequest, ExpenseCommentRecord } from "../../contracts/schemas.js";
 import { validateCreateExpenseRequest } from "../../contracts/validation.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import {
@@ -16,6 +16,7 @@ import {
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 import { urlToStoragePath } from "../runtime/supabaseStorageClient.js";
 import {
+  COMMENT_NOT_FOUND,
   EXPENSE_NOT_FOUND,
   InvalidMemberError,
   NOT_A_GROUP_MEMBER,
@@ -29,7 +30,7 @@ import {
 } from "./expenseRepository.js";
 
 const EXPENSE_COLUMNS =
-  "id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url";
+  "id,group_id,title,kind,category,amount_minor,currency,expense_date,note,transfer_to_member_id,created_at,version,client_request_id,image_url,image_urls";
 
 const MAX_EXPENSE_PAGE = 100;
 
@@ -48,6 +49,18 @@ function cleanupOrphanedImage(storage: SupabaseStorageClient, imageUrl: string |
   storage.deleteImage(path).catch((error) => {
     console.warn(`Failed to delete orphaned storage object ${path}:`, error);
   });
+}
+
+/**
+ * Every receipt on a row, for the two places one becomes unreferenced. Falls
+ * back to the single image_url when image_urls is absent, so a response from a
+ * database that has not taken the multi-receipt migration yet still gets its
+ * one photo cleaned up rather than silently leaking it.
+ */
+function receiptUrls(record: { image_url?: string | null; image_urls?: string[] } | null | undefined): string[] {
+  if (!record) return [];
+  if (record.image_urls) return record.image_urls;
+  return record.image_url ? [record.image_url] : [];
 }
 
 /**
@@ -118,6 +131,10 @@ function rethrowWriteRpcError(error: unknown): never {
 
   if (message.includes(EXPENSE_NOT_FOUND)) {
     throw new Error(EXPENSE_NOT_FOUND);
+  }
+
+  if (message.includes(COMMENT_NOT_FOUND)) {
+    throw new Error(COMMENT_NOT_FOUND);
   }
 
   const invalidMember = /INVALID_MEMBER:\s*(\S+)/.exec(message);
@@ -208,10 +225,16 @@ export function createSupabaseExpenseRepository(
         })
         .catch(rethrowWriteRpcError);
 
-      // The replaced row's image is now unreferenced - unless the edit kept it,
-      // in which case deleting it would break the expense still using it.
-      if (storage && result.previous && result.previous.image_url !== result.expense.image_url) {
-        cleanupOrphanedImage(storage, result.previous.image_url);
+      // Whatever the edit dropped is now unreferenced. Set difference rather
+      // than a straight comparison: with several receipts an edit can remove
+      // the second one while keeping the first, and comparing only the first
+      // would leave the removed file in the bucket forever. Keeping a receipt
+      // must never delete it - the new row is still using that exact URL.
+      if (storage && result.previous) {
+        const kept = new Set(receiptUrls(result.expense));
+        for (const url of receiptUrls(result.previous)) {
+          if (!kept.has(url)) cleanupOrphanedImage(storage, url);
+        }
       }
 
       return result;
@@ -236,7 +259,7 @@ export function createSupabaseExpenseRepository(
         .catch(rethrowWriteRpcError);
 
       if (storage) {
-        cleanupOrphanedImage(storage, expense.image_url);
+        for (const url of receiptUrls(expense)) cleanupOrphanedImage(storage, url);
       }
 
       return expense;
@@ -269,6 +292,53 @@ export function createSupabaseExpenseRepository(
       });
 
       return result ?? null;
+    },
+
+    async listExpenseComments(context: AuthenticatedContext, groupId: string, expenseId: string) {
+      const comments = await client
+        .rpc<ExpenseCommentRecord[] | null>("list_expense_comments", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          p_expense_id: expenseId,
+        })
+        .catch(rethrowWriteRpcError);
+
+      return comments ?? [];
+    },
+
+    async createExpenseComment(
+      context: AuthenticatedContext,
+      groupId: string,
+      expenseId: string,
+      body: string,
+      client_request_id: string,
+    ) {
+      const written = await client
+        .rpc<ExpenseCommentRecord & { expense_title?: string }>("create_expense_comment", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          p_expense_id: expenseId,
+          p_body: body,
+          p_client_request_id: client_request_id,
+        })
+        .catch(rethrowWriteRpcError);
+
+      // expense_title rides along for the push text only, and comes back absent
+      // on an idempotent replay. Split it off here so it can never reach the
+      // HTTP body - it is a fact about the entry, not part of the comment.
+      const { expense_title, ...comment } = written;
+
+      return { comment, expenseTitle: expense_title };
+    },
+
+    async deleteExpenseComment(context: AuthenticatedContext, groupId: string, commentId: string) {
+      return client
+        .rpc<{ id: string }>("delete_expense_comment", {
+          p_group_id: groupId,
+          p_user_id: context.user.id,
+          p_comment_id: commentId,
+        })
+        .catch(rethrowWriteRpcError);
     },
 
     async recordClientRequest(groupId: string, client_request_id: string, resourceId: string) {

@@ -144,6 +144,7 @@ describe("toExpense", () => {
       category: "food",
       note: "with friends",
       imageUrl: undefined,
+      imageUrls: [],
       shareAmountsMinor: { member_1: 500, member_2: 500 },
     });
   });
@@ -519,12 +520,21 @@ describe("toCreateExpenseRequest", () => {
     expect(validateCreateExpenseRequest(request)).toEqual({ ok: true, issues: [] });
   });
 
-  test("passes imageUrl through as image_url when present, omits it when absent", () => {
-    const withImage = toCreateExpenseRequest({ ...baseDraft, imageUrl: "https://cdn.equo.local/expense.jpg" }, "TWD");
-    expect(withImage.image_url).toBe("https://cdn.equo.local/expense.jpg");
+  test("passes every receipt through as image_urls", () => {
+    const withImages = toCreateExpenseRequest(
+      { ...baseDraft, imageUrls: ["https://cdn.equo.local/a.jpg", "https://cdn.equo.local/b.jpg"] },
+      "TWD",
+    );
+    expect(withImages.image_urls).toEqual(["https://cdn.equo.local/a.jpg", "https://cdn.equo.local/b.jpg"]);
+  });
 
-    const withoutImage = toCreateExpenseRequest(baseDraft, "TWD");
-    expect(withoutImage.image_url).toBeUndefined();
+  test("sends an empty image_urls rather than omitting it, so removing the last receipt saves", () => {
+    // Absent means "this payload is not talking about receipts" server-side and
+    // falls back to the legacy single column - so an omitted key here would make
+    // deleting the last photo silently do nothing.
+    const request = toCreateExpenseRequest(baseDraft, "TWD");
+    expect(request.image_urls).toEqual([]);
+    expect("image_urls" in request).toBe(true);
   });
 });
 
@@ -590,6 +600,7 @@ describe("draftToExpense", () => {
       category: "food",
       note: undefined,
       imageUrl: undefined,
+      imageUrls: [],
       shareAmountsMinor: { member_1: 500, member_2: 500 },
     });
   });
@@ -604,7 +615,7 @@ describe("draftToExpense", () => {
   });
 
   test("passes note and imageUrl through from the draft when present", () => {
-    const draft: ExpenseDraft = { ...baseDraft, note: "extra", imageUrl: "https://cdn.equo.local/expense.jpg" };
+    const draft: ExpenseDraft = { ...baseDraft, note: "extra", imageUrls: ["https://cdn.equo.local/expense.jpg"] };
     const response = { id: "expense_1", title: "Lunch", amount_minor: 1000, currency: "TWD" };
 
     const expense = draftToExpense(draft, response);

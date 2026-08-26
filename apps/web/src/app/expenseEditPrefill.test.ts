@@ -34,7 +34,7 @@ describe("buildExpenseEditPrefill", () => {
       sharePercents: {},
       payments: [],
       transferToMemberId: "",
-      imageUrl: "",
+      imageUrls: [],
       note: "",
       dateTimeIso: "2026-02-03T10:20:00.000Z",
     });
@@ -68,7 +68,7 @@ describe("buildExpenseEditPrefill", () => {
     const expense = makeExpense({ note: "備註內容", imageUrl: "https://cdn.equo.local/expense.jpg" });
     const prefill = buildExpenseEditPrefill(expense, "TWD");
     expect(prefill.note).toBe("備註內容");
-    expect(prefill.imageUrl).toBe("https://cdn.equo.local/expense.jpg");
+    expect(prefill.imageUrls).toEqual(["https://cdn.equo.local/expense.jpg"]);
   });
 
   test("defaults category to general when missing", () => {
@@ -206,8 +206,8 @@ describe("buildExpenseDuplicatePrefill", () => {
   test("drops the receipt photo, which is evidence of the original transaction", () => {
     const expense = makeExpense({ imageUrl: "https://cdn.equo.local/expense.jpg" });
 
-    expect(buildExpenseDuplicatePrefill(expense, "TWD", NOW).imageUrl).toBe("");
-    expect(buildExpenseEditPrefill(expense, "TWD").imageUrl).toBe("https://cdn.equo.local/expense.jpg");
+    expect(buildExpenseDuplicatePrefill(expense, "TWD", NOW).imageUrls).toEqual([]);
+    expect(buildExpenseEditPrefill(expense, "TWD").imageUrls).toEqual(["https://cdn.equo.local/expense.jpg"]);
   });
 
   test("keeps a foreign-currency entry in its own currency", () => {

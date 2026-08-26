@@ -1,6 +1,7 @@
 import type { PushRepository, PushSubscriptionRecord } from "../repositories/pushRepository.js";
 import {
   buildAutoNudgeNotification,
+  buildCommentNotification,
   buildErrorAlertNotification,
   buildExpenseNotification,
   buildMemberJoinedNotification,
@@ -281,6 +282,63 @@ export async function notifyMemberJoined({
     return await deliverPush({ kind: "member_joined", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] join notify failed:", error);
+    return empty;
+  }
+}
+
+/**
+ * "Somebody commented on an entry" -> everyone else in the group.
+ *
+ * The whole group rather than only the people the entry splits between. Two
+ * reasons: the expense-created fan-out already goes group-wide, so a comment on
+ * it is no noisier than the thing it is about; and "who is involved" is a
+ * question with a fuzzy answer here — the person who did not share the cost is
+ * often exactly the person being asked about it.
+ *
+ * Swallows failures like the rest: the comment row is written and the thread
+ * will show it the next time anyone opens the entry. Failing to push is not a
+ * reason to tell the author their comment did not save.
+ */
+export async function notifyExpenseCommented({
+  repository,
+  vapid,
+  groupId,
+  actorUserId,
+  expenseId,
+  expenseTitle,
+  body,
+  send,
+}: {
+  repository: PushRepository;
+  vapid: VapidKeys;
+  groupId: string;
+  actorUserId: string;
+  expenseId: string;
+  expenseTitle: string;
+  body: string;
+  send?: PushSendFn;
+}): Promise<PushDeliveryOutcome> {
+  const empty: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
+
+  try {
+    const targets = await repository.targetsForGroup(groupId, actorUserId);
+
+    if (targets.subscriptions.length === 0) {
+      return empty;
+    }
+
+    const payload = buildCommentNotification({
+      groupId,
+      groupName: targets.group_name,
+      actorName: targets.actor_name,
+      expenseTitle,
+      expenseId,
+      body,
+    });
+
+    return await deliverPush({ kind: "comment", subscriptions: targets.subscriptions, payload, vapid, repository, send });
+  } catch (error) {
+    console.error("[push] comment notify failed:", error);
     return empty;
   }
 }

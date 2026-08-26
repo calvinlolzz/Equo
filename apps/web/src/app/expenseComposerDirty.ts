@@ -20,8 +20,8 @@ export type ComposerSnapshot = {
   shareAmounts: Record<string, string>;
   sharePercents: Record<string, string>;
   payerRows: Array<{ payerId: string; amount: string }>;
-  imageDataUrl: string;
-  imageUrl: string;
+  imageDataUrls: string[];
+  imageUrls: string[];
   note: string;
 };
 
@@ -70,9 +70,9 @@ export function isComposerDirty(initial: ComposerSnapshot, current: ComposerSnap
     initial.payerId === current.payerId &&
     initial.transferToId === current.transferToId &&
     initial.splitMode === current.splitMode &&
-    initial.imageDataUrl === current.imageDataUrl &&
-    initial.imageUrl === current.imageUrl &&
     initial.note === current.note &&
+    sameList(initial.imageDataUrls, current.imageDataUrls) &&
+    sameList(initial.imageUrls, current.imageUrls) &&
     sameList(initial.shareIds, current.shareIds) &&
     sameRecord(initial.shareAmounts, current.shareAmounts) &&
     sameRecord(initial.sharePercents, current.sharePercents) &&

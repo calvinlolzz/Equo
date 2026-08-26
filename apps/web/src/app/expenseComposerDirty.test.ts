@@ -17,8 +17,8 @@ function snapshot(overrides: Partial<ComposerSnapshot> = {}): ComposerSnapshot {
     shareAmounts: {},
     sharePercents: {},
     payerRows: [],
-    imageDataUrl: "",
-    imageUrl: "",
+    imageDataUrls: [],
+    imageUrls: [],
     note: "",
     ...overrides,
   };
@@ -41,11 +41,33 @@ describe("isComposerDirty", () => {
     ["payer", { payerId: "member_bob" }],
     ["transfer recipient", { transferToId: "member_carol" }],
     ["split mode", { splitMode: "custom" }],
-    ["a picked photo", { imageDataUrl: "data:image/png;base64,AAA" }],
-    ["a removed photo", { imageUrl: "" }],
   ] as const)("a changed %s is unsaved work", (_label, change) => {
-    const initial = snapshot({ imageUrl: "https://cdn/receipt.png" });
-    expect(isComposerDirty(initial, snapshot({ imageUrl: "https://cdn/receipt.png", ...change }))).toBe(true);
+    expect(isComposerDirty(snapshot(), snapshot(change))).toBe(true);
+  });
+
+  test.each([
+    ["picking a photo", { imageDataUrls: ["data:image/png;base64,AAA"] }],
+    ["removing the only receipt", { imageUrls: [] }],
+    ["adding a second receipt", { imageUrls: ["https://cdn/receipt.png", "https://cdn/second.png"] }],
+  ])("%s is unsaved work", (_label, change: Partial<ComposerSnapshot>) => {
+    const initial = snapshot({ imageUrls: ["https://cdn/receipt.png"] });
+    expect(isComposerDirty(initial, snapshot({ imageUrls: ["https://cdn/receipt.png"], ...change }))).toBe(true);
+  });
+
+  test("the same receipts in the same order are not unsaved work", () => {
+    const urls = ["https://cdn/a.png", "https://cdn/b.png"];
+    expect(isComposerDirty(snapshot({ imageUrls: urls }), snapshot({ imageUrls: [...urls] }))).toBe(false);
+  });
+
+  test("the same receipts in a different order ARE unsaved work", () => {
+    // Order is the display order and it is what gets saved, so swapping two
+    // photos is a change even though the set is identical.
+    expect(
+      isComposerDirty(
+        snapshot({ imageUrls: ["https://cdn/a.png", "https://cdn/b.png"] }),
+        snapshot({ imageUrls: ["https://cdn/b.png", "https://cdn/a.png"] }),
+      ),
+    ).toBe(true);
   });
 
   test("adding or removing a share member counts", () => {
