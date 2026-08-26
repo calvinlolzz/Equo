@@ -127,6 +127,9 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async findAdminRole(userId) {
       return userId === "user_admin" ? "owner" : null;
     },
+    async logViewAs(_actor, targetUserId) {
+      return { target_user_id: targetUserId, target_email: "target@example.com" };
+    },
     async listAdmins() {
       return [adminAccount];
     },

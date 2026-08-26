@@ -1245,3 +1245,136 @@ describe("the scheduler endpoint", () => {
     expect(response.body).toMatchObject({ status: "disabled" });
   });
 });
+
+
+/**
+ * View-as through the whole pipeline.
+ *
+ * The unit tests in viewAs.test.ts prove the predicate; these prove the wiring -
+ * that the cookie really is preferred by auth, that the gate really sits in
+ * front of the router, and that the exit really is reachable from inside the
+ * mode. A predicate that is right and never called would pass those and fail
+ * these.
+ */
+describe("read-only view-as", () => {
+  function makeRuntime() {
+    return createHttpRuntime({
+      client: makeClient(),
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: idToken,
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+      sessionSecret: "session-secret",
+      now: 1_000,
+    });
+  }
+
+  async function viewAsCookie() {
+    const { createViewAsToken } = await import("../auth/sessionToken.js");
+    return createViewAsToken(
+      {
+        auth_user_id: "user_alice",
+        google_sub: "google_alice",
+        email: "alice@example.com",
+        display_name: "Alice",
+      },
+      "user_admin",
+      "session-secret",
+      1_000,
+    );
+  }
+
+  test("a write is refused with VIEW_AS_READONLY before it reaches any handler", async () => {
+    const token = await viewAsCookie();
+
+    const response = await makeRuntime().handle({
+      method: "POST",
+      path: "/api/v1/groups",
+      headers: { cookie: `equo_view_as=${token}` },
+      json: { client_request_id: "req_group", name: "Should Not Exist", currency: "TWD" },
+    });
+
+    expect(response.status).toBe(403);
+    expect((response.body as { error: { code: string } }).error.code).toBe("VIEW_AS_READONLY");
+  });
+
+  test("reads still work, which is the entire point of the mode", async () => {
+    const token = await viewAsCookie();
+
+    const response = await makeRuntime().handle({
+      method: "GET",
+      path: "/api/v1/groups",
+      headers: { cookie: `equo_view_as=${token}` },
+      json: undefined,
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  test("leaving the view is reachable from inside it, and clears the cookie", async () => {
+    // If this 403s, the mode has no exit and the admin is stuck as somebody
+    // else until the token lapses.
+    const token = await viewAsCookie();
+
+    const response = await makeRuntime().handle({
+      method: "DELETE",
+      path: "/api/v1/admin/view-as",
+      headers: { cookie: `equo_view_as=${token}` },
+      json: undefined,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["set-cookie"]).toContain("equo_view_as=;");
+    expect(response.headers["set-cookie"]).toContain("Max-Age=0");
+  });
+
+  test("the notice endpoint reports the view, so the app can say so", async () => {
+    const token = await viewAsCookie();
+
+    const response = await makeRuntime().handle({
+      method: "GET",
+      path: "/api/v1/site-notice",
+      headers: { cookie: `equo_view_as=${token}` },
+      json: undefined,
+    });
+
+    expect((response.body as { view_as: { active: boolean } | null }).view_as).toEqual({ active: true });
+  });
+
+  test("and reports nothing for an ordinary caller", async () => {
+    // Computed per request rather than folded into the cached notice: the
+    // notice is one shared object, and one admin's view-as state must never
+    // reach everybody else.
+    const response = await makeRuntime().handle({
+      method: "GET",
+      path: "/api/v1/site-notice",
+      headers: {},
+      json: undefined,
+    });
+
+    expect((response.body as { view_as: unknown }).view_as).toBeNull();
+  });
+
+  test("an ordinary session still writes", async () => {
+    const runtime = makeRuntime();
+    const login = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/auth/google",
+      headers: {},
+      json: { id_token: "google-alice" },
+    });
+    const token = (login.body as { session: { token: string } }).session.token;
+
+    const response = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/groups",
+      headers: { cookie: `equo_session=${token}` },
+      json: { client_request_id: "req_group_ok", name: "Tokyo Trip", currency: "TWD" },
+    });
+
+    expect(response.status).toBe(201);
+  });
+});

@@ -40,7 +40,15 @@ export function getCookieValue(request: HttpRuntimeRequest, name: string): strin
 }
 
 export function getAuthToken(request: HttpRuntimeRequest): string {
-  return getBearerToken(request) || getCookieValue(request, "equo_session");
+  // equo_view_as wins while it is set, and that is the entire mechanism: every
+  // read path resolves the caller from this one function, so preferring the
+  // view-as token here makes the whole app render as the target user without a
+  // single route knowing why. It is a separate cookie so the admin's own
+  // session is still there, untouched, when they stop looking.
+  //
+  // The bearer token still wins over both - it is only used by tests and tools,
+  // and a caller who passes one explicitly means it.
+  return getBearerToken(request) || getCookieValue(request, "equo_view_as") || getCookieValue(request, "equo_session");
 }
 
 /**

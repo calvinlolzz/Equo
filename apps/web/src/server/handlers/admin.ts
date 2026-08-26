@@ -1575,6 +1575,63 @@ export async function handleAdminSetAutoNudgeSettings(
   };
 }
 
+/**
+ * Open a read-only view of the app as one user.
+ *
+ * Admin or owner, matching handleAdminExportUser: this grants no data an admin
+ * could not already read through the console, it grants a different VIEW of it -
+ * the balances as that person sees them, their group list, their unread counts.
+ * That is what makes "my balance is wrong" reproducible instead of guessed at.
+ *
+ * Returns the identity to sign a token for. The route does the signing and the
+ * cookie, because tokens are the HTTP layer's business, not this one's.
+ */
+export async function handleAdminViewAs(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  userId: string,
+  expiresAt: string,
+): Promise<HandlerResult<{ target: AdminUserDetailRecord["user"]; expires_at: string }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!adminRoleAtLeast(role, ADMIN_ROLE_RANK.admin)) {
+    return adminForbidden("This action requires an admin or owner role.");
+  }
+
+  if (!isUuid(userId)) {
+    return adminNotFound("User not found.");
+  }
+
+  // Refusing this is not pedantry: a token signed for yourself with the view-as
+  // claim is a token that cannot write, so an admin who did it by accident
+  // would find their own console mysteriously read-only.
+  if (userId === context.user.id) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_ADMIN",
+          message: "You are already yourself.",
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  const detail = await repository.getUserDetail(userId);
+
+  if (!detail) {
+    return adminNotFound("User not found.");
+  }
+
+  // Audited before the token exists, so a failure to record it is a failure to
+  // open the view rather than an unlogged one.
+  await repository.logViewAs({ id: context.user.id, email: context.user.email }, userId, expiresAt);
+
+  return { ok: true, status: 200, body: { target: detail.user, expires_at: expiresAt } };
+}
+
 export async function handleAdminGetSiteNotice(
   repository: AdminRepository,
   settings: SettingsRepository,

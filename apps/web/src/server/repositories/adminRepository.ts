@@ -598,6 +598,20 @@ export type AdminRepository = {
   getReceiptScanUsage(days: number): Promise<AdminScanUsageRecord>;
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
   getUserDetail(userId: string): Promise<AdminUserDetailRecord | null>;
+  /**
+   * Record that an admin opened a read-only view as this user.
+   *
+   * Only the START is recorded. The end can be a button, a closed tab, or the
+   * token simply lapsing, and the first two are unobservable - a log that
+   * captures one of three endings is worse than one that captures none, because
+   * it reads as complete. The real boundary is the token's expiry, which is
+   * written into the entry.
+   */
+  logViewAs(
+    actor: { id: string; email: string },
+    targetUserId: string,
+    expiresAt: string,
+  ): Promise<{ target_user_id: string; target_email: string }>;
   listGroups(search: string, limit: number, offset: number, filter: AdminGroupFilter): Promise<AdminGroupListRecord>;
   /**
    * Group roster + aggregates. Records a 'group.view' audit row for the actor,

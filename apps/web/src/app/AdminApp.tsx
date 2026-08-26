@@ -797,6 +797,41 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
    * answer to be forwarded to the person who asked for it, and no screen in the
    * console is a good place to read a year of somebody's ledger.
    */
+  /**
+   * Open a read-only view of the app as this user.
+   *
+   * Navigates to the app itself rather than rendering anything here: the point
+   * is to see exactly what they see, and any reproduction of it inside the
+   * console would be a second implementation that can disagree with the first.
+   */
+  async function viewAsUser() {
+    if (!detail) return;
+    const label = detail.user.display_name || detail.user.email;
+    if (
+      !window.confirm(
+        `以「${label}」的身分開啟唯讀檢視？
+
+` +
+          "你會看到他看到的畫面，但不能修改任何東西。這次檢視會寫進稽核記錄，15 分鐘後自動失效。",
+      )
+    ) {
+      return;
+    }
+
+    setActionBusy(true);
+    setError("");
+    try {
+      await client.adminViewAs(detail.user.id);
+      // A full navigation, not a router push: the cookie decides who the app
+      // thinks you are, and every module reads that on the way in.
+      window.location.assign("/");
+    } catch (err) {
+      const code = (err as ApiClientError).code;
+      setError(code === "ADMIN_FORBIDDEN" ? "只有管理員或擁有者能使用唯讀檢視。" : "無法開啟檢視，請稍後再試。");
+      setActionBusy(false);
+    }
+  }
+
   async function exportUser() {
     if (!detail) return;
     setActionBusy(true);
@@ -916,6 +951,11 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
               {canWrite(role) && (
                 <button type="button" className="admin-action" disabled={actionBusy} onClick={exportUser}>
                   匯出個資 JSON
+                </button>
+              )}
+              {canWrite(role) && (
+                <button type="button" className="admin-action" disabled={actionBusy} onClick={viewAsUser}>
+                  以他的身分檢視（唯讀）
                 </button>
               )}
               {isConsoleOwner(role) && (

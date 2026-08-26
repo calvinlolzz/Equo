@@ -64,6 +64,8 @@ import {
   adminMeRoute,
   adminGetAutoNudgeRoute,
   adminGetSiteNoticeRoute,
+  adminStopViewAsRoute,
+  adminViewAsRoute,
   adminSetSiteNoticeRoute,
   adminHealthRoute,
   adminReceiptScanUsageRoute,
@@ -127,6 +129,7 @@ import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from 
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
 import { enforceRateLimit } from "./rateLimit.js";
 import { blocksRequest, loadSiteNotice } from "./maintenance.js";
+import { blocksWrite, viewingAs } from "./viewAs.js";
 
 type RuntimeOptions = {
   client: PostgrestClient;
@@ -192,6 +195,8 @@ function routeOptions(options: RuntimeOptions, request: HttpRuntimeRequest) {
     storage: options.storage,
     verifier,
     idToken: token,
+    sessionSecret: options.sessionSecret,
+    now: options.now,
   };
 }
 
@@ -584,9 +589,14 @@ export function createHttpRuntime(options: RuntimeOptions) {
       method: "GET",
       pattern: /^\/api\/v1\/site-notice$/,
       label: "GET /api/v1/site-notice",
-      async handle() {
+      async handle(request) {
         const notice = await loadSiteNotice(options.client, options.now);
-        return jsonResponse(200, { notice });
+        // Computed per request and deliberately OUTSIDE the cached notice: the
+        // notice is one shared object served to everybody, and folding a
+        // per-session fact into it would show one admin's view-as state to
+        // every user on the site.
+        const admin = viewingAs(request, options.sessionSecret, options.now);
+        return jsonResponse(200, { notice, view_as: admin ? { active: true } : null });
       },
     },
     {
@@ -711,6 +721,31 @@ export function createHttpRuntime(options: RuntimeOptions) {
       async handle(request) {
         const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
         return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/view-as$/,
+      label: "POST /api/v1/admin/view-as",
+      async handle(request) {
+        const result = await adminViewAsRoute(routeOptions(options, request), body<{ user_id?: unknown }>(request));
+        const response = jsonResponse(result.status, result.body);
+        return "headers" in result && result.headers
+          ? { ...response, headers: { ...response.headers, ...result.headers } }
+          : response;
+      },
+    },
+    {
+      // No auth check, on purpose: this only clears a cookie. Requiring an
+      // admin session to STOP viewing as somebody would strand anyone whose
+      // admin session lapsed while the view-as cookie was still live.
+      method: "DELETE",
+      pattern: /^\/api\/v1\/admin\/view-as$/,
+      label: "DELETE /api/v1/admin/view-as",
+      async handle() {
+        const result = await adminStopViewAsRoute();
+        const response = jsonResponse(result.status, result.body);
+        return { ...response, headers: { ...response.headers, ...result.headers } };
       },
     },
     {
@@ -1451,6 +1486,18 @@ export function createHttpRuntime(options: RuntimeOptions) {
           "MAINTENANCE",
           notice.maintenance.message || "Equo is briefly paused for maintenance.",
           "req_maintenance",
+        );
+      }
+
+      // Read-only while looking at the app as somebody else. In front of the
+      // router for the same reason the maintenance gate is: a rule that has to
+      // be remembered by every write path is a rule that will be missed by one.
+      if (blocksWrite(request)) {
+        return errorResponse(
+          403,
+          "VIEW_AS_READONLY",
+          "You are viewing the app as another user. Leave the view before making changes.",
+          "req_view_as",
         );
       }
 

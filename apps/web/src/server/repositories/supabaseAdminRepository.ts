@@ -50,6 +50,15 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       return role ?? null;
     },
 
+    logViewAs(actor, targetUserId, expiresAt) {
+      return client.rpc<{ target_user_id: string; target_email: string }>("admin_console_log_view_as", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_target: targetUserId,
+        p_expires_at: expiresAt,
+      });
+    },
+
     listAdmins() {
       return client.rpc<AdminAccountRecord[]>("admin_console_admins", {});
     },

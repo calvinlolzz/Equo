@@ -301,6 +301,15 @@ export function App() {
   // explanation are the ones who cannot get past it.
   const fetchSiteNotice = useMemo(() => () => pollingClient.getSiteNotice(), [pollingClient]);
   const siteNotice = useSiteNotice(fetchSiteNotice);
+  // Clearing the cookie is the whole operation; the reload is what makes the
+  // app stop being somebody else, since every module resolved its data from
+  // that cookie on the way in.
+  const stopViewAs = () => {
+    void pollingClient
+      .stopViewAs()
+      .catch(() => {})
+      .finally(() => window.location.assign("/admin"));
+  };
   const currencyOptions = catalog.currencies;
 
   const {
@@ -1282,7 +1291,7 @@ export function App() {
             ) : null}
           </div>
         ) : null}
-        <SiteNoticeBar notice={siteNotice} />
+        <SiteNoticeBar notice={siteNotice} onStopViewAs={stopViewAs} />
         <LoginScreen
           loading={authLoading}
           errorMessage={authError || undefined}
@@ -1294,7 +1303,7 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <SiteNoticeBar notice={siteNotice} />
+      <SiteNoticeBar notice={siteNotice} onStopViewAs={stopViewAs} />
       {!online || pendingWriteCount > 0 ? (
         <div className="offline-banner" role="status" aria-live="polite">
           {!online ? text.offlineNotice : flushingWrites ? text.offlineSyncing : ""}

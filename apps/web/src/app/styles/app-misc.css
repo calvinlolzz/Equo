@@ -1043,6 +1043,26 @@
   background: rgb(var(--gold) / 0.12);
 }
 
+/* Read-only view-as. The loudest bar in the app, deliberately: everything below
+   it belongs to somebody else, and an admin who forgets that is the entire risk
+   this feature carries. */
+.site-notice--view-as {
+  border-color: rgb(var(--gold) / 0.6);
+  background: rgb(var(--gold) / 0.16);
+}
+
+.site-notice-action {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 /* Maintenance is the one that explains why the app is refusing to save, so it
    is the loudest of the three and never dismissible. */
 .site-notice--maintenance {

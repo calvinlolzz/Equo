@@ -531,6 +531,10 @@ export const ZH_HANT = {
     /** Shown when a write is refused mid-window. */
     maintenanceWriteBlocked: "維護中，暫時無法儲存。這筆會先留著，維護結束後自動送出。",
     maintenanceLabel: "維護中",
+    viewAsLabel: "唯讀檢視",
+    viewAsBody: "你正在以其他使用者的身分檢視這個 App。這是唯讀的，任何變更都不會儲存。",
+    viewAsExit: "結束檢視",
+    viewAsBlocked: "唯讀檢視中，不能修改資料。請先結束檢視。",
     dismiss: "知道了",
   },
   errorBoundary: {

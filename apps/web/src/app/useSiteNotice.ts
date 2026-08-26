@@ -54,14 +54,17 @@ export type SiteNoticeState = {
   banner: { message: string; level: "info" | "warning" } | null;
   /** The maintenance notice, or null. Never dismissible - see below. */
   maintenance: { message: string } | null;
+  /** True while an admin is looking at the app as somebody else. */
+  viewingAs: boolean;
   dismissBanner: () => void;
 };
 
 export function useSiteNotice(
-  fetchNotice: (() => Promise<{ notice: SiteNotice }>) | null,
+  fetchNotice: (() => Promise<{ notice: SiteNotice; view_as?: { active: boolean } | null }>) | null,
   pollMs = POLL_MS,
 ): SiteNoticeState {
   const [notice, setNotice] = useState<SiteNotice>(EMPTY);
+  const [viewingAs, setViewingAs] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(() => dismissedMessage());
 
   useEffect(() => {
@@ -72,7 +75,12 @@ export function useSiteNotice(
     const load = () => {
       fetchNotice()
         .then((result) => {
-          if (!cancelled) setNotice(result.notice ?? EMPTY);
+          if (cancelled) return;
+          setNotice(result.notice ?? EMPTY);
+          // Polled rather than read once: the token lapses after fifteen
+          // minutes, and the banner has to stop claiming a view that has
+          // already ended.
+          setViewingAs(result.view_as?.active === true);
         })
         .catch(() => {
           // Silent. This is an extra on top of the app, and an app that shows
@@ -117,6 +125,7 @@ export function useSiteNotice(
     maintenance: notice.maintenance.enabled
       ? { message: notice.maintenance.message || UI_TEXT.notice.maintenanceFallback }
       : null,
+    viewingAs,
     dismissBanner,
   };
 }

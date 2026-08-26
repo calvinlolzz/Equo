@@ -68,6 +68,15 @@ export const errorCodes = [
    * to keep. See isRetryableError in apiClient.ts.
    */
   "MAINTENANCE",
+  /**
+   * A write attempted while an admin is looking at the app as another user.
+   *
+   * Not retryable, unlike MAINTENANCE: the answer is not "try later", it is
+   * "leave the view". The offline queue must drop these rather than replay
+   * them, or a mistaken keystroke during a support call would sit in a queue
+   * waiting to be written to somebody else's ledger.
+   */
+  "VIEW_AS_READONLY",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

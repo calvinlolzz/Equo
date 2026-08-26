@@ -527,7 +527,19 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
      * people most in need of an explanation are the ones who cannot get past it.
      */
     getSiteNotice() {
-      return request<{ notice: SiteNoticeResponse }>("/site-notice", { method: "GET" });
+      return request<{ notice: SiteNoticeResponse; view_as: { active: boolean } | null }>("/site-notice", {
+        method: "GET",
+      });
+    },
+    /** Leave a read-only view-as. Unauthenticated: it only clears a cookie. */
+    stopViewAs() {
+      return request<{ stopped: boolean }>("/admin/view-as", { method: "DELETE" });
+    },
+    adminViewAs(userId: string) {
+      return request<{ target: { id: string; email: string; display_name: string | null }; expires_at: string }>(
+        "/admin/view-as",
+        { method: "POST", body: JSON.stringify({ user_id: userId }) },
+      );
     },
     /** One entry's comment thread, oldest first. Fetched when its dialog opens. */
     listExpenseComments(groupId: string, expenseId: string) {

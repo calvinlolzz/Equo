@@ -1,4 +1,4 @@
-import { Info, TriangleAlert, Wrench, X } from "lucide-react";
+import { Eye, Info, TriangleAlert, Wrench, X } from "lucide-react";
 import type { SiteNoticeState } from "./useSiteNotice";
 import { UI_TEXT } from "./uiText";
 
@@ -17,11 +17,37 @@ const text = UI_TEXT.notice;
  * produce a worse sentence than the one they wrote. Only the chrome around it
  * (the label, the dismiss button) follows the reader's language.
  */
-export function SiteNoticeBar({ notice }: { notice: SiteNoticeState }) {
-  if (!notice.maintenance && !notice.banner) return null;
+export function SiteNoticeBar({
+  notice,
+  onStopViewAs,
+}: {
+  notice: SiteNoticeState;
+  /** Leave a read-only view. Absent in contexts that cannot start one. */
+  onStopViewAs?: () => void;
+}) {
+  if (!notice.maintenance && !notice.banner && !notice.viewingAs) return null;
 
   return (
     <div className="site-notice-stack">
+      {/* First and loudest. Everything on the screen below it belongs to
+          somebody else, and an admin who forgets that is the whole risk this
+          feature carries - so it is not dismissible, and it says so plainly
+          rather than hinting with a colour. */}
+      {notice.viewingAs ? (
+        <div className="site-notice site-notice--view-as" role="status">
+          <Eye aria-hidden="true" size={16} />
+          <p>
+            <strong>{text.viewAsLabel}</strong>
+            {text.viewAsBody}
+          </p>
+          {onStopViewAs ? (
+            <button type="button" className="site-notice-action" onClick={onStopViewAs}>
+              {text.viewAsExit}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {notice.maintenance ? (
         <div className="site-notice site-notice--maintenance" role="status">
           <Wrench aria-hidden="true" size={16} />

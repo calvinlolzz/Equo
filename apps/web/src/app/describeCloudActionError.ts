@@ -35,6 +35,11 @@ export function describeCloudActionError(error: unknown): string {
   // into the offline queue and drains when the window ends (see
   // isRetryableError). Telling somebody their expense did not save, when it
   // will, would make them record it twice.
+  // Not retryable, unlike MAINTENANCE: the answer is "leave the view", not
+  // "try later", and the write is correctly dropped rather than queued.
+  if (code === "VIEW_AS_READONLY") {
+    return UI_TEXT.notice.viewAsBlocked;
+  }
   if (code === "MAINTENANCE") {
     return UI_TEXT.notice.maintenanceWriteBlocked;
   }

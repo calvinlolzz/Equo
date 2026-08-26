@@ -13,6 +13,7 @@ import {
   handleAdminSetRateOverride,
   handleAdminGetAutoNudgeSettings,
   handleAdminGetSiteNotice,
+  handleAdminViewAs,
   handleAdminSetSiteNotice,
   handleAdminGetReceiptScanSettings,
   handleAdminSetAutoNudgeSettings,
@@ -57,11 +58,15 @@ import {
   type AdminSendNotificationBody,
 } from "../handlers/admin.js";
 import { resetSiteNoticeCache } from "../http/maintenance.js";
+import { createViewAsCookie, createViewAsToken, clearViewAsCookie, VIEW_AS_TTL_MS } from "../auth/sessionToken.js";
 
 type RouteOptions = {
   client: PostgrestClient;
   verifier: GoogleTokenVerifier;
   idToken: string;
+  /** Needed only by the view-as route, which signs a token. */
+  sessionSecret?: string;
+  now?: number;
 };
 
 
@@ -230,6 +235,80 @@ export async function adminSetAutoNudgeRoute(
     auth.context,
     body,
   );
+}
+
+/**
+ * Open a read-only view as one user.
+ *
+ * Signs a short-lived token shaped like a session and sets it as its OWN
+ * cookie. The admin's real equo_session is untouched, so leaving the view is
+ * just clearing this one - there is no moment where a mistake could sign them
+ * out of their own account or strand them as somebody else.
+ */
+export async function adminViewAsRoute(options: RouteOptions, body: { user_id?: unknown }) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  if (!options.sessionSecret) {
+    return {
+      ok: false,
+      status: 500,
+      body: {
+        error: {
+          code: "RUNTIME_ENV_MISSING" as const,
+          message: "Session signing is not configured on this deployment.",
+          request_id: "req_view_as",
+        },
+      },
+    };
+  }
+
+  const userId = typeof body?.user_id === "string" ? body.user_id : "";
+  const now = options.now ?? Date.now();
+  const expiresAt = new Date(now + VIEW_AS_TTL_MS).toISOString();
+
+  const result = await handleAdminViewAs(
+    createSupabaseAdminRepository(options.client),
+    auth.context,
+    userId,
+    expiresAt,
+  );
+
+  if (!result.ok) return result;
+
+  const target = result.body.target;
+  const token = createViewAsToken(
+    {
+      auth_user_id: target.id,
+      // The token is never exchanged with Google - these fields exist because a
+      // session payload has them, and only the id is used to resolve reads.
+      google_sub: "",
+      email: target.email,
+      display_name: target.display_name ?? target.email,
+      avatar_url: target.avatar_url ?? undefined,
+    },
+    auth.context.user.id,
+    options.sessionSecret,
+    now,
+  );
+
+  return {
+    ...result,
+    headers: { "set-cookie": createViewAsCookie(token) },
+  };
+}
+
+/** Leave the view. Clearing the cookie is the whole operation. */
+export async function adminStopViewAsRoute() {
+  return {
+    ok: true as const,
+    status: 200,
+    headers: { "set-cookie": clearViewAsCookie() },
+    body: { stopped: true },
+  };
 }
 
 export async function adminGetSiteNoticeRoute(options: RouteOptions) {

@@ -527,6 +527,10 @@ export const EN: UiDictionary = {
     /** Shown when a write is refused mid-window. */
     maintenanceWriteBlocked: "Paused for maintenance, so this could not be saved yet. It is queued and will go out when maintenance ends.",
     maintenanceLabel: "Maintenance",
+    viewAsLabel: "Read-only view",
+    viewAsBody: "You are viewing the app as another user. This is read-only — nothing you change will be saved.",
+    viewAsExit: "Leave view",
+    viewAsBlocked: "This is a read-only view of another user. Leave the view before making changes.",
     dismiss: "Got it",
   },
   errorBoundary: {
