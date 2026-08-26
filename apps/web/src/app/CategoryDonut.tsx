@@ -3,6 +3,7 @@ import { formatAmount } from "./formatAmount";
 // the console had no colour until somebody remembered to come back here. It is
 // a column on the category row now.
 import { categoryColor, categoryLabel } from "./catalog";
+import { UI_TEXT } from "./uiText";
 
 const R = 54;
 const STROKE = 18;
@@ -40,7 +41,7 @@ export function CategoryDonut({
 
   return (
     <div className="category-donut">
-      <svg viewBox="0 0 140 140" className="category-donut-svg" role="img" aria-label="分類佔比">
+      <svg viewBox="0 0 140 140" className="category-donut-svg" role="img" aria-label={UI_TEXT.spend.categoryShare}>
         <circle className="category-donut-track" cx="70" cy="70" r={R} fill="none" strokeWidth={STROKE} />
         {segments.map((segment) => (
           <circle
@@ -60,7 +61,7 @@ export function CategoryDonut({
           {formatAmount(total, currency)}
         </text>
         <text x="70" y="85" textAnchor="middle" className="category-donut-sub">
-          {`${entries.length} 類`}
+          {`${entries.length} ${UI_TEXT.analysis.categoryCount}`}
         </text>
       </svg>
       <ul className="category-legend">

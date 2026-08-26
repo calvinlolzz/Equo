@@ -195,6 +195,33 @@
   font-weight: 600;
 }
 
+/* The language picker is a real <select>, but it sits in a list of rows whose
+   other values are plain text - so it keeps the same right-aligned, muted look
+   rather than announcing itself as a form control in the middle of settings.
+   The native dropdown still opens on tap, which is the whole point of using a
+   select on mobile. */
+.profile-language-select {
+  border: 0;
+  padding: 4px 0;
+  text-align: right;
+  /* 16px so iOS does not zoom the dialog when the picker takes focus, the same
+     rule every other input under 620px follows. */
+  font-size: 16px;
+  color: rgb(var(--fg) / 0.6);
+  background: transparent;
+  /* text-align on a select is ignored by WebKit; this is what actually moves
+     the label to the right there. */
+  direction: rtl;
+}
+
+.profile-language-select option {
+  /* The options themselves are read left-to-right; only the closed control is
+     flipped above. */
+  direction: ltr;
+  color: rgb(var(--fg));
+  background: rgb(var(--card-base));
+}
+
 .profile-push-text {
   display: grid;
   gap: 2px;

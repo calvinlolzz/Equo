@@ -10,10 +10,21 @@ import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { initTheme } from "./app/themeStore";
+import { ACTIVE_LOCALE, UI_TEXT } from "./app/uiText";
 
 // Drop the pre-rename `floatpay-*` localStorage keys left behind on returning
 // visitors' devices (see legacyStorageCleanup.ts). Idempotent no-op once gone.
 purgeLegacyBrowserStorage();
+
+// index.html ships lang="zh-Hant" so the first paint declares something; this
+// corrects it once the saved or browser-preferred locale is known. It matters
+// beyond tidiness: screen readers pick a voice from it, and Safari offers to
+// translate a page whose declared language is not the one on screen.
+document.documentElement.lang = ACTIVE_LOCALE;
+// index.html carries the 繁體中文 title for the first paint and for crawlers;
+// correct it once the reader's language is known, so a browser tab and the
+// history entry are not in a language they cannot read.
+document.title = UI_TEXT.misc.documentTitle;
 
 const root = document.getElementById("root");
 

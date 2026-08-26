@@ -7,10 +7,10 @@ import { UI_TEXT } from "./uiText";
 const text = UI_TEXT.app;
 
 export const FEEDBACK_TYPE_OPTIONS = [
-  { value: "problem", label: "問題回報" },
-  { value: "suggestion", label: "功能建議" },
-  { value: "confusing", label: "不好理解" },
-  { value: "other", label: "其他" },
+  { value: "problem", label: UI_TEXT.feedbackTypes.bug },
+  { value: "suggestion", label: UI_TEXT.feedbackTypes.idea },
+  { value: "confusing", label: UI_TEXT.feedbackTypes.confusing },
+  { value: "other", label: UI_TEXT.feedbackTypes.other },
 ] as const;
 
 export type FeedbackType = (typeof FEEDBACK_TYPE_OPTIONS)[number]["value"];

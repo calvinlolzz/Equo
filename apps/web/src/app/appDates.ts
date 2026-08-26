@@ -1,3 +1,6 @@
+import { ACTIVE_LOCALE } from "./uiText";
+import { dayHeading } from "./i18n/format";
+import type { Locale } from "./i18n/locale";
 /** Local-timezone YYYY-MM-DD key for a timestamp - matches the server's spend_by_day day keys. */
 export function dateKey(value: string) {
   const date = new Date(value);
@@ -18,12 +21,9 @@ export function lastEightDays() {
   return days;
 }
 
-const WEEKDAYS_ZH = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
-
 /** Day-group heading for the records list, e.g. "7月13日 · 週一". */
-export function formatDayLabel(value: string) {
-  const date = new Date(value);
-  return `${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAYS_ZH[date.getDay()]}`;
+export function formatDayLabel(value: string, locale: Locale = ACTIVE_LOCALE) {
+  return dayHeading(new Date(value), locale);
 }
 
 /** Compact MM/DD HH:mm stamp for activity and settlement rows. */

@@ -37,7 +37,7 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
           <p>{"\u5148\u9078\u64c7\u8981\u505a\u7684\u4e8b\uff0c\u518d\u9032\u5165\u7fa4\u7d44\u5167\u8655\u7406\u6210\u54e1\u3001\u652f\u51fa\u8207\u6e05\u511f\u3002"}</p>
         </div>
 
-        <div className="start-mode-picker" role="group" aria-label={"開始方式"}>
+        <div className="start-mode-picker" role="group" aria-label={UI_TEXT.misc.startMethod}>
           {[
             ["create", text.createGroup],
             ["join", text.joinGroup],
@@ -54,7 +54,7 @@ export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingG
             <div className="panel-title-row">
               <h2>{text.createGroup}</h2>
             </div>
-            <div className="template-grid" role="group" aria-label={"範本"}>
+            <div className="template-grid" role="group" aria-label={UI_TEXT.misc.template}>
               {templates.map((template) => (
                 <button
                   className={selectedTemplate === template.id ? "template-chip active" : "template-chip"}

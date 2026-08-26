@@ -34,10 +34,10 @@ const RENDER_WINDOW_STEP = 40;
 const RENDER_WINDOW_ROOT_MARGIN = "600px 0px";
 
 const KIND_OPTIONS: Array<{ value: ExpenseKindFilter; label: string }> = [
-  { value: "", label: "全部" },
-  { value: "expense", label: "支出" },
-  { value: "income", label: "收入" },
-  { value: "settlement", label: "結算" },
+  { value: "", label: UI_TEXT.records.filterAll },
+  { value: "expense", label: UI_TEXT.records.filterExpense },
+  { value: "income", label: UI_TEXT.records.filterIncome },
+  { value: "settlement", label: UI_TEXT.records.filterSettlement },
 ];
 
 type RecordsPanelProps = {
@@ -183,15 +183,15 @@ export function RecordsPanel({
     <>
       <div className="dialog-header">
         <h3>{text.records}</h3>
-        <p>{"查看群組的支出與近期活動。"}</p>
+        <p>{UI_TEXT.records.description}</p>
       </div>
       <div className="panel-stat-grid">
         <div>
-          <span>{"筆數"}</span>
+          <span>{UI_TEXT.records.count}</span>
           <strong>{expenseCount}</strong>
         </div>
         <div>
-          <span>{"總支出"}</span>
+          <span>{UI_TEXT.records.totalSpend}</span>
           <strong>{formatAmount(totalExpenseMinor, currency)}</strong>
         </div>
       </div>
@@ -202,12 +202,12 @@ export function RecordsPanel({
           <input
             type="search"
             value={filter.query}
-            placeholder={"搜尋品項、備註或金額"}
-            aria-label={"搜尋支出"}
+            placeholder={UI_TEXT.records.searchPlaceholder}
+            aria-label={UI_TEXT.records.searchLabel}
             onChange={(event) => patchFilter({ query: event.target.value })}
           />
           {filter.query ? (
-            <button type="button" className="records-search__clear" aria-label={"清除搜尋"} onClick={() => patchFilter({ query: "" })}>
+            <button type="button" className="records-search__clear" aria-label={UI_TEXT.records.clearSearch} onClick={() => patchFilter({ query: "" })}>
               <X aria-hidden="true" size={14} />
             </button>
           ) : null}
@@ -215,14 +215,14 @@ export function RecordsPanel({
             type="button"
             className={advancedOpen ? "records-filter__toggle is-open" : "records-filter__toggle"}
             aria-expanded={advancedOpen}
-            aria-label={"更多篩選"}
+            aria-label={UI_TEXT.records.moreFilters}
             onClick={() => setAdvancedOpen((open) => !open)}
           >
             <SlidersHorizontal aria-hidden="true" size={16} />
           </button>
         </div>
 
-        <div className="records-chip-row" role="group" aria-label={"類型篩選"}>
+        <div className="records-chip-row" role="group" aria-label={UI_TEXT.records.kindFilter}>
           {KIND_OPTIONS.map((option) => (
             <button
               key={option.value || "all"}
@@ -239,9 +239,9 @@ export function RecordsPanel({
         {advancedOpen ? (
           <div className="records-filter__advanced">
             <label>
-              <span>{"成員"}</span>
+              <span>{UI_TEXT.records.member}</span>
               <select value={filter.memberId} onChange={(event) => patchFilter({ memberId: event.target.value })}>
-                <option value="">{"所有成員"}</option>
+                <option value="">{UI_TEXT.records.allMembers}</option>
                 {members.map((member) => (
                   <option key={member.id} value={member.id}>
                     {member.name}
@@ -250,9 +250,9 @@ export function RecordsPanel({
               </select>
             </label>
             <label>
-              <span>{"分類"}</span>
+              <span>{UI_TEXT.records.category}</span>
               <select value={filter.category} onChange={(event) => patchFilter({ category: event.target.value })}>
-                <option value="">{"所有分類"}</option>
+                <option value="">{UI_TEXT.records.allCategories}</option>
                 {categories.map((category) => (
                   <option key={category} value={category}>
                     {categoryLabel(category)}
@@ -261,11 +261,11 @@ export function RecordsPanel({
               </select>
             </label>
             <label>
-              <span>{"起始日"}</span>
+              <span>{UI_TEXT.records.fromDate}</span>
               <input type="date" value={filter.from} max={filter.to || undefined} onChange={(event) => patchFilter({ from: event.target.value })} />
             </label>
             <label>
-              <span>{"結束日"}</span>
+              <span>{UI_TEXT.records.toDate}</span>
               <input type="date" value={filter.to} min={filter.from || undefined} onChange={(event) => patchFilter({ to: event.target.value })} />
             </label>
           </div>
@@ -274,11 +274,11 @@ export function RecordsPanel({
         {filterActive ? (
           <div className="records-filter__summary" role="status" aria-live="polite">
             <span>
-              {`符合 ${summary.count} 筆・${formatAmount(summary.totalMinor, currency)}`}
-              {canLoadMoreExpenses ? <small>{"（僅搜尋已載入的紀錄）"}</small> : null}
+              {`${UI_TEXT.records.matchPrefix}${summary.count}${UI_TEXT.records.matchMiddle}${formatAmount(summary.totalMinor, currency)}`}
+              {canLoadMoreExpenses ? <small>{UI_TEXT.records.localOnly}</small> : null}
             </span>
             <button type="button" className="text-action" onClick={() => setFilter(EMPTY_EXPENSE_FILTER)}>
-              {"清除篩選"}
+              {UI_TEXT.records.clearFilters}
             </button>
           </div>
         ) : null}
@@ -336,7 +336,7 @@ export function RecordsPanel({
           </>
         ) : (
           <>
-            {/* "沒有符合的紀錄" is now a statement about the whole group, not
+            {/* UI_TEXT.records.noMatches is now a statement about the whole group, not
                 about the loaded window - the search behind it has seen every
                 expense. The only case that still needs hedging is a search
                 that has not answered yet, or one that failed. */}
@@ -346,12 +346,12 @@ export function RecordsPanel({
                 : search.pending
                   ? text.processing
                   : filterActive
-                    ? "沒有符合的紀錄"
+                    ? UI_TEXT.records.noMatches
                     : text.noRecords}
             </p>
             {search.error ? (
               <button className="text-action records-load-more" type="button" onClick={search.retry}>
-                {"重試"}
+                {UI_TEXT.records.retry}
               </button>
             ) : null}
           </>

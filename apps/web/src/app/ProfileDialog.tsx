@@ -11,7 +11,8 @@ import type { ProfileData } from "./profileStore";
 import { describePushState } from "./pushNotifications";
 import { usePushNotifications } from "./usePushNotifications";
 import type { StoredSession } from "./sessionStore";
-import { UI_TEXT } from "./uiText";
+import { ACTIVE_LOCALE, UI_TEXT } from "./uiText";
+import { LOCALE_NAMES, LOCALES, setLocale, type Locale } from "./i18n/locale";
 
 const text = UI_TEXT.profile;
 const appText = UI_TEXT.app;
@@ -292,14 +293,25 @@ export function ProfileDialog({
               <span>{text.themeSetting}</span>
               <span className="profile-row-value">{theme === "light" ? text.themeLight : text.themeDark}</span>
             </button>
-            {/* Informational, not a control: there is one language, so a button
-                here would be something you can press that does nothing. It
-                still earns its row - "which language is this in" is a question
-                people look in settings to answer. */}
+            {/* A real control now that there is more than one language. The
+                option names are each written in their own language and never
+                translated: a picker that lists languages in a language you
+                cannot read is useless to the one person who needs it. */}
             <div className="profile-other-row profile-other-row-static">
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>
-              <span className="profile-row-value">{text.languageValue}</span>
+              <select
+                className="profile-row-value profile-language-select"
+                aria-label={text.languageSetting}
+                value={ACTIVE_LOCALE}
+                onChange={(event) => setLocale(event.target.value as Locale, ACTIVE_LOCALE)}
+              >
+                {LOCALES.map((locale) => (
+                  <option key={locale} value={locale}>
+                    {LOCALE_NAMES[locale]}
+                  </option>
+                ))}
+              </select>
             </div>
             <button className="profile-other-row" type="button" onClick={onFeedback}>
               <MessageSquareText aria-hidden="true" size={19} />

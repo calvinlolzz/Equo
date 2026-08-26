@@ -8,7 +8,7 @@ import { getMemberShareMinor } from "./expenseShareSplit";
 import { formatAmount } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
 import { categoryLabel as lookupCategoryLabel } from "./catalog";
-import { UI_TEXT } from "./uiText";
+import { ACTIVE_LOCALE, UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
 const detailText = UI_TEXT.expenseDetail;
@@ -227,7 +227,7 @@ export function ExpenseDetailDialog({
 
         {!isSettlement && expense.sourceCurrency ? (
           <p className="expense-detail-source-line">
-            {`${text.exchangeRateSummary} ${expense.sourceCurrency} ${((expense.sourceAmountMinor ?? 0) / 100).toLocaleString("zh-TW")} × ${expense.exchangeRate ?? 1}`}
+            {`${text.exchangeRateSummary} ${expense.sourceCurrency} ${((expense.sourceAmountMinor ?? 0) / 100).toLocaleString(ACTIVE_LOCALE)} × ${expense.exchangeRate ?? 1}`}
           </p>
         ) : null}
 

@@ -80,7 +80,7 @@ export function AnalysisPanel({
     <>
       <div className="dialog-header">
         <h3>{text.analysis}</h3>
-        <p>{"以目前資料統計群組消費與成員餘額。"}</p>
+        <p>{UI_TEXT.analysis.description}</p>
       </div>
       {/* The indicator is one element that slides between the two halves, so
           the underline travels rather than blinking from tab to tab. Its
@@ -121,7 +121,7 @@ export function AnalysisPanel({
       />
       <div className="panel-stat-grid">
         <div>
-          <span>{"總金額"}</span>
+          <span>{UI_TEXT.analysis.totalAmount}</span>
           <strong>{formatAmount(totalExpenseMinor, currency)}</strong>
         </div>
         <div>
@@ -147,7 +147,7 @@ export function AnalysisPanel({
         </div>
       )}
       <div className="dialog-section-list">
-        <span className="dialog-list-title">{"成員餘額"}</span>
+        <span className="dialog-list-title">{UI_TEXT.analysis.memberBalances}</span>
         {members.map((member) => {
           const balance = balances.get(member.id) ?? 0;
           const width = balance === 0 ? "0%" : `${Math.max(8, Math.round((Math.abs(balance) / maxBalanceMinor) * 100))}%`;

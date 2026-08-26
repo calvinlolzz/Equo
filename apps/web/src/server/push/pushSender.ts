@@ -85,7 +85,7 @@ export const sendWithWebPush: PushSendFn = async (subscription, payload, vapid) 
 export async function deliverPush({
   kind,
   subscriptions,
-  payload,
+  payloadFor,
   vapid,
   repository,
   send = sendWithWebPush,
@@ -93,17 +93,37 @@ export async function deliverPush({
   /** What this fan-out was for, so the console can tell alerting from chatter. */
   kind: string;
   subscriptions: PushSubscriptionRecord[];
-  payload: PushNotificationPayload;
+  /**
+   * The message, in one recipient's language.
+   *
+   * A function rather than a value because a group can hold people reading
+   * different languages, and each of their phones has to get the version it can
+   * read. Built once per distinct locale in the batch, not once per device -
+   * the common case is one language and therefore one build.
+   */
+  payloadFor: (locale: string | null | undefined) => PushNotificationPayload;
   vapid: VapidKeys;
   repository: Pick<PushRepository, "pruneSubscription" | "logDelivery">;
   send?: PushSendFn;
 }): Promise<PushDeliveryOutcome> {
   const outcome: PushDeliveryOutcome = { sent: 0, pruned: 0, failed: 0 };
 
+  const byLocale = new Map<string, PushNotificationPayload>();
+  const payloadCached = (locale: string | null | undefined) => {
+    // "" and null and undefined all mean "this device never said", and must not
+    // become three separate cache entries building three identical payloads.
+    const key = locale || "";
+    const existing = byLocale.get(key);
+    if (existing) return existing;
+    const built = payloadFor(locale);
+    byLocale.set(key, built);
+    return built;
+  };
+
   const results = await Promise.allSettled(
     subscriptions.map(async (subscription) => {
       try {
-        await send(subscription, payload, vapid);
+        await send(subscription, payloadCached(subscription.locale), vapid);
         return "sent" as const;
       } catch (error) {
         const statusCode = statusCodeOf(error);
@@ -171,17 +191,24 @@ export async function notifyExpenseCreated({
       return empty;
     }
 
-    const payload = buildExpenseNotification({
-      groupId,
-      groupName: targets.group_name,
-      actorName: targets.actor_name,
-      title: expense.title,
-      amountMinor: expense.amount_minor,
-      currency: expense.currency,
-      kind: expense.kind,
+    return await deliverPush({
+      kind: "expense",
+      subscriptions: targets.subscriptions,
+      payloadFor: (locale) =>
+        buildExpenseNotification({
+          groupId,
+          groupName: targets.group_name,
+          actorName: targets.actor_name,
+          title: expense.title,
+          amountMinor: expense.amount_minor,
+          currency: expense.currency,
+          kind: expense.kind,
+          locale,
+        }),
+      vapid,
+      repository,
+      send,
     });
-
-    return await deliverPush({ kind: "expense", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] notify failed:", error);
     return empty;
@@ -226,17 +253,24 @@ export async function notifyNudge({
       return empty;
     }
 
-    const payload = buildNudgeNotification({
-      groupId,
-      // The group's name as the RPC knows it; the write's copy is only used
-      // for the sender's own name.
-      groupName: targets.group_name ?? groupName,
-      fromName,
-      balanceMinor,
-      currency,
+    return await deliverPush({
+      kind: "nudge",
+      subscriptions: targets.subscriptions,
+      payloadFor: (locale) =>
+        buildNudgeNotification({
+          groupId,
+          // The group's name as the RPC knows it; the write's copy is only used
+          // for the sender's own name.
+          groupName: targets.group_name ?? groupName,
+          fromName,
+          balanceMinor,
+          currency,
+          locale,
+        }),
+      vapid,
+      repository,
+      send,
     });
-
-    return await deliverPush({ kind: "nudge", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] nudge notify failed:", error);
     return empty;
@@ -271,15 +305,22 @@ export async function notifyMemberJoined({
       return empty;
     }
 
-    const payload = buildMemberJoinedNotification({
-      groupId,
-      groupName: targets.group_name,
-      // actor_name is the joiner's display name in this group - by the time
-      // this runs the membership row exists, so the lookup resolves.
-      memberName: targets.actor_name,
+    return await deliverPush({
+      kind: "member_joined",
+      subscriptions: targets.subscriptions,
+      payloadFor: (locale) =>
+        buildMemberJoinedNotification({
+          groupId,
+          groupName: targets.group_name,
+          // actor_name is the joiner's display name in this group - by the time
+          // this runs the membership row exists, so the lookup resolves.
+          memberName: targets.actor_name,
+          locale,
+        }),
+      vapid,
+      repository,
+      send,
     });
-
-    return await deliverPush({ kind: "member_joined", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] join notify failed:", error);
     return empty;
@@ -327,16 +368,23 @@ export async function notifyExpenseCommented({
       return empty;
     }
 
-    const payload = buildCommentNotification({
-      groupId,
-      groupName: targets.group_name,
-      actorName: targets.actor_name,
-      expenseTitle,
-      expenseId,
-      body,
+    return await deliverPush({
+      kind: "comment",
+      subscriptions: targets.subscriptions,
+      payloadFor: (locale) =>
+        buildCommentNotification({
+          groupId,
+          groupName: targets.group_name,
+          actorName: targets.actor_name,
+          expenseTitle,
+          expenseId,
+          body,
+          locale,
+        }),
+      vapid,
+      repository,
+      send,
     });
-
-    return await deliverPush({ kind: "comment", subscriptions: targets.subscriptions, payload, vapid, repository, send });
   } catch (error) {
     console.error("[push] comment notify failed:", error);
     return empty;
@@ -382,7 +430,7 @@ export async function notifyErrorAlert({
     return await deliverPush({
       kind: "error_alert",
       subscriptions: targets.subscriptions,
-      payload: buildErrorAlertNotification({ fingerprint, message, occurrences, isNew }),
+      payloadFor: (locale) => buildErrorAlertNotification({ fingerprint, message, occurrences, isNew, locale }),
       vapid,
       repository,
       send,
@@ -428,12 +476,14 @@ export async function notifyAutoNudge({
     return await deliverPush({
       kind: "auto_nudge",
       subscriptions: targets.subscriptions,
-      payload: buildAutoNudgeNotification({
-        groupId,
-        groupName: targets.group_name ?? groupName,
-        balanceMinor,
-        currency,
-      }),
+      payloadFor: (locale) =>
+        buildAutoNudgeNotification({
+          groupId,
+          groupName: targets.group_name ?? groupName,
+          balanceMinor,
+          currency,
+          locale,
+        }),
       vapid,
       repository,
       send,

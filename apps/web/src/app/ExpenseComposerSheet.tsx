@@ -1182,7 +1182,7 @@ export function ExpenseComposerSheet({
             key={key}
             type="button"
             className="composer-keypad-key"
-            aria-label={key === "del" ? "刪除" : key}
+            aria-label={key === "del" ? UI_TEXT.misc.keypadDelete : key}
             onClick={() => pressKeypad(key)}
           >
             {key === "del" ? <Delete aria-hidden="true" size={22} /> : key}

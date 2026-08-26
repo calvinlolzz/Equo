@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RecurringExpense, RecurringExpenseInput } from "./apiClient";
+import { UI_TEXT } from "./uiText";
 
 type Store = {
   listRecurring: (groupId: string) => Promise<RecurringExpense[]>;
@@ -71,7 +72,7 @@ export function useRecurringExpenses({ store, groupId, enabled, showToast, descr
       try {
         await store.upsertRecurring(groupId, input);
         setRules(await store.listRecurring(groupId));
-        showToast(input.id ? "已更新循環支出" : "已建立循環支出");
+        showToast(input.id ? UI_TEXT.recurring.updated : UI_TEXT.recurring.created);
         return true;
       } catch (cause) {
         showToast(describeError(cause));
@@ -92,7 +93,7 @@ export function useRecurringExpenses({ store, groupId, enabled, showToast, descr
         // Drop it locally too: a re-list would be a second round trip to learn
         // something we already know.
         setRules((current) => current.filter((rule) => rule.id !== id));
-        showToast("已刪除循環支出");
+        showToast(UI_TEXT.recurring.deleted);
       } catch (cause) {
         showToast(describeError(cause));
       } finally {

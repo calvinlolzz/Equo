@@ -17,7 +17,7 @@ export function ArchivedListPanel({ archivedGroups, loading, unarchivingGroupId,
     <>
       <div className="dialog-header">
         <h3>{text.archivedGroups}</h3>
-        <p>{"封存後的群組會放在這裡，不會出現在左側主列表。"}</p>
+        <p>{UI_TEXT.misc.archivedHint}</p>
       </div>
       <div className="dialog-section-list archived-dialog-list">
         {loading ? (

@@ -5,6 +5,7 @@ import type { Member } from "./appTypes";
 import { categoryOptions } from "./catalog";
 import { formatAmount } from "./formatAmount";
 import { MemberAvatar } from "./MemberAvatar";
+import { UI_TEXT } from "./uiText";
 
 type Props = {
   members: Member[];
@@ -135,34 +136,34 @@ export function RecurringPanel({
   return (
     <>
       <div className="dialog-header">
-        <h3>{"循環支出"}</h3>
-        <p>{"每個月自動記一筆，房租、水電、網路這種不用再重打。"}</p>
+        <h3>{UI_TEXT.recurring.title}</h3>
+        <p>{UI_TEXT.recurring.description}</p>
       </div>
 
       {error ? (
         <div className="spend-period-error">
           <p>{error}</p>
           <button className="composer-mini-action" type="button" onClick={onRetry}>
-            {"重試"}
+            {UI_TEXT.recurring.retry}
           </button>
         </div>
       ) : null}
 
       {draft ? (
         <div className="dialog-section-list recurring-form">
-          <span className="dialog-list-title">{draft.id ? "編輯循環支出" : "新增循環支出"}</span>
+          <span className="dialog-list-title">{draft.id ? UI_TEXT.recurring.editTitle : UI_TEXT.recurring.addTitle}</span>
 
           <label className="composer-field">
-            <span>{"項目"}</span>
+            <span>{UI_TEXT.recurring.itemLabel}</span>
             <input
               value={draft.title}
-              placeholder="房租"
+              placeholder={UI_TEXT.recurring.itemPlaceholder}
               onChange={(event) => setDraft({ ...draft, title: event.target.value })}
             />
           </label>
 
           <label className="composer-field">
-            <span>{"金額"}</span>
+            <span>{UI_TEXT.recurring.amountLabel}</span>
             <input
               value={draft.amount}
               inputMode="decimal"
@@ -172,20 +173,20 @@ export function RecurringPanel({
           </label>
 
           <label className="composer-field">
-            <span>{"每月幾號"}</span>
+            <span>{UI_TEXT.recurring.dayLabel}</span>
             <select
               value={draft.dayOfMonth}
               onChange={(event) => setDraft({ ...draft, dayOfMonth: Number(event.target.value) })}
             >
               {DAYS.map((day) => (
-                <option key={day} value={day}>{`${day} 號`}</option>
+                <option key={day} value={day}>{`${day} ${UI_TEXT.recurring.daySuffix}`.trimEnd()}</option>
               ))}
             </select>
-            <small className="recurring-hint">{"只到 28 號：二月沒有 29-31 號，夾過去會讓日期每年跳一次。"}</small>
+            <small className="recurring-hint">{UI_TEXT.recurring.dayHint}</small>
           </label>
 
           <label className="composer-field">
-            <span>{"分類"}</span>
+            <span>{UI_TEXT.recurring.categoryLabel}</span>
             <select
               value={draft.category}
               onChange={(event) => setDraft({ ...draft, category: event.target.value })}
@@ -199,7 +200,7 @@ export function RecurringPanel({
           </label>
 
           <label className="composer-field">
-            <span>{"誰付錢"}</span>
+            <span>{UI_TEXT.recurring.payerLabel}</span>
             <select
               value={draft.payerMemberId}
               onChange={(event) => setDraft({ ...draft, payerMemberId: event.target.value })}
@@ -213,7 +214,7 @@ export function RecurringPanel({
           </label>
 
           <div className="composer-field">
-            <span>{"分攤給"}</span>
+            <span>{UI_TEXT.recurring.shareLabel}</span>
             <div className="recurring-share-row">
               {members.map((member) => (
                 <button
@@ -227,11 +228,11 @@ export function RecurringPanel({
                 </button>
               ))}
             </div>
-            <small className="recurring-hint">{"平均分攤，餘數會分給排在前面的人。"}</small>
+            <small className="recurring-hint">{UI_TEXT.recurring.shareHint}</small>
           </div>
 
           <label className="composer-field">
-            <span>{"備註"}</span>
+            <span>{UI_TEXT.recurring.noteLabel}</span>
             <input
               value={draft.note}
               onChange={(event) => setDraft({ ...draft, note: event.target.value })}
@@ -240,7 +241,7 @@ export function RecurringPanel({
 
           <div className="recurring-form-actions">
             <button className="composer-mini-action" type="button" onClick={() => setDraft(null)}>
-              {"取消"}
+              {UI_TEXT.recurring.cancel}
             </button>
             <button
               className="composer-submit"
@@ -248,7 +249,7 @@ export function RecurringPanel({
               disabled={!draftValid || savingId === "save"}
               onClick={submit}
             >
-              {savingId === "save" ? "處理中…" : "儲存"}
+              {savingId === "save" ? UI_TEXT.recurring.working : UI_TEXT.recurring.save}
             </button>
           </div>
         </div>
@@ -259,16 +260,16 @@ export function RecurringPanel({
           disabled={members.length === 0}
           onClick={() => setDraft(emptyDraft(members, defaultPayer))}
         >
-          <Plus aria-hidden="true" size={16} /> {"新增循環支出"}
+          <Plus aria-hidden="true" size={16} /> {UI_TEXT.recurring.addAction}
         </button>
       )}
 
       <div className="dialog-section-list">
-        <span className="dialog-list-title">{"目前的規則"}</span>
+        <span className="dialog-list-title">{UI_TEXT.recurring.currentRules}</span>
         {loading && rules.length === 0 ? (
-          <p className="dialog-empty">{"載入中…"}</p>
+          <p className="dialog-empty">{UI_TEXT.recurring.loading}</p>
         ) : rules.length === 0 ? (
-          <p className="dialog-empty">{"還沒有循環支出。"}</p>
+          <p className="dialog-empty">{UI_TEXT.recurring.empty}</p>
         ) : (
           rules.map((rule) => (
             <div className={rule.active ? "recurring-row" : "recurring-row inactive"} key={rule.id}>
@@ -277,8 +278,8 @@ export function RecurringPanel({
                   <strong>{rule.title}</strong>
                   <small>
                     {rule.active
-                      ? `每月 ${rule.day_of_month} 號・下次 ${rule.next_run_date}`
-                      : "已停用"}
+                      ? `${UI_TEXT.recurring.rulePrefix}${rule.day_of_month}${UI_TEXT.recurring.ruleMiddle}${rule.next_run_date}`
+                      : UI_TEXT.recurring.disabled}
                   </small>
                 </span>
                 <b>{formatAmount(rule.amount_minor, rule.currency)}</b>
@@ -291,13 +292,13 @@ export function RecurringPanel({
                     name={memberName.get(id)}
                   />
                 ))}
-                <small>{`${memberName.get(rule.payer_member_id) ?? "?"} 付`}</small>
+                <small>{`${memberName.get(rule.payer_member_id) ?? "?"} ${UI_TEXT.recurring.paidBy}`}</small>
               </div>
               {rule.last_error ? <p className="recurring-row-error">{rule.last_error}</p> : null}
               <button
                 className="recurring-row-delete"
                 type="button"
-                aria-label={`刪除 ${rule.title}`}
+                aria-label={`${UI_TEXT.recurring.deleteRule} ${rule.title}`}
                 disabled={savingId === rule.id}
                 onClick={() => onDelete(rule.id)}
               >
@@ -307,7 +308,7 @@ export function RecurringPanel({
           ))
         )}
         <p className="recurring-footnote">
-          {"刪除規則只是以後不再自動記帳，已經產生的支出會留著。"}
+          {UI_TEXT.recurring.deleteHint}
         </p>
       </div>
     </>

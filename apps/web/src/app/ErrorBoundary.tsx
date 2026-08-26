@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createApiClient } from "./apiClient";
+import { UI_TEXT } from "./uiText";
 
 type Props = { source: "web" | "admin"; children: ReactNode };
 type State = { hasError: boolean };
@@ -52,9 +53,9 @@ export class ErrorBoundary extends Component<Props, State> {
         }}
       >
         <div style={{ maxWidth: 360, display: "grid", gap: 16, textAlign: "center" }}>
-          <h1 style={{ margin: 0, fontSize: 22 }}>{"應用程式發生問題"}</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>{UI_TEXT.errorBoundary.title}</h1>
           <p style={{ margin: 0, opacity: 0.7 }}>
-            {"很抱歉，畫面出了點狀況。重新整理通常就能恢復。"}
+            {UI_TEXT.errorBoundary.body}
           </p>
           <button
             type="button"
@@ -68,7 +69,7 @@ export class ErrorBoundary extends Component<Props, State> {
               background: "rgb(var(--gold))",
             }}
           >
-            {"重新整理"}
+            {UI_TEXT.errorBoundary.action}
           </button>
         </div>
       </div>

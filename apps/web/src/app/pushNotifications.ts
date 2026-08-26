@@ -1,3 +1,5 @@
+import { ACTIVE_LOCALE, UI_TEXT } from "./uiText";
+
 /**
  * Browser-side web push: what this device can do, and how to turn it on.
  *
@@ -107,6 +109,15 @@ export type SerializedSubscription = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
   user_agent: string;
+  /**
+   * What language to write this device's notifications in.
+   *
+   * Sent with the subscription rather than synced as a setting: the browser
+   * re-subscribes whenever the permission or the key changes, and the language
+   * picker reloads the page, so this rides along on a request that already has
+   * to happen. A device that has never sent it keeps getting 繁體中文.
+   */
+  locale: string;
 };
 
 function encodeKey(subscription: PushSubscription, name: "p256dh" | "auth"): string {
@@ -130,6 +141,7 @@ export function serializeSubscription(subscription: PushSubscription): Serialize
       auth: encodeKey(subscription, "auth"),
     },
     user_agent: window.navigator.userAgent,
+    locale: ACTIVE_LOCALE,
   };
 }
 
@@ -177,18 +189,18 @@ export async function detectPushSubscriptionState({
 export function describePushState(state: PushState): string {
   switch (state) {
     case "on":
-      return "有人記帳時會通知你";
+      return UI_TEXT.pushSetting.on;
     case "off":
-      return "開啟後，群組有新記錄會通知你";
+      return UI_TEXT.pushSetting.off;
     case "denied":
-      return "已被瀏覽器封鎖，請到網站設定開啟通知";
+      return UI_TEXT.pushSetting.blocked;
     case "needs-install":
-      return "iPhone 需先「加入主畫面」才能開啟通知";
+      return UI_TEXT.pushSetting.iosNeedsInstall;
     case "unavailable":
-      return "這個站台尚未啟用通知";
+      return UI_TEXT.pushSetting.unsupportedSite;
     case "unsupported":
-      return "這個瀏覽器不支援通知";
+      return UI_TEXT.pushSetting.unsupportedBrowser;
     case "loading":
-      return "檢查中…";
+      return UI_TEXT.pushSetting.checking;
   }
 }

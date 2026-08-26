@@ -594,7 +594,7 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     getPushPublicKey() {
       return request<{ enabled: boolean; public_key?: string }>("/push/public-key", { method: "GET" });
     },
-    subscribePush(subscription: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent: string }) {
+    subscribePush(subscription: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent: string; locale?: string }) {
       return request<{ ok: true }>("/push/subscribe", {
         method: "POST",
         body: JSON.stringify(subscription),

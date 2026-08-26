@@ -174,7 +174,7 @@ describe("deliverPush", () => {
     const outcome = await deliverPush({
       kind: "expense",
       subscriptions: [subscription(1), subscription(2)],
-      payload,
+      payloadFor: () => payload,
       vapid,
       repository: makeRepository(),
       send,
@@ -196,7 +196,7 @@ describe("deliverPush", () => {
     const outcome = await deliverPush({
       kind: "expense",
       subscriptions: [subscription(1)],
-      payload,
+      payloadFor: () => payload,
       vapid,
       repository,
       send: gone(410),
@@ -221,7 +221,7 @@ describe("deliverPush", () => {
     const outcome = await deliverPush({
       kind: "expense",
       subscriptions: [subscription(1)],
-      payload,
+      payloadFor: () => payload,
       vapid,
       repository,
       send: gone(429),
@@ -244,7 +244,7 @@ describe("deliverPush", () => {
     const outcome = await deliverPush({
       kind: "expense",
       subscriptions: [subscription(1), subscription(2), subscription(3)],
-      payload,
+      payloadFor: () => payload,
       vapid,
       repository: makeRepository(),
       send,

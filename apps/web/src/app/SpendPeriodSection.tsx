@@ -5,6 +5,7 @@ import { budgetProgress } from "./spendBudget";
 import { describeSpendComparison, spendComparison } from "./spendComparison";
 import { formatPeriodChipLabel, formatPeriodTitle } from "./spendPeriods";
 import { useDragScrollX } from "./useDragScrollX";
+import { UI_TEXT } from "./uiText";
 
 type Props = {
   breakdown: SpendBreakdown | null;
@@ -73,28 +74,28 @@ export function SpendPeriodSection({
       <div className="spend-period-card">
         <div className="spend-period-head">
           <label className="spend-period-select">
-            <span className="visually-hidden">{"統計區間"}</span>
+            <span className="visually-hidden">{UI_TEXT.spend.periodLabel}</span>
             <select
               value={periodKind}
               onChange={(event) => onSelectKind(event.target.value as SpendPeriodKind)}
             >
-              <option value="year">{"每年統計"}</option>
-              <option value="month">{"每月統計"}</option>
+              <option value="year">{UI_TEXT.spend.perYear}</option>
+              <option value="month">{UI_TEXT.spend.perMonth}</option>
             </select>
           </label>
-          {loading ? <span className="spend-period-loading">{"載入中…"}</span> : null}
+          {loading ? <span className="spend-period-loading">{UI_TEXT.spend.loading}</span> : null}
         </div>
 
         {error ? (
           <div className="spend-period-error">
             <p>{error}</p>
             <button className="composer-mini-action" type="button" onClick={onRetry}>
-              {"重試"}
+              {UI_TEXT.spend.retry}
             </button>
           </div>
         ) : (
           <>
-            <div className="period-chip-row" role="tablist" aria-label={"統計區間"} ref={chipRowRef}>
+            <div className="period-chip-row" role="tablist" aria-label={UI_TEXT.spend.periodLabel} ref={chipRowRef}>
               {periods.map((period) => (
                 <button
                   key={period.key}
@@ -131,17 +132,17 @@ export function SpendPeriodSection({
             {budget ? (
               <div className={budget.over ? "spend-budget spend-budget--over" : "spend-budget"}>
                 <div className="spend-budget-line">
-                  <span>{"每月預算"}</span>
+                  <span>{UI_TEXT.spend.budgetLabel}</span>
                   <span>
                     {budget.over
-                      ? `超出 ${formatAmount(Math.abs(budget.remainingMinor), activeCurrency)}`
-                      : `還剩 ${formatAmount(budget.remainingMinor, activeCurrency)}`}
+                      ? `${UI_TEXT.spend.budgetOver} ${formatAmount(Math.abs(budget.remainingMinor), activeCurrency)}`
+                      : `${UI_TEXT.spend.budgetLeft} ${formatAmount(budget.remainingMinor, activeCurrency)}`}
                   </span>
                 </div>
                 <div
                   className="spend-budget-bar"
                   role="progressbar"
-                  aria-label={"每月預算使用進度"}
+                  aria-label={UI_TEXT.spend.budgetProgress}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={Math.min(budget.pct, 100)}
@@ -160,13 +161,13 @@ export function SpendPeriodSection({
 
       {!error && rows.length > 0 ? (
         <div className="dialog-section-list">
-          <span className="dialog-list-title">{"分類佔比"}</span>
+          <span className="dialog-list-title">{UI_TEXT.spend.categoryShare}</span>
           <CategoryDonut entries={rows} currency={activeCurrency} />
         </div>
       ) : null}
 
       {!error && !loading && rows.length === 0 ? (
-        <p className="dialog-empty">{personal ? "這段期間你沒有分攤到支出。" : "這段期間還沒有支出。"}</p>
+        <p className="dialog-empty">{personal ? UI_TEXT.spend.emptyPersonal : UI_TEXT.spend.emptyGroup}</p>
       ) : null}
     </>
   );

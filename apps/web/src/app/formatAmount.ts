@@ -1,3 +1,4 @@
+import { ACTIVE_LOCALE } from "./uiText";
 /**
  * Currency-aware replacement for the old per-file `formatTwd`/`formatSigned`
  * copies (App.tsx, ExpenseComposerSheet.tsx, ExpenseDetailDialog.tsx all had
@@ -17,7 +18,9 @@
  *   and rounding each to $33 made three shares look like $99 - as if a dollar
  *   had vanished. Showing the real $33.34 / $33.33 keeps the on-screen total
  *   honest. (See the review report's issue ③.)
- * - thousands separators via toLocaleString("zh-TW").
+ * - thousands separators from the active locale. Both shipped locales group
+ *   in threes with a comma, so this is a no-op today; it is here so a locale
+ *   that groups differently is a translation, not a bug.
  */
 const CURRENCY_SYMBOLS: Record<string, string> = {
   TWD: "$",
@@ -33,7 +36,7 @@ function currencyPrefix(currency: string): string {
 
 export function formatAmount(amountMinor: number, currency: string): string {
   const hasCents = amountMinor % 100 !== 0;
-  const formatted = (amountMinor / 100).toLocaleString("zh-TW", {
+  const formatted = (amountMinor / 100).toLocaleString(ACTIVE_LOCALE, {
     minimumFractionDigits: hasCents ? 2 : 0,
     maximumFractionDigits: hasCents ? 2 : 0,
   });

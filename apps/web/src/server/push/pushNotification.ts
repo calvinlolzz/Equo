@@ -2,6 +2,7 @@
 // $1,200 while the app says $1200.00 is the kind of small disagreement that
 // makes people distrust both.
 import { formatAmount } from "../../app/formatAmount.js";
+import { fill, pushText } from "./pushText.js";
 
 /**
  * A button under the notification.
@@ -38,8 +39,15 @@ export type PushNotificationPayload = {
   actions?: PushNotificationAction[];
 };
 
-const FALLBACK_GROUP_NAME = "Equo";
-const FALLBACK_ACTOR_NAME = "有人";
+/**
+ * Every builder takes the RECIPIENT's locale, not the sender's.
+ *
+ * The distinction matters and is easy to get backwards: a Chinese-reading
+ * person recording lunch produces a notification that an English-reading
+ * flatmate has to read. What language the sender uses is irrelevant to whether
+ * the message is legible on the other phone.
+ */
+export type BuilderLocale = string | null | undefined;
 
 /**
  * The text for "somebody recorded something in a group you are in".
@@ -57,6 +65,7 @@ export function buildExpenseNotification({
   amountMinor,
   currency,
   kind,
+  locale,
 }: {
   groupId: string;
   groupName: string | null;
@@ -65,20 +74,19 @@ export function buildExpenseNotification({
   amountMinor: number;
   currency: string;
   kind: string;
+  locale?: BuilderLocale;
 }): PushNotificationPayload {
-  const who = actorName?.trim() || FALLBACK_ACTOR_NAME;
+  const t = pushText(locale);
+  const who = actorName?.trim() || t.fallbackActorName;
   const amount = formatAmount(amountMinor, currency);
   const entryTitle = title.trim();
 
-  const body =
-    kind === "transfer"
-      ? `${who} 記錄了一筆清償 ${amount}`
-      : kind === "income"
-        ? `${who} 記了一筆收入：${entryTitle} ${amount}`
-        : `${who} 記了一筆：${entryTitle} ${amount}`;
+  const template =
+    kind === "transfer" ? t.expenseTransfer : kind === "income" ? t.expenseIncome : t.expenseDefault;
+  const body = fill(template, { who, title: entryTitle, amount });
 
   return {
-    title: groupName?.trim() || FALLBACK_GROUP_NAME,
+    title: groupName?.trim() || t.fallbackGroupName,
     body,
     url: `/group/${groupId}`,
     tag: `group-${groupId}`,
@@ -87,7 +95,7 @@ export function buildExpenseNotification({
     // the thing they want next is the composer, not the group screen the body
     // tap already gives them. Reuses the existing ?shortcut= entry point, so
     // there is nothing new for the app to understand.
-    actions: [{ action: "add-expense", title: "記一筆", url: `/group/${groupId}?shortcut=add-expense` }],
+    actions: [{ action: "add-expense", title: t.addExpenseAction, url: `/group/${groupId}?shortcut=add-expense` }],
   };
 }
 
@@ -116,6 +124,7 @@ export function buildNudgeNotification({
   fromName,
   balanceMinor,
   currency,
+  locale,
 }: {
   groupId: string;
   groupName: string | null;
@@ -123,13 +132,15 @@ export function buildNudgeNotification({
   /** The receiver's balance - negative, since only a debtor can be nudged. */
   balanceMinor: number;
   currency: string;
+  locale?: BuilderLocale;
 }): PushNotificationPayload {
-  const who = fromName?.trim() || FALLBACK_ACTOR_NAME;
+  const t = pushText(locale);
+  const who = fromName?.trim() || t.fallbackActorName;
   const amount = formatAmount(Math.abs(balanceMinor), currency);
 
   return {
-    title: groupName?.trim() || FALLBACK_GROUP_NAME,
-    body: `${who} 提醒你還有 ${amount} 未結清`,
+    title: groupName?.trim() || t.fallbackGroupName,
+    body: fill(t.nudge, { who, amount }),
     url: `/group/${groupId}`,
     tag: `nudge-${groupId}`,
   };
@@ -148,19 +159,22 @@ export function buildAutoNudgeNotification({
   groupName,
   balanceMinor,
   currency,
+  locale,
 }: {
   groupId: string;
   groupName: string | null;
   /** Negative — only a debtor is reminded. */
   balanceMinor: number;
   currency: string;
+  locale?: BuilderLocale;
 }): PushNotificationPayload {
-  const where = groupName?.trim() || FALLBACK_GROUP_NAME;
+  const t = pushText(locale);
+  const where = groupName?.trim() || t.fallbackGroupName;
   const amount = formatAmount(Math.abs(balanceMinor), currency);
 
   return {
     title: where,
-    body: `你還有 ${amount} 未結清`,
+    body: fill(t.autoNudge, { amount }),
     url: `/group/${groupId}`,
     // Same tag as the manual nudge: two reminders about one debt should replace
     // each other on the lock screen, not stack.
@@ -179,16 +193,19 @@ export function buildMemberJoinedNotification({
   groupId,
   groupName,
   memberName,
+  locale,
 }: {
   groupId: string;
   groupName: string | null;
   memberName: string | null;
+  locale?: BuilderLocale;
 }): PushNotificationPayload {
-  const who = memberName?.trim() || FALLBACK_ACTOR_NAME;
+  const t = pushText(locale);
+  const who = memberName?.trim() || t.fallbackActorName;
 
   return {
-    title: groupName?.trim() || FALLBACK_GROUP_NAME,
-    body: `${who} 加入了群組`,
+    title: groupName?.trim() || t.fallbackGroupName,
+    body: fill(t.memberJoined, { who }),
     url: `/group/${groupId}`,
     tag: `group-${groupId}`,
   };
@@ -216,6 +233,7 @@ export function buildCommentNotification({
   expenseTitle,
   expenseId,
   body,
+  locale,
 }: {
   groupId: string;
   groupName: string | null;
@@ -223,15 +241,19 @@ export function buildCommentNotification({
   expenseTitle: string;
   expenseId: string;
   body: string;
+  locale?: BuilderLocale;
 }): PushNotificationPayload {
-  const who = actorName?.trim() || FALLBACK_ACTOR_NAME;
+  const t = pushText(locale);
+  const who = actorName?.trim() || t.fallbackActorName;
   const entry = expenseTitle.trim();
   const said = body.trim();
   const preview = said.length > COMMENT_PREVIEW_MAX ? `${said.slice(0, COMMENT_PREVIEW_MAX)}…` : said;
 
   return {
-    title: groupName?.trim() || FALLBACK_GROUP_NAME,
-    body: entry ? `${who} 在「${entry}」說：${preview}` : `${who} 說：${preview}`,
+    title: groupName?.trim() || t.fallbackGroupName,
+    body: entry
+      ? fill(t.comment, { who, title: entry, body: preview })
+      : fill(t.commentNoTitle, { who, body: preview }),
     url: `/group/${groupId}?expense=${expenseId}`,
     tag: `comment-${expenseId}`,
   };
@@ -259,6 +281,7 @@ export function buildErrorAlertNotification({
   message,
   occurrences,
   isNew,
+  locale,
 }: {
   fingerprint: string;
   message: string;
@@ -266,7 +289,9 @@ export function buildErrorAlertNotification({
   occurrences: number;
   /** First time this bug has ever been seen, as opposed to one that came back. */
   isNew: boolean;
+  locale?: BuilderLocale;
 }): PushNotificationPayload {
+  const t = pushText(locale);
   const trimmed = message.trim().replace(/\s+/g, " ");
   const summary =
     trimmed.length > ERROR_ALERT_MESSAGE_MAX
@@ -274,8 +299,8 @@ export function buildErrorAlertNotification({
       : trimmed;
 
   return {
-    title: isNew ? "Equo 出現新錯誤" : "Equo 錯誤又出現了",
-    body: occurrences > 1 ? `${summary}（24 小時內 ${occurrences} 次）` : summary,
+    title: isNew ? t.errorAlertNew : t.errorAlertAgain,
+    body: occurrences > 1 ? fill(t.errorAlertBody, { summary, count: occurrences }) : summary,
     // The console reads the fingerprint from `err`, not `fingerprint` (see
     // adminRoute.ts) — the obvious guess lands on the unfiltered error list.
     url: `/admin?tab=errors&err=${encodeURIComponent(fingerprint)}`,

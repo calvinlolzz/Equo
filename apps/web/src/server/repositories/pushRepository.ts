@@ -2,6 +2,16 @@ export type PushSubscriptionRecord = {
   endpoint: string;
   p256dh: string;
   auth: string;
+  /**
+   * The language this DEVICE asked for, or null when it has never said.
+   *
+   * On the subscription rather than the user because a subscription is a
+   * device: one person's work laptop can be in English and their phone in
+   * Chinese, and each should get the notification it can read. Null covers
+   * every device that subscribed before this existed - the server falls back
+   * to 繁體中文 for those, which is what they have been receiving.
+   */
+  locale?: string | null;
 };
 
 export type PushTargetsRecord = {
@@ -15,7 +25,7 @@ export type PushRepository = {
   /** Store (or refresh) one browser's subscription. Keyed on the endpoint. */
   saveSubscription(
     userId: string,
-    subscription: PushSubscriptionRecord & { userAgent?: string },
+    subscription: PushSubscriptionRecord & { userAgent?: string; locale?: string | null },
   ): Promise<{ endpoint: string }>;
   /** Remove one of the caller's own subscriptions. */
   deleteSubscription(userId: string, endpoint: string): Promise<{ deleted: number }>;

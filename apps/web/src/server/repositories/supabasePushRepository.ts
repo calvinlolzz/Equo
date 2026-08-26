@@ -15,6 +15,7 @@ export function createSupabasePushRepository(client: PostgrestClient): PushRepos
         p_p256dh: subscription.p256dh,
         p_auth: subscription.auth,
         p_user_agent: subscription.userAgent ?? null,
+        p_locale: subscription.locale ?? null,
       });
       return { endpoint: result.endpoint };
     },

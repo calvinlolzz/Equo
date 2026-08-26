@@ -1029,6 +1029,10 @@ describe("web push wiring", () => {
       p_p256dh: "key",
       p_auth: "auth",
       p_user_agent: "Firefox",
+      // Absent from the body, and passed as null rather than omitted: the RPC
+      // reads that as "this device did not say" and keeps whatever locale the
+      // row already had, instead of clearing somebody's choice.
+      p_locale: null,
     });
   });
 

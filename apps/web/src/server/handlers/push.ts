@@ -18,6 +18,16 @@ export type PushSubscribeRequest = {
   endpoint?: string;
   keys?: { p256dh?: string; auth?: string };
   user_agent?: string;
+  /**
+   * The language to write this device's notifications in. Optional: a cached
+   * bundle from before translation shipped does not send it, and the column
+   * keeps whatever it already had rather than being cleared.
+   *
+   * Unvalidated here on purpose - the CHECK on push_subscriptions.locale is the
+   * allow-list, so an unknown value is rejected by the database rather than
+   * quietly stored and later used to pick a dictionary that does not exist.
+   */
+  locale?: string;
 };
 
 /**
@@ -62,6 +72,7 @@ export async function handleSubscribePush(
     p256dh: request.keys!.p256dh!.trim(),
     auth: request.keys!.auth!.trim(),
     userAgent: request.user_agent?.slice(0, 300),
+    locale: request.locale,
   });
 
   return { ok: true, status: 200, body: { ok: true } };

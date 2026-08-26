@@ -1,14 +1,25 @@
+import { UI_TEXT } from "./uiText";
 import type { ExpenseSummary } from "./apiClient";
 
 /** Resolves a group_members.id to a display name ("" when unknown). */
 export type MemberNameResolver = (memberId: string | null | undefined) => string;
 
-const HEADER = ["日期", "標題", "類型", "分類", "金額", "幣別", "付款人", "分攤對象", "備註"];
+const HEADER = [
+  UI_TEXT.csv.date,
+  UI_TEXT.csv.title,
+  UI_TEXT.csv.kind,
+  UI_TEXT.csv.category,
+  UI_TEXT.csv.amount,
+  UI_TEXT.csv.currency,
+  UI_TEXT.csv.payer,
+  UI_TEXT.csv.sharedWith,
+  UI_TEXT.csv.note,
+];
 
 const KIND_LABELS: Record<string, string> = {
-  expense: "支出",
-  income: "收入",
-  transfer: "清償",
+  expense: UI_TEXT.csv.kindExpense,
+  income: UI_TEXT.csv.kindIncome,
+  transfer: UI_TEXT.csv.kindSettlement,
 };
 
 function csvField(value: string): string {
@@ -71,5 +82,5 @@ export function buildExpenseCsv(expenses: ExpenseSummary[], memberName: MemberNa
 /** Sanitizes a group name into a safe download filename. */
 export function csvFileName(groupName: string, today: string): string {
   const safe = groupName.replace(/[\\/:*?"<>|\s]+/g, "_").replace(/^_+|_+$/g, "") || "equo";
-  return `${safe}-帳目-${today}.csv`;
+  return `${safe}-${UI_TEXT.csv.fileLabel}-${today}.csv`;
 }

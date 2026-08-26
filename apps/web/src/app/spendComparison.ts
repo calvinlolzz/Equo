@@ -1,4 +1,5 @@
 import type { SpendBreakdown, SpendPeriodKind } from "./apiClient";
+import { UI_TEXT } from "./uiText";
 
 export type SpendComparison = {
   /** Signed percentage against the previous period, rounded to a whole number. */
@@ -61,9 +62,11 @@ export function describeSpendComparison(
   comparison: SpendComparison,
   kind: SpendPeriodKind,
 ): string {
-  const label = kind === "month" ? "上個月" : "去年";
+  const label = kind === "month" ? UI_TEXT.comparison.lastMonth : UI_TEXT.comparison.lastYear;
   // Under a percent either way reads as noise, not as a trend.
-  if (comparison.changePct === 0) return `跟${label}差不多`;
-  const direction = comparison.changePct > 0 ? "多" : "少";
-  return `比${label}${direction} ${Math.abs(comparison.changePct)}%`;
+  if (comparison.changePct === 0) {
+    return UI_TEXT.comparison.aboutTheSame.replace("{period}", label);
+  }
+  const template = comparison.changePct > 0 ? UI_TEXT.comparison.more : UI_TEXT.comparison.less;
+  return template.replace("{period}", label).replace("{pct}", String(Math.abs(comparison.changePct)));
 }

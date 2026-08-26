@@ -55,6 +55,7 @@ import { listSettlementRecords } from "./settlementHistory";
 import { useSettlementHistory } from "./useSettlementHistory";
 import { type ArchivedGroupData } from "./cloudStore";
 import { useExpenseComments } from "./useExpenseComments";
+import { monthDayLabel } from "./i18n/format";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
 import { readInviteToken } from "./inviteToken";
@@ -87,7 +88,7 @@ import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
 import { useToast } from "./useToast";
 import { useCloudActivities } from "./useCloudActivities";
 import { copyText } from "./copyText";
-import { UI_TEXT } from "./uiText";
+import { ACTIVE_LOCALE, UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
 
@@ -1299,7 +1300,11 @@ export function App() {
       ) : null}
       {pullStatus !== "idle" ? (
         <div className="ptr-indicator" role="status" aria-live="polite">
-          {pullStatus === "refreshing" ? "重新整理中…" : pullStatus === "armed" ? "放開以重新整理" : "下拉重新整理"}
+          {pullStatus === "refreshing"
+            ? UI_TEXT.misc.pullRefreshing
+            : pullStatus === "armed"
+              ? UI_TEXT.misc.pullArmed
+              : UI_TEXT.misc.pullIdle}
         </div>
       ) : null}
       <header className="top-bar">
@@ -1529,10 +1534,12 @@ export function App() {
               </div>
               <div className="spending-date-row">
                 <div>
-                  <span>{selectedDateChip ? `${selectedDateChip.month}月${selectedDateChip.day}日` : `${new Date().getMonth() + 1}月${new Date().getDate()}日`}</span>
+                  <span>{selectedDateChip
+                      ? monthDayLabel(selectedDateChip.month, selectedDateChip.day, ACTIVE_LOCALE)
+                      : monthDayLabel(new Date().getMonth() + 1, new Date().getDate(), ACTIVE_LOCALE)}</span>
                   <strong>{formatAmount(spendDisplayAmountMinor, activeGroup.currency)}</strong>
                 </div>
-                <div className="date-chip-row" aria-label="日期" ref={dateStripRef}>
+                <div className="date-chip-row" aria-label={UI_TEXT.misc.dateLabel} ref={dateStripRef}>
                   {dateChips.map((chip) => (
                     <button
                       className={chip.key === selectedDateKey ? "date-chip active" : "date-chip"}
@@ -2198,7 +2205,7 @@ export function App() {
                       <UserRound aria-hidden="true" size={20} />
                       <span>
                         <strong>{text.addVirtualMember}</strong>
-                        <small>{"適合幫沒有帳號的人代記支出。"}</small>
+                        <small>{UI_TEXT.misc.virtualMemberHint}</small>
                       </span>
                     </button>
                   </div>
@@ -2345,7 +2352,7 @@ export function App() {
                     <input
                       value={virtualMemberName}
                       onChange={(event) => setVirtualMemberName(event.target.value)}
-                      placeholder="輸入成員名稱"
+                      placeholder={UI_TEXT.misc.memberNamePlaceholder}
                       aria-label={text.virtualMemberName}
                     />
                   </label>
@@ -2381,7 +2388,7 @@ export function App() {
                   <div className="dialog-header centered">
                     <AlertTriangle aria-hidden="true" size={28} />
                     <h3>{dialog === "archive" ? text.archiveGroup : text.deleteGroup}</h3>
-                    <p>{dialog === "archive" ? "\u5c01\u5b58\u5f8c\u53ef\u5f9e\u5de6\u5074\u4e0a\u65b9\u7684\u5c01\u5b58\u5165\u53e3\u67e5\u770b\u3002" : "刪除後這個群組與所有記錄將永久移除，無法復原。"}</p>
+                    <p>{dialog === "archive" ? UI_TEXT.misc.archiveGroupWarning : UI_TEXT.misc.deleteGroupWarning}</p>
                   </div>
                   <div className="dialog-action-row">
                     <button className="secondary-action" type="button" onClick={dismissDialog}>
