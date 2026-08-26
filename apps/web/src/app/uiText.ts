@@ -1,7 +1,7 @@
-import { EN } from "./i18n/en";
-import { resolveLocale, type Locale } from "./i18n/locale";
-import { ZH_HANT } from "./i18n/zhHant";
-import type { UiDictionary } from "./i18n/dictionary";
+import { EN } from "./i18n/en.js";
+import { resolveLocale, type Locale } from "./i18n/locale.js";
+import { ZH_HANT } from "./i18n/zhHant.js";
+import type { UiDictionary } from "./i18n/dictionary.js";
 
 const DICTIONARIES: Record<Locale, UiDictionary> = {
   "zh-Hant": ZH_HANT,

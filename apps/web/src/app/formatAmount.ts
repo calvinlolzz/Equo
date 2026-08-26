@@ -1,4 +1,4 @@
-import { ACTIVE_LOCALE } from "./uiText";
+import { ACTIVE_LOCALE } from "./uiText.js";
 /**
  * Currency-aware replacement for the old per-file `formatTwd`/`formatSigned`
  * copies (App.tsx, ExpenseComposerSheet.tsx, ExpenseDetailDialog.tsx all had

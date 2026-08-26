@@ -1,4 +1,4 @@
-import type { Locale } from "../../app/i18n/locale";
+import type { Locale } from "../../app/i18n/locale.js";
 
 /**
  * The words that go on a lock screen.

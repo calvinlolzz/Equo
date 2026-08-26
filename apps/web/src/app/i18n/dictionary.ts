@@ -1,4 +1,4 @@
-import type { ZH_HANT } from "./zhHant";
+import type { ZH_HANT } from "./zhHant.js";
 
 /**
  * The shape every locale must fill, derived from the 繁體中文 source rather

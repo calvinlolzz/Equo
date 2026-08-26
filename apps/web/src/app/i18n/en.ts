@@ -1,4 +1,4 @@
-import type { UiDictionary } from "./dictionary";
+import type { UiDictionary } from "./dictionary.js";
 
 /**
  * English.

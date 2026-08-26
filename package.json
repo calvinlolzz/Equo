@@ -11,12 +11,13 @@
     "check:encoding": "python scripts/check-encoding.py",
     "check:launch-readiness": "python scripts/check-launch-readiness-stage.py",
     "check:built-web-home": "python scripts/check-built-web-home.py",
+    "check:api-esm-imports": "python scripts/check-api-esm-imports.py",
     "smoke:production": "python scripts/smoke-production-api.py",
     "test:built-web-home": "python scripts/test-check-built-web-home.py",
     "test:smoke-web-rules": "python scripts/test-smoke-production-web.py",
     "smoke:production:web": "npm run test:smoke-web-rules && python scripts/smoke-production-web.py",
     "smoke:production:all": "npm run smoke:production:web && npm run smoke:production",
-    "verify:release": "npm test && npm run build && npm run check:built-web-home && npm run check:encoding && npm run check:launch-readiness"
+    "verify:release": "npm test && npm run build && npm run check:api-esm-imports && npm run check:built-web-home && npm run check:encoding && npm run check:launch-readiness"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

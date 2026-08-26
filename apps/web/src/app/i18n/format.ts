@@ -1,4 +1,4 @@
-import type { Locale } from "./locale";
+import type { Locale } from "./locale.js";
 
 /**
  * The locale-aware bits of formatting that are not just a string swap.
