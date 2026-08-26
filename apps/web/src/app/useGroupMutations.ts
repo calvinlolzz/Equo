@@ -45,6 +45,12 @@ export function useGroupMutations({
   loadArchivedGroups,
 }: UseGroupMutationsDeps) {
   const [groupName, setGroupName] = useState<string>("");
+  /**
+   * The 每月預算 box, held as the typed string rather than a number: "" has to
+   * stay distinguishable from 0, because Number("") is 0 and that would read as
+   * a budget of nothing instead of no budget.
+   */
+  const [monthlyBudget, setMonthlyBudget] = useState<string>("");
   const [groupCoverDataUrl, setGroupCoverDataUrl] = useState<string>("");
   const [groupCoverUrl, setGroupCoverUrl] = useState<string>("");
 
@@ -97,6 +103,9 @@ export function useGroupMutations({
   function openEditGroup() {
     if (!activeGroup) return;
     setGroupName(activeGroup.name);
+    setMonthlyBudget(
+      activeGroup.monthlyBudgetMinor ? String(activeGroup.monthlyBudgetMinor / 100) : "",
+    );
     setGroupCoverDataUrl("");
     setGroupCoverUrl(activeGroup.coverImageUrl ?? "");
     setDialog("editGroup");
@@ -116,6 +125,18 @@ export function useGroupMutations({
     if (!activeGroup || !cloudStore) return;
     const name = groupName.trim();
     if (!name) return;
+
+    // Empty box = clear the budget. Kept as a string in state so "" stays
+    // distinguishable from 0 - Number("") is 0, which would be a budget of
+    // nothing rather than no budget.
+    const typed = monthlyBudget.trim();
+    const budgetMinor = typed === "" ? null : Math.round(Number(typed) * 100);
+
+    if (typed !== "" && (!Number.isFinite(budgetMinor) || (budgetMinor ?? 0) <= 0)) {
+      showToast(UI_TEXT.budget.invalid);
+      return;
+    }
+
     if (!beginAction("editGroup")) return;
 
     setBusy(true);
@@ -125,6 +146,13 @@ export function useGroupMutations({
         await cloudStore.updateGroupCover(activeGroup.id, name, uploadedUrl);
       } else {
         await cloudStore.renameGroup(activeGroup.id, name);
+      }
+
+      // Separate call rather than folding it into the rename: the cover path
+      // above already has its own endpoint, and this keeps a budget change
+      // working the same way whichever branch ran.
+      if ((activeGroup.monthlyBudgetMinor ?? null) !== budgetMinor) {
+        await cloudStore.setMonthlyBudget(activeGroup.id, name, budgetMinor);
       }
       recordCloudActivity(activeGroup.id, `${text.editGroup}: ${name}`);
       setDialog(null);
@@ -180,6 +208,8 @@ export function useGroupMutations({
   return {
     groupName,
     setGroupName,
+    monthlyBudget,
+    setMonthlyBudget,
     groupCoverDataUrl,
     setGroupCoverDataUrl,
     groupCoverUrl,

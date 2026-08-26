@@ -32,7 +32,7 @@ import {
 } from "./groupRepository.js";
 
 /** The column list every GroupRecord-shaped read/write returns. */
-const GROUP_COLUMNS = "id,name,currency,owner_member_id,cover_image_url";
+const GROUP_COLUMNS = "id,name,currency,owner_member_id,cover_image_url,monthly_budget_minor";
 /** The column list every GroupMemberRecord-shaped read/write returns. */
 const MEMBER_COLUMNS = "id,group_id,user_id,display_name,role,status,payment_note";
 
@@ -401,9 +401,17 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
         await client.update<GroupRecord>(
           "groups",
           query(eq("id", groupId), isNull("deleted_at"), columns(GROUP_COLUMNS)),
-          request.cover_image_url == null
-            ? { name: request.name, updated_at: nowIso() }
-            : { name: request.name, cover_image_url: request.cover_image_url, updated_at: nowIso() },
+          {
+            name: request.name,
+            updated_at: nowIso(),
+            // Both fields are patch-style: an omitted key is left alone, so a
+            // rename cannot silently clear a cover or a budget it never
+            // mentioned. `null` is a real value here and does clear the budget.
+            ...(request.cover_image_url == null ? {} : { cover_image_url: request.cover_image_url }),
+            ...(request.monthly_budget_minor === undefined
+              ? {}
+              : { monthly_budget_minor: request.monthly_budget_minor }),
+          },
         ),
         "group",
       );

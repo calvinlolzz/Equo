@@ -672,6 +672,26 @@ export function createCloudGroupsStore({
     }
   }
 
+  /**
+   * Set or clear 每月預算. Rethrows so the form can keep what was typed - the
+   * same reason setMemberPaymentNote does.
+   */
+  async function setMonthlyBudget(groupId: string, name: string, budgetMinor: number | null) {
+    try {
+      const { group } = await apiClient.updateGroup(groupId, {
+        client_request_id: crypto.randomUUID(),
+        name,
+        monthly_budget_minor: budgetMinor,
+      });
+      const localGroup = toGroup(group);
+      patchGroupInList(localGroup);
+      patchGroupDetail(groupId, { group: localGroup });
+    } catch (error) {
+      resyncInBackground(groupId);
+      throw error;
+    }
+  }
+
   async function renameGroup(groupId: string, name: string) {
     try {
       const { group } = await apiClient.updateGroup(groupId, { client_request_id: crypto.randomUUID(), name });
@@ -1118,6 +1138,7 @@ export function createCloudGroupsStore({
     markGroupRead,
     createGroup,
     renameGroup,
+    setMonthlyBudget,
     addVirtualMember,
     renameMember,
     setMemberPaymentNote,

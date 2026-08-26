@@ -24,6 +24,8 @@ export type GroupSummary = {
   currency: string;
   owner_member_id: string;
   cover_image_url?: string | null;
+  /** 每月預算 in the group's currency, or null/absent when nobody set one. */
+  monthly_budget_minor?: number | null;
   /** Only GET /groups fills this in — see groupRepository's GroupRecord. */
   unread_count?: number;
   /**
@@ -191,6 +193,12 @@ export type SpendPeriodKind = "year" | "month";
 export type SpendPeriodSummary = {
   key: string;
   total_minor: number;
+  /**
+   * The caller's own share of the same bucket. Present so a period-over-period
+   * comparison stays correct on both sides of the 個人／群組 toggle; absent on
+   * an API deployed before that shipped.
+   */
+  personal_total_minor?: number;
 };
 
 export type SpendCategoryBreakdown = {

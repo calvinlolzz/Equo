@@ -30,6 +30,13 @@ export function toGroup(summary: GroupSummary): Group {
     name: summary.name,
     currency: summary.currency,
     coverImageUrl: summary.cover_image_url ?? undefined,
+
+    // Same rule as unreadCount below: only spread when the payload carries it.
+    // Absent means "this response does not say", null means "no budget" - and
+    // writing null for absent would clear a budget on every read that omits it.
+    ...(summary.monthly_budget_minor === undefined
+      ? {}
+      : { monthlyBudgetMinor: summary.monthly_budget_minor }),
     // Only spread when the server sent one. Absent means "this payload does
     // not know" (a detail read, a create response) rather than "zero unread",
     // so a group written back from one of those cannot silently clear a badge

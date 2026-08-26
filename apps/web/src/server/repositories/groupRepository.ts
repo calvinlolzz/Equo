@@ -16,6 +16,8 @@ export type GroupRecord = {
   currency: string;
   owner_member_id: string;
   cover_image_url?: string | null;
+  /** 每月預算 in the group's currency; null when nobody set one. */
+  monthly_budget_minor?: number | null;
   /**
    * Entries recorded by somebody else since the caller last opened this group.
    * Only listGroups fills it in - every other read leaves it undefined, since

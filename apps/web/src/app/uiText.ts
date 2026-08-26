@@ -302,6 +302,13 @@ export const UI_TEXT = {
     historyLoading: "載入中…",
     historyDegraded: "目前離線，只顯示本機已載入的紀錄。",
   },
+  budget: {
+    label: "每月預算",
+    /** Empty is a valid answer and means "no budget", so say that here. */
+    hint: "留空代表不設預算。只在「每月統計」時顯示進度。",
+    placeholder: "例：20000",
+    invalid: "預算請填大於 0 的數字，或留空取消。",
+  },
   paymentNote: {
     label: "收款資訊",
     /** Shown on the settlement row where you are the one who has to pay. */

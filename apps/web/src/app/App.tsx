@@ -348,6 +348,8 @@ export function App() {
   const {
     groupName,
     setGroupName,
+    monthlyBudget,
+    setMonthlyBudget,
     groupCoverDataUrl,
     setGroupCoverDataUrl,
     groupCoverUrl,
@@ -2073,6 +2075,19 @@ export function App() {
                     <span>{text.currency}</span>
                     <input value={activeGroup?.currency ?? "TWD"} aria-label={text.currency} readOnly />
                   </label>
+                  <label>
+                    <span>{UI_TEXT.budget.label}</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={monthlyBudget}
+                      onChange={(event) => setMonthlyBudget(event.target.value)}
+                      placeholder={UI_TEXT.budget.placeholder}
+                      aria-label={UI_TEXT.budget.label}
+                    />
+                    <small className="dialog-field-hint">{UI_TEXT.budget.hint}</small>
+                  </label>
                   <div className="dialog-action-row">
                     <button className="secondary-action" type="button" onClick={dismissDialog}>
                       {text.cancel}
@@ -2131,6 +2146,7 @@ export function App() {
                 <AnalysisPanel
                   totalExpenseMinor={totalExpenseMinor}
                   currency={activeGroup?.currency ?? "TWD"}
+                  monthlyBudgetMinor={activeGroup?.monthlyBudgetMinor}
                   members={members}
                   balances={balances}
                   maxBalanceMinor={maxBalanceMinor}

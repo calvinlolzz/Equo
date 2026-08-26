@@ -3,6 +3,8 @@ export type Group = {
   name: string;
   currency: string;
   coverImageUrl?: string;
+  /** 每月預算 in the group's currency; undefined when nobody set one. */
+  monthlyBudgetMinor?: number | null;
   /**
    * Entries somebody else recorded since this user last opened the group.
    * Only the group LIST carries it (see cloudStore's refreshGroups); a group

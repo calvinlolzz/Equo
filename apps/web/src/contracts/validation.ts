@@ -178,6 +178,16 @@ export function validateCreateVirtualMemberRequest(request: CreateVirtualMemberR
   return validateMemberDisplayName(request);
 }
 
+/**
+ * Matches the groups_monthly_budget_positive CHECK: a positive whole number of
+ * minor units, or null to clear. Absent means "leave it alone", which is why
+ * undefined is valid here and null is not the same thing.
+ */
+export function validateMonthlyBudgetMinor(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 2_000_000_000;
+}
+
 export function validateRenameGroupMemberRequest(request: RenameGroupMemberRequest): ValidationResult {
   return validateMemberDisplayName(request);
 }

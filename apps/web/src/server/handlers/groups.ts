@@ -10,6 +10,7 @@ import type {
 } from "../../contracts/schemas.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import { INVITE_EXPIRED, type GroupMemberRecord, type GroupRepository } from "../repositories/groupRepository.js";
+import { validateMonthlyBudgetMinor } from "../../contracts/validation.js";
 import { urlToStoragePath, type SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
 type HandlerResult<T> =
@@ -211,6 +212,12 @@ export async function handleUpdateGroup(
 
   if (owner.ok === false) {
     return owner.error;
+  }
+
+  // Rejected rather than clamped: a budget the caller did not ask for is worse
+  // than an error, and the CHECK constraint would turn a bad value into a 500.
+  if (!validateMonthlyBudgetMinor(request.monthly_budget_minor)) {
+    return invalidMember("monthly_budget_minor must be a positive whole number, or null to clear it.", request.client_request_id);
   }
 
   const { group, previousCoverImageUrl } = await repository.updateGroup(groupId, request);

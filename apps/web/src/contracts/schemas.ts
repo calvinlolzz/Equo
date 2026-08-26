@@ -13,6 +13,12 @@ export type CreateGroupRequest = IdempotentRequest & {
 export type UpdateGroupRequest = IdempotentRequest & {
   name: string;
   cover_image_url?: string;
+  /**
+   * 每月預算 in the group's currency, in minor units. `null` clears it;
+   * omitting the field leaves it alone, so an edit that only renames the group
+   * cannot wipe a budget it never mentioned.
+   */
+  monthly_budget_minor?: number | null;
 };
 
 export type CreateVirtualMemberRequest = IdempotentRequest & {

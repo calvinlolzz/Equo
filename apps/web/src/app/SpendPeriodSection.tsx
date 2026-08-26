@@ -1,6 +1,8 @@
 import type { SpendBreakdown, SpendPeriodKind } from "./apiClient";
 import { CategoryDonut } from "./CategoryDonut";
 import { formatAmount } from "./formatAmount";
+import { budgetProgress } from "./spendBudget";
+import { describeSpendComparison, spendComparison } from "./spendComparison";
 import { formatPeriodChipLabel, formatPeriodTitle } from "./spendPeriods";
 import { useDragScrollX } from "./useDragScrollX";
 
@@ -14,6 +16,8 @@ type Props = {
   error: string | null;
   /** Fallback while the first request is still in flight. */
   currency: string;
+  /** 每月預算 in the group's currency, or null when nobody set one. */
+  monthlyBudgetMinor?: number | null;
   onSelectKind: (kind: SpendPeriodKind) => void;
   onSelectKey: (key: string) => void;
   onRetry: () => void;
@@ -36,6 +40,7 @@ export function SpendPeriodSection({
   loading,
   error,
   currency,
+  monthlyBudgetMinor,
   onSelectKind,
   onSelectKey,
   onRetry,
@@ -45,6 +50,13 @@ export function SpendPeriodSection({
   const periods = breakdown?.periods ?? [];
   const totalMinor = breakdown ? (personal ? breakdown.personal_total_minor : breakdown.group_total_minor) : 0;
   const activeCurrency = breakdown?.currency ?? currency;
+  const comparison = spendComparison(breakdown, scope);
+  const budget = budgetProgress({
+    budgetMinor: monthlyBudgetMinor,
+    spentMinor: totalMinor,
+    periodKind,
+    scope,
+  });
 
   // In 個人 mode a category the user had no share of is not "0 spent", it is
   // simply not theirs - listing it would pad the breakdown with empty rows.
@@ -101,7 +113,47 @@ export function SpendPeriodSection({
             <div className="spend-period-total">
               <span>{formatPeriodTitle(periodKind, periodKey)}</span>
               <strong>{formatAmount(totalMinor, activeCurrency)}</strong>
+              {/* Only on the newest period, and only when there is a real
+                  previous one to compare against — see spendComparison. */}
+              {comparison ? (
+                <small
+                  className={
+                    comparison.changePct > 0
+                      ? "spend-period-change spend-period-change--up"
+                      : "spend-period-change"
+                  }
+                >
+                  {describeSpendComparison(comparison, periodKind)}
+                </small>
+              ) : null}
             </div>
+
+            {budget ? (
+              <div className={budget.over ? "spend-budget spend-budget--over" : "spend-budget"}>
+                <div className="spend-budget-line">
+                  <span>{"每月預算"}</span>
+                  <span>
+                    {budget.over
+                      ? `超出 ${formatAmount(Math.abs(budget.remainingMinor), activeCurrency)}`
+                      : `還剩 ${formatAmount(budget.remainingMinor, activeCurrency)}`}
+                  </span>
+                </div>
+                <div
+                  className="spend-budget-bar"
+                  role="progressbar"
+                  aria-label={"每月預算使用進度"}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.min(budget.pct, 100)}
+                >
+                  {/* The BAR caps at 100% because a wider-than-its-track fill
+                      is just a broken layout; the number beside it does not,
+                      because 140% is the thing worth seeing. */}
+                  <span style={{ width: `${Math.min(budget.pct, 100)}%` }} />
+                </div>
+                <small>{`${budget.pct}%・${formatAmount(budget.budgetMinor, activeCurrency)}`}</small>
+              </div>
+            ) : null}
           </>
         )}
       </div>

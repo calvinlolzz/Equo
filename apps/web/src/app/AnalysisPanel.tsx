@@ -15,6 +15,8 @@ const text = UI_TEXT.app;
 type AnalysisPanelProps = {
   totalExpenseMinor: number;
   currency: string;
+  /** 每月預算 for this group, or null when nobody set one. */
+  monthlyBudgetMinor?: number | null;
   members: Member[];
   balances: Map<string, number>;
   maxBalanceMinor: number;
@@ -50,6 +52,7 @@ type AnalysisPanelProps = {
 export function AnalysisPanel({
   totalExpenseMinor,
   currency,
+  monthlyBudgetMinor,
   members,
   balances,
   maxBalanceMinor,
@@ -111,6 +114,7 @@ export function AnalysisPanel({
         loading={spendBreakdown.loading}
         error={spendBreakdown.error}
         currency={currency}
+        monthlyBudgetMinor={monthlyBudgetMinor}
         onSelectKind={spendBreakdown.selectPeriodKind}
         onSelectKey={spendBreakdown.selectPeriodKey}
         onRetry={spendBreakdown.retry}

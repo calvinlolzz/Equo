@@ -7,7 +7,7 @@ import { useGroupMutations } from "./useGroupMutations";
 
 const group: Group = { id: "group_1", name: "東京旅行", currency: "TWD" };
 
-function setup(overrides: { cloudStore?: Partial<CloudGroupsStore> } = {}) {
+function setup(overrides: { cloudStore?: Partial<CloudGroupsStore>; activeGroup?: Group } = {}) {
   const showToast = vi.fn();
   const recordCloudActivity = vi.fn();
   const beginAction = vi.fn(() => true);
@@ -22,6 +22,7 @@ function setup(overrides: { cloudStore?: Partial<CloudGroupsStore> } = {}) {
     uploadGroupImage: vi.fn(async () => "https://cdn/cover.png"),
     updateGroupCover: vi.fn(async () => {}),
     renameGroup: vi.fn(async () => {}),
+    setMonthlyBudget: vi.fn(async () => {}),
     archiveGroup: vi.fn(async () => {}),
     deleteGroup: vi.fn(async () => {}),
     ...overrides.cloudStore,
@@ -29,7 +30,7 @@ function setup(overrides: { cloudStore?: Partial<CloudGroupsStore> } = {}) {
 
   const hook = renderHook(() =>
     useGroupMutations({
-      activeGroup: group,
+      activeGroup: overrides.activeGroup ?? group,
       cloudStore,
       showToast,
       recordCloudActivity,
@@ -160,5 +161,69 @@ describe("useGroupMutations", () => {
 
     expect(setDialog).toHaveBeenCalledWith("archivedList");
     expect(loadArchivedGroups).toHaveBeenCalled();
+  });
+});
+
+describe("每月預算", () => {
+  test("a typed amount is saved in minor units", async () => {
+    const { hook, cloudStore } = setup();
+
+    act(() => hook.result.current.setGroupName("東京旅行"));
+    act(() => hook.result.current.setMonthlyBudget("20000"));
+    await act(async () => {
+      await hook.result.current.updateActiveGroup();
+    });
+
+    expect(cloudStore.setMonthlyBudget).toHaveBeenCalledWith("group_1", "東京旅行", 2_000_000);
+  });
+
+  test("an empty box clears the budget rather than setting it to zero", async () => {
+    // Number("") is 0, so the naive parse would store a budget of nothing
+    // instead of no budget - and "0% of NT$0" is not a feature.
+    const withBudget = { ...group, monthlyBudgetMinor: 2_000_000 };
+    const { hook, cloudStore } = setup({ activeGroup: withBudget });
+
+    act(() => hook.result.current.setGroupName("東京旅行"));
+    act(() => hook.result.current.setMonthlyBudget("  "));
+    await act(async () => {
+      await hook.result.current.updateActiveGroup();
+    });
+
+    expect(cloudStore.setMonthlyBudget).toHaveBeenCalledWith("group_1", "東京旅行", null);
+  });
+
+  test("an unchanged budget is not written back", async () => {
+    const withBudget = { ...group, monthlyBudgetMinor: 2_000_000 };
+    const { hook, cloudStore } = setup({ activeGroup: withBudget });
+
+    act(() => hook.result.current.openEditGroup());
+    await act(async () => {
+      await hook.result.current.updateActiveGroup();
+    });
+
+    expect(cloudStore.setMonthlyBudget).not.toHaveBeenCalled();
+  });
+
+  test("opening the dialog shows the saved budget in major units", () => {
+    const withBudget = { ...group, monthlyBudgetMinor: 2_000_000 };
+    const { hook } = setup({ activeGroup: withBudget });
+
+    act(() => hook.result.current.openEditGroup());
+
+    expect(hook.result.current.monthlyBudget).toBe("20000");
+  });
+
+  test("a negative or non-numeric budget is refused, and nothing is written", async () => {
+    const { hook, cloudStore, showToast } = setup();
+
+    act(() => hook.result.current.setGroupName("東京旅行"));
+    act(() => hook.result.current.setMonthlyBudget("-5"));
+    await act(async () => {
+      await hook.result.current.updateActiveGroup();
+    });
+
+    expect(cloudStore.setMonthlyBudget).not.toHaveBeenCalled();
+    expect(cloudStore.renameGroup).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalled();
   });
 });
