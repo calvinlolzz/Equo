@@ -18,6 +18,7 @@ import {
   type AdminGroupDetail,
   type AdminGroupFilterOption,
   type AdminAutoNudgeSettings,
+  type AdminRetention,
   type SiteNoticeResponse,
   type AdminGroupListPage,
   type AdminHealthSummary,
@@ -532,6 +533,8 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
         </div>
       </div>
       {trends ? <TrendChartCard trends={trends} /> : <p className="admin-loading">載入中…</p>}
+
+      <RetentionCard client={client} />
 
       {health && (
         <>
@@ -3494,6 +3497,144 @@ function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canEdit: bo
  * console that stops everybody recording expenses, so it is the loudest control
  * on the page and every change is written to the audit log.
  */
+/**
+ * 世代留存.
+ *
+ * ⚠️ Two things about this chart are more important than the chart.
+ *
+ * It measures RECORDING, not use. Only writes carry a per-event timestamp, so
+ * somebody who opens the app every week to check what they owe does not appear
+ * here at all - which for a split-bill app is a real category of user, the one
+ * who never records and always pays.
+ *
+ * And at a small sample a percentage is a lie with a decimal point: one person
+ * out of three is 33.3%, and it moves 33 points when that person does anything.
+ * So the cells show COUNTS, with the cohort size next to the row, and the
+ * percentage only appears where the cohort is big enough for it to mean
+ * something. The point of building it now is that retention can only ever be
+ * computed from history you already have, and the history only accumulates if
+ * the measurement exists.
+ */
+const RETENTION_MIN_COHORT_FOR_PERCENT = 10;
+
+function RetentionCard({ client }: { client: EquoApiClient }) {
+  const [period, setPeriod] = useState<"week" | "month">("week");
+  const [data, setData] = useState<AdminRetention | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setError("");
+    setData(null);
+    client
+      .adminRetention(period, 12)
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch(() => {
+        if (!cancelled) setError("留存資料載入失敗，可能是資料庫尚未套用 admin_retention migration。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, period]);
+
+  const width = data ? Math.max(0, ...data.cohorts.map((cohort) => cohort.retained.length)) : 0;
+
+  return (
+    <div className="admin-settings-card">
+      <div className="admin-settings-head">
+        <h2>世代留存</h2>
+        <p>
+          {"依註冊時間分組，看每一組在之後每一期還有多少人在記帳。格子裡是人數不是比例——樣本小的時候，比例只是把 1/3 寫成 33.3%。"}
+        </p>
+      </div>
+
+      <div className="admin-chips">
+        {(["week", "month"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={period === value ? "admin-chip admin-chip--active" : "admin-chip"}
+            aria-pressed={period === value}
+            onClick={() => setPeriod(value)}
+          >
+            {value === "week" ? "每週" : "每月"}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="admin-error">{error}</p>}
+      {!data && !error && <p className="admin-loading">載入中…</p>}
+
+      {data && (
+        <>
+          <p className="admin-retention-summary">
+            {`共 ${data.total_users} 位使用者，其中 `}
+            <strong>{`${data.never_active} 位註冊後從來沒記過任何一筆`}</strong>
+            {"。"}
+          </p>
+
+          {data.cohorts.length === 0 ? (
+            <p className="admin-loading">還沒有足夠的資料。</p>
+          ) : (
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-retention-table">
+                <thead>
+                  <tr>
+                    <th>{period === "week" ? "註冊週" : "註冊月"}</th>
+                    <th>人數</th>
+                    {Array.from({ length: width }, (_, index) => (
+                      <th key={index}>{`+${index}`}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.cohorts.map((cohort) => (
+                    <tr key={cohort.start}>
+                      <td>{cohort.start}</td>
+                      <td className="admin-table__num">{cohort.size}</td>
+                      {Array.from({ length: width }, (_, index) => {
+                        const value = cohort.retained[index];
+                        if (value === undefined) {
+                          // Not a zero: this period has not happened yet for
+                          // this cohort. Showing 0 would read as everybody
+                          // leaving rather than as no data.
+                          return <td key={index} className="admin-retention-cell admin-retention-cell--future" />;
+                        }
+                        const share = cohort.size > 0 ? value / cohort.size : 0;
+                        return (
+                          <td
+                            key={index}
+                            className={value > 0 ? "admin-retention-cell admin-retention-cell--live" : "admin-retention-cell"}
+                            // Opacity carries the proportion so the shape is
+                            // readable at a glance, while the number stays the
+                            // thing you actually read.
+                            style={value > 0 ? { opacity: 0.35 + share * 0.65 } : undefined}
+                          >
+                            {value}
+                            {cohort.size >= RETENTION_MIN_COHORT_FOR_PERCENT && (
+                              <small>{`${Math.round(share * 100)}%`}</small>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="admin-retention-caveat">
+            {"⚠️ 這裡的「活躍」是記了一筆帳或留了一則言。只開 App 看自己欠多少不會留下可回溯的紀錄，所以那個從不記帳、但每次都準時付錢的人，在這張表上完全不存在。"}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
   const [saved, setSaved] = useState<SiteNoticeResponse | null>(null);
   const [message, setMessage] = useState("");

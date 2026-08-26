@@ -93,6 +93,13 @@ export type ExpenseSummary = {
   expense_shares?: ExpenseShareSummary[];
 };
 
+export type AdminRetention = {
+  period: "week" | "month";
+  total_users: number;
+  never_active: number;
+  cohorts: Array<{ start: string; size: number; retained: number[] }>;
+};
+
 export type SiteNoticeResponse = {
   banner: { message: string; level: "info" | "warning"; ends_at: string | null; active: boolean };
   maintenance: { enabled: boolean; message: string };
@@ -711,6 +718,9 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     },
     adminStorage() {
       return request<AdminStorageSummary>("/admin/storage", { method: "GET" });
+    },
+    adminRetention(period: "week" | "month", periods = 12) {
+      return request<AdminRetention>(`/admin/retention?period=${period}&periods=${periods}`, { method: "GET" });
     },
     adminTrends(days: number) {
       return request<AdminTrendsSummary>(`/admin/trends?days=${days}`, { method: "GET" });

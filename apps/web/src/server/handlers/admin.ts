@@ -48,6 +48,7 @@ import type {
   AdminScanUsageRecord,
   AdminStorageRecord,
   AdminTrendsRecord,
+  AdminRetentionRecord,
   AdminUserDetailRecord,
   AdminUserDisabledResult,
   AdminUserListRecord,
@@ -280,6 +281,30 @@ export async function handleAdminTrends(
 
   const trends = await repository.getTrends(resolveTrendDays(days));
   return { ok: true, status: 200, body: trends };
+}
+
+/**
+ * Cohort retention. Any admin role - it is a read, like trends and health.
+ */
+export async function handleAdminRetention(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  period: string | undefined,
+  periods: string | undefined,
+): Promise<HandlerResult<AdminRetentionRecord>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  // Anything unrecognised becomes the default rather than a 400: this is a
+  // query string on a dashboard, and a typo should show the dashboard.
+  const resolved = period === "month" ? "month" : "week";
+  const count = Number(periods);
+  const window = Number.isInteger(count) && count >= 1 && count <= 52 ? count : 12;
+
+  return { ok: true, status: 200, body: await repository.getRetention(resolved, window) };
 }
 
 export async function handleAdminHealth(

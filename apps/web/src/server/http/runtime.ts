@@ -64,6 +64,7 @@ import {
   adminMeRoute,
   adminGetAutoNudgeRoute,
   adminGetSiteNoticeRoute,
+  adminRetentionRoute,
   adminStopViewAsRoute,
   adminViewAsRoute,
   adminSetSiteNoticeRoute,
@@ -1091,6 +1092,19 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "GET /api/v1/admin/trends",
       async handle(request) {
         const result = await adminTrendsRoute(routeOptions(options, request), queryParam(request, "days"));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/admin\/retention$/,
+      label: "GET /api/v1/admin/retention",
+      async handle(request) {
+        const result = await adminRetentionRoute(
+          routeOptions(options, request),
+          queryParam(request, "period"),
+          queryParam(request, "periods"),
+        );
         return jsonResponse(result.status, result.body);
       },
     },

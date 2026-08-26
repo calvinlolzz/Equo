@@ -195,6 +195,22 @@ export type AdminUserGroupRecord = {
   last_expense_at: string | null;
 };
 
+export type AdminRetentionRecord = {
+  period: "week" | "month";
+  total_users: number;
+  /**
+   * Signed up and never recorded anything. At a small sample this single number
+   * says more than the whole curve does.
+   */
+  never_active: number;
+  cohorts: Array<{
+    start: string;
+    size: number;
+    /** Index is the offset from the signup period; [0] is that period itself. */
+    retained: number[];
+  }>;
+};
+
 export type AdminUserDetailRecord = {
   user: AdminUserSummaryRecord;
   groups: AdminUserGroupRecord[];
@@ -598,6 +614,14 @@ export type AdminRepository = {
   getReceiptScanUsage(days: number): Promise<AdminScanUsageRecord>;
   listUsers(search: string, limit: number, offset: number): Promise<AdminUserListRecord>;
   getUserDetail(userId: string): Promise<AdminUserDetailRecord | null>;
+  /**
+   * Cohort retention.
+   *
+   * ⚠️ Measures RECORDING, not use: only writes carry a per-event timestamp, so
+   * somebody who opens the app every week to check what they owe is invisible
+   * here. See the migration for why last_read_at cannot fill that gap.
+   */
+  getRetention(period: "week" | "month", periods: number): Promise<AdminRetentionRecord>;
   /**
    * Record that an admin opened a read-only view as this user.
    *

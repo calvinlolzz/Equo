@@ -1190,3 +1190,83 @@ describe("notifying a whole group from its page", () => {
     expect(screen.queryByRole("button", { name: "發通知給這個群組" })).toBeNull();
   });
 });
+
+
+/**
+ * The retention table's honesty rules.
+ *
+ * The presentation IS the feature here. A cohort table that shows a confident
+ * 33.3% over three people, or a 0 where a period simply has not happened yet,
+ * is worse than no table - it invites conclusions the data cannot support.
+ */
+describe("the retention table", () => {
+  const retentionRoutes = {
+    ...baseRoutes,
+    "GET /admin/retention": {
+      period: "week",
+      total_users: 8,
+      never_active: 3,
+      cohorts: [
+        // Three periods elapsed for this one.
+        { start: "2026-06-29", size: 2, retained: [2, 2, 1] },
+        // Only one has elapsed for this one - the rest must render blank, not 0.
+        { start: "2026-07-13", size: 12, retained: [7] },
+      ],
+    },
+  };
+
+  test("shows how many signed up and never recorded anything", async () => {
+    // At a small sample this single number says more than the whole curve.
+    fakeAdminApi(retentionRoutes);
+    renderAdmin();
+
+    expect(await screen.findByText(/3 位註冊後從來沒記過任何一筆/)).toBeTruthy();
+  });
+
+  test("cells carry counts, in order", async () => {
+    fakeAdminApi(retentionRoutes);
+    renderAdmin();
+
+    const row = (await screen.findByText("2026-06-29")).closest("tr") as HTMLElement;
+    const cells = [...row.querySelectorAll(".admin-retention-cell")].map((cell) => cell.textContent);
+
+    // size 2, then 2 / 2 / 1 across three elapsed periods.
+    expect(cells).toEqual(["2", "2", "1"]);
+  });
+
+  test("no percentage on a cohort too small for one to mean anything", async () => {
+    // 1 of 2 is not "50%", it is one person.
+    fakeAdminApi(retentionRoutes);
+    renderAdmin();
+
+    const row = (await screen.findByText("2026-06-29")).closest("tr") as HTMLElement;
+    expect(within(row).queryByText(/%/)).toBeNull();
+  });
+
+  test("but a big enough cohort does get one", async () => {
+    fakeAdminApi(retentionRoutes);
+    renderAdmin();
+
+    const row = (await screen.findByText("2026-07-13")).closest("tr") as HTMLElement;
+    // 7 of 12.
+    expect(within(row).getByText("58%")).toBeTruthy();
+  });
+
+  test("a period that has not happened yet is blank, not zero", async () => {
+    // A 0 would read as everybody leaving rather than as no data.
+    fakeAdminApi(retentionRoutes);
+    renderAdmin();
+
+    const row = (await screen.findByText("2026-07-13")).closest("tr") as HTMLElement;
+    const future = row.querySelectorAll(".admin-retention-cell--future");
+    expect(future.length).toBe(2);
+    for (const cell of future) expect(cell.textContent).toBe("");
+  });
+
+  test("says out loud that it only measures recording", async () => {
+    fakeAdminApi(retentionRoutes);
+    renderAdmin();
+
+    expect(await screen.findByText(/從不記帳、但每次都準時付錢的人/)).toBeTruthy();
+  });
+});

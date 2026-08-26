@@ -910,6 +910,66 @@ button.admin-inbox__item:hover {
   font-size: 13px;
 }
 
+/* ---- 世代留存 ------------------------------------------------------------ */
+
+.admin-retention-summary {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #3c4149;
+}
+
+.admin-retention-table th,
+.admin-retention-table td {
+  text-align: center;
+  /* Tabular figures so a column of counts lines up and the shape of the
+     triangle is readable without counting digits. */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-retention-table th:first-child,
+.admin-retention-table td:first-child {
+  text-align: left;
+}
+
+.admin-retention-cell {
+  color: #9aa1ab;
+}
+
+/* Opacity carries the proportion; the number stays the thing you read. Set
+   inline from the data, so only the colour lives here. */
+.admin-retention-cell--live {
+  color: #0f172a;
+  background: rgba(16, 185, 129, 0.16);
+  font-weight: 700;
+}
+
+.admin-retention-cell--live small {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* A period that has not happened yet for this cohort. Blank, not zero - a zero
+   would read as everybody leaving rather than as no data. */
+.admin-retention-cell--future {
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    rgba(0, 0, 0, 0.03) 4px,
+    rgba(0, 0, 0, 0.03) 8px
+  );
+}
+
+.admin-retention-caveat {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #6b7280;
+}
+
 .admin-chips {
   display: flex;
   gap: 6px;

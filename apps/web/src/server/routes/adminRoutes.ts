@@ -13,6 +13,7 @@ import {
   handleAdminSetRateOverride,
   handleAdminGetAutoNudgeSettings,
   handleAdminGetSiteNotice,
+  handleAdminRetention,
   handleAdminViewAs,
   handleAdminSetSiteNotice,
   handleAdminGetReceiptScanSettings,
@@ -88,6 +89,20 @@ export async function adminOverviewRoute(options: RouteOptions) {
   }
 
   return handleAdminOverview(createSupabaseAdminRepository(options.client), auth.context);
+}
+
+export async function adminRetentionRoute(
+  options: RouteOptions,
+  period: string | undefined,
+  periods: string | undefined,
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminRetention(createSupabaseAdminRepository(options.client), auth.context, period, periods);
 }
 
 export async function adminTrendsRoute(options: RouteOptions, days: string | undefined) {
