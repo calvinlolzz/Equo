@@ -1029,9 +1029,32 @@ button.admin-inbox__item:hover {
     display: none;
   }
 
+  /* The nav gets a row of its own and scrolls sideways in it.
+     Measured, not guessed: nine items came to 410px against a 375px viewport
+     with overflow visible, so the bar pushed the whole PAGE sideways (786px of
+     scroll width on every screen) and carried the account row out to x=785 -
+     the sign-out button was simply not reachable on a phone. */
+  .admin-sidebar {
+    flex-wrap: wrap;
+  }
+
   .admin-nav {
+    order: 3;
+    flex-basis: 100%;
     flex-direction: row;
     gap: 4px;
+    overflow-x: auto;
+    /* Scroll rather than wrap: a tab strip that reflows to two or three rows
+       moves every destination the moment one is added. */
+    flex-wrap: nowrap;
+    margin: 4px -16px -10px;
+    padding: 4px 16px 10px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .admin-nav__section {
@@ -1040,11 +1063,17 @@ button.admin-inbox__item:hover {
 
   .admin-nav__item {
     width: auto;
+    flex: 0 0 auto;
+    /* 44px: the same tap target the app itself uses. These were 34px. */
+    min-height: 44px;
     padding: 8px 12px;
   }
 
+  /* Labels come BACK on a phone. They were hidden to squeeze nine items onto a
+     shared row - now that the nav has its own scrolling row, nine unlabelled
+     icons are just nine guesses. */
   .admin-nav__item span {
-    display: none;
+    display: inline;
   }
 
   .admin-sidebar__footer {
@@ -1062,6 +1091,35 @@ button.admin-inbox__item:hover {
 
   .admin-main {
     padding: 20px 16px;
+  }
+
+  /* 16px, or iOS zooms the whole console in when a field takes focus and
+     leaves the operator panning around. Same rule the app follows under
+     620px; the console was on 14px. */
+  .admin-main input:not([type="checkbox"]):not([type="radio"]),
+  .admin-main select,
+  .admin-main textarea {
+    font-size: 16px;
+  }
+
+  /* Tap targets. Measured at 31px for chips and actions. */
+  .admin-chip,
+  .admin-action,
+  .admin-primary {
+    min-height: 44px;
+  }
+
+  /* The search row is an input plus an export button, and at 375px the button
+     ended 9px past the edge - enough to make the whole page slide. Wrap it
+     rather than shrinking either half. */
+  .admin-search {
+    flex-wrap: wrap;
+  }
+
+  .admin-search input {
+    /* The 320px cap is a desktop nicety; here it just leaves the button
+       stranded on its own line while the field is short. */
+    max-width: none;
   }
 }
 
