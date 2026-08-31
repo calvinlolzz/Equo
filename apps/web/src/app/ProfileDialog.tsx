@@ -6,6 +6,7 @@ import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { InfoDialogMode } from "./appTypes";
 import type { ThemeMode } from "./themeStore";
+import { LegalDocumentBody } from "./LegalDocumentBody";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
 import { describePushState } from "./pushNotifications";
@@ -417,30 +418,7 @@ export function ProfileDialog({
                   <p className="legal-updated">{doc.updated}</p>
                 </div>
                 <div className="legal-scroll">
-                  <p className="legal-intro">{doc.intro}</p>
-                  {doc.sections.map((section) => (
-                    <section className="legal-section" key={section.heading}>
-                      <h4>{section.heading}</h4>
-                      {section.paragraphs?.map((paragraph) => (
-                        <p key={paragraph}>{paragraph}</p>
-                      ))}
-                      {section.bullets ? (
-                        <ul>
-                          {section.bullets.map((bullet) => (
-                            <li key={bullet}>{bullet}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {section.callout ? (
-                        <div className="legal-callout">
-                          <span className="legal-callout-tag">{section.callout.tag}</span>
-                          {section.callout.paragraphs.map((paragraph) => (
-                            <p key={paragraph}>{paragraph}</p>
-                          ))}
-                        </div>
-                      ) : null}
-                    </section>
-                  ))}
+                  <LegalDocumentBody document={doc} />
                 </div>
               </section>
             );

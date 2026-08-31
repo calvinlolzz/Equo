@@ -1,9 +1,13 @@
-# Equo — login-walled app. Allow the landing page; keep crawlers out of the
-# app shell routes, the operator console, the API, and invite links (which
-# carry tokens). The canonical tag in index.html consolidates to the root.
+# Equo — a login-walled app with a public front. Crawlable: the landing page
+# and the two legal documents. Kept out: the app shell routes, the operator
+# console, the API, and invite links (which carry tokens).
 User-agent: *
 Allow: /$
+Allow: /privacy
+Allow: /terms
 Disallow: /group/
 Disallow: /admin
 Disallow: /api/
 Disallow: /*invite
+
+Sitemap: https://equo-mu.vercel.app/sitemap.xml

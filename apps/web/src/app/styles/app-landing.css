@@ -1,0 +1,483 @@
+/* The signed-out landing page (LandingPage.tsx) and the standalone legal pages
+   (LegalPage.tsx). Everything here renders before anybody has signed in, so it
+   shares the app's tokens but none of its layout: no bottom nav, no safe-area
+   dance around a fixed dock, and no assumption that a session exists. */
+
+/* The shell centres the app in a 1180px box with a gutter each side. The
+   landing page is full-bleed instead — its scrim has to reach the edges of the
+   screen, or a strip of the animated backdrop runs down both sides of it — so
+   the horizontal box is handed back and each block sets its own column width.
+   The safe-area insets the shell was applying move down with it, onto the
+   inner containers (see .landing-section / .landing-footer). */
+.app-shell--landing {
+  width: 100%;
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+.landing {
+  --landing-column: 680px;
+  --landing-gutter: max(20px, env(safe-area-inset-left), env(safe-area-inset-right));
+  display: grid;
+  gap: clamp(40px, 8vw, 72px);
+}
+
+/* ---- hero -------------------------------------------------------------- */
+
+.landing-hero {
+  min-height: calc(100vh - 40px);
+  min-height: calc(100dvh - 40px);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px 0;
+}
+
+/* The sign-in card is the shared LoginScreen, which centres itself in a full
+   screen of its own. Inside the hero the hero owns the height, so hand the
+   sizing back rather than stacking two full-height boxes. */
+.landing-hero .login-screen {
+  min-height: 0;
+  padding: 0 var(--landing-gutter);
+}
+
+.landing-pitch {
+  margin: 0;
+  padding: 0 var(--landing-gutter);
+  color: rgb(var(--fg) / 0.62);
+  font-size: 13px;
+  text-align: center;
+}
+
+.landing-scroll-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--surf) / 0.16);
+  color: rgb(var(--fg) / 0.78);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.landing-scroll-cue svg {
+  animation: landing-cue-nudge 2.4s ease-in-out infinite;
+}
+
+@keyframes landing-cue-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-scroll-cue svg {
+    animation: none;
+  }
+}
+
+/* ---- scrim under the content ------------------------------------------- */
+
+/* The backdrop is a bright animated field, and the hero is the only part of
+   this page that can live on it unaided — its content is inside the sign-in
+   card. Below that there are headings and paragraphs sitting directly on the
+   canvas, so the whole block gets a wash of the theme's own card colour:
+   near-black in dark, white in light, which is the right direction in both
+   because the text colour flips with it. Without this a mint blob drifting
+   under a heading takes it from readable to invisible and back. */
+.landing-below {
+  display: grid;
+  gap: clamp(40px, 8vw, 72px);
+  padding: clamp(32px, 8vw, 64px) 0 calc(40px + env(safe-area-inset-bottom));
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--card-base) / 0),
+    rgb(var(--card-base) / 0.82) 90px,
+    rgb(var(--card-base) / 0.82)
+  );
+}
+
+/* ---- sections ---------------------------------------------------------- */
+
+.landing-section {
+  width: min(var(--landing-column), 100%);
+  margin: 0 auto;
+  padding: 0 var(--landing-gutter);
+  display: grid;
+  gap: 16px;
+}
+
+.landing-section-title {
+  margin: 0;
+  font-size: clamp(21px, 4.6vw, 28px);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+
+/* ---- illustrated product card ----------------------------------------- */
+
+.landing-demo-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgb(var(--surf) / 0.13), rgb(var(--surf) / 0.05)),
+    rgb(var(--card-base) / 0.84);
+}
+
+.landing-demo-label {
+  justify-self: start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(var(--surf) / 0.12);
+  color: rgb(var(--fg) / 0.6);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.landing-demo-expense {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-demo-avatar {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgb(var(--brand) / 0.18);
+  color: rgb(var(--brand));
+}
+
+.landing-demo-expense-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.landing-demo-expense-text strong {
+  font-size: 15px;
+}
+
+.landing-demo-expense-text span {
+  color: rgb(var(--fg) / 0.6);
+  font-size: 12px;
+}
+
+.landing-demo-amount {
+  font-size: 17px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.landing-demo-settle {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgb(var(--surf) / 0.08);
+}
+
+.landing-demo-settle-title {
+  color: rgb(var(--fg) / 0.6);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.landing-demo-settle ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.landing-demo-settle li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.landing-demo-names {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--fg) / 0.86);
+}
+
+.landing-demo-names svg {
+  color: rgb(var(--fg) / 0.4);
+}
+
+.landing-demo-transfer {
+  color: rgb(var(--gold-ink));
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- value cards ------------------------------------------------------- */
+
+.landing-value-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.landing-value-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgb(var(--surf) / 0.13), rgb(var(--surf) / 0.05)),
+    rgb(var(--card-base) / 0.55);
+}
+
+.landing-value-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgb(var(--accent) / 0.16);
+  color: rgb(var(--accent));
+}
+
+.landing-value-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.landing-value-card p {
+  margin: 0;
+  color: rgb(var(--fg) / 0.72);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ---- feature list ------------------------------------------------------ */
+
+.landing-more-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.landing-more-item {
+  padding: 13px 16px 13px 38px;
+  border-radius: 14px;
+  position: relative;
+  background:
+    linear-gradient(145deg, rgb(var(--surf) / 0.12), rgb(var(--surf) / 0.04)),
+    rgb(var(--card-base) / 0.55);
+  color: rgb(var(--fg) / 0.82);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* The tick is decoration, so it is drawn rather than written into the text:
+   a screen reader should read the feature, not "check mark, feature". */
+.landing-more-item::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 19px;
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid rgb(var(--brand));
+  border-bottom: 2px solid rgb(var(--brand));
+  transform: rotate(-45deg);
+}
+
+/* ---- FAQ --------------------------------------------------------------- */
+
+.landing-faq {
+  display: grid;
+  gap: 8px;
+}
+
+.landing-faq-item {
+  border-radius: 14px;
+  padding: 0 16px;
+  background:
+    linear-gradient(145deg, rgb(var(--surf) / 0.12), rgb(var(--surf) / 0.04)),
+    rgb(var(--card-base) / 0.55);
+}
+
+.landing-faq-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 0;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  list-style: none;
+  /* A tap on a disclosure row should open it, not start selecting the
+     question — <summary> is not a <button>, so the base rule that suppresses
+     this on every other control does not reach it. */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.landing-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.landing-faq-item summary svg {
+  color: rgb(var(--fg) / 0.5);
+  transition: transform 160ms ease;
+}
+
+.landing-faq-item[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.landing-faq-item p {
+  margin: 0;
+  padding: 0 0 16px;
+  color: rgb(var(--fg) / 0.72);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ---- footer ------------------------------------------------------------ */
+
+.landing-footer {
+  width: min(var(--landing-column), 100%);
+  margin: 0 auto;
+  padding: 24px var(--landing-gutter) 0;
+  border-top: 1px solid rgb(var(--surf) / 0.12);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+
+.landing-footer-tagline {
+  margin: 0;
+  color: rgb(var(--fg) / 0.58);
+  font-size: 13px;
+}
+
+.landing-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+}
+
+.landing-footer-links a {
+  color: rgb(var(--fg) / 0.78);
+  font-size: 13px;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(var(--surf) / 0.2);
+  padding-bottom: 2px;
+}
+
+.landing-footer-links a:hover {
+  color: rgb(var(--fg));
+}
+
+/* ---- wider screens ----------------------------------------------------- */
+
+@media (min-width: 760px) {
+  .landing {
+    --landing-column: 900px;
+  }
+
+  .landing-value-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .landing-more-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .landing-demo-card {
+    padding: 24px;
+  }
+}
+
+/* ---- standalone legal pages -------------------------------------------- */
+
+.legal-page {
+  padding: clamp(16px, 4vw, 40px) 16px calc(40px + env(safe-area-inset-bottom));
+  display: grid;
+  justify-items: center;
+}
+
+.legal-page-inner {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: clamp(20px, 4vw, 32px);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgb(var(--surf) / 0.13), rgb(var(--surf) / 0.05)),
+    rgb(var(--card-base) / 0.84);
+}
+
+.legal-page-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--fg) / 0.72);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.legal-page-header {
+  display: grid;
+  gap: 4px;
+}
+
+.legal-page-header h1 {
+  margin: 0;
+  font-size: clamp(24px, 5vw, 30px);
+}
+
+/* The body reuses the in-app document styles (.legal-intro, .legal-section,
+   .legal-callout in app-dialogs.css) — same documents, same rendering. What is
+   different here is that the page scrolls instead of a sheet's inner box. */
+.legal-page-body {
+  display: grid;
+  gap: 4px;
+}
+
+.legal-page-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(var(--surf) / 0.12);
+}
+
+.legal-page-footer a {
+  color: rgb(var(--fg) / 0.78);
+  font-size: 13px;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(var(--surf) / 0.2);
+  padding-bottom: 2px;
+}

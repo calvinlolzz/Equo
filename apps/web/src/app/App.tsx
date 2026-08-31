@@ -64,7 +64,9 @@ import { readInviteToken } from "./inviteToken";
 import { grantScanConsent, hasScanConsent, revokeScanConsent } from "./scanConsent";
 import type { ReceiptPrefill } from "./receiptPrefill";
 import { GroupRail } from "./GroupRail";
-import { LoginScreen } from "./LoginScreen";
+// Eager, not a lazy chunk: this is the first thing a first-time visitor sees,
+// and it is the one screen that must not wait on a second round-trip.
+import { LandingPage } from "./LandingPage";
 import { MemberAvatar, upscaleGoogleAvatar } from "./MemberAvatar";
 import { isGroupOwner } from "./isGroupOwner";
 import { resolveActiveTab } from "./resolveActiveTab";
@@ -1279,7 +1281,10 @@ export function App() {
 
   if (!session) {
     return (
-      <main className="app-shell">
+      // The landing page is full-bleed: it runs its own scrim and column widths
+      // edge to edge, where the shell's centred 1180px box would leave strips of
+      // raw backdrop down both sides of it.
+      <main className="app-shell app-shell--landing">
         {toast ? (
           <div className="toast-dock" role="status" aria-live="polite">
             <span className={busy ? "pulse-dot active" : "pulse-dot"} />
@@ -1292,7 +1297,7 @@ export function App() {
           </div>
         ) : null}
         <SiteNoticeBar notice={siteNotice} onStopViewAs={stopViewAs} />
-        <LoginScreen
+        <LandingPage
           loading={authLoading}
           errorMessage={authError || undefined}
           onGoogleLogin={startGoogleLogin}

@@ -9,6 +9,7 @@ import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
+import { resolvePublicPage } from "./app/publicRoute";
 import { initTheme } from "./app/themeStore";
 import { ACTIVE_LOCALE, UI_TEXT } from "./app/uiText";
 
@@ -37,6 +38,14 @@ if (!root) {
 // backdrop entirely.
 const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 const AdminApp = lazyChunk(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
+
+// /privacy and /terms render the same documents as the in-app sheet, as pages
+// that need no session — so they are a URL that can be handed to the OAuth
+// consent screen, an app directory, or anyone deciding whether to sign in.
+// Lazy, because the people who reach them are a small minority of visits and
+// the documents are the largest strings in the app.
+const publicPage = isAdminPath ? null : resolvePublicPage(window.location.pathname);
+const LegalPage = lazyChunk(() => import("./app/LegalPage").then((module) => ({ default: module.LegalPage })));
 
 // The animated backdrop is decoration: a WebGL shader that nobody interacts
 // with and that the app is fully usable without. Loading it in the entry chunk
@@ -84,7 +93,13 @@ createRoot(root).render(
           <GlassBackground />
         </Suspense>
         <ErrorBoundary source="web">
-          <App />
+          {publicPage ? (
+            <Suspense fallback={null}>
+              <LegalPage page={publicPage} />
+            </Suspense>
+          ) : (
+            <App />
+          )}
         </ErrorBoundary>
         {/* Page-view analytics. Serves its script and beacon from the app's own
             origin (/_vercel/insights/*), so the CSP's `self` script-src and

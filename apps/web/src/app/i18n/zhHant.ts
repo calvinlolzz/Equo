@@ -256,6 +256,64 @@ export const ZH_HANT = {
     missingSupabaseUrl: "尚未設定登入服務",
     oauthErrorPrefix: "登入失敗：",
   },
+  /**
+   * 登入前那一頁。
+   *
+   * 這是唯一一段「還沒登入的人」會讀到的文字，所以口氣跟 app 內不一樣：
+   * app 內的字是講給已經知道 Equo 是什麼的人聽的，這裡要先讓人知道這是什麼、
+   * 為什麼要交出 Google 帳號。字典的形狀是 Section -> Record<string, string>，
+   * 所以清單只能攤平成有編號的鍵。
+   */
+  landing: {
+    heroPitch: "免費・免下載・開瀏覽器就能用",
+    scrollCue: "Equo 能做什麼",
+
+    valueTitle: "一起花的錢，不用再算到傷感情",
+    value1Title: "記一筆，剩下的它算",
+    value1Body: "均分、指定金額、比例、份數都可以。多幣別自動換算，餘額依幣別分開算。",
+    value2Title: "結清只轉最少次",
+    value2Body: "三個人欠來欠去，Equo 會算成最少的轉帳筆數。對方的收款資訊就在旁邊，點一下複製。",
+    value3Title: "拍收據，金額自動填",
+    value3Body: "拍一張收據，金額和店名自動帶進表單。一筆最多五張，還能在底下留言討論這筆是誰付的。",
+
+    /** 首頁那張示意卡。是畫出來的示意圖，不是真的資料。 */
+    demoLabel: "示意畫面",
+    demoExpenseTitle: "居酒屋",
+    demoExpenseMeta: "小明付了・4 人均分",
+    demoExpenseAmount: "NT$2,400",
+    demoSettleTitle: "清償建議",
+    demoSettleFrom1: "小美",
+    demoSettleTo1: "小明",
+    demoSettleAmount1: "NT$600",
+    demoSettleFrom2: "阿哲",
+    demoSettleTo2: "小明",
+    demoSettleAmount2: "NT$1,200",
+
+    moreTitle: "還有這些",
+    more1: "循環支出：每月的房租、訂閱自動記一筆",
+    more2: "每月預算：用掉多少、還剩多少、超支多少",
+    more3: "分析：分類佔比、跟上個月比多花還是少花",
+    more4: "離線也能記，回到有網路自動送出，不會重複",
+    more5: "推播通知：有人記帳、有人加入、被提醒還款",
+    more6: "CSV 匯出、繁體中文／English、可加到主畫面",
+
+    faqTitle: "常見問題",
+    faq1Q: "要付費嗎？",
+    faq1A: "不用。目前完全免費，也沒有廣告。",
+    faq2Q: "一定要用 Google 登入嗎？",
+    faq2A: "目前只有 Google 一種。這樣群組裡的人知道彼此是誰，你也不用再記一組密碼。",
+    faq3Q: "朋友沒有帳號，可以一起分嗎？",
+    faq3A: "可以。群組裡能建立「虛擬成員」，沒有帳號的人一樣能被記帳、被分攤。",
+    faq4Q: "需要下載 App 嗎？",
+    faq4A: "不用，瀏覽器打開就能用。想要的話可以「加到主畫面」，用起來跟 App 一樣。",
+    faq5Q: "我的資料誰看得到？",
+    faq5A: "只有同一個群組的成員看得到那個群組的帳。我們不賣資料、不放廣告，你也可以隨時在個人資料頁刪掉整個帳號。",
+
+    footerTagline: "和朋友、室友、旅伴輕鬆記帳分帳。",
+    footerContact: "聯絡我們",
+    /** 法律頁的頁首返回鍵；也是登入頁 footer 回首頁的字。 */
+    backToHome: "回到 Equo",
+  },
   install: {
     title: "把 Equo 加到主畫面",
     benefit: "像 App 一樣全螢幕開啟，記帳更快。",
