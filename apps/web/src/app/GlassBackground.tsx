@@ -577,8 +577,19 @@ export function GlassBackground() {
       const small = window.innerWidth < 700;
       const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       scene = createScene(canvas, {
-        dprCap: small ? 1.5 : 2,
-        fpsCap: small ? 30 : 60,
+        // Desktop used to run this at 2× device pixels and 60fps, which is a
+        // startling amount of work for a slow-drifting blur: a 1440×900 window
+        // on a Retina display is 2880×1800 = 5.2M fragments, sixty times a
+        // second — 311M shaded pixels per second, every one of them behind a
+        // dozen backdrop-filter panels that re-blur whenever it changes. At
+        // 1.25× and 30fps the same window is 61M/s, about five times less.
+        //
+        // Nothing here is detail that survives a blur: the field has no edges,
+        // no text and no fine structure, so device pixels buy nothing, and it
+        // drifts slowly enough that 30fps is not a frame rate anyone can see —
+        // which is exactly why phones have been running it that way already.
+        dprCap: small ? 1.5 : 1.25,
+        fpsCap: 30,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
         light: isLight(),

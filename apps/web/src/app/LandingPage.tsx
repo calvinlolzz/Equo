@@ -60,7 +60,7 @@ export function LandingPage({
           contrast with it. */}
       <div className="landing-below">
         <section className="landing-section landing-demo" aria-label={text.demoLabel}>
-          <div className="landing-demo-card glass-panel">
+          <div className="landing-demo-card">
             <span className="landing-demo-label">{text.demoLabel}</span>
 
             <div className="landing-demo-expense">
@@ -106,7 +106,7 @@ export function LandingPage({
               { icon: <Calculator aria-hidden="true" size={20} />, title: text.value2Title, body: text.value2Body },
               { icon: <Camera aria-hidden="true" size={20} />, title: text.value3Title, body: text.value3Body },
             ].map((value) => (
-              <article className="landing-value-card glass-panel" key={value.title}>
+              <article className="landing-value-card" key={value.title}>
                 <span className="landing-value-icon">{value.icon}</span>
                 <h3>{value.title}</h3>
                 <p>{value.body}</p>
@@ -119,7 +119,7 @@ export function LandingPage({
           <h2 className="landing-section-title">{text.moreTitle}</h2>
           <ul className="landing-more-list">
             {[text.more1, text.more2, text.more3, text.more4, text.more5, text.more6].map((item) => (
-              <li className="landing-more-item glass-panel" key={item}>
+              <li className="landing-more-item" key={item}>
                 {item}
               </li>
             ))}
@@ -139,7 +139,7 @@ export function LandingPage({
               { q: text.faq4Q, a: text.faq4A },
               { q: text.faq5Q, a: text.faq5A },
             ].map((entry) => (
-              <details className="landing-faq-item glass-panel" key={entry.q}>
+              <details className="landing-faq-item" key={entry.q}>
                 <summary>
                   {entry.q}
                   <ChevronDown aria-hidden="true" size={16} />
