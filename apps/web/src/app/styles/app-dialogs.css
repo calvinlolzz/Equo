@@ -461,7 +461,6 @@
   font-weight: 900;
 }
 
-.record-dialog-row,
 /* A member row plus their 收款資訊 line. */
 .member-dialog-entry {
   display: flex;
@@ -510,6 +509,15 @@
   flex: none;
 }
 
+/* The row shape shared by the records list and the member list.
+   ⚠️ Keep these two selectors on adjacent lines. This rule used to read
+   `.record-dialog-row,` / `.member-dialog-row {`, and a new rule was once
+   inserted between the two lines (0514cae) — which silently handed
+   .record-dialog-row the wrapper's column-flex style and left every record row
+   with no layout, no background and no padding at all: a bare browser-default
+   button. It shipped that way for a week, because nothing renders CSS in the
+   test suite. See recordRowStyles.test.ts, which now does. */
+.record-dialog-row,
 .member-dialog-row {
   width: 100%;
   min-height: 66px;
