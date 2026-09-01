@@ -41,7 +41,14 @@
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "登入後即可建立群組、記帳分帳"
+      "label": "群組首頁：誰付了多少、誰還欠誰"
+    },
+    {
+      "src": "/screenshots/narrow-analysis.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "分析：分類佔比，以及跟上期比多花還是少花"
     },
     {
       "src": "/screenshots/wide.png",

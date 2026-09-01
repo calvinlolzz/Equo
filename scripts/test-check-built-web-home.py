@@ -54,6 +54,23 @@ def main() -> int:
           print("FAIL: expected dist home missing create/join/continue markers to fail")
           return 1
 
+      # The dev-only screenshot harness must never be part of a deployment: it
+      # renders the real app over invented balances.
+      clean_dist = Path(tmp) / "clean"
+      clean_dist.mkdir()
+      write_dist(clean_dist, "x")
+      if module.leaked_dev_pages(clean_dist):
+          print("FAIL: expected a dist without screenshot.html to be clean")
+          return 1
+
+      leaky_dist = Path(tmp) / "leaky"
+      leaky_dist.mkdir()
+      write_dist(leaky_dist, "x")
+      (leaky_dist / "screenshot.html").write_text("<html></html>", encoding="utf-8")
+      if module.leaked_dev_pages(leaky_dist) != ["screenshot.html"]:
+          print("FAIL: expected screenshot.html in dist to be reported")
+          return 1
+
     print("PASS: built web home rules verified")
     return 0
 
