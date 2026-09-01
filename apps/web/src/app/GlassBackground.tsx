@@ -68,6 +68,42 @@ const CURL_SPIN = 0.05; // slow continuous roll of the whole spiral
 // slow enough that the freeze and the resume are both invisible.
 export const IDLE_FREEZE_MS = 6_000;
 
+/**
+ * The same budget for a mouse or trackpad, and much shorter — because on a
+ * desktop the idle clock above almost never runs out.
+ *
+ * A finger touches the screen in bursts; a cursor is moved more or less
+ * continuously by somebody who is just reading, and every pointermove used to
+ * restart the six seconds. So the "settle when nobody is interacting" fix that
+ * works on a phone left a desktop shading the whole window sixty (now thirty)
+ * times a second for as long as the tab was open — with a dozen backdrop-filter
+ * panels re-blurring on top of it every time it changed.
+ *
+ * Paired with `wakeOnPointerMove: false` on fine pointers: moving the mouse no
+ * longer counts as interaction at all, so the field drifts for a couple of
+ * seconds after each real action (load, scroll, click, keypress) and then holds
+ * still. The look survives — it is a slow gradient, and a still one is the same
+ * picture — while the constant cost does not.
+ */
+export const IDLE_FREEZE_MS_POINTER = 2_500;
+
+/**
+ * Renderer strings that mean "there is no usable GPU behind this context".
+ *
+ * A fullscreen fragment shader on a software rasteriser is not slow, it is
+ * catastrophic: every pixel of every frame is computed on the CPU, on the same
+ * thread budget the app needs to stay responsive. This happens more often than
+ * it sounds — a blocklisted driver, a VM, a remote desktop, hardware
+ * acceleration switched off in the browser's settings — and it is invisible
+ * from the outside: WebGL works, so the app cheerfully starts the loop.
+ *
+ * There is a perfectly good CSS gradient underneath (see app-base.css), which
+ * is what these machines get instead.
+ */
+export function isSoftwareRenderer(renderer: string): boolean {
+  return /swiftshader|llvmpipe|software|basic render|microsoft basic|mesa offscreen/i.test(renderer);
+}
+
 /** Everything that can stop the field drawing. See shouldAnimate. */
 export interface AnimationGate {
   /** The canvas is intersecting the viewport (IntersectionObserver). */
@@ -76,8 +112,13 @@ export interface AnimationGate {
   documentHidden: boolean;
   /** A sheet/dialog/drawer is covering the field (data-overlay on <html>). */
   overlayPaused: boolean;
-  /** Milliseconds since the last scroll, tap, key or pointer move. */
+  /** Milliseconds since the last scroll, tap, key or (on touch) pointer move. */
   msSinceInteraction: number;
+  /**
+   * How long after that the field keeps drawing. Defaults to the touch budget;
+   * fine pointers pass the much shorter IDLE_FREEZE_MS_POINTER.
+   */
+  idleFreezeMs?: number;
 }
 
 /**
@@ -92,7 +133,7 @@ export function shouldAnimate(gate: AnimationGate): boolean {
     gate.visible &&
     !gate.documentHidden &&
     !gate.overlayPaused &&
-    gate.msSinceInteraction <= IDLE_FREEZE_MS
+    gate.msSinceInteraction <= (gate.idleFreezeMs ?? IDLE_FREEZE_MS)
   );
 }
 
@@ -216,6 +257,14 @@ interface SceneOptions {
   light: boolean;
   /** Start paused because an overlay already covers the screen. */
   overlayPaused: boolean;
+  /** See IDLE_FREEZE_MS_POINTER. */
+  idleFreezeMs: number;
+  /**
+   * Whether moving the pointer restarts the idle clock. True on touch, where a
+   * pointermove is a deliberate act; false on a mouse, where it is what a person
+   * does while reading and would keep the field awake indefinitely.
+   */
+  wakeOnPointerMove: boolean;
 }
 
 interface Scene {
@@ -240,6 +289,15 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
   if (!glCtx) return null;
   const gl = glCtx;
+
+  // Before anything is compiled: if this context is not backed by a GPU, the
+  // honest thing is not to draw at all (see isSoftwareRenderer).
+  const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+  const renderer = debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) ?? "") : "";
+  if (renderer && isSoftwareRenderer(renderer)) {
+    console.debug("[GlassBackground] software renderer, staying on the CSS gradient:", renderer);
+    return null;
+  }
 
   const vert = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
   const frag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SRC);
@@ -390,10 +448,13 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   }
 
   function onPointerMove(e: PointerEvent) {
+    // The cursor still steers the swirl while the field happens to be awake —
+    // it just no longer counts as a reason to be awake. On a mouse that
+    // distinction is the whole fix: see IDLE_FREEZE_MS_POINTER.
     targetX = e.clientX / window.innerWidth - 0.5;
     targetY = e.clientY / window.innerHeight - 0.5;
     lastActive = e.timeStamp;
-    markActive();
+    if (opts.wakeOnPointerMove) markActive();
   }
 
   // Touch scrolling is the one interaction that does NOT reliably produce
@@ -425,7 +486,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     // the loop rather than idling one no-op callback per vsync. Only the idle
     // clock is checked here — the other three gates have their own events and
     // go through sync().
-    if (performance.now() - lastInteraction > IDLE_FREEZE_MS) {
+    if (performance.now() - lastInteraction > opts.idleFreezeMs) {
       stop();
       return;
     }
@@ -487,6 +548,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
       documentHidden: document.hidden,
       overlayPaused,
       msSinceInteraction: performance.now() - lastInteraction,
+      idleFreezeMs: opts.idleFreezeMs,
     });
     if (animate) start();
     else stop();
@@ -592,6 +654,8 @@ export function GlassBackground() {
         fpsCap: 30,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
+        idleFreezeMs: coarse ? IDLE_FREEZE_MS : IDLE_FREEZE_MS_POINTER,
+        wakeOnPointerMove: coarse,
         light: isLight(),
         overlayPaused: isOverlayOpen(),
       });
