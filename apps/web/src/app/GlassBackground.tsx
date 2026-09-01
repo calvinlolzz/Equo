@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { BACKGROUND_UNAVAILABLE_ATTR, readStoredBackgroundMotion } from "./backgroundStore";
 
 /**
  * Animated "liquid glass" WebGL backdrop.
@@ -633,9 +634,12 @@ export function GlassBackground() {
     // Set by App.tsx whenever any sheet/dialog/drawer is open. This component is
     // a sibling of <App />, not a child, so an attribute on <html> is the seam.
     const isOverlayOpen = () => document.documentElement.hasAttribute("data-overlay");
+    // The per-device switch in 個人資料 (see backgroundStore). Read from the
+    // attribute rather than from storage so the toggle takes effect on the spot.
+    const motionOff = () => document.documentElement.getAttribute("data-bg-motion") === "off";
 
     const build = () => {
-      if (scene || reduce.matches) return;
+      if (scene || reduce.matches || motionOff()) return;
       const small = window.innerWidth < 700;
       const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       scene = createScene(canvas, {
@@ -659,6 +663,12 @@ export function GlassBackground() {
         light: isLight(),
         overlayPaused: isOverlayOpen(),
       });
+
+      // createScene returns null when this machine has no WebGL, or a context
+      // that turned out to be software-rendered. Say so on the root element so
+      // the switch in 個人資料 can explain itself instead of looking dead.
+      if (!scene) document.documentElement.setAttribute(BACKGROUND_UNAVAILABLE_ATTR, "");
+      else document.documentElement.removeAttribute(BACKGROUND_UNAVAILABLE_ATTR);
     };
 
     const teardown = () => {
@@ -667,7 +677,7 @@ export function GlassBackground() {
     };
 
     const onPreferenceChange = () => {
-      if (reduce.matches) teardown();
+      if (reduce.matches || motionOff()) teardown();
       else build();
     };
 
@@ -678,15 +688,25 @@ export function GlassBackground() {
     // <html>, so one observer covers them; each handler no-ops when its own
     // attribute is the one that did not change.
     const rootObserver = new MutationObserver(() => {
+      // Order matters: tear down BEFORE touching the scene, and build after —
+      // flipping the switch off must stop the GPU work in the same tick the
+      // person taps it, which is the entire point of the setting.
+      if (motionOff()) teardown();
+      else build();
       scene?.setPalette(isLight());
       scene?.setOverlayPaused(isOverlayOpen());
     });
     rootObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-overlay"],
+      attributeFilter: ["data-theme", "data-overlay", "data-bg-motion"],
     });
 
     build();
+    // Switched off is a choice, not a limitation: make sure the profile row
+    // does not inherit an "unavailable" flag from a previous page's refusal.
+    if (motionOff() && readStoredBackgroundMotion() === "off") {
+      document.documentElement.removeAttribute(BACKGROUND_UNAVAILABLE_ATTR);
+    }
     reduce.addEventListener("change", onPreferenceChange);
     window.addEventListener("resize", onResize);
 

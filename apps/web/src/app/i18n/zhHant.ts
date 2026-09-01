@@ -405,6 +405,14 @@ export const ZH_HANT = {
     themeSetting: "外觀主題",
     themeDark: "夜間",
     themeLight: "日間",
+    /** 動態背景的開關。存在這台裝置上，不跟著帳號跑——它回答的是「這台機器畫不畫得動」。 */
+    backgroundSetting: "動態背景",
+    backgroundOn: "開啟",
+    backgroundOff: "關閉",
+    backgroundHint: "背景會緩慢流動。覺得卡就關掉，只影響這台裝置。",
+    /** 這台機器沒有 GPU 加速（或沒有 WebGL），所以本來就畫不出來。 */
+    backgroundUnavailable: "這台裝置無法顯示",
+    backgroundUnavailableHint: "這個瀏覽器沒有可用的硬體加速，已自動改用靜態背景。",
     languageValue: "繁體中文",
     pushNotifications: "通知",
     pushEnable: "開啟",

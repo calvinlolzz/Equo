@@ -227,6 +227,12 @@
   gap: 2px;
   flex: 1;
   min-width: 0;
+  /* A <button> centres its text by default, and this block is the one that
+     stretches — so inside the rows that ARE buttons (the animated-background
+     switch) the label and its explanation would sit centred against a
+     right-aligned value. The notification row never showed it because that row
+     is a div. */
+  text-align: left;
 }
 
 .profile-push-text small {

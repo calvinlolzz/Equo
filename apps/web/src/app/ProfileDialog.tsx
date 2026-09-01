@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Moon, Pencil, ScanLine, Sun, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Moon, Pencil, ScanLine, Sparkles, Sun, Trash2, X } from "lucide-react";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import type { InfoDialogMode } from "./appTypes";
 import type { ThemeMode } from "./themeStore";
+import type { BackgroundMotion } from "./backgroundStore";
 import { LegalDocumentBody } from "./LegalDocumentBody";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
 import type { ProfileData } from "./profileStore";
@@ -60,6 +61,9 @@ export function ProfileDialog({
   onOpenInfoDialog,
   theme,
   onToggleTheme,
+  backgroundMotion,
+  backgroundUnavailable,
+  onToggleBackgroundMotion,
   onClose,
   onSave,
   onToast,
@@ -91,6 +95,10 @@ export function ProfileDialog({
    */
   theme: ThemeMode;
   onToggleTheme: () => void;
+  backgroundMotion: BackgroundMotion;
+  /** This machine cannot draw the field at all — no WebGL, or software rendering. */
+  backgroundUnavailable: boolean;
+  onToggleBackgroundMotion: () => void;
   onClose: () => void;
   onSave: (profile: ProfileData) => void | Promise<void>;
   onToast: (message: string) => void;
@@ -294,6 +302,34 @@ export function ProfileDialog({
               <span>{text.themeSetting}</span>
               <span className="profile-row-value">{theme === "light" ? text.themeLight : text.themeDark}</span>
             </button>
+            {/* The animated backdrop, as a per-device switch. It is the most
+                expensive thing the app draws — a fullscreen shader that every
+                frosted panel then re-blurs — so the machine that cannot afford
+                it needs a way to say so, and that answer belongs to the machine
+                rather than to the account. When there is no GPU behind the
+                context we have already fallen back to a static gradient; the
+                row says that instead of offering a switch that does nothing. */}
+            {backgroundUnavailable ? (
+              <div className="profile-other-row profile-other-row-static">
+                <Sparkles aria-hidden="true" size={19} />
+                <span className="profile-push-text">
+                  <span>{text.backgroundSetting}</span>
+                  <small>{text.backgroundUnavailableHint}</small>
+                </span>
+                <span className="profile-row-value">{text.backgroundUnavailable}</span>
+              </div>
+            ) : (
+              <button className="profile-other-row" type="button" onClick={onToggleBackgroundMotion}>
+                <Sparkles aria-hidden="true" size={19} />
+                <span className="profile-push-text">
+                  <span>{text.backgroundSetting}</span>
+                  <small>{text.backgroundHint}</small>
+                </span>
+                <span className="profile-row-value">
+                  {backgroundMotion === "off" ? text.backgroundOff : text.backgroundOn}
+                </span>
+              </button>
+            )}
             {/* A real control now that there is more than one language. The
                 option names are each written in their own language and never
                 translated: a picker that lists languages in a language you

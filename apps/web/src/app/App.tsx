@@ -86,6 +86,7 @@ import { useIsMobileLayout } from "./useIsMobileLayout";
 import { useInviteFlow } from "./useInviteFlow";
 import { useMemberMutations } from "./useMemberMutations";
 import { useThemeMode } from "./useThemeMode";
+import { useBackgroundMotion } from "./useBackgroundMotion";
 import { useArchivedGroups } from "./useArchivedGroups";
 import { useAuthSession } from "./useAuthSession";
 import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
@@ -224,6 +225,7 @@ export function App() {
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const { theme, toggleTheme } = useThemeMode();
+  const { backgroundMotion, backgroundUnavailable, toggleBackgroundMotion } = useBackgroundMotion();
   // Mobile drawer swipe gestures: each drawer dismisses toward the edge it
   // slid in from (left drawer <- swipe left, right drawer -> swipe right).
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
@@ -1948,6 +1950,9 @@ export function App() {
           onOpenInfoDialog={setInfoDialog}
           theme={theme}
           onToggleTheme={toggleTheme}
+          backgroundMotion={backgroundMotion}
+          backgroundUnavailable={backgroundUnavailable}
+          onToggleBackgroundMotion={toggleBackgroundMotion}
           onClose={closeDialog}
           onSave={saveProfile}
           onToast={showToast}

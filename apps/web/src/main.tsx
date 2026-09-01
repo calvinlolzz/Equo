@@ -9,6 +9,7 @@ import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
+import { initBackgroundMotion } from "./app/backgroundStore";
 import { resolvePublicPage } from "./app/publicRoute";
 import { initTheme } from "./app/themeStore";
 import { ACTIVE_LOCALE, UI_TEXT } from "./app/uiText";
@@ -67,6 +68,10 @@ const GlassBackground = React.lazy<React.ComponentType>(() =>
 // The admin console keeps its own dark styling, so skip theming there.
 if (!isAdminPath) {
   initTheme();
+  // Applied before the first paint for the same reason as the theme: a machine
+  // that has the animated field switched off must not pay for a single frame of
+  // it while React mounts.
+  initBackgroundMotion();
 }
 
 // Global crash telemetry -> POST /api/v1/errors (deduped, capped per page
