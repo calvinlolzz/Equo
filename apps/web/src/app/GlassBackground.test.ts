@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   IDLE_FREEZE_MS,
   IDLE_FREEZE_MS_POINTER,
+  frameIntervalFor,
   isSoftwareRenderer,
   shouldAnimate,
   type AnimationGate,
@@ -89,5 +90,23 @@ describe("isSoftwareRenderer", () => {
     expect(isSoftwareRenderer("ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)")).toBe(false);
     expect(isSoftwareRenderer("Mali-G78")).toBe(false);
     expect(isSoftwareRenderer("")).toBe(false);
+  });
+});
+
+describe("frameIntervalFor", () => {
+  test("a cap becomes the gap between frames", () => {
+    expect(frameIntervalFor(30)).toBeCloseTo(33.33, 1);
+    expect(frameIntervalFor(24)).toBeCloseTo(41.67, 1);
+  });
+
+  test("zero means uncapped, which is the opposite of what it reads like", () => {
+    // The desktop passes 0 on purpose. Anyone reading it as "zero frames a
+    // second" and 'fixing' it would silently put the cap back.
+    expect(frameIntervalFor(0)).toBe(0);
+  });
+
+  test("60 and above is uncapped too — vsync is already the limit", () => {
+    expect(frameIntervalFor(60)).toBe(0);
+    expect(frameIntervalFor(120)).toBe(0);
   });
 });

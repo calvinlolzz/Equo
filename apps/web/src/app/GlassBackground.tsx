@@ -105,6 +105,19 @@ export function isSoftwareRenderer(renderer: string): boolean {
   return /swiftshader|llvmpipe|software|basic render|microsoft basic|mesa offscreen/i.test(renderer);
 }
 
+/**
+ * Minimum milliseconds between drawn frames, from a frames-per-second cap.
+ *
+ * ⚠️ Zero means UNCAPPED, not "no frames" — the loop compares
+ * `now - lastFrame < frameInterval`, so 0 lets every animation frame through
+ * and vsync becomes the only limit. Anything at or above 60 is uncapped too,
+ * because vsync would be doing the capping anyway and an interval that lands
+ * a hair over the refresh period drops every other frame instead.
+ */
+export function frameIntervalFor(fpsCap: number): number {
+  return fpsCap > 0 && fpsCap < 60 ? 1000 / fpsCap : 0;
+}
+
 /** Everything that can stop the field drawing. See shouldAnimate. */
 export interface AnimationGate {
   /** The canvas is intersecting the viewport (IntersectionObserver). */
@@ -417,7 +430,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   let tapX = 0; // last tap location (touch only)
   let tapY = 0;
   let tapEnergy = 0; // decaying impulse from a tap (touch only)
-  const frameInterval = opts.fpsCap > 0 && opts.fpsCap < 60 ? 1000 / opts.fpsCap : 0;
+  const frameInterval = frameIntervalFor(opts.fpsCap);
 
   function resize() {
     const w = canvas.clientWidth;
@@ -643,19 +656,25 @@ export function GlassBackground() {
       const small = window.innerWidth < 700;
       const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       scene = createScene(canvas, {
-        // Desktop used to run this at 2× device pixels and 60fps, which is a
-        // startling amount of work for a slow-drifting blur: a 1440×900 window
-        // on a Retina display is 2880×1800 = 5.2M fragments, sixty times a
-        // second — 311M shaded pixels per second, every one of them behind a
-        // dozen backdrop-filter panels that re-blur whenever it changes. At
-        // 1.25× and 30fps the same window is 61M/s, about five times less.
+        // Resolution stays capped: a 1440×900 window at 2× device pixels is
+        // 5.2M fragments a frame, and the field has no edges, no text and no
+        // fine structure, so those pixels buy nothing you can see. 1.25× is a
+        // quarter of the work for the same picture.
         //
-        // Nothing here is detail that survives a blur: the field has no edges,
-        // no text and no fine structure, so device pixels buy nothing, and it
-        // drifts slowly enough that 30fps is not a frame rate anyone can see —
-        // which is exactly why phones have been running it that way already.
+        // The frame rate is NOT capped on a mouse or trackpad — asked for
+        // directly, after the 30fps cap shipped. The reason it is safe to give
+        // back: the desktop cost was never really the frame rate, it was that
+        // every pointermove kept the loop awake indefinitely (see
+        // IDLE_FREEZE_MS_POINTER). With that fixed the field runs in short
+        // bursts after a real interaction, and there is now a switch in
+        // 個人資料 for anyone who still does not want to pay for it.
+        //
+        // Phones keep the 30fps cap. That one is not a smoothness judgement:
+        // sustained full-rate shading is what turned a long session into a hot,
+        // throttled phone (see the 2026-08 diagnosis), and a finger does not
+        // leave the loop awake the way a cursor does.
         dprCap: small ? 1.5 : 1.25,
-        fpsCap: 30,
+        fpsCap: coarse ? 30 : 0,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
         idleFreezeMs: coarse ? IDLE_FREEZE_MS : IDLE_FREEZE_MS_POINTER,
