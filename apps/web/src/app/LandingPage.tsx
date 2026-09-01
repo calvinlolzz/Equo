@@ -1,4 +1,4 @@
-import { ArrowRight, Calculator, Camera, ChevronDown, ReceiptText } from "lucide-react";
+import { ArrowRight, Calculator, Camera, ChevronDown, ChevronsDown, ReceiptText } from "lucide-react";
 import { LoginScreen } from "./LoginScreen";
 import { LEGAL_CONTACT_EMAIL } from "./legalContent";
 import { UI_TEXT } from "./uiText";
@@ -40,9 +40,16 @@ export function LandingPage({
       <section className="landing-hero">
         <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} />
         <p className="landing-pitch">{text.heroPitch}</p>
+        {/* A scroll cue, not a control. The first version put a single chevron
+            beside the label inside a bordered pill, which is the shape of a
+            dropdown — people tapped it, the page jumped, and it read as "this
+            expanded", with no way to collapse what had never opened. So: no
+            pill, the double chevron BELOW the label (a shape no dropdown uses),
+            and the jump is smoothed in CSS so the motion itself says scrolled
+            rather than opened. */}
         <a className="landing-scroll-cue" href="#landing-value">
-          {text.scrollCue}
-          <ChevronDown aria-hidden="true" size={16} />
+          <span>{text.scrollCue}</span>
+          <ChevronsDown aria-hidden="true" size={18} />
         </a>
       </section>
 

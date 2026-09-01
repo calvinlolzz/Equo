@@ -52,30 +52,49 @@
   text-align: center;
 }
 
+/* Reads as "there is more below", not as a control. A bordered pill with one
+   chevron beside the label is the shape of a dropdown, and that is exactly how
+   it was read: tapped, the page jumped, and the next tap "failed to collapse"
+   something that had never opened. Stacked label-over-double-chevron is a
+   shape no dropdown uses. */
 .landing-scroll-cue {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: 1px solid rgb(var(--surf) / 0.16);
-  color: rgb(var(--fg) / 0.78);
+  gap: 2px;
+  /* Generous padding rather than a border: the tap target stays finger-sized
+     without drawing a box that looks like a button. */
+  padding: 8px 20px;
+  color: rgb(var(--fg) / 0.72);
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
 }
 
 .landing-scroll-cue svg {
+  color: rgb(var(--fg) / 0.5);
   animation: landing-cue-nudge 2.4s ease-in-out infinite;
+}
+
+/* Smooth the jump so the movement itself says "you were scrolled" rather than
+   "something appeared". Scoped with :has so it only applies while the landing
+   page is what is mounted — the app's own routing does its own scrolling and
+   should not inherit this. Browsers without :has simply keep the instant jump. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing) {
+    scroll-behavior: smooth;
+  }
 }
 
 @keyframes landing-cue-nudge {
   0%,
   100% {
     transform: translateY(0);
+    opacity: 0.75;
   }
   50% {
-    transform: translateY(3px);
+    transform: translateY(4px);
+    opacity: 1;
   }
 }
 
