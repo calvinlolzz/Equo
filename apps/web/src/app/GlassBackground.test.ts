@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   IDLE_FREEZE_MS,
+  IDLE_FREEZE_NEVER,
   IDLE_FREEZE_MS_POINTER,
   frameIntervalFor,
   isSoftwareRenderer,
@@ -57,6 +58,20 @@ describe("shouldAnimate", () => {
     // The same moment on touch is still well inside the window.
     expect(shouldAnimate({ ...running, msSinceInteraction: IDLE_FREEZE_MS_POINTER + 1 })).toBe(true);
     expect(IDLE_FREEZE_MS_POINTER).toBeLessThan(IDLE_FREEZE_MS);
+  });
+
+  test("an infinite budget never settles — but the other gates still stop it", () => {
+    // What "取消幾秒後停住" means in the truth table: no amount of idleness
+    // ends the loop, while a hidden tab, an offscreen canvas or an open sheet
+    // still do. If that were not true this would be a battery bug, not a
+    // preference.
+    const forever = { ...running, idleFreezeMs: IDLE_FREEZE_NEVER };
+
+    expect(shouldAnimate({ ...forever, msSinceInteraction: 60 * 60 * 1000 })).toBe(true);
+    expect(shouldAnimate({ ...forever, msSinceInteraction: Number.MAX_SAFE_INTEGER })).toBe(true);
+    expect(shouldAnimate({ ...forever, documentHidden: true })).toBe(false);
+    expect(shouldAnimate({ ...forever, visible: false })).toBe(false);
+    expect(shouldAnimate({ ...forever, overlayPaused: true })).toBe(false);
   });
 
   test("omitting the budget falls back to the touch one", () => {

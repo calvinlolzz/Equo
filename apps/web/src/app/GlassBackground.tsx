@@ -89,6 +89,23 @@ export const IDLE_FREEZE_MS = 6_000;
 export const IDLE_FREEZE_MS_POINTER = 2_500;
 
 /**
+ * "Never settle." Passed as the idle budget where the field is meant to keep
+ * drifting for as long as it is on screen.
+ *
+ * Infinity rather than a very large number so the intent survives being read:
+ * every comparison in the loop is `elapsed > budget`, which is simply never
+ * true — no special case, no branch that only fires after eleven days.
+ *
+ * ⚠️ This is the one gate that gives up a real saving. The other three are
+ * still there and still matter: a backgrounded tab, a canvas scrolled out of
+ * view, and an open sheet all stop the loop. What it costs is the quiet
+ * machine — a desktop left sitting on the group screen now shades the window
+ * continuously instead of settling after a couple of seconds. That is a
+ * deliberate trade for the look, and 個人資料 → 動態背景 is the way out of it.
+ */
+export const IDLE_FREEZE_NEVER = Number.POSITIVE_INFINITY;
+
+/**
  * Renderer strings that mean "there is no usable GPU behind this context".
  *
  * A fullscreen fragment shader on a software rasteriser is not slow, it is
@@ -677,7 +694,13 @@ export function GlassBackground() {
         fpsCap: coarse ? 30 : 0,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
-        idleFreezeMs: coarse ? IDLE_FREEZE_MS : IDLE_FREEZE_MS_POINTER,
+        // Asked for directly: on a mouse the field should not stop drifting a
+        // couple of seconds after you stop touching anything. Phones keep the
+        // six-second settle — that one is the 2026-08 heat/throttle fix, not a
+        // preference, and a phone left open in a pocket has nobody watching it.
+        idleFreezeMs: coarse ? IDLE_FREEZE_MS : IDLE_FREEZE_NEVER,
+        // Moot while the budget is infinite (there is nothing to wake from),
+        // kept honest for the day a finite budget comes back.
         wakeOnPointerMove: coarse,
         light: isLight(),
         overlayPaused: isOverlayOpen(),
