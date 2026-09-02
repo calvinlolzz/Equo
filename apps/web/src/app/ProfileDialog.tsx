@@ -165,7 +165,7 @@ export function ProfileDialog({
       className={swipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) swipe.requestClose();
       }}
     >
       <section
@@ -177,7 +177,7 @@ export function ProfileDialog({
         ref={dialogRef}
       >
         <div className="dialog-drag-handle" aria-hidden="true" />
-        <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={onClose}>
+        <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={swipe.requestClose}>
           <X aria-hidden="true" size={18} />
         </button>
 
@@ -334,11 +334,20 @@ export function ProfileDialog({
                 option names are each written in their own language and never
                 translated: a picker that lists languages in a language you
                 cannot read is useless to the one person who needs it. */}
-            <div className="profile-other-row profile-other-row-static">
+            {/* The value is plain text, exactly like 外觀主題 and 動態背景 above
+                it, and the <select> is stretched invisibly over the whole row.
+                It used to BE the value: a styled select with direction:rtl to
+                push its text right — and WebKit flips the native dropdown
+                arrows along with the text, so on iOS the ⌄⌃ landed in the
+                middle of the row, squeezing 語言設定 onto two lines. Now the
+                row is laid out by the same rules as its neighbours and the tap
+                still opens the native picker, from anywhere in the row. */}
+            <div className="profile-other-row profile-language-row">
               <Globe aria-hidden="true" size={19} />
               <span>{text.languageSetting}</span>
+              <span className="profile-row-value">{LOCALE_NAMES[ACTIVE_LOCALE]}</span>
               <select
-                className="profile-row-value profile-language-select"
+                className="profile-language-select"
                 aria-label={text.languageSetting}
                 value={ACTIVE_LOCALE}
                 onChange={(event) => setLocale(event.target.value as Locale, ACTIVE_LOCALE)}
@@ -377,7 +386,7 @@ export function ProfileDialog({
 
         {hasPendingChange ? (
           <div className="dialog-action-row">
-            <button className="secondary-action" type="button" onClick={onClose} disabled={saving}>
+            <button className="secondary-action" type="button" onClick={swipe.requestClose} disabled={saving}>
               {appText.cancel}
             </button>
             <button className="primary-action" type="button" onClick={handleConfirm} disabled={saving}>

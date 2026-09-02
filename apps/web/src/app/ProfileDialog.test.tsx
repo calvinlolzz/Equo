@@ -2,7 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ProfileDialog } from "./ProfileDialog";
-import { UI_TEXT } from "./uiText";
+import { ACTIVE_LOCALE, UI_TEXT } from "./uiText";
+import { LOCALES } from "./i18n/locale";
 
 const text = UI_TEXT.profile;
 
@@ -75,15 +76,24 @@ describe("the 其他設定 rows", () => {
     expect(within(row).getByText(text.themeLight)).toBeTruthy();
   });
 
-  test("the language row reports, and is not a control", async () => {
+  test("the language row shows the current language and opens the native picker", async () => {
     renderDialog();
     const label = await openOtherTab();
+    const row = label.closest(".profile-language-row") as HTMLElement;
 
-    // There is one language, so a button here would be something you can press
-    // that does nothing - which is what this row used to be.
-    expect(screen.queryByRole("button", { name: new RegExp(text.languageSetting) })).toBeNull();
+    // Not a <button>: it never was one that did something, and a button that
+    // looks pressable and only opens a picker is the shape this row used to
+    // fake. The real control is a <select> laid invisibly over the whole row.
     expect(label.closest("button")).toBeNull();
-    expect(screen.getByText(text.languageValue)).toBeTruthy();
+    const picker = within(row).getByRole("combobox", { name: text.languageSetting }) as HTMLSelectElement;
+    expect(picker.value).toBe(ACTIVE_LOCALE);
+    expect([...picker.options].map((option) => option.value)).toEqual([...LOCALES]);
+
+    // And the value a person reads is plain text in the row, like every other
+    // row's value — not the select's own rendering, which is what dragged the
+    // native dropdown arrows into the middle of the row on iOS.
+    const shown = within(row).getAllByText(text.languageValue);
+    expect(shown.some((node) => node.tagName !== "OPTION")).toBe(true);
   });
 
   test("still offers the rows that do go somewhere", async () => {

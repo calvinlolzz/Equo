@@ -47,7 +47,7 @@ export function FeedbackDialog({ onClose, onSubmit }: FeedbackDialogProps) {
       className={swipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) swipe.requestClose();
       }}
     >
       <section
@@ -59,7 +59,7 @@ export function FeedbackDialog({ onClose, onSubmit }: FeedbackDialogProps) {
         ref={dialogRef}
       >
         <div className="dialog-drag-handle" aria-hidden="true" />
-        <button className="dialog-close" type="button" aria-label={text.cancel} onClick={onClose}>
+        <button className="dialog-close" type="button" aria-label={text.cancel} onClick={swipe.requestClose}>
           <X aria-hidden="true" size={18} />
         </button>
 
@@ -92,7 +92,7 @@ export function FeedbackDialog({ onClose, onSubmit }: FeedbackDialogProps) {
         />
 
         <div className="dialog-action-row">
-          <button className="secondary-action" type="button" onClick={onClose} disabled={sending}>
+          <button className="secondary-action" type="button" onClick={swipe.requestClose} disabled={sending}>
             {text.cancel}
           </button>
           <button className="primary-action" type="button" onClick={handleSubmit} disabled={sending || !message.trim()}>

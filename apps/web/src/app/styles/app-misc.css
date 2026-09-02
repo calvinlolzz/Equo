@@ -195,29 +195,41 @@
   font-weight: 600;
 }
 
-/* The language picker is a real <select>, but it sits in a list of rows whose
-   other values are plain text - so it keeps the same right-aligned, muted look
-   rather than announcing itself as a form control in the middle of settings.
-   The native dropdown still opens on tap, which is the whole point of using a
-   select on mobile. */
+/* The language row is laid out like every other settings row — icon, label,
+   value — and the <select> is an invisible sheet over the whole thing.
+   It used to be the other way round: the select WAS the value, right-aligned
+   with `direction: rtl` because WebKit ignores text-align on a select. WebKit
+   also flips the native dropdown arrows with the text, so on iOS the ⌄⌃ came
+   out on the LEFT of the control, landing in the middle of the row and pushing
+   「語言設定」 onto two lines. Nothing about that is fixable from inside a
+   styled select, so the select stopped being the thing you look at. */
+.profile-language-row {
+  position: relative;
+}
+
+.profile-language-row > span:not(.profile-row-value) {
+  /* The label never wraps; it is two or three words and the row is one line. */
+  white-space: nowrap;
+}
+
 .profile-language-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border: 0;
-  padding: 4px 0;
-  text-align: right;
-  /* 16px so iOS does not zoom the dialog when the picker takes focus, the same
-     rule every other input under 620px follows. */
-  font-size: 16px;
-  color: rgb(var(--fg) / 0.6);
+  padding: 0;
+  opacity: 0;
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
-  /* text-align on a select is ignored by WebKit; this is what actually moves
-     the label to the right there. */
-  direction: rtl;
+  /* 16px so iOS does not zoom the dialog when the picker takes focus, the same
+     rule every other input under 620px follows. Invisible, but focus is real. */
+  font-size: 16px;
+  cursor: pointer;
 }
 
 .profile-language-select option {
-  /* The options themselves are read left-to-right; only the closed control is
-     flipped above. */
-  direction: ltr;
   color: rgb(var(--fg));
   background: rgb(var(--card-base));
 }

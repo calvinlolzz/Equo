@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
 import { ChevronLeft, ChevronRight, CopyPlus, Pencil, Send, Trash2, X } from "lucide-react";
 import type { ExpenseCommentsState } from "./useExpenseComments";
 import { MAX_COMMENT_LENGTH } from "../contracts/validation";
-import { useDialogChrome } from "./useDialogChrome";
+import { mergeRefs, useDialogChrome } from "./useDialogChrome";
+import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import type { Expense, Member } from "./appTypes";
 import { getMemberShareMinor } from "./expenseShareSplit";
 import { formatAmount } from "./formatAmount";
@@ -73,7 +74,16 @@ export function ExpenseDetailDialog({
   // closing and reopening returns to the one that was tapped.
   const [viewingImageIndex, setViewingImageIndex] = useState(0);
   const [commentDraft, setCommentDraft] = useState("");
-  const dialogRef = useDialogChrome(onClose);
+  // Swipe-to-dismiss, and with it the slide-out: closing used to unmount this
+  // sheet on the spot, which read as the screen blinking rather than the sheet
+  // leaving. Every close path below goes through requestClose so the animation
+  // is not something only the drag gesture gets.
+  const swipe = useSwipeToDismiss(onClose);
+  const chromeRef = useDialogChrome(swipe.requestClose);
+  const dialogRef = useMemo(
+    () => mergeRefs<HTMLElement>(swipe.dragProps.ref, chromeRef),
+    [swipe.dragProps.ref, chromeRef],
+  );
 
   // Every receipt on the entry, tolerating a row that predates the list (a
   // cached bundle, an older server) so its single photo still shows.
@@ -151,22 +161,27 @@ export function ExpenseDetailDialog({
   return (
     <>
     <div
-      className="modal-backdrop"
+      className={swipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) swipe.requestClose();
       }}
     >
       <section
-        className="flow-dialog expense-detail-dialog glass-panel"
+        className={
+          swipe.closing
+            ? "flow-dialog expense-detail-dialog glass-panel closing"
+            : "flow-dialog expense-detail-dialog glass-panel"
+        }
         role="dialog"
         aria-modal="true"
         aria-label={dialogTitle}
+        {...swipe.dragProps}
         ref={dialogRef}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        <button className="dialog-close" type="button" aria-label={text.cancel} onClick={onClose}>
+        <button className="dialog-close" type="button" aria-label={text.cancel} onClick={swipe.requestClose}>
           <X aria-hidden="true" size={18} />
         </button>
 

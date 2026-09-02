@@ -58,7 +58,7 @@ export function NotificationsPanel({
       className={swipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) swipe.requestClose();
       }}
     >
       <section
@@ -70,7 +70,7 @@ export function NotificationsPanel({
         ref={dialogRef}
       >
         <div className="dialog-drag-handle" aria-hidden="true" />
-        <button className="dialog-close" type="button" aria-label={text.cancel} onClick={onClose}>
+        <button className="dialog-close" type="button" aria-label={text.cancel} onClick={swipe.requestClose}>
           <X aria-hidden="true" size={18} />
         </button>
 

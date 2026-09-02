@@ -12,7 +12,8 @@ import {
   offsetDelta,
   type CropView,
 } from "./coverCrop";
-import { useDialogChrome } from "./useDialogChrome";
+import { mergeRefs, useDialogChrome } from "./useDialogChrome";
+import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.cover;
@@ -44,7 +45,12 @@ export function CoverCropSheet({
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const dialogRef = useDialogChrome(onCancel);
+  const swipe = useSwipeToDismiss(onCancel);
+  const chromeRef = useDialogChrome(swipe.requestClose);
+  const dialogRef = useMemo(
+    () => mergeRefs<HTMLElement>(swipe.dragProps.ref, chromeRef),
+    [swipe.dragProps.ref, chromeRef],
+  );
 
   useEffect(() => {
     const element = new Image();
@@ -123,15 +129,24 @@ export function CoverCropSheet({
   }
 
   return (
-    <div className="modal-backdrop cover-crop-backdrop" role="presentation">
+    <div
+      className={swipe.closing ? "modal-backdrop cover-crop-backdrop closing" : "modal-backdrop cover-crop-backdrop"}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) swipe.requestClose();
+      }}
+    >
       <section
-        className="flow-dialog glass-panel cover-crop-sheet"
+        className={
+          swipe.closing ? "flow-dialog glass-panel cover-crop-sheet closing" : "flow-dialog glass-panel cover-crop-sheet"
+        }
         role="dialog"
         aria-modal="true"
         aria-label={text.title}
+        {...swipe.dragProps}
         ref={dialogRef}
       >
-        <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={onCancel}>
+        <button className="dialog-close" type="button" aria-label={appText.cancel} onClick={swipe.requestClose}>
           <X aria-hidden="true" size={18} />
         </button>
         <div className="dialog-header">
@@ -178,7 +193,7 @@ export function CoverCropSheet({
         </label>
 
         <div className="dialog-action-row">
-          <button className="secondary-action" type="button" onClick={onCancel}>
+          <button className="secondary-action" type="button" onClick={swipe.requestClose}>
             {appText.cancel}
           </button>
           <button className="primary-action" type="button" onClick={confirm} disabled={!image}>
