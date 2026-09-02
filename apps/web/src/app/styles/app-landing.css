@@ -57,12 +57,11 @@
   gap: 4px;
   margin-bottom: 4px;
   padding: 16px 20px;
-  border-radius: 20px;
-  border: 1px solid rgb(var(--brand) / 0.35);
-  background:
-    linear-gradient(145deg, rgb(var(--brand) / 0.16), rgb(var(--brand) / 0.06)),
-    rgb(var(--card-base) / 0.7);
   text-align: center;
+  /* Surface, border and blur all come from .glass-panel — the same treatment as
+     the sign-in card directly below it. Nothing tints this one: two stacked
+     cards in the same place should look like two cards, not like a warning and
+     a card. */
 }
 
 .landing-invite-label {
@@ -194,25 +193,20 @@
 
 /* ---- illustrated product card ----------------------------------------- */
 
-/* These cards deliberately do NOT use .glass-panel, and that is a performance
-   decision rather than a visual one. Every backdrop-filter element re-blurs
-   whatever is behind it whenever that changes — and what is behind these is the
-   animated WebGL field, on a page that is 2.5 screens tall and whose whole job
-   is to be scrolled. Fifteen live blur layers over a moving canvas is the
-   single most expensive thing this app can do to a GPU.
-   They lose nothing for it: they already sit on .landing-below's scrim, so
-   there was never much backdrop left to blur. The border and the surface tint
-   below are what .glass-panel was actually contributing here. */
+/* Every card on this page carries .glass-panel, so the whole column reads as
+   one material — the sign-in card was always glass, and a page of flat cards
+   stacked under it looked like two different designs.
+   ⚠️ The cost is real and was measured: each backdrop-filter re-blurs what is
+   behind it whenever that changes, and behind these is the animated field on a
+   page 2.5 screens tall whose whole job is to be scrolled. They were flattened
+   for exactly that reason and put back deliberately. If the desktop drags, this
+   is the first place to look — and 個人資料 → 動態背景 switches off the thing
+   they are blurring. */
 .landing-demo-card {
-  border: 1px solid rgb(var(--surf) / 0.14);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
   display: grid;
   gap: 14px;
   padding: 18px;
   border-radius: 22px;
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.13), rgb(var(--surf) / 0.05)),
-    rgb(var(--card-base) / 0.84);
 }
 
 .landing-demo-label {
@@ -322,10 +316,6 @@
   gap: 8px;
   padding: 18px;
   border-radius: 18px;
-  border: 1px solid rgb(var(--surf) / 0.14);
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.13), rgb(var(--surf) / 0.05)),
-    rgb(var(--card-base) / 0.55);
 }
 
 .landing-value-icon {
@@ -364,10 +354,6 @@
   padding: 13px 16px 13px 38px;
   border-radius: 14px;
   position: relative;
-  border: 1px solid rgb(var(--surf) / 0.12);
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.12), rgb(var(--surf) / 0.04)),
-    rgb(var(--card-base) / 0.55);
   color: rgb(var(--fg) / 0.82);
   font-size: 14px;
   line-height: 1.55;
@@ -397,10 +383,6 @@
 .landing-faq-item {
   border-radius: 14px;
   padding: 0 16px;
-  border: 1px solid rgb(var(--surf) / 0.12);
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.12), rgb(var(--surf) / 0.04)),
-    rgb(var(--card-base) / 0.55);
 }
 
 .landing-faq-item summary {
