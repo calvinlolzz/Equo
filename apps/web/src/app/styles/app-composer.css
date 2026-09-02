@@ -714,6 +714,37 @@
     justify-content: flex-end;
   }
 
+  /* A clean backing for the status bar and the title row.
+     In standalone PWA the page paints under the status bar (the manifest asks
+     for black-translucent), so the clock and the battery sat directly on the
+     drifting gradient — a hazy band the eye reads as smudged, right where the
+     one piece of fixed system text lives.
+     Bleeds 10px each side because the shell is `min(100% - 20px, …)` centred at
+     this width, so that is exactly the gutter — no 100vw, which would add a
+     horizontal scrollbar's worth of overflow. It scrolls away with the bar
+     rather than being fixed: the bar is not sticky, and a band that stayed
+     behind after its content left would just be an opaque strip over the page.
+     Fades out at the bottom so there is no seam across the screen. */
+  .top-bar {
+    position: relative;
+  }
+
+  .top-bar::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: -10px;
+    right: -10px;
+    top: calc(-14px - env(safe-area-inset-top));
+    bottom: -14px;
+    background: linear-gradient(
+      to bottom,
+      rgb(var(--card-base)) 0%,
+      rgb(var(--card-base)) 62%,
+      rgb(var(--card-base) / 0) 100%
+    );
+  }
+
   .start-flow-card,
   .group-rail,
   .expense-composer {

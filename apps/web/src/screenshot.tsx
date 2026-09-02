@@ -170,7 +170,11 @@ const GROUP: GroupSummary = {
   name: "東京旅行",
   currency: CURRENCY,
   owner_member_id: "m_me",
-  cover_image_url: null,
+  // A deliberately TALL fixture (3:4, like a phone photo): the cover is a 16:9
+  // box, so this is what proves the drawer stays usable instead of being eaten
+  // by somebody's portrait snapshot.
+  cover_image_url:
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 400'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%236de2b8'/%3E%3Cstop offset='0.5' stop-color='%238e7cf0'/%3E%3Cstop offset='1' stop-color='%23ffd67a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='300' height='400' fill='url(%23g)'/%3E%3Ctext x='150' y='60' font-size='28' text-anchor='middle' fill='%23000'%3ETOP%3C/text%3E%3Ctext x='150' y='210' font-size='28' text-anchor='middle' fill='%23000'%3EMIDDLE%3C/text%3E%3Ctext x='150' y='370' font-size='28' text-anchor='middle' fill='%23000'%3EBOTTOM%3C/text%3E%3C/svg%3E",
 };
 
 const DETAIL: GroupDetail = {

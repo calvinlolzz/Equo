@@ -318,6 +318,13 @@ export const ZH_HANT = {
     /** 法律頁的頁首返回鍵；也是登入頁 footer 回首頁的字。 */
     backToHome: "回到 Equo",
   },
+  /** 上傳群組封面時選畫面範圍的那張表單。 */
+  cover: {
+    title: "選擇封面範圍",
+    hint: "拖曳移動照片，滑桿可以放大。框內就是之後會顯示的部分。",
+    zoom: "縮放",
+    apply: "使用這個範圍",
+  },
   install: {
     title: "把 Equo 加到主畫面",
     benefit: "像 App 一樣全螢幕開啟，記帳更快。",

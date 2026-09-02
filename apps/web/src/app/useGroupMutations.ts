@@ -20,6 +20,12 @@ type UseGroupMutationsDeps = {
   openGroup: (groupId: string, mode?: "push" | "replace") => void;
   closeGroup: (mode?: "push" | "replace") => void;
   loadArchivedGroups: () => void | Promise<void>;
+  /**
+   * Hand a freshly picked cover to the crop sheet instead of using it as-is.
+   * Optional: without it the photo is used as picked (the pre-cropper
+   * behaviour), which is what keeps this hook usable on its own.
+   */
+  onCropRequested?: (dataUrl: string) => void;
 };
 
 /**
@@ -43,6 +49,7 @@ export function useGroupMutations({
   openGroup,
   closeGroup,
   loadArchivedGroups,
+  onCropRequested,
 }: UseGroupMutationsDeps) {
   const [groupName, setGroupName] = useState<string>("");
   /**
@@ -111,11 +118,21 @@ export function useGroupMutations({
     setDialog("editGroup");
   }
 
+  /**
+   * A picked cover, downscaled and handed to the cropper rather than used as
+   * it is. The cover renders at a fixed 16:9, so SOMETHING is going to crop
+   * this photo — this is only about who decides what survives.
+   *
+   * onCropRequested is optional so the hook still works (and tests still pass)
+   * where no cropper is mounted; without one the photo is used as picked, which
+   * is exactly the old behaviour.
+   */
   async function handleGroupCoverPick(file: File | null) {
     if (!file) return;
     try {
       const dataUrl = await downscaleImageFileToDataUrl(file);
-      setGroupCoverDataUrl(dataUrl);
+      if (onCropRequested) onCropRequested(dataUrl);
+      else setGroupCoverDataUrl(dataUrl);
     } catch {
       showToast(text.photoError);
     }

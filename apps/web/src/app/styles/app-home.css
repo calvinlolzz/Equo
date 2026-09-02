@@ -377,7 +377,16 @@
   height: 0;
 }
 
+/* A fixed shape, whatever gets uploaded.
+   The <img> is width:100% height:100%, which against an auto-height box means
+   the photo's OWN aspect decided how tall this was — so a portrait phone photo
+   made the cover more than half the drawer, and the nav items below it needed
+   scrolling to reach. Now the box is 16:9 (capped on short screens) and the
+   photo covers it; which part of the photo that is, is the uploader's choice —
+   see CoverCropSheet. */
 .side-cover {
+  aspect-ratio: 16 / 9;
+  max-height: min(30vh, 220px);
   min-height: 88px;
   border-radius: 12px;
   overflow: hidden;

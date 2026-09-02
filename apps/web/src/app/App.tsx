@@ -63,6 +63,7 @@ import type { ScanSheetMode } from "./ScanSheet";
 import { readInviteToken } from "./inviteToken";
 import { grantScanConsent, hasScanConsent, revokeScanConsent } from "./scanConsent";
 import type { ReceiptPrefill } from "./receiptPrefill";
+import { CoverCropSheet } from "./CoverCropSheet";
 import { GroupRail } from "./GroupRail";
 // Eager, not a lazy chunk: this is the first thing a first-time visitor sees,
 // and it is the one screen that must not wait on a second round-trip.
@@ -192,6 +193,10 @@ export function App() {
   // The privacy/terms sheet that stacks on top of the profile dialog. Lifted out
   // of ProfileDialog so it can be a layer of its own in the Back-button stack.
   const [infoDialog, setInfoDialog] = useState<InfoDialogMode>(null);
+  // The picked cover, waiting for its crop. Held here rather than inside the
+  // group dialogs because both 建立群組 and 編輯群組 pick covers and the sheet
+  // has to sit above whichever one is open.
+  const [coverToCrop, setCoverToCrop] = useState<string | null>(null);
   // Swipe-to-dismiss for the shared bottom-sheet dialog shell (records /
   // analysis / members / etc.). Kept mounted across open/close cycles.
   const dialogSwipe = useSwipeToDismiss(() => closeDialog());
@@ -392,6 +397,7 @@ export function App() {
   } = useGroupMutations({
     activeGroup,
     cloudStore,
+    onCropRequested: setCoverToCrop,
     showToast,
     recordCloudActivity,
     beginAction,
@@ -588,6 +594,9 @@ export function App() {
     { open: discardConfirmOpen, close: () => setDiscardConfirmOpen(false) },
     { open: feedbackOpen, close: () => setFeedbackOpen(false) },
     { open: notificationsOpen, close: () => setNotificationsOpen(false) },
+    // Opened FROM the group create/edit dialog and leaves it standing, so Back
+    // peels the cropper off first — same rule as the invite scanner above.
+    { open: coverToCrop !== null, close: () => setCoverToCrop(null) },
   ]);
 
   // Mirror "something is covering the screen" onto <html> so the WebGL backdrop
@@ -1402,6 +1411,19 @@ export function App() {
           </button>
         </div>
       </header>
+
+      {/* Above the group create/edit dialog that opened it (see the overlay
+          stack), so Back peels the cropper off and leaves the form standing. */}
+      {coverToCrop ? (
+        <CoverCropSheet
+          imageDataUrl={coverToCrop}
+          onCancel={() => setCoverToCrop(null)}
+          onConfirm={(cropped) => {
+            setGroupCoverDataUrl(cropped);
+            setCoverToCrop(null);
+          }}
+        />
+      ) : null}
 
       {toast ? (
         <div className="toast-dock" role="status" aria-live="polite">

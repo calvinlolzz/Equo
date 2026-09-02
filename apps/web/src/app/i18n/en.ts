@@ -313,6 +313,12 @@ export const EN: UiDictionary = {
     footerContact: "Contact us",
     backToHome: "Back to Equo",
   },
+  cover: {
+    title: "Choose what the cover shows",
+    hint: "Drag to move the photo, and use the slider to zoom. What is inside the frame is what gets used.",
+    zoom: "Zoom",
+    apply: "Use this crop",
+  },
   install: {
     title: "Add Equo to your home screen",
     benefit: "Opens full screen like an app, so recording an expense is quicker.",
