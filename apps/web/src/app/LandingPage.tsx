@@ -1,5 +1,7 @@
-import { ArrowRight, Calculator, Camera, ChevronDown, ChevronsDown, ReceiptText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Calculator, Camera, ChevronDown, ChevronsDown, ReceiptText, UsersRound } from "lucide-react";
 import { LoginScreen } from "./LoginScreen";
+import { readPendingInviteToken } from "./useInviteFlow";
 import { LEGAL_CONTACT_EMAIL } from "./legalContent";
 import { UI_TEXT } from "./uiText";
 
@@ -30,14 +32,57 @@ export function LandingPage({
   loading,
   errorMessage,
   onGoogleLogin,
+  fetchInvitePreview,
 }: {
   loading?: boolean;
   errorMessage?: string;
   onGoogleLogin: () => void;
+  /**
+   * Looks up what an invite link points at. Optional so the page still renders
+   * standalone (and in tests) with no client wired up.
+   */
+  fetchInvitePreview?: (token: string) => Promise<{ group: { name: string; member_count: number } }>;
 }) {
+  // Captured during the first render, before useInviteFlow's effect strips the
+  // query string — and falling back to the stash, which is all that survives
+  // the OAuth round-trip.
+  const [inviteToken] = useState(readPendingInviteToken);
+  const [invite, setInvite] = useState<{ name: string; memberCount: number } | null>(null);
+
+  useEffect(() => {
+    if (!inviteToken || !fetchInvitePreview) return;
+    let cancelled = false;
+
+    fetchInvitePreview(inviteToken)
+      .then((result) => {
+        if (!cancelled) setInvite({ name: result.group.name, memberCount: result.group.member_count });
+      })
+      // A dead or unreachable link is not an error to show anybody: they get
+      // the ordinary landing page, which is a complete answer on its own.
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken, fetchInvitePreview]);
+
   return (
     <div className="landing">
       <section className="landing-hero">
+        {/* Someone arriving from a friend's link is the one visitor who already
+            knows they want in — and used to be shown the same anonymous sign-in
+            card as everybody else, with no sign that the link had worked. */}
+        {invite ? (
+          <div className="landing-invite">
+            <span className="landing-invite-label">{text.inviteTitle}</span>
+            <strong className="landing-invite-group">{invite.name}</strong>
+            <span className="landing-invite-meta">
+              <UsersRound aria-hidden="true" size={14} />
+              {invite.memberCount} {text.inviteMemberSuffix}
+            </span>
+            <span className="landing-invite-hint">{text.inviteHint}</span>
+          </div>
+        ) : null}
         <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} />
         <p className="landing-pitch">{text.heroPitch}</p>
         {/* A scroll cue, not a control. The first version put a single chevron

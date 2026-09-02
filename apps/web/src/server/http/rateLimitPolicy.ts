@@ -1,11 +1,12 @@
 /**
  * Which requests are capped, how hard, and what the counter is keyed by.
  *
- * Reads are deliberately absent. Every GET is behind the session wall and
- * group membership, and capping them would add a database round-trip to the
- * app's hottest path in exchange for very little: volumetric read abuse is
- * what Vercel Firewall is for. What is capped is everything that WRITES, plus
- * the two doors an attacker can reach without an account.
+ * Reads are deliberately absent, with one exception. Every other GET is behind
+ * the session wall and group membership, and capping those would add a database
+ * round-trip to the app's hottest path in exchange for very little: volumetric
+ * read abuse is what Vercel Firewall is for. What is capped is everything that
+ * WRITES, plus the doors an attacker can reach without an account — including
+ * the invite preview, which is a GET that answers before anyone signs in.
  */
 export type RateLimitScope = "user" | "ip";
 
@@ -81,6 +82,16 @@ const NUDGE: RateLimitRule = { name: "nudge", limit: 20, windowSeconds: HOUR, sc
  */
 const COMMENT: RateLimitRule = { name: "comment", limit: 60, windowSeconds: HOUR, scope: "user" };
 
+/**
+ * The signed-out invite preview. The ONE capped read, and the reason the
+ * "reads are absent" note above needs its exception spelled out: every other
+ * GET is behind the session wall, and this one is not — the token in the path
+ * is the whole credential. Sixty an hour per IP is far more than a person
+ * opening a link (usually one), and far less than a machine walking the token
+ * space would need to be worth trying.
+ */
+const INVITE_PREVIEW: RateLimitRule = { name: "invitePreview", limit: 60, windowSeconds: HOUR, scope: "ip" };
+
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
@@ -91,6 +102,9 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * as using real ones.
  */
 export function resolveRateLimitRule(method: string, path: string): RateLimitRule | null {
+  // Checked before the write-methods gate: this is a GET, and it is capped.
+  if (method === "GET" && /^\/api\/v1\/invites\/[^/]+\/preview$/.test(path)) return INVITE_PREVIEW;
+
   if (!WRITE_METHODS.has(method)) return null;
 
   if (path === "/api/v1/errors") return ERRORS;

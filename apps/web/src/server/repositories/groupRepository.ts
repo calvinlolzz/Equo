@@ -123,6 +123,12 @@ export type GroupDetailRecord = {
   member_day_shares: MemberDaySharesRecord[];
 };
 
+/** The public face of an invite. Deliberately tiny — see previewInvite. */
+export type InvitePreview = {
+  group_name: string;
+  member_count: number;
+};
+
 export type GroupRepository = {
   listGroups(context: AuthenticatedContext): Promise<GroupRecord[]>;
   /**
@@ -167,6 +173,15 @@ export type GroupRepository = {
   /** The member's current balance in group_member_balances (0 when the view has no row). */
   getMemberBalanceMinor(groupId: string, memberId: string): Promise<number>;
   createInvite(context: AuthenticatedContext, groupId: string, request: CreateInviteRequest): Promise<InviteRecord>;
+  /**
+   * What a signed-OUT visitor may be told about an invite link before they are
+   * asked to hand over a Google account: the group's name and how many people
+   * are in it, and nothing else. Null when the token matches no live invite.
+   *
+   * The only unauthenticated read in this repository, so the shape of what it
+   * returns IS the security boundary — see handleInvitePreview.
+   */
+  previewInvite(token: string): Promise<InvitePreview | null>;
   acceptInvite(context: AuthenticatedContext, token: string, request: AcceptInviteRequest): Promise<{
     group: GroupRecord;
     member: GroupMemberRecord;

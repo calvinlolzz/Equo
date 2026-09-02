@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
 import { LegalPage } from "./LegalPage";
@@ -8,7 +8,11 @@ import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.landing;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.sessionStorage.clear();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("LandingPage", () => {
   test("keeps signing in as the first thing on the page", () => {
@@ -60,5 +64,54 @@ describe("LegalPage", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: TERMS_OF_SERVICE.title })).toBeTruthy();
     expect(screen.getByRole("link", { name: UI_TEXT.profile.privacyPolicy }).getAttribute("href")).toBe("/privacy");
+  });
+});
+
+describe("arriving from an invite link", () => {
+  const preview = { group: { name: "東京旅行", member_count: 4 } };
+
+  test("says which group the link points at, before anyone signs in", async () => {
+    window.history.replaceState(null, "", "/?invite=EQO-ABC123");
+    const fetchInvitePreview = vi.fn().mockResolvedValue(preview);
+
+    render(<LandingPage onGoogleLogin={() => {}} fetchInvitePreview={fetchInvitePreview} />);
+
+    expect(await screen.findByText("東京旅行")).toBeTruthy();
+    expect(screen.getByText(text.inviteTitle)).toBeTruthy();
+    expect(fetchInvitePreview).toHaveBeenCalledWith("EQO-ABC123");
+    // Still a sign-in page: the card does not replace the wall, it explains it.
+    expect(screen.getByRole("button", { name: new RegExp(UI_TEXT.login.googleLogin) })).toBeTruthy();
+  });
+
+  test("finds the token in the stash after the OAuth round-trip drops the query", async () => {
+    // Supabase sends people back to the bare origin, so by then the URL has
+    // nothing — only useInviteFlow's stash survives.
+    window.sessionStorage.setItem("equo.clean.pending_invite", "EQO-STASHED");
+    const fetchInvitePreview = vi.fn().mockResolvedValue(preview);
+
+    render(<LandingPage onGoogleLogin={() => {}} fetchInvitePreview={fetchInvitePreview} />);
+
+    await waitFor(() => expect(fetchInvitePreview).toHaveBeenCalledWith("EQO-STASHED"));
+  });
+
+  test("a dead link is silent — the ordinary page, no error", async () => {
+    window.history.replaceState(null, "", "/?invite=EQO-DEAD");
+    const fetchInvitePreview = vi.fn().mockRejectedValue(new Error("INVITE_EXPIRED"));
+
+    render(<LandingPage onGoogleLogin={() => {}} fetchInvitePreview={fetchInvitePreview} />);
+
+    await waitFor(() => expect(fetchInvitePreview).toHaveBeenCalled());
+    expect(screen.queryByText(text.inviteTitle)).toBeNull();
+    expect(screen.getByText(text.faq1A)).toBeTruthy();
+  });
+
+  test("an ordinary visit asks nothing", () => {
+    const fetchInvitePreview = vi.fn();
+
+    render(<LandingPage onGoogleLogin={() => {}} fetchInvitePreview={fetchInvitePreview} />);
+
+    // No token, no request: the landing page stays a page that needs no server.
+    expect(fetchInvitePreview).not.toHaveBeenCalled();
+    expect(screen.queryByText(text.inviteTitle)).toBeNull();
   });
 });

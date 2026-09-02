@@ -225,6 +225,15 @@ function spendBreakdown() {
   };
 }
 
+/**
+ * `?invite=` renders the SIGNED-OUT landing page with a live invite card
+ * instead of the app: no session is seeded, and the preview route answers. It
+ * is the one screen that cannot be reached by just opening the dev server —
+ * there is no API there, so the real page silently falls back to the ordinary
+ * landing (which is correct behaviour, and useless for looking at the card).
+ */
+const previewInvite = new URLSearchParams(window.location.search).get("invite");
+
 const ROUTES: Record<string, unknown> = {
   "GET /site-notice": { notice: { banner: { message: "", level: "info", ends_at: null, active: false }, maintenance: { enabled: false, message: "" } }, view_as: null },
   "GET /groups": { groups: [GROUP] },
@@ -234,15 +243,21 @@ const ROUTES: Record<string, unknown> = {
   "GET /catalog": DEFAULT_CATALOG,
   [`GET /groups/${GROUP_ID}/spend-breakdown`]: spendBreakdown(),
   [`GET /groups/${GROUP_ID}/expenses/search`]: { expenses: EXPENSES, total: EXPENSES.length },
+  ...(previewInvite
+    ? { [`GET /invites/${previewInvite}/preview`]: { group: { name: GROUP.name, member_count: MEMBERS.length } } }
+    : {}),
 };
 
-window.localStorage.setItem(
-  "equo.clean.session",
-  JSON.stringify({
-    expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-    user: { id: "u_me", email: "demo@example.com", displayName: "我" },
-  }),
-);
+
+if (!previewInvite) {
+  window.localStorage.setItem(
+    "equo.clean.session",
+    JSON.stringify({
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      user: { id: "u_me", email: "demo@example.com", displayName: "我" },
+    }),
+  );
+}
 
 // The boundary, and only the boundary. An unlisted route answers with an empty
 // object and says so in the console rather than throwing: the app treats its own

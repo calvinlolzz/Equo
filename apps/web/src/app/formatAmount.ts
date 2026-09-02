@@ -34,7 +34,23 @@ function currencyPrefix(currency: string): string {
   return CURRENCY_SYMBOLS[currency] ?? `${currency} `;
 }
 
+/**
+ * What to show when the number is not a number.
+ *
+ * Not "0", which is a claim: "$0" says somebody spent nothing, and a person
+ * reading their own balance has no way to tell that apart from a broken
+ * payload. A dash says "there is no figure here", which is the truth.
+ */
+const NO_AMOUNT = "—";
+
 export function formatAmount(amountMinor: number, currency: string): string {
+  // Reached when a payload arrives without a field the screen expected — a
+  // partial /spend-breakdown once rendered 總計 「$非數值」 to the user, which is
+  // what NaN.toLocaleString() says in 繁體中文. The server does not answer that
+  // way, so this is a backstop rather than a live bug; it costs one comparison
+  // and it is the last place before the pixels.
+  if (!Number.isFinite(amountMinor)) return `${currencyPrefix(currency)}${NO_AMOUNT}`;
+
   const hasCents = amountMinor % 100 !== 0;
   const formatted = (amountMinor / 100).toLocaleString(ACTIVE_LOCALE, {
     minimumFractionDigits: hasCents ? 2 : 0,
@@ -44,6 +60,10 @@ export function formatAmount(amountMinor: number, currency: string): string {
 }
 
 export function formatSigned(amountMinor: number, currency: string): string {
+  // Checked before the comparisons below, which NaN loses both of: without
+  // this, a missing balance would fall through to the zero branch and read as
+  // "settled up" — the most misleading answer this function can give.
+  if (!Number.isFinite(amountMinor)) return formatAmount(amountMinor, currency);
   if (amountMinor > 0) return `+${formatAmount(amountMinor, currency)}`;
   if (amountMinor < 0) return `-${formatAmount(Math.abs(amountMinor), currency)}`;
   return formatAmount(0, currency);

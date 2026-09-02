@@ -538,6 +538,21 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "GET",
       });
     },
+    /**
+     * What an invite link says for itself before anyone signs in: the group's
+     * name and how many people are in it. Unauthenticated by design — this is
+     * the screen a person lands on when a friend sends them a link, and the
+     * whole question it answers is "join what?".
+     *
+     * 404 when the link is dead, which the caller treats as "no invite" and
+     * renders the ordinary landing page.
+     */
+    getInvitePreview(token: string) {
+      return request<{ group: { name: string; member_count: number } }>(
+        `/invites/${encodeURIComponent(token)}/preview`,
+        { method: "GET" },
+      );
+    },
     /** Leave a read-only view-as. Unauthenticated: it only clears a cookie. */
     stopViewAs() {
       return request<{ stopped: boolean }>("/admin/view-as", { method: "DELETE" });

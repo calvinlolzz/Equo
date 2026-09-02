@@ -77,3 +77,26 @@ describe("formatSigned", () => {
     expect(formatSigned(-50000, "GBP")).toBe("-GBP 500");
   });
 });
+
+describe("a number that is not a number", () => {
+  test("renders a dash, not 非數值", () => {
+    // What the user actually saw: NaN.toLocaleString("zh-Hant") is "非數值", so
+    // a partial payload put 「$非數值」 on the analysis screen.
+    expect(formatAmount(Number.NaN, "TWD")).toBe("$—");
+    expect(formatAmount(Number.POSITIVE_INFINITY, "TWD")).toBe("$—");
+    expect(formatAmount(Number.NaN, "JPY")).toBe("¥—");
+  });
+
+  test("and never as zero, which would be a claim about the money", () => {
+    // The dangerous branch is the signed one: NaN is neither > 0 nor < 0, so
+    // without a guard it fell through to "settled up".
+    expect(formatSigned(Number.NaN, "TWD")).toBe("$—");
+    expect(formatSigned(Number.NaN, "TWD")).not.toBe(formatSigned(0, "TWD"));
+  });
+
+  test("real amounts are untouched", () => {
+    expect(formatAmount(0, "TWD")).toBe("$0");
+    expect(formatSigned(0, "TWD")).toBe("$0");
+    expect(formatSigned(-250, "TWD")).toBe("-$2.50");
+  });
+});

@@ -266,6 +266,10 @@ export const ZH_HANT = {
    */
   landing: {
     heroPitch: "免費・免下載・開瀏覽器就能用",
+    /** 帶著 ?invite= 進來的人才看得到的那張卡。只說得出群組名與人數。 */
+    inviteTitle: "你被邀請加入",
+    inviteMemberSuffix: "位成員",
+    inviteHint: "登入後會問你要用什麼名字加入。",
     scrollCue: "Equo 能做什麼",
 
     valueTitle: "一起花的錢，不用再算到傷感情",

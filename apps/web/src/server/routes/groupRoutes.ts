@@ -20,6 +20,7 @@ import {
 } from "../repositories/supabaseGroupRepository.js";
 import {
   handleAcceptInvite,
+  handleInvitePreview,
   handleArchiveGroup,
   handleCreateGroup,
   handleCreateInvite,
@@ -237,6 +238,15 @@ export async function createInviteRoute(
   }
 
   return handleCreateInvite(createSupabaseGroupRepository(options.client), auth.context, groupId, request);
+}
+
+/**
+ * Public on purpose — no buildAuthContext, because the whole point is the
+ * screen BEFORE a session exists. The token in the path is the only credential,
+ * which is what an invite link is.
+ */
+export async function invitePreviewRoute(options: RouteOptions, token: string) {
+  return handleInvitePreview(createSupabaseGroupRepository(options.client), token);
 }
 
 export async function acceptInviteRoute(

@@ -586,6 +586,47 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
     },
 
     /**
+     * The signed-out preview of an invite link (see previewInvite in the
+     * contract). Three small reads rather than the accept_invite RPC, because
+     * this must not touch use_count: looking at a link is not spending it.
+     *
+     * Every reason an invite is dead is checked HERE rather than left to the
+     * join: a link that cannot be accepted must not put a group's name on a
+     * stranger's screen. Note `expires_at IS NULL` means "never expires" — the
+     * production table is entirely nulls today — so a null must not be read as
+     * "expired at the epoch".
+     */
+    async previewInvite(token: string) {
+      const invite = optionalRow(
+        await client.select<{ group_id: string; max_uses: number | null; use_count: number; expires_at: string | null }>(
+          "invites",
+          query(columns("group_id,max_uses,use_count,expires_at"), eq("token_hash", createTokenHash(token)), limit(1)),
+        ),
+      );
+
+      if (!invite) return null;
+      if (invite.expires_at && Date.parse(invite.expires_at) <= Date.now()) return null;
+      if (invite.max_uses !== null && invite.use_count >= invite.max_uses) return null;
+
+      const group = optionalRow(
+        await client.select<{ name: string; deleted_at: string | null }>(
+          "groups",
+          query(columns("name,deleted_at"), eq("id", invite.group_id), limit(1)),
+        ),
+      );
+
+      // A deleted group keeps its invites; the link is simply dead now.
+      if (!group || group.deleted_at) return null;
+
+      const members = await client.select<{ id: string }>(
+        "group_members",
+        query(columns("id"), eq("group_id", invite.group_id), eq("status", "active")),
+      );
+
+      return { group_name: group.name, member_count: members.length };
+    },
+
+    /**
      * Validating the invite, joining the caller, and burning a use are one
      * locked transaction in the accept_invite RPC. Splitting them (look the
      * invite up, then update it) is what let two people redeem the last seat at

@@ -22,6 +22,7 @@ import {
   createVirtualMemberRoute,
   archiveGroupRoute,
   acceptInviteRoute,
+  invitePreviewRoute,
   deleteGroupRoute,
   listArchivedGroupsRoute,
   listGroupsRoute,
@@ -479,6 +480,20 @@ export function createHttpRuntime(options: RuntimeOptions) {
           match[1],
           body<CreateInviteRequest>(request),
         );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      // Public and unauthenticated, like /site-notice: it is what an invite
+      // link says for itself on the landing page, before there is a session to
+      // check. The body is deliberately tiny (see handleInvitePreview), and the
+      // path is rate limited by IP — this is the third door reachable without
+      // an account, so it gets the same treatment as the other two.
+      method: "GET",
+      pattern: /^\/api\/v1\/invites\/([^/]+)\/preview$/,
+      label: "GET /api/v1/invites/:token/preview",
+      async handle(request, match) {
+        const result = await invitePreviewRoute(routeOptions(options, request), match[1]);
         return jsonResponse(result.status, result.body);
       },
     },

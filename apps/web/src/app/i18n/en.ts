@@ -263,6 +263,10 @@ export const EN: UiDictionary = {
   },
   landing: {
     heroPitch: "Free · nothing to install · works in your browser",
+    inviteTitle: "You have been invited to join",
+    /** Joined as `${n} ${this}`. */
+    inviteMemberSuffix: "members",
+    inviteHint: "After you sign in, Equo asks what name you want to join with.",
     scrollCue: "What Equo does",
 
     valueTitle: "Shared money, settled without the awkward conversation",

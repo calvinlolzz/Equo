@@ -304,6 +304,12 @@ export function App() {
   // reach the login screen, and during maintenance the people who most need the
   // explanation are the ones who cannot get past it.
   const fetchSiteNotice = useMemo(() => () => pollingClient.getSiteNotice(), [pollingClient]);
+  // Also ungated: it is what the landing page shows somebody who arrived from
+  // an invite link, which by definition happens before they sign in.
+  const fetchInvitePreview = useMemo(
+    () => (token: string) => pollingClient.getInvitePreview(token),
+    [pollingClient],
+  );
   const siteNotice = useSiteNotice(fetchSiteNotice);
   // Clearing the cookie is the whole operation; the reload is what makes the
   // app stop being somebody else, since every module resolved its data from
@@ -1303,6 +1309,7 @@ export function App() {
           loading={authLoading}
           errorMessage={authError || undefined}
           onGoogleLogin={startGoogleLogin}
+          fetchInvitePreview={fetchInvitePreview}
         />
       </main>
     );

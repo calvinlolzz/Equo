@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { GroupRepository } from "../repositories/groupRepository.js";
 import {
   handleAcceptInvite,
+  handleInvitePreview,
   handleArchiveGroup,
   handleCreateGroup,
   handleCreateInvite,
@@ -31,6 +32,9 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
   return {
     async listGroups() {
       return [{ id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" }];
+    },
+    async previewInvite() {
+      return { group_name: "Tokyo Trip", member_count: 4 };
     },
     async markGroupRead(_context, groupId) {
       return { group_id: groupId, last_read_at: "2026-07-30T00:00:00.000Z" };
@@ -900,5 +904,55 @@ describe("收款資訊 (handleSetMemberPaymentNote)", () => {
 
     expect(result.ok).toBe(false);
     expect(saved).toEqual([]);
+  });
+});
+
+describe("handleInvitePreview", () => {
+  test("tells a signed-out visitor the group's name and size, and nothing else", async () => {
+    const repository = makeRepository({
+      async previewInvite() {
+        return { group_name: "東京旅行", member_count: 4 };
+      },
+    });
+
+    const result = await handleInvitePreview(repository, "EQO-TOKEN");
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(200);
+    // The body IS the security boundary for the only unauthenticated read of
+    // group data in the app: name and count, no id, no members, no balances.
+    expect(result.body).toEqual({ group: { name: "東京旅行", member_count: 4 } });
+    expect(JSON.stringify(result.body)).not.toContain("group_id");
+  });
+
+  test("a dead link is a 404, not a leak", async () => {
+    const repository = makeRepository({
+      async previewInvite() {
+        return null;
+      },
+    });
+
+    const result = await handleInvitePreview(repository, "EQO-DEAD");
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(404);
+    // Same code the join answers with: "expired, revoked, or never existed" is
+    // one state to anyone holding a link, and telling them apart without a
+    // session is exactly what this must not enable.
+    expect((result.body as { error: { code: string } }).error.code).toBe("INVITE_EXPIRED");
+  });
+
+  test("passes the token through untouched", async () => {
+    const seen: string[] = [];
+    const repository = makeRepository({
+      async previewInvite(token) {
+        seen.push(token);
+        return null;
+      },
+    });
+
+    await handleInvitePreview(repository, "EQO-ABC123");
+
+    expect(seen).toEqual(["EQO-ABC123"]);
   });
 });

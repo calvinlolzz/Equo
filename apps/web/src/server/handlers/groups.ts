@@ -509,6 +509,49 @@ export async function handleCreateInvite(
  * recordClientRequest is gone from this path for the same reason: the RPC
  * writes it in the same transaction as the membership row.
  */
+/**
+ * What an invite link may say for itself before anyone signs in.
+ *
+ * ⚠️ This is the app's only unauthenticated read of group data, so the body is
+ * the security boundary: the group's NAME and how many people are in it, and
+ * nothing else. Not the group id (it would hand a stranger an addressable
+ * identifier for every other endpoint), not the member names, not a balance,
+ * not the cover image. Anyone holding the link is someone a member chose to
+ * send it to, and this is the least that makes "王小明邀請你加入「東京旅行」"
+ * possible.
+ *
+ * A dead link answers 404 with the same shape as any other missing invite —
+ * the caller renders the ordinary landing page, which is exactly what a
+ * stranger with a guessed token should see.
+ */
+export async function handleInvitePreview(repository: GroupRepository, token: string) {
+  const preview = await repository.previewInvite(token);
+
+  if (!preview) {
+    return {
+      ok: false,
+      status: 404,
+      body: {
+        error: {
+          // The same code the join itself answers with, on purpose: "expired,
+          // revoked, or never existed" is one state to anyone holding a link,
+          // and giving the preview its own code would let a caller tell those
+          // apart without ever signing in.
+          code: "INVITE_EXPIRED",
+          message: "Invite is expired, revoked, or unavailable.",
+          request_id: "req_invite_preview",
+        },
+      },
+    } satisfies HandlerResult<unknown>;
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    body: { group: { name: preview.group_name, member_count: preview.member_count } },
+  } satisfies HandlerResult<unknown>;
+}
+
 export async function handleAcceptInvite(
   repository: GroupRepository,
   context: AuthenticatedContext,

@@ -16,6 +16,27 @@ function getInviteTokenFromUrl(): string {
   return params.get("invite") ?? "";
 }
 
+/**
+ * The invite this visit is about, for the signed-out landing page.
+ *
+ * Reads the URL first and the stash second, because those are the two moments
+ * it exists: the initial arrival still has `?invite=` in the address bar, and
+ * everything after the OAuth round-trip has only the stashed copy (the flow
+ * below strips the query string as soon as it has saved it). Returning "" means
+ * "this is an ordinary visit", which is the common case.
+ */
+export function readPendingInviteToken(): string {
+  const fromUrl = getInviteTokenFromUrl().trim();
+  if (fromUrl) return fromUrl;
+
+  try {
+    return window.sessionStorage.getItem(PENDING_INVITE_KEY)?.trim() ?? "";
+  } catch {
+    // Storage blocked. No preview, and the join still works from the URL.
+    return "";
+  }
+}
+
 function clearInviteTokenFromUrl() {
   const url = new URL(window.location.href);
   if (!url.searchParams.has("invite")) return;

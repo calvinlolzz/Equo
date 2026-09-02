@@ -7,6 +7,23 @@ describe("resolveRateLimitRule", () => {
     expect(resolveRateLimitRule("GET", "/api/v1/groups/group_1")).toBeNull();
   });
 
+  test("except the invite preview, which answers before there is a session", () => {
+    // Every other GET is behind the login wall; this one is the third door
+    // reachable without an account, so it is capped by address like the other
+    // two. Losing this rule would leave an unauthenticated endpoint that walks
+    // the token space for free.
+    const rule = resolveRateLimitRule("GET", "/api/v1/invites/EQO-ABC123/preview");
+
+    expect(rule).toMatchObject({ name: "invitePreview", scope: "ip" });
+  });
+
+  test("the cap is on the preview alone, not on invites generally", () => {
+    expect(resolveRateLimitRule("GET", "/api/v1/invites/EQO-ABC123")).toBeNull();
+    expect(resolveRateLimitRule("GET", "/api/v1/invites/EQO-ABC123/preview/extra")).toBeNull();
+    // The join is a write, so it lands in the write bucket rather than this one.
+    expect(resolveRateLimitRule("POST", "/api/v1/invites/EQO-ABC123/accept")).toMatchObject({ name: "write" });
+  });
+
   test("caps the anonymous error intake by itself", () => {
     const rule = resolveRateLimitRule("POST", "/api/v1/errors");
 
