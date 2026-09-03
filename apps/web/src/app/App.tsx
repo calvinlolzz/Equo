@@ -1491,7 +1491,7 @@ export function App() {
             </div>
           ) : null}
 
-          <section className="group-room pizo-home" aria-label={text.groupHome}>
+          <section className="group-room pizo-home enter-content" aria-label={text.groupHome}>
             {/* Root the mobile heading outline: the desktop <h1> lives in the
                 group rail, which is inert on mobile, so the workspace would
                 otherwise start at <h2>. */}

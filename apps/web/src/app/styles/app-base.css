@@ -526,6 +526,42 @@ label span {
   }
 }
 
+/* The other half of the skeleton: what arrives in its place.
+ *
+ * The grey shapes used to be swapped for the real screen between two frames,
+ * which on a slow connection reads as a flash rather than as loading finishing.
+ * Put this on whatever mounts when the data lands - it is a mount animation, so
+ * it plays once and never replays while the screen is up.
+ *
+ * Opacity only, deliberately: a transform (even one that ends at `none`) makes
+ * the element the containing block for every `position: fixed` descendant for
+ * as long as it runs, which is how a fade-in turns into the tab bar sliding
+ * around. Keep it that way unless the subtree is known to have none.
+ */
+@keyframes content-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.enter-content {
+  /* `backwards`, not `both`: a forwards fill leaves the animation permanently
+     "in effect", and an element with an in-effect opacity animation keeps its
+     stacking context - a lasting change to how the subtree paints, in exchange
+     for nothing once the fade has finished. */
+  animation: content-enter 260ms ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter-content {
+    animation: none;
+  }
+}
+
 .template-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

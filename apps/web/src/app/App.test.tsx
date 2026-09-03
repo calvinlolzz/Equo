@@ -118,6 +118,22 @@ describe("a signed-in user", () => {
     expect(api.calls).toContain("GET /groups/group_1");
   });
 
+  test("the group home fades in rather than replacing the skeleton between frames", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group()] } },
+      { route: "GET /groups/group_1", body: groupDetail() },
+    ]);
+
+    const { container } = renderApp();
+    await screen.findAllByText("東京旅行");
+
+    // jsdom applies no stylesheet, so this can only check the wiring; what the
+    // class means is asserted against the CSS in enterTransitions.test.tsx.
+    const room = container.querySelector(".group-room");
+    expect(room?.classList.contains("enter-content")).toBe(true);
+  });
+
   test("opens the group named in the URL and loads its detail", async () => {
     signIn();
     window.history.replaceState(null, "", "/group/group_1");

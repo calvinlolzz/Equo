@@ -30,7 +30,7 @@ const text = UI_TEXT.app;
 
 export function StartFlow({ groups, groupName, groupNamePlaceholder, isCreatingGroup = false, selectedTemplate, selectedTemplateLabel, startMode, templates, onCreateGroup, onGroupNameChange, onSelectGroup, onSelectTemplate, onSetStartMode, onOpenInviteInput }: StartFlowProps) {
   return (
-    <section className="create-flow-shell">
+    <section className="create-flow-shell enter-content">
       <div className="start-flow-card glass-panel">
         <div className="start-copy">
           <h1>{"\u5efa\u7acb\u6216\u52a0\u5165\u4e00\u500b\u7fa4\u7d44"}</h1>

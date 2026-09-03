@@ -7,6 +7,12 @@
   padding: 4px 0;
   color: rgb(var(--fg) / 0.58);
   background: transparent;
+  /* The icon below already eases into place; the colour and the press scale did
+     not, so selecting a tab was one thing moving and two things cutting. Same
+     160ms for all three, so it reads as a single movement. */
+  transition:
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .mobile-tab-item span {
@@ -34,6 +40,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mobile-tab-item,
+  .mobile-tab-center,
   .mobile-tab-item svg {
     transition: none;
   }
@@ -49,6 +57,7 @@
 
 .mobile-tab-center {
   position: relative;
+  transition: transform 160ms ease;
   top: -18px;
   width: 56px;
   height: 56px;

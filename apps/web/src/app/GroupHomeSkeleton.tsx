@@ -14,7 +14,7 @@ import { UI_TEXT } from "./uiText";
  */
 export function GroupHomeSkeleton() {
   return (
-    <div className="group-home-card glass-panel skeleton-card" aria-busy="true" role="status">
+    <div className="group-home-card glass-panel skeleton-card enter-content" aria-busy="true" role="status">
       <span className="visually-hidden">{UI_TEXT.app.loadingGroup}</span>
       <div aria-hidden="true">
         <div className="skeleton-title-row">
