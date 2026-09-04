@@ -12,7 +12,12 @@ import { fileURLToPath } from "node:url";
  * rules in it, so every declaration lookup returned nothing and the assertions
  * phrased as `not.toContain` passed on the emptiness.
  */
-const STYLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "styles");
+const APP_DIR = dirname(fileURLToPath(import.meta.url));
+
+/** Read a file from the web app's tree, by path segments relative to src/app. */
+export function readAppFile(...segments: string[]): string {
+  return readFileSync(join(APP_DIR, ...segments), "utf8");
+}
 
 /**
  * Read a stylesheet the suite wants to make assertions about.
@@ -26,7 +31,7 @@ const STYLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "styles");
  * Test-only, but it lives beside the code because it reads that code's files.
  */
 export function readAppStylesheet(fileName: string): string {
-  const css = readFileSync(join(STYLES_DIR, fileName), "utf8");
+  const css = readAppFile("styles", fileName);
 
   // Both ways this has gone wrong so far end in a string that is perfectly
   // readable and simply is not CSS. Fail here rather than let a test assert
@@ -87,20 +92,20 @@ function topLevelRules(css: string): string {
 }
 
 /**
- * Every declaration that applies to one class name, in file order.
+ * Every declaration that applies to one selector, in file order.
  *
- * Deliberately exact-match on the selector: `.record-dialog-row:active` and
+ * Deliberately exact-match, whitespace and all: `.record-dialog-row:active` and
  * `.record-swipe > .record-dialog-row` are different rules with different jobs,
  * and folding them in would hide the base rule going missing.
  */
-export function declarationsFor(css: string, className: string): Declarations {
+export function ruleFor(css: string, selector: string): Declarations {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const blocks = topLevelRules(withoutComments).matchAll(/([^{}]+)\{([^{}]*)\}/g);
   const merged: Declarations = {};
 
   for (const [, selectorText, body] of blocks) {
-    const selectors = (selectorText ?? "").split(",").map((entry) => entry.trim());
-    if (!selectors.includes(`.${className}`)) continue;
+    const selectors = (selectorText ?? "").split(",").map((entry) => entry.trim().replace(/\s+/g, " "));
+    if (!selectors.includes(selector)) continue;
 
     for (const declaration of (body ?? "").split(";")) {
       const separator = declaration.indexOf(":");
@@ -110,6 +115,11 @@ export function declarationsFor(css: string, className: string): Declarations {
   }
 
   return merged;
+}
+
+/** `ruleFor` for the common case of a bare class. */
+export function declarationsFor(css: string, className: string): Declarations {
+  return ruleFor(css, `.${className}`);
 }
 
 /**

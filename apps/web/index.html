@@ -70,6 +70,12 @@
         z-index: 9999;
         display: grid;
         place-items: center;
+        /* Mark over indicator, centred as a pair. align-content as well as
+           place-items: with two children the two auto rows stretch to the full
+           height by default and each child centres inside its own half, which
+           puts the indicator down by the home bar instead of under the mark. */
+        align-content: center;
+        gap: clamp(20px, 5vh, 34px);
         background: #07110f;
         pointer-events: none;
         /* Backstop for "the module never ran at all": give up and get out of
@@ -120,6 +126,57 @@
         animation-delay: 0.2s;
       }
 
+      /* Says "loading", which the mark alone does not.
+         On this screen the entry bundle is the wait — 136 kB over whatever
+         connection the phone has — and what covered it was a small mark on a
+         near-black field breathing at 4.5%. That reads as a stalled black
+         screen, which is what it kept being reported as.
+
+         Delayed by 900ms on purpose: a load that finishes before then never
+         shows this at all, so a fast open stays a clean flash of the mark
+         rather than gaining a progress bar it did not need. */
+      #app-splash .splash-progress {
+        width: clamp(88px, 24vw, 132px);
+        height: 3px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.09);
+        opacity: 0;
+        animation: equo-splash-progress-in 400ms ease-out 900ms forwards;
+      }
+
+      /* Indeterminate, and honestly so: nothing here knows how far along the
+         download is, and a bar that invents a percentage is worse than one that
+         only says "still going". */
+      #app-splash .splash-progress span {
+        display: block;
+        width: 45%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #6de2b8, #ffd67a);
+        /* -100% to 223%: translateX is a share of the SPAN's own width, so
+           carrying its near edge across the full track takes 100/45 of it =
+           222.2%, rounded UP - at 222% the bar parks a hair short of the end
+           instead of leaving. Both ends clear the track, so it passes through
+           rather than bouncing off. */
+        animation: equo-splash-shuttle 1.25s cubic-bezier(0.65, 0, 0.35, 1) 900ms infinite;
+      }
+
+      @keyframes equo-splash-progress-in {
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes equo-splash-shuttle {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(223%);
+        }
+      }
+
       /* Duration mirrored by FADE_MS in appSplash.ts — change both together. */
       #app-splash.is-ready {
         animation: none;
@@ -158,12 +215,29 @@
         #app-splash path {
           animation: none;
         }
+        /* Keep a sign of life without anything travelling across the screen:
+           the whole track, dimming in and out. Somebody who asked for less
+           motion still needs to be able to tell loading from hung. */
+        #app-splash .splash-progress span {
+          width: 100%;
+          animation: equo-splash-dim 1.8s ease-in-out 900ms infinite;
+        }
         #app-splash path {
           stroke-dashoffset: 0;
         }
         #app-splash.is-ready {
           transform: none;
           transition: opacity 120ms linear;
+        }
+      }
+
+      @keyframes equo-splash-dim {
+        0%,
+        100% {
+          opacity: 0.25;
+        }
+        50% {
+          opacity: 0.75;
         }
       }
     </style>
@@ -175,6 +249,7 @@
         <path class="splash-arc-mint" d="M233 365 A111 111 0 0 1 233 147" />
         <path class="splash-arc-gold" d="M279 147 A111 111 0 0 1 279 365" />
       </svg>
+      <div class="splash-progress" aria-hidden="true"><span></span></div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

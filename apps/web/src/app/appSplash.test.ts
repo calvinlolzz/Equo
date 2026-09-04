@@ -1,6 +1,21 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { dismissAppSplash } from "./appSplash";
+import { insideAtRule, keyframesBody, readAppFile, ruleFor } from "./cssDeclarations";
+
+/**
+ * The launch screen itself is markup and CSS inside index.html, on purpose:
+ * it has to paint from the HTML alone, before this bundle exists. Nothing that
+ * mounts a component can see it, so it is asserted against the file.
+ */
+const indexHtml = readAppFile("..", "..", "index.html");
+
+/** The ms values in an `animation` shorthand, in the order they appear. */
+function timings(shorthand: string): number[] {
+  return [...shorthand.matchAll(/(\d+(?:\.\d+)?)m?s\b/g)].map(([value]) =>
+    value.endsWith("ms") ? Number.parseFloat(value) : Number.parseFloat(value) * 1000,
+  );
+}
 
 function mountSplash(): HTMLElement {
   document.body.innerHTML = `<div id="app-splash"></div><div id="root"></div>`;
@@ -69,5 +84,62 @@ describe("dismissAppSplash", () => {
 
     expect(() => dismissAppSplash()).not.toThrow();
     vi.runAllTimers();
+  });
+});
+
+describe("the launch screen says it is loading", () => {
+  const track = ruleFor(indexHtml, "#app-splash .splash-progress");
+  const bar = ruleFor(indexHtml, "#app-splash .splash-progress span");
+
+  test("there is an indicator in the markup, not only a mark", () => {
+    // The mark alone was read as a stalled black screen: on this connection the
+    // wait is the entry bundle, and a logo breathing at 4.5% does not say why
+    // nothing is happening.
+    expect(indexHtml).toContain('<div class="splash-progress"');
+    expect(track.width).toBeTruthy();
+  });
+
+  test("it stays out of the way of a fast load", () => {
+    // Hidden until the wait is long enough to be worth explaining - otherwise
+    // every quick open gains a progress bar that flashes and leaves.
+    expect(track.opacity).toBe("0");
+
+    const [, delay] = timings(track.animation ?? "");
+    expect(delay).toBeGreaterThanOrEqual(600);
+  });
+
+  test("the bar crosses the whole track, both ends clear of it", () => {
+    const shuttle = keyframesBody(indexHtml, "equo-splash-shuttle");
+    const [from, to] = [...shuttle.matchAll(/translateX\((-?\d+(?:\.\d+)?)%\)/g)].map(([, value]) =>
+      Number.parseFloat(value),
+    );
+
+    // translateX is a share of the SPAN's own width, so carrying its near edge
+    // across a full track takes 100/width of it. Anything less and the bar
+    // parks half-shown at one end instead of passing through - which is what
+    // ties these two numbers together and why the check is arithmetic rather
+    // than a fixed 223.
+    const width = Number.parseFloat(bar.width ?? "0");
+    expect(from).toBeLessThanOrEqual(-100);
+    expect(to).toBeGreaterThanOrEqual(100 / (width / 100));
+  });
+
+  test("the bar does not start moving before its track has arrived", () => {
+    // Two animations, one indicator: a stripe sliding across nothing.
+    const [, trackDelay] = timings(track.animation ?? "");
+    const [, barDelay] = timings(bar.animation ?? "");
+
+    expect(barDelay).toBe(trackDelay);
+  });
+
+  test("reduced motion still shows something alive, without moving anything", () => {
+    const reduced = ruleFor(insideAtRule(indexHtml, "prefers-reduced-motion"), "#app-splash .splash-progress span");
+    const name = (reduced.animation ?? "").split(" ")[0];
+
+    // Not "no animation": somebody who asked for less motion still has to be
+    // able to tell loading apart from hung.
+    expect(name).toBeTruthy();
+    expect(keyframesBody(indexHtml, name)).not.toContain("transform");
+    expect(keyframesBody(indexHtml, name)).toContain("opacity");
   });
 });
