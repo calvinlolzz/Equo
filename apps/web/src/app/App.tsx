@@ -604,9 +604,11 @@ export function App() {
   // SIBLING of <App />, so this state is not on its path — and an attribute is
   // what that component already watches (it observes data-theme on the same
   // element). Every overlay in the app is a full-viewport layer over a scrim, so
-  // while one is open the field underneath is animating at 30fps to be seen
+  // while one is open the field underneath is animating at full rate to be seen
   // through 10px of blur at 44% black — and, worse, keeps invalidating the
   // scrim's own backdrop-filter every frame. Frozen, that blur is cached.
+  // (It said 30fps here while phones were capped; the cap is gone, which makes
+  // this pause worth more than it was, not less.)
   useEffect(() => {
     const root = document.documentElement;
     if (overlayDepth > 0) root.setAttribute("data-overlay", "1");

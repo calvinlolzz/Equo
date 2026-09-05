@@ -678,20 +678,21 @@ export function GlassBackground() {
         // fine structure, so those pixels buy nothing you can see. 1.25× is a
         // quarter of the work for the same picture.
         //
-        // The frame rate is NOT capped on a mouse or trackpad — asked for
-        // directly, after the 30fps cap shipped. The reason it is safe to give
-        // back: the desktop cost was never really the frame rate, it was that
-        // every pointermove kept the loop awake indefinitely (see
-        // IDLE_FREEZE_MS_POINTER). With that fixed the field runs in short
-        // bursts after a real interaction, and there is now a switch in
-        // 個人資料 for anyone who still does not want to pay for it.
+        // The frame rate is not capped anywhere any more — desktop first, then
+        // phones, both asked for directly. The 30fps cap on phones was the
+        // 2026-08 heat fix and it was aimed at the wrong thing: the field is
+        // one full-screen shader, but what was actually stacked on top of it
+        // was up to nine backdrop-filter layers, one of them per expense ROW,
+        // each a full-area GPU blur every frame. Those are gone (see the note
+        // in app-home.css), which is what makes giving this back reasonable
+        // rather than a straight trade of heat for smoothness.
         //
-        // Phones keep the 30fps cap. That one is not a smoothness judgement:
-        // sustained full-rate shading is what turned a long session into a hot,
-        // throttled phone (see the 2026-08 diagnosis), and a finger does not
-        // leave the loop awake the way a cursor does.
+        // What still holds the cost down on a phone, and matters more than the
+        // cap ever did: the six-second settle below means an idle screen renders
+        // nothing at all, and 個人資料 has a switch for anyone who would rather
+        // not pay for the field at all.
         dprCap: small ? 1.5 : 1.25,
-        fpsCap: coarse ? 30 : 0,
+        fpsCap: 0,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
         // Asked for directly: on a mouse the field should not stop drifting a
