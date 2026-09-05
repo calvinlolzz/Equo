@@ -104,6 +104,28 @@ function topLevelRules(css: string): string {
   return kept;
 }
 
+export type Rule = { selectors: string[]; declarations: Declarations };
+
+/** Every top-level rule, in file order, selectors split and whitespace collapsed. */
+export function rules(css: string): Rule[] {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  return [...topLevelRules(withoutComments).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selectorText, body]) => {
+    const declarations: Declarations = {};
+
+    for (const declaration of (body ?? "").split(";")) {
+      const separator = declaration.indexOf(":");
+      if (separator === -1) continue;
+      declarations[declaration.slice(0, separator).trim()] = declaration.slice(separator + 1).trim();
+    }
+
+    return {
+      selectors: (selectorText ?? "").split(",").map((entry) => entry.trim().replace(/\s+/g, " ")),
+      declarations,
+    };
+  });
+}
+
 /**
  * Every declaration that applies to one selector, in file order.
  *
@@ -112,19 +134,11 @@ function topLevelRules(css: string): string {
  * and folding them in would hide the base rule going missing.
  */
 export function ruleFor(css: string, selector: string): Declarations {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const blocks = topLevelRules(withoutComments).matchAll(/([^{}]+)\{([^{}]*)\}/g);
   const merged: Declarations = {};
 
-  for (const [, selectorText, body] of blocks) {
-    const selectors = (selectorText ?? "").split(",").map((entry) => entry.trim().replace(/\s+/g, " "));
-    if (!selectors.includes(selector)) continue;
-
-    for (const declaration of (body ?? "").split(";")) {
-      const separator = declaration.indexOf(":");
-      if (separator === -1) continue;
-      merged[declaration.slice(0, separator).trim()] = declaration.slice(separator + 1).trim();
-    }
+  for (const rule of rules(css)) {
+    if (!rule.selectors.includes(selector)) continue;
+    Object.assign(merged, rule.declarations);
   }
 
   return merged;

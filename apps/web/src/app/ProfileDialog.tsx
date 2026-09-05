@@ -248,8 +248,12 @@ export function ProfileDialog({
           ))}
         </div>
 
+        {/* Keyed on the tab so switching remounts the panel and replays the
+            entrance. Without a key React sees a <div> replacing a <div> in the
+            same slot, keeps the node, and swaps the contents between two frames
+            — the tab bar animates and the thing it controls does not. */}
         {tab === "account" ? (
-          <div className="profile-account-list">
+          <div className="profile-account-list enter-content" key={tab}>
             <div className="profile-account-row">
               <span className="profile-account-icon">
                 <GoogleLogo />
@@ -264,7 +268,7 @@ export function ProfileDialog({
             </div>
           </div>
         ) : (
-          <div className="profile-other-list">
+          <div className="profile-other-list enter-content" key={tab}>
             <div className="profile-other-row profile-push-row">
               <Bell aria-hidden="true" size={19} />
               <span className="profile-push-text">

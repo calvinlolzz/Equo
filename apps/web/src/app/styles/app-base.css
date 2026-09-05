@@ -135,6 +135,126 @@ button:disabled {
   opacity: 0.72;
 }
 
+/* ...and come back out of it smoothly.
+ *
+ * The dip above is instant on purpose — a native control reacts the moment a
+ * finger lands, and waiting 150ms to acknowledge a tap feels broken. What was
+ * also instant, and should not have been, is everything AFTER that: the release,
+ * and every selected state in the app. Choosing a payer, a split mode, a date, a
+ * template, a profile tab — all of them flipped colour between two frames, which
+ * is most of what "生硬" turned out to mean.
+ *
+ * So: eased by default, `transition: none` on :active below to keep the press
+ * itself immediate. One block rather than 26 edits, because the value of this is
+ * that they all agree — a chip that eases and a row next to it that snaps reads
+ * worse than either choice applied consistently.
+ *
+ * transform is listed for the release of the press dip. Rows that are dragged
+ * (the swipe-to-reveal ones) set their own inline transition while a finger is
+ * down, which wins over this — see useSwipeRowActions.
+ */
+.create-submit,
+.date-chip,
+.dialog-option,
+.expense-record-row,
+.feedback-type-chip,
+.group-create-item,
+.group-item,
+.install-hint-action,
+.member-add-action,
+.member-dialog-row,
+.member-icon-action,
+.member-icon-button,
+.payer-chip,
+.period-chip,
+.pizo-expense-row,
+.profile-dot,
+.profile-tab,
+.rail-icon-action,
+.rail-join-toggle,
+.record-dialog-row,
+.record-swipe-action,
+.recurring-chip,
+.side-nav-item,
+.soft-tab,
+.split-mode-option,
+.start-mode,
+.template-chip,
+.toast-action,
+.top-bar-icon-button {
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.create-submit:active,
+.date-chip:active,
+.dialog-option:active,
+.expense-record-row:active,
+.group-create-item:active,
+.group-item:active,
+.install-hint-action:active,
+.member-add-action:active,
+.member-dialog-row:active,
+.member-icon-button:active,
+.payer-chip:active,
+.period-chip:active,
+.pizo-expense-row:active,
+.profile-dot:active,
+.rail-icon-action:active,
+.rail-join-toggle:active,
+.record-dialog-row:active,
+.record-swipe-action:active,
+.side-nav-item:active,
+.split-mode-option:active,
+.start-mode:active,
+.template-chip:active,
+.top-bar-icon-button:active {
+  transition: none;
+}
+
+/* Colour and dimming are not the part anybody asked to turn down; movement is. */
+@media (prefers-reduced-motion: reduce) {
+  .create-submit,
+  .date-chip,
+  .dialog-option,
+  .expense-record-row,
+  .feedback-type-chip,
+  .group-create-item,
+  .group-item,
+  .install-hint-action,
+  .member-add-action,
+  .member-dialog-row,
+  .member-icon-action,
+  .member-icon-button,
+  .payer-chip,
+  .period-chip,
+  .pizo-expense-row,
+  .profile-dot,
+  .profile-tab,
+  .rail-icon-action,
+  .rail-join-toggle,
+  .record-dialog-row,
+  .record-swipe-action,
+  .recurring-chip,
+  .side-nav-item,
+  .soft-tab,
+  .split-mode-option,
+  .start-mode,
+  .template-chip,
+  .toast-action,
+  .top-bar-icon-button {
+    transition:
+      color 180ms ease,
+      background-color 180ms ease,
+      border-color 180ms ease,
+      opacity 180ms ease;
+  }
+}
+
 input,
 select {
   width: 100%;
@@ -910,15 +1030,15 @@ label span {
 }
 
 /* Home cards read as frosted glass floating over the light liquid field: a
-   translucent white base + a strong backdrop blur lets the drifting pastels
-   show through as soft colour, while indigo text stays legible. */
+   translucent white base lets the drifting pastels show through as soft colour,
+   while indigo text stays legible. The backdrop blur that used to be here went
+   with its dark-mode counterpart - see the note in app-home.css. */
 :root[data-theme="light"] .pizo-debt-card,
 :root[data-theme="light"] .pizo-expense-row,
 :root[data-theme="light"] .pizo-activity-list {
   background:
     linear-gradient(145deg, rgb(var(--surf) / 0.05), rgb(var(--surf) / 0.02)),
     rgba(255, 255, 255, 0.46);
-  backdrop-filter: blur(26px) saturate(1.3);
 }
 
 /* Modals (分析 / 支出記錄 / 成員 / composer / dialogs) sit over a scrim, not the

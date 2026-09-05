@@ -727,7 +727,15 @@
     radial-gradient(circle at 16% 10%, rgb(var(--brand) / 0.18), transparent 34%),
     rgb(var(--card-base) / 0.9);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(20px) saturate(1.18);
+  /* No backdrop-filter, deliberately.
+     These three sit on a base that is already 88-90% opaque, over a background
+     that is a slow gradient - so a blur of what shows through changes nothing
+     anyone can see (checked side by side, both themes). What it did cost was a
+     full-area GPU blur pass per element per frame, and the expense row is per
+     ROW: a screen of records was one blur layer each, re-composited the whole
+     way down a scroll. The blurs that remain are the ones with real content
+     behind them - the glass cards, the tab bar rows scroll under, and the
+     modal/drawer backdrops. */
 }
 
 .pizo-debt-card::before {
@@ -880,7 +888,6 @@
     radial-gradient(circle at 12% 6%, rgb(var(--brand) / 0.14), transparent 32%),
     rgb(var(--card-base) / 0.88);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(18px) saturate(1.14);
 }
 
 @media (hover: hover) {
@@ -977,7 +984,6 @@
     radial-gradient(circle at 12% 0%, rgb(var(--gold) / 0.12), transparent 36%),
     rgb(var(--card-base) / 0.88);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(18px) saturate(1.12);
 }
 
 .pizo-activity-row {

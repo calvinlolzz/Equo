@@ -3,7 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
 import { StartFlow } from "./StartFlowPanel";
-import { declarationsFor, insideAtRule, keyframesBody, readAppStylesheet } from "./cssDeclarations";
+import { declarationsFor, insideAtRule, keyframesBody, readAppStylesheet, ruleFor, rules } from "./cssDeclarations";
 
 /**
  * Two places where the app changed screens between one frame and the next.
@@ -17,6 +17,10 @@ import { declarationsFor, insideAtRule, keyframesBody, readAppStylesheet } from 
  */
 const baseCss = readAppStylesheet("app-base.css");
 const dialogCss = readAppStylesheet("app-dialogs.css");
+/** Every stylesheet, in @import order (App.css) - the cascade the app sees. */
+const allCss = ["app-base.css", "app-home.css", "app-dialogs.css", "app-composer.css", "app-misc.css", "app-landing.css"]
+  .map(readAppStylesheet)
+  .join("\n");
 
 const startFlowProps = {
   groups: [],
@@ -89,5 +93,114 @@ describe("the bottom tab bar eases between tabs", () => {
 
     expect(declarationsFor(reduced, "mobile-tab-item").transition).toBe("none");
     expect(declarationsFor(reduced, "mobile-tab-center").transition).toBe("none");
+  });
+});
+
+describe("selected and pressed states ease instead of flipping", () => {
+  /** The selectors sharing one `transition` declaration, and the ones opting out. */
+  function groupDeclaring(property: string, value: string): string[] {
+    return rules(allCss)
+      .filter((rule) => rule.selectors.length > 8 && rule.declarations[property]?.replace(/\s+/g, " ") === value)
+      .flatMap((rule) => rule.selectors);
+  }
+
+  const eased = rules(allCss).find((rule) => rule.selectors.includes(".template-chip") && rule.declarations.transition);
+  const instantPress = groupDeclaring("transition", "none");
+
+  test("the shared block covers the controls people touch most", () => {
+    // Chips, rows and tabs used to change colour between two frames. Sampled
+    // rather than exhaustive: the point is that this block is where they all
+    // agree, not that this exact list is frozen.
+    for (const selector of [".payer-chip", ".template-chip", ".profile-tab", ".soft-tab", ".record-dialog-row"]) {
+      expect(eased?.selectors).toContain(selector);
+    }
+
+    const declaration = eased?.declarations.transition ?? "";
+    expect(declaration).toContain("color");
+    expect(declaration).toContain("background-color");
+  });
+
+  test("every one of them with a press state keeps the press instant", () => {
+    // The dip has to land the moment a finger does; only the release is eased.
+    // Derived, not typed twice: add a control to the block above and forget the
+    // opt-out below, and its press dip starts easing IN - which reads as lag on
+    // exactly the interaction that must feel immediate.
+    const hasPressState = new Set(
+      rules(allCss)
+        .flatMap((rule) => rule.selectors)
+        .filter((selector) => selector.endsWith(":active"))
+        .map((selector) => selector.slice(0, -":active".length)),
+    );
+
+    const missing = (eased?.selectors ?? [])
+      .filter((selector) => hasPressState.has(selector))
+      .filter((selector) => !instantPress.includes(`${selector}:active`));
+
+    expect(missing).toEqual([]);
+  });
+
+  test("reduced motion drops the movement and keeps the colour", () => {
+    const calm = insideAtRule(allCss, "prefers-reduced-motion");
+    const declaration = ruleFor(calm, ".template-chip").transition ?? "";
+
+    expect(declaration).toContain("color");
+    expect(declaration).not.toContain("transform");
+
+    // And it has to cover the same controls. Two lists that must agree is the
+    // shape of a drift bug: add a chip above, forget it here, and the one
+    // person who asked for less movement is the only one who still gets it.
+    const calmed = rules(calm).find((rule) => rule.selectors.includes(".template-chip"));
+    expect(calmed?.selectors.slice().sort()).toEqual(eased?.selectors.slice().sort());
+  });
+
+  test("the profile tab underline can travel, because every tab has one", () => {
+    // It used to exist only on the selected tab, so it could appear and vanish
+    // and nothing else. Drawn on all of them at scaleX(0), switching tabs grows
+    // one and shrinks the other.
+    const underline = ruleFor(allCss, ".profile-tab::after");
+
+    expect(underline.content).toBeTruthy();
+    expect(underline.transform).toBe("scaleX(0)");
+    expect(underline.transition).toContain("transform");
+    expect(ruleFor(allCss, ".profile-tab.active::after").transform).toBe("scaleX(1)");
+  });
+});
+
+describe("the blur budget", () => {
+  /**
+   * Every element that re-blurs what is behind it, listed on purpose.
+   *
+   * A backdrop-filter is a full-area GPU pass, every frame, for as long as the
+   * element is on screen - and this app draws an animated WebGL field behind
+   * everything, so "on screen" means "always repainting". They are worth it
+   * exactly where real content passes behind the glass and worthless where the
+   * surface is nearly opaque over a slow gradient, which is where three of them
+   * used to be (one of them per expense ROW, so a scroll re-blurred once per
+   * row). Adding one back is fine - but it should be a line in this test, not a
+   * line nobody noticed.
+   */
+  const ALLOWED = [
+    ".composer-backdrop",
+    ".glass-panel",
+    ".mobile-tab-bar",
+    ".modal-backdrop",
+    ".offline-banner",
+    ".side-drawer-backdrop",
+    ".toast-dock",
+    ':root[data-theme="light"] .glass-panel',
+  ];
+
+  test("only the layers with something behind them still blur", () => {
+    const blurring = rules(allCss)
+      .filter((rule) => (rule.declarations["backdrop-filter"] ?? "none") !== "none")
+      .flatMap((rule) => rule.selectors);
+
+    expect(blurring.slice().sort()).toEqual(ALLOWED.slice().sort());
+  });
+
+  test("the home list rows in particular do not", () => {
+    // The one that scaled with the amount of data on screen.
+    expect(ruleFor(allCss, ".pizo-expense-row")["backdrop-filter"]).toBeUndefined();
+    expect(ruleFor(allCss, ':root[data-theme="light"] .pizo-expense-row')["backdrop-filter"]).toBeUndefined();
   });
 });
