@@ -17,6 +17,44 @@ export function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
   };
 }
 
+/** Longest sheet entrance in the stylesheets; the timer below is its backstop. */
+const ENTRANCE_MS = 260;
+
+/**
+ * Flag a dialog as "travelling" for the length of its entrance.
+ *
+ * The class exists for one thing: a moving element with a backdrop-filter is
+ * the most expensive thing this app can ask a phone to draw. A composited
+ * transform is nearly free, but a backdrop blur has to re-sample and re-blur
+ * everything behind the panel at its NEW position, every frame — so the sheets,
+ * which are the biggest blurred surfaces here, are also the ones that move
+ * furthest. CSS drops the frost while `.is-entering` or `.closing` is on, and
+ * it comes back the moment the sheet lands.
+ */
+function markEntering(node: HTMLElement, stop: { current: (() => void) | null }): void {
+  stop.current?.();
+  node.classList.add("is-entering");
+
+  const settle = () => {
+    stop.current = null;
+    node.removeEventListener("animationend", onEnd);
+    window.clearTimeout(timer);
+    node.classList.remove("is-entering");
+  };
+  // Only this element's own entrance counts: animationend bubbles, and the
+  // panel body inside runs its own fade (see .enter-content), which would
+  // otherwise end the entrance early.
+  const onEnd = (event: AnimationEvent) => {
+    if (event.target === node) settle();
+  };
+
+  node.addEventListener("animationend", onEnd);
+  // No entrance animation at all on a wide screen, and animationend never fires
+  // for a reduced-motion user either.
+  const timer = window.setTimeout(settle, ENTRANCE_MS + 60);
+  stop.current = settle;
+}
+
 /**
  * The modal keyboard/focus contract for a dialog or drawer: when it opens focus
  * moves inside the panel; Escape closes it; Tab is trapped within; and on close
@@ -31,12 +69,14 @@ export function mergeRefs<T>(...refs: Array<Ref<T> | undefined>) {
 export function useDialogChrome(onClose: () => void) {
   const nodeRef = useRef<HTMLElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const stopEntrance = useRef<(() => void) | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   const setDialogRef = useCallback((node: HTMLElement | null) => {
     if (node) {
       nodeRef.current = node;
+      markEntering(node, stopEntrance);
       const active = document.activeElement;
       // Remember the trigger (only if focus is currently outside), then pull
       // focus in — unless an autoFocus field already claimed it.
@@ -51,6 +91,7 @@ export function useDialogChrome(onClose: () => void) {
       }
     } else {
       nodeRef.current = null;
+      stopEntrance.current?.();
       const target = returnFocusRef.current;
       returnFocusRef.current = null;
       if (target && document.contains(target)) target.focus?.();

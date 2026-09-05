@@ -56,3 +56,18 @@ describe("the status bar band", () => {
     expect(firstBelowFull).toBeLessThanOrEqual(50);
   });
 });
+
+describe("a sheet in motion", () => {
+  test("does not carry its backdrop blur while it travels", () => {
+    // A composited transform is nearly free; a backdrop blur on the same
+    // element is not — it re-samples and re-blurs everything behind the panel
+    // at its new position, every frame. These sheets are the largest blurred
+    // surfaces in the app and the ones that move furthest, so the frost is
+    // dropped for the 260ms it is moving and restored when it lands.
+    // The class itself is put on by useDialogChrome; without this rule it is
+    // a flag that costs a render and buys nothing.
+    for (const selector of [".glass-panel.is-entering", ".glass-panel.closing"]) {
+      expect(ruleFor(mobileCss, selector)["backdrop-filter"]).toBe("none");
+    }
+  });
+});

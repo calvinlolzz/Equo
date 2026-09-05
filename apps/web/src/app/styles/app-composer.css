@@ -911,6 +911,20 @@
     transform: translateY(110%);
   }
 
+  /* A sheet does not frost while it is travelling.
+     The transform above is close to free — the compositor moves a texture it
+     already has. The backdrop blur on the same element is the opposite: it has
+     to re-sample and re-blur everything behind the panel at its NEW position,
+     every frame, and these sheets are both the largest blurred surfaces in the
+     app and the ones that move furthest (a full screen height in 260ms). The
+     frost returns the moment it lands, which is also the only moment anyone is
+     looking at what is behind the glass rather than at the sheet arriving.
+     `.is-entering` is put on by useDialogChrome — see the note there. */
+  .glass-panel.is-entering,
+  .glass-panel.closing {
+    backdrop-filter: none;
+  }
+
   .dialog-drag-handle {
     display: block;
     width: 44px;
