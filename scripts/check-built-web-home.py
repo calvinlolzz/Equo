@@ -24,6 +24,21 @@ HOME_REQUIRED_MARKERS = ("使用 Google 登入", "建立群組", "加入群組",
 # balances under a real domain. So it is asserted here instead of assumed.
 FORBIDDEN_DIST_FILES = ("screenshot.html",)
 
+# Long-form prose that must stay OUT of the entry chunk.
+#
+# The privacy policy and terms exist in two languages and are read on two lazy
+# surfaces (the profile sheet and /privacy, /terms). They were nevertheless in
+# the entry chunk for a while, because the landing page imported the support
+# address from the same module and the landing page is part of the first screen
+# - so every visitor downloaded 14.6 kB of legal prose (7.4 kB over the wire)
+# before anything could render, to print one mailto link. The address now lives
+# in legalContact.ts.
+#
+# This is asserted against the built artifact rather than the imports, because
+# the mistake is not a bad import - it is a reasonable-looking import whose cost
+# only appears after bundling.
+ENTRY_FORBIDDEN_MARKERS = ("5. 資料會保留多久", "5. How long we keep it, and what deleting your account does")
+
 
 def collect_dist_text(dist_dir: Path) -> str:
     index_path = dist_dir / "index.html"
@@ -43,6 +58,26 @@ def collect_dist_text(dist_dir: Path) -> str:
     return "\n".join(parts)
 
 
+def entry_chunk_text(dist_dir: Path = DEFAULT_DIST) -> str:
+    """The one script index.html loads directly - what every visit pays for."""
+    html = (dist_dir / "index.html").read_text(encoding="utf-8", errors="replace")
+    match = re.search(r'''<script[^>]+src=["'](/?assets/[^"']+\.js)["']''', html)
+    if not match:
+        raise FileNotFoundError(f"no entry script in {dist_dir / 'index.html'}")
+
+    path = dist_dir / match.group(1).lstrip("/")
+    if not path.exists():
+        raise FileNotFoundError(f"missing {path}")
+
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def prose_in_entry_chunk(dist_dir: Path = DEFAULT_DIST) -> list[str]:
+    """Lazy-only long-form text that has been pulled onto the critical path."""
+    text = entry_chunk_text(dist_dir)
+    return [marker for marker in ENTRY_FORBIDDEN_MARKERS if marker in text]
+
+
 def validate_dist_home(dist_dir: Path = DEFAULT_DIST) -> bool:
     text = collect_dist_text(dist_dir)
     return all(marker in text for marker in HOME_REQUIRED_MARKERS)
@@ -60,8 +95,13 @@ def main() -> int:
             print(f"FAIL: dev-only page(s) in the build: {', '.join(leaked)}")
             return 1
 
+        prose = prose_in_entry_chunk()
+        if prose:
+            print(f"FAIL: legal prose is in the entry chunk, not a lazy one: {', '.join(prose)}")
+            return 1
+
         if validate_dist_home():
-            print("PASS: built web bundle keeps the login wall and create/join/continue flow, no dev-only pages")
+            print("PASS: built web bundle keeps the login wall and create/join/continue flow, no dev-only pages or legal prose in the entry chunk")
             return 0
     except FileNotFoundError as error:
         print(f"FAIL: {error}")

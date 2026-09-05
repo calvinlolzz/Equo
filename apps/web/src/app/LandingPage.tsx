@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Calculator, Camera, ChevronDown, ChevronsDown, ReceiptText, UsersRound } from "lucide-react";
 import { LoginScreen } from "./LoginScreen";
 import { readPendingInviteToken } from "./useInviteFlow";
-import { LEGAL_CONTACT_EMAIL } from "./legalContent";
+import { LEGAL_CONTACT_EMAIL } from "./legalContact";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.landing;

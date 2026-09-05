@@ -54,6 +54,28 @@ def main() -> int:
           print("FAIL: expected dist home missing create/join/continue markers to fail")
           return 1
 
+      # Long-form legal prose belongs to a lazy chunk. It sat in the entry
+      # chunk for a while because the landing page imported the support address
+      # from the same module, so every visit paid for the privacy policy and
+      # terms in two languages before anything could render.
+      lean_dist = Path(tmp) / "lean"
+      lean_dist.mkdir()
+      write_dist(lean_dist, "使用 Google 登入 建立群組 加入群組 繼續使用")
+      (lean_dist / "assets" / "legalContent-test.js").write_text(
+          "5. 資料會保留多久,5. How long we keep it, and what deleting your account does",
+          encoding="utf-8",
+      )
+      if module.prose_in_entry_chunk(lean_dist):
+          print("FAIL: prose in a NON-entry chunk is where it belongs, and must not be reported")
+          return 1
+
+      heavy_dist = Path(tmp) / "heavy"
+      heavy_dist.mkdir()
+      write_dist(heavy_dist, "使用 Google 登入 5. 資料會保留多久 建立群組")
+      if not module.prose_in_entry_chunk(heavy_dist):
+          print("FAIL: expected prose in the entry chunk to be reported")
+          return 1
+
       # The dev-only screenshot harness must never be part of a deployment: it
       # renders the real app over invented balances.
       clean_dist = Path(tmp) / "clean"

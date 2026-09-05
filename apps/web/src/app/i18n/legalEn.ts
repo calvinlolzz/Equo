@@ -1,5 +1,5 @@
 import type { LegalDocument } from "./legalZhHant";
-import { LEGAL_CONTACT_EMAIL } from "./legalZhHant";
+import { LEGAL_CONTACT_EMAIL } from "../legalContact";
 
 /**
  * English privacy policy and terms — a CONVENIENCE TRANSLATION.

@@ -1,9 +1,12 @@
 import { PRIVACY_POLICY_EN, TERMS_OF_SERVICE_EN, TRANSLATION_NOTICE } from "./i18n/legalEn";
-import { LEGAL_CONTACT_EMAIL, PRIVACY_POLICY_ZH, TERMS_OF_SERVICE_ZH } from "./i18n/legalZhHant";
+import { PRIVACY_POLICY_ZH, TERMS_OF_SERVICE_ZH } from "./i18n/legalZhHant";
 import type { LegalDocument, LegalSection } from "./i18n/legalZhHant";
 import { ACTIVE_LOCALE } from "./uiText";
 
-export { LEGAL_CONTACT_EMAIL };
+// Re-exported so the documents and the address still arrive together for
+// anything that wants both. Importers that want ONLY the address should take
+// it from legalContact.ts - see the note there.
+export { LEGAL_CONTACT_EMAIL } from "./legalContact";
 export type { LegalDocument, LegalSection };
 
 /**

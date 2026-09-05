@@ -1,3 +1,5 @@
+import { LEGAL_CONTACT_EMAIL } from "../legalContact";
+
 /**
  * The privacy policy and terms of service shown in the profile dialog's
  * info sub-sheet. Kept out of uiText.ts because it is long-form prose, not
@@ -23,8 +25,6 @@
  * dialog shown before the camera opens. Both have to move together — the
  * admin console's reminder lists both files.
  */
-
-export const LEGAL_CONTACT_EMAIL = "support@equomu.com";
 
 export type LegalSection = {
   heading: string;
