@@ -724,7 +724,20 @@
      horizontal scrollbar's worth of overflow. It scrolls away with the bar
      rather than being fixed: the bar is not sticky, and a band that stayed
      behind after its content left would just be an opaque strip over the page.
-     Fades out at the bottom so there is no seam across the screen. */
+     Fades out at the bottom so there is no seam across the screen.
+
+     ⚠️ Weight is the whole design here, and the first version got it wrong: it
+     was FULLY opaque for its top 62% and then ramped to nothing over the last
+     38%. Against the drifting field that reads as a black slab pasted across
+     the top of the screen with a visible edge where it ends — reported as
+     「上面那排黑色層有點怪怪的」, which is exactly right.
+     What it actually has to do is give the system clock and battery something
+     calm to sit on. That is the top ~40% of this box; everything below it is
+     the app's own title row, whose text was legible on the bare field before
+     this band existed. So it starts a touch translucent, holds only as far as
+     the status bar, and is most of the way gone by the title. The extra stops
+     are not decoration: a straight two-stop alpha ramp bands visibly on an OLED
+     panel, and the banding is what draws the eye to the edge. */
   .top-bar {
     position: relative;
   }
@@ -739,8 +752,11 @@
     bottom: -14px;
     background: linear-gradient(
       to bottom,
-      rgb(var(--card-base)) 0%,
-      rgb(var(--card-base)) 62%,
+      rgb(var(--card-base) / 0.94) 0%,
+      rgb(var(--card-base) / 0.9) 34%,
+      rgb(var(--card-base) / 0.66) 56%,
+      rgb(var(--card-base) / 0.34) 74%,
+      rgb(var(--card-base) / 0.12) 88%,
       rgb(var(--card-base) / 0) 100%
     );
   }
