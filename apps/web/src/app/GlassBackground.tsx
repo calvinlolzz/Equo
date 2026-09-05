@@ -670,13 +670,21 @@ export function GlassBackground() {
 
     const build = () => {
       if (scene || reduce.matches || motionOff()) return;
-      const small = window.innerWidth < 700;
       const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       scene = createScene(canvas, {
-        // Resolution stays capped: a 1440×900 window at 2× device pixels is
-        // 5.2M fragments a frame, and the field has no edges, no text and no
-        // fine structure, so those pixels buy nothing you can see. 1.25× is a
-        // quarter of the work for the same picture.
+        // Resolution stays capped, and phones are no longer the exception.
+        //
+        // The field has no edges, no text and no fine structure, so device
+        // pixels buy nothing you can see here — which is not an argument, it is
+        // something we checked: 1.25×, 1.5× and native side by side on a real
+        // phone, and the answer was "I can't tell them apart". A 375×812 screen
+        // at 1.25× is 476k fragments a frame against 1.2M at native 2×, and
+        // more like a third of the work on the 3× screens where this matters
+        // most.
+        //
+        // Phones were on 1.5× until then. Nothing was measured to justify that
+        // half-step; it was caution, and caution here costs battery on the
+        // devices least able to spare it.
         //
         // The frame rate is not capped anywhere any more — desktop first, then
         // phones, both asked for directly. The 30fps cap on phones was the
@@ -691,7 +699,7 @@ export function GlassBackground() {
         // cap ever did: the six-second settle below means an idle screen renders
         // nothing at all, and 個人資料 has a switch for anyone who would rather
         // not pay for the field at all.
-        dprCap: small ? 1.5 : 1.25,
+        dprCap: 1.25,
         fpsCap: 0,
         autoMouse: coarse,
         speed: coarse ? 1.8 : 1,
