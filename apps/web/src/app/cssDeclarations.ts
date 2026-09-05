@@ -41,6 +41,19 @@ export function readAppStylesheet(fileName: string): string {
   return css;
 }
 
+/**
+ * The CSS inside a document's <style> elements.
+ *
+ * Needed before asking `ruleFor` anything about a stylesheet that lives in an
+ * HTML file: the flat scan reads a rule's selector as everything since the
+ * previous `}`, so for the FIRST rule in the file that is the entire document
+ * head - and the rule is silently invisible. Everything after it parses fine,
+ * which makes this a trap you only hit on one rule out of twenty.
+ */
+export function styleBlocks(html: string): string {
+  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(([, css]) => css ?? "").join("\n");
+}
+
 export type Declarations = Record<string, string>;
 
 /** Everything from the opening brace at `open` to its matching close. */

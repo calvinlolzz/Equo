@@ -75,8 +75,20 @@
            height by default and each child centres inside its own half, which
            puts the indicator down by the home bar instead of under the mark. */
         align-content: center;
-        gap: clamp(20px, 5vh, 34px);
-        background: #07110f;
+        gap: clamp(14px, 3.4vh, 22px);
+        /* The app's own night background, hard-coded.
+           Flat #07110f read as a screen that had not come on yet - which is
+           what the black-screen reports were. This is the same recipe as
+           `body` in app-base.css (mint glow top-left, gold top-right, over the
+           page gradient), so lifting the cover reveals the same field rather
+           than cutting from one dark to another. Hard-coded rather than
+           var(--page-*): those live in the stylesheet this is meant to paint
+           without. Mirrored by background_color in site.webmanifest, which is
+           what Android shows before this HTML exists. */
+        background:
+          radial-gradient(circle at 16% 12%, rgba(109, 226, 184, 0.32), transparent 28%),
+          radial-gradient(circle at 86% 18%, rgba(255, 214, 122, 0.2), transparent 24%),
+          linear-gradient(145deg, #07110f 0%, #14201d 52%, #090f14 100%);
         pointer-events: none;
         /* Backstop for "the module never ran at all": give up and get out of
            the way rather than sitting on a dead page forever. */
@@ -90,9 +102,17 @@
       #app-splash svg {
         width: clamp(112px, min(34vw, 24vh), 168px);
         height: clamp(112px, min(34vw, 24vh), 168px);
-        /* Starts after the draw finishes, so a slow load keeps breathing
-           instead of freezing on a finished mark. */
-        animation: equo-splash-breathe 3s ease-in-out 1.15s infinite;
+      }
+
+      /* The mark IS the spinner, once it has finished being drawn: two arcs
+         with two gaps, turning. The plate behind them stays put - a rotating
+         rounded square is a box tumbling, not a thing loading, which is why
+         this wraps the paths and not the whole svg. transform-box is the SVG
+         default here, stated so the origin below is obviously viewBox units. */
+      #app-splash .splash-ring {
+        transform-box: view-box;
+        transform-origin: 256px 256px;
+        animation: equo-splash-spin 1.6s linear 1.15s infinite;
       }
 
       /* The two arcs of the Equo mark, drawn on. 307 is the measured path length
@@ -113,6 +133,18 @@
            of the line down in the first fifth of the time and read as a snap.
            This spreads the motion, so it looks like it is being written. */
         animation: equo-splash-draw 0.9s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+      }
+
+      /* Named, like Pizo's. A mark on its own is a shape somebody has to
+         recognise; the name is what makes this read as "Equo is opening"
+         rather than as a page that failed to load. Deliberately no webfont:
+         this paints from the HTML alone, so it takes what the device has. */
+      #app-splash .splash-wordmark {
+        color: #f7fbf8;
+        font: 800 clamp(25px, 7vw, 33px) / 1 Inter, "Noto Sans TC", system-ui, sans-serif;
+        letter-spacing: -0.01em;
+        opacity: 0;
+        animation: equo-splash-word-in 420ms ease-out 320ms forwards;
       }
 
       #app-splash .splash-arc-mint {
@@ -193,13 +225,15 @@
         }
       }
 
-      @keyframes equo-splash-breathe {
-        0%,
-        100% {
-          transform: scale(1);
+      @keyframes equo-splash-spin {
+        to {
+          transform: rotate(360deg);
         }
-        50% {
-          transform: scale(1.045);
+      }
+
+      @keyframes equo-splash-word-in {
+        to {
+          opacity: 1;
         }
       }
 
@@ -211,9 +245,13 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
-        #app-splash svg,
+        #app-splash .splash-ring,
         #app-splash path {
           animation: none;
+        }
+        #app-splash .splash-wordmark {
+          animation: none;
+          opacity: 1;
         }
         /* Keep a sign of life without anything travelling across the screen:
            the whole track, dimming in and out. Somebody who asked for less
@@ -246,9 +284,12 @@
     <div id="app-splash" role="status" aria-label="Equo 載入中">
       <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <rect width="512" height="512" rx="116" fill="#0c1613" />
-        <path class="splash-arc-mint" d="M233 365 A111 111 0 0 1 233 147" />
-        <path class="splash-arc-gold" d="M279 147 A111 111 0 0 1 279 365" />
+        <g class="splash-ring">
+          <path class="splash-arc-mint" d="M233 365 A111 111 0 0 1 233 147" />
+          <path class="splash-arc-gold" d="M279 147 A111 111 0 0 1 279 365" />
+        </g>
       </svg>
+      <div class="splash-wordmark" aria-hidden="true">Equo</div>
       <div class="splash-progress" aria-hidden="true"><span></span></div>
     </div>
     <div id="root"></div>
