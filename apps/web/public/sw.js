@@ -9,8 +9,9 @@
 //        and redirect to a GET the app can read.
 //      * /assets/* (hashed, immutable build output) -> cache-first, since
 //        the filename changes whenever the content does.
-//      * navigation requests (SPA routes) -> network-first, falling back to
-//        the cached "/" shell when offline so the app still boots.
+//      * navigation requests (SPA routes) -> network-first with a deadline,
+//        falling back to the cached "/" shell when the network is offline OR
+//        merely hanging, so the app still boots.
 //      * everything else (notably /api/* and any cross-origin request,
 //        e.g. Supabase) passes through untouched - never cached, never
 //        intercepted.
@@ -23,6 +24,24 @@ const CACHE_NAME = "equo-cache-v1";
 const SHARE_CACHE = "equo-share-v1";
 const SHARE_KEY = "/__shared-receipt";
 const KEEP_CACHES = [CACHE_NAME, SHARE_CACHE];
+
+// How long a navigation may hang before the cached shell answers instead.
+//
+// "network-first" used to mean "wait for the network, however long that takes,
+// and only fall back once it actually fails". On a flaky mobile connection a
+// fetch can sit there for tens of seconds before rejecting, and until it does
+// there is no document at all - not even the launch screen, which lives in the
+// HTML that has not arrived. That is the long black wait people reported, and
+// no amount of work on the launch screen can touch it.
+//
+// The deadline is generous on purpose: the shell is ~4 kB, so anything still
+// unanswered at this point is not "slow", it is stuck, and a one-deploy-old
+// shell now beats the right one in fifteen seconds. The network request is not
+// cancelled - it keeps running and refreshes the cache for next time.
+const NAVIGATE_DEADLINE_MS = 3000;
+
+/** Marker for "the deadline won", distinguishable from any real Response. */
+const DEADLINE = Symbol("navigate-deadline");
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -111,8 +130,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
-        try {
-          const response = await fetch(request);
+        const network = fetch(request).then((response) => {
           // Stale-while-revalidate the offline shell: keep the cached "/" in
           // step with the latest deploy instead of frozen at first install.
           // Only cache genuine HTML — a direct navigation to /robots.txt,
@@ -124,10 +142,29 @@ self.addEventListener("fetch", (event) => {
             caches.open(CACHE_NAME).then((cache) => cache.put("/", copy)).catch(() => {});
           }
           return response;
-        } catch {
-          const cached = await caches.match("/");
-          return cached ?? fetch(request);
-        }
+        });
+
+        // The page may stop waiting on this below; the worker must not. Without
+        // this the update that makes the NEXT open fast is the thing most
+        // likely to be killed, on exactly the connections that need it.
+        event.waitUntil(network.catch(() => {}));
+
+        const shell = await caches.match("/");
+        // Nothing to fall back to (first ever visit, or the cache was cleared):
+        // waiting is all there is, and a blank tab beats a failed navigation.
+        if (!shell) return network;
+
+        let timer;
+        const deadline = new Promise((resolve) => {
+          timer = setTimeout(() => resolve(DEADLINE), NAVIGATE_DEADLINE_MS);
+        });
+
+        // A rejection here is offline or a dead connection: same answer as the
+        // deadline, just sooner.
+        const winner = await Promise.race([network.catch(() => DEADLINE), deadline]);
+        clearTimeout(timer);
+
+        return winner === DEADLINE ? shell : winner;
       })(),
     );
   }
