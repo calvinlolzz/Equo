@@ -1534,71 +1534,63 @@ export function App() {
             <article className="group-home-card glass-panel" id="group-home">
               <div className="home-title-row">
                 <div>
-                  <h2>{activeGroup.name}</h2>
+                  {/* The phone's top bar already carries the group's name, one
+                      row above this — so this said it twice, 60px apart. The
+                      wide layout puts the brand up there instead, and this is
+                      where the name belongs. (The mobile heading outline is
+                      rooted by the visually-hidden <h1> above.) */}
+                  {isMobileLayout ? null : <h2>{activeGroup.name}</h2>}
                   <p>
                     {text.members} <strong>{members.length}</strong> {text.total} <strong>{formatAmount(totalExpenseMinor, activeGroup.currency)}</strong>
                   </p>
                 </div>
               </div>
 
-              <div className="hero-summary-grid" id="group-members" aria-label={text.members}>
-                <div className="hero-member-summary">
-                  <div className="hero-avatar-stack" aria-label={text.members}>
-                    {members.map((member) => (
-                      <MemberAvatar
-                        className="hero-avatar"
-                        key={member.id}
-                        name={member.name}
-                        avatarUrl={member.avatarUrl}
-                      />
-                    ))}
-                  </div>
-                  <div className="hero-balance-list" aria-label={text.analysis}>
-                    {heroBalanceMembers(members, balances, currentMember?.id).map((member) => (
-                      <div className="hero-balance-row" key={member.id}>
-                        <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
-                        <span>
-                          {member.name}
-                          {member.role === "owner" ? <small>{text.owner}</small> : null}
-                        </span>
-                        <strong>{formatSigned(balances.get(member.id) ?? 0, activeGroup.currency)}</strong>
-                      </div>
-                    ))}
-                  </div>
+              <div className="hero-member-summary" id="group-members" aria-label={text.members}>
+                <div className="hero-avatar-stack" aria-label={text.members}>
+                  {members.map((member) => (
+                    <MemberAvatar
+                      className="hero-avatar"
+                      key={member.id}
+                      name={member.name}
+                      avatarUrl={member.avatarUrl}
+                    />
+                  ))}
                 </div>
-                <div className="hero-donut" aria-label={text.debt}>
-                  <div className="hero-donut-ring">
-                    <div>
-                      <span>{debt?.to.name ?? text.settled}</span>
-                      <strong>{debt ? formatAmount(debt.amountMinor, activeGroup.currency) : formatAmount(0, activeGroup.currency)}</strong>
+                <div className="hero-balance-list" aria-label={text.analysis}>
+                  {heroBalanceMembers(members, balances, currentMember?.id).map((member) => (
+                    <div className="hero-balance-row" key={member.id}>
+                      <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
+                      <span>
+                        {member.name}
+                        {member.role === "owner" ? <small>{text.owner}</small> : null}
+                      </span>
+                      <strong>{formatSigned(balances.get(member.id) ?? 0, activeGroup.currency)}</strong>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
 
-              {/* 新增成員 keeps the width because it is the one action most
-                  people are here for; invite and scan are recognisable enough
-                  as icons that spelling them out would crowd the card. */}
+              {/* Three equal slots. 新增成員 used to take the full width on
+                  the grounds that it was "the one action most people are here
+                  for" — but people open a splitting app to record something or
+                  to see who owes what, and both of those are elsewhere. Adding
+                  a member is a couple of taps per group, for the life of the
+                  group. The other two stop being bare icons at the same time:
+                  a glyph nobody has a name for is not a cheaper button, it is
+                  a guess. */}
               <div className="member-quick-actions">
-                <button className="member-add-action" type="button" onClick={() => setDialog("memberActions")}>
-                  {text.addMember}
-                  <Plus aria-hidden="true" size={18} />
+                <button className="member-quick-action" type="button" onClick={() => setDialog("memberActions")}>
+                  <Plus aria-hidden="true" size={19} />
+                  <span>{text.addMember}</span>
                 </button>
-                <button
-                  className="member-icon-button"
-                  type="button"
-                  aria-label={text.inviteMembers}
-                  onClick={openInviteMembers}
-                >
-                  <Share aria-hidden="true" size={20} />
+                <button className="member-quick-action" type="button" onClick={openInviteMembers}>
+                  <Share aria-hidden="true" size={19} />
+                  <span>{text.inviteMembers}</span>
                 </button>
-                <button
-                  className="member-icon-button"
-                  type="button"
-                  aria-label={text.scanReceipt}
-                  onClick={openReceiptScan}
-                >
-                  <Scan aria-hidden="true" size={20} />
+                <button className="member-quick-action" type="button" onClick={openReceiptScan}>
+                  <Scan aria-hidden="true" size={19} />
+                  <span>{text.scanReceipt}</span>
                 </button>
               </div>
             </article>
@@ -1749,7 +1741,12 @@ export function App() {
                           <small>{formatRecordStamp(expense.createdAt)}</small>
                         </span>
                         <span className={isIncome ? "expense-record-amount amount-income" : "expense-record-amount"}>
-                          <small>{expense.currency}</small>
+                          {/* Only when it is NOT the group's own currency. It
+                              used to print on every row, which in a TWD group
+                              is "TWD" five times over and no information at
+                              all. It still earns its place on a foreign row:
+                              formatAmount gives TWD and USD the same $. */}
+                          {expense.currency === activeGroup.currency ? null : <small>{expense.currency}</small>}
                           {isIncome ? `+${formatAmount(expense.amountMinor, expense.currency)}` : formatAmount(expense.amountMinor, expense.currency)}
                           <i className="mini-avatar-stack" aria-hidden="true">
                             {shareMembers.map((member) => (
@@ -1768,14 +1765,18 @@ export function App() {
               )}
             </section>
 
-            <section className="home-section pizo-activity-section" aria-label={text.recentActivity}>
-              <div className="section-title-row">
-                <h3>{text.recentActivity}</h3>
-                <button className="text-action" type="button" onClick={() => setDialog("recordsPanel")}>
-                  {text.viewAll} <ChevronRight aria-hidden="true" size={14} />
-                </button>
-              </div>
-              {activities.length ? (
+            {/* Gone entirely when there is nothing in it, rather than a
+                heading and a 查看全部 wrapped around the words "暫無近期活動".
+                An empty section still costs a screenful of scroll on the way
+                past, and it is the last thing on the page. */}
+            {activities.length ? (
+              <section className="home-section pizo-activity-section" aria-label={text.recentActivity}>
+                <div className="section-title-row">
+                  <h3>{text.recentActivity}</h3>
+                  <button className="text-action" type="button" onClick={() => setDialog("recordsPanel")}>
+                    {text.viewAll} <ChevronRight aria-hidden="true" size={14} />
+                  </button>
+                </div>
                 <div className="pizo-activity-list">
                   {activities.slice(0, 5).map((activity) => (
                     <div className="activity-row pizo-activity-row" key={activity.id}>
@@ -1784,10 +1785,8 @@ export function App() {
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="empty-copy">{text.noActivity}</p>
-              )}
-            </section>
+              </section>
+            ) : null}
 
           </section>
 

@@ -796,7 +796,6 @@
     grid-template-columns: 1fr 1fr;
   }
 
-  .hero-summary-grid,
   .panel-stat-grid,
   .dialog-action-row {
     grid-template-columns: 1fr;
@@ -809,10 +808,6 @@
 
   .analysis-balance-row strong {
     text-align: left;
-  }
-
-  .hero-donut {
-    justify-items: start;
   }
 
   .spending-date-row {

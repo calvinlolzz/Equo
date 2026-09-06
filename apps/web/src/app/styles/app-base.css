@@ -161,10 +161,9 @@ button:disabled {
 .group-create-item,
 .group-item,
 .install-hint-action,
-.member-add-action,
+.member-quick-action,
 .member-dialog-row,
 .member-icon-action,
-.member-icon-button,
 .payer-chip,
 .period-chip,
 .pizo-expense-row,
@@ -197,9 +196,8 @@ button:disabled {
 .group-create-item:active,
 .group-item:active,
 .install-hint-action:active,
-.member-add-action:active,
+.member-quick-action:active,
 .member-dialog-row:active,
-.member-icon-button:active,
 .payer-chip:active,
 .period-chip:active,
 .pizo-expense-row:active,
@@ -226,10 +224,9 @@ button:disabled {
   .group-create-item,
   .group-item,
   .install-hint-action,
-  .member-add-action,
+  .member-quick-action,
   .member-dialog-row,
   .member-icon-action,
-  .member-icon-button,
   .payer-chip,
   .period-chip,
   .pizo-expense-row,
@@ -1153,10 +1150,6 @@ label span {
   color: rgb(var(--accent));
 }
 
-:root[data-theme="light"] .hero-donut-ring::before {
-  background: var(--page-1);
-}
-
 /* Light-mode contrast (WCAG AA). Secondary/muted text uses rgb(var(--fg) / a)
    at a≈0.4–0.58 — fine in dark mode (near-white --fg on a dark page ≈ 5:1) but
    below the 4.5:1 floor in light mode, where dark-indigo --fg composited over
@@ -1173,7 +1166,6 @@ label span {
 :root[data-theme="light"] .settlement-more-line,
 :root[data-theme="light"] .settlement-history-time,
 :root[data-theme="light"] .hero-balance-row small,
-:root[data-theme="light"] .hero-donut-ring span,
 :root[data-theme="light"] .soft-tab:not(.active),
 :root[data-theme="light"] .section-title-row span,
 :root[data-theme="light"] .section-title-row .text-action,

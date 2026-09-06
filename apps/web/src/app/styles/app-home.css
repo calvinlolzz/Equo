@@ -31,13 +31,6 @@
   color: rgb(var(--fg));
 }
 
-.hero-summary-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 136px;
-  gap: 20px;
-  align-items: center;
-}
-
 .hero-member-summary {
   min-width: 0;
   display: grid;
@@ -104,34 +97,31 @@
    stacks it (see app-composer.css). */
 .member-quick-actions {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
-.member-add-action,
-.member-icon-button {
-  min-height: 52px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* Icon over label, so the two that used to be bare glyphs can say what they
+   are without needing a wider slot than 新增成員 gets. The label wraps rather
+   than truncating - "Invite members" is two lines here and that is fine. */
+.member-quick-action {
+  min-height: 62px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 8px 6px;
   border: 1px solid rgb(var(--surf) / 0.16);
   border-radius: 14px;
   color: rgb(var(--fg));
   background: rgb(var(--surf) / 0.06);
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1.25;
+  text-align: center;
 }
 
-.member-add-action {
-  gap: 8px;
-  font-weight: 860;
-}
-
-.member-icon-button {
-  width: 56px;
-  padding: 0;
-}
-
-.member-add-action:active,
-.member-icon-button:active {
+.member-quick-action:active {
   transform: scale(0.98);
 }
 
@@ -169,55 +159,6 @@
 
 .hero-balance-row strong {
   text-align: right;
-}
-
-.hero-donut {
-  display: grid;
-  justify-items: end;
-}
-
-.hero-donut-ring {
-  position: relative;
-  width: 118px;
-  height: 118px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: conic-gradient(#ffd133 0 28%, #e8ecef 28% 100%);
-  box-shadow: inset 0 0 0 1px rgb(var(--surf) / 0.14), 0 16px 34px rgba(0, 0, 0, 0.3);
-}
-
-.hero-donut-ring::before {
-  position: absolute;
-  inset: 12px;
-  border-radius: 50%;
-  background: #171717;
-  content: "";
-}
-
-.hero-donut-ring div {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  justify-items: center;
-  gap: 4px;
-  max-width: 80px;
-  text-align: center;
-}
-
-.hero-donut-ring span {
-  max-width: 80px;
-  color: rgb(var(--fg) / 0.58);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.3;
-  text-align: center;
-  white-space: normal;
-}
-
-.hero-donut-ring strong {
-  color: rgb(var(--fg));
-  font-size: 17px;
 }
 
 .spending-card,
