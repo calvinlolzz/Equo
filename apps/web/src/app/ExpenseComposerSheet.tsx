@@ -7,6 +7,7 @@ import { convertToGroupAmountMinor, readLastCurrency, writeLastCurrency } from "
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
 import { formatExchangeRate, loadCrossRate } from "./exchangeRates";
 import { isComposerDirty, type ComposerSnapshot } from "./expenseComposerDirty";
+import { buildSplitSummary } from "./expenseSplitSummary";
 import {
   buildExpenseDuplicatePrefill,
   buildExpenseEditPrefill,
@@ -25,11 +26,13 @@ import {
 } from "./expenseShareSplit";
 import { MemberAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
+import { useAnimatedHeight } from "./useAnimatedHeight";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
 import { categoryLabel as lookupCategoryLabel, categoryOptions } from "./catalog";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
+const splitWords = UI_TEXT.splitSummary;
 
 /** Custom numeric keypad layout for the mobile amount step (matches the demo's
  *  step 1). "." replaces the demo's "00" so decimal splits stay reachable. */
@@ -53,9 +56,20 @@ function useIsPhone(): boolean {
   );
 }
 
+/**
+ * The phone flow.
+ *
+ * 付款人 and 分帳 used to be two more screens here, and both of them shipped
+ * with the right answer already filled in: the person recording it paid, and
+ * everyone splits it evenly. Two taps of 下一步 to agree with yourself, on
+ * every single entry. They now live behind one summary line on the 明細 step
+ * (see renderSplitSummarySection) that opens the very same editors.
+ *
+ * 轉帳 keeps its middle step: "who to whom" has no sensible default to accept.
+ */
 function stepKeysForMode(mode: ComposerMode): StepKey[] {
   if (mode === "transfer") return ["amount", "transferPair", "transferNote"];
-  return ["amount", "details", "payer", "split"];
+  return ["amount", "details"];
 }
 
 function toLocalDateTimeInputValue(value: string) {
@@ -136,6 +150,7 @@ function defaultFetchExchangeRates(base: string): Promise<ExchangeRatesResponse>
 
 export function ExpenseComposerSheet({
   members,
+  currentMemberId,
   groupId = "",
   groupCurrency,
   currencyOptions,
@@ -150,6 +165,17 @@ export function ExpenseComposerSheet({
   fetchExchangeRates = defaultFetchExchangeRates,
 }: {
   members: Member[];
+  /**
+   * Which member is the person holding the phone (App's resolveCurrentMember).
+   * Seeds 付款人, because the overwhelmingly common case is that you are
+   * recording something you just paid for.
+   *
+   * Before this existed the default was members[0] — the group's creator — so
+   * everyone who had not created the group started every entry with the wrong
+   * person owed the money, and the only thing standing between that and the
+   * ledger was a step they were being asked to tap past.
+   */
+  currentMemberId?: string;
   /** Scopes the "last currency used here" memory. Empty disables it (tests, previews). */
   groupId?: string;
   groupCurrency: string;
@@ -231,16 +257,30 @@ export function ExpenseComposerSheet({
   const manualRateRef = useRef(false);
   const [composerTitle, setComposerTitle] = useState<string>(editPrefill?.title ?? "");
   const [composerAmount, setComposerAmount] = useState(editPrefill?.amount ?? "");
-  const [composerPayerId, setComposerPayerId] = useState(editPrefill?.payerId ?? members[0]?.id ?? "");
+  /**
+   * Whoever is recording this, when they are one of the members. Checked
+   * against the list rather than trusted: a stale id would otherwise put a
+   * payer on the draft that this group has never had.
+   */
+  const defaultPayerId =
+    members.find((member) => member.id === currentMemberId)?.id ?? members[0]?.id ?? "";
+  const [composerPayerId, setComposerPayerId] = useState(editPrefill?.payerId ?? defaultPayerId);
   const [composerTransferToId, setComposerTransferToId] = useState<string>(() => {
     if (editPrefill?.transferToMemberId) return editPrefill.transferToMemberId;
-    const fromId = editPrefill?.payerId ?? members[0]?.id ?? "";
+    const fromId = editPrefill?.payerId ?? defaultPayerId;
     return members.find((member) => member.id !== fromId)?.id ?? "";
   });
   const [composerShareIds, setComposerShareIds] = useState<string[]>(
     editPrefill?.shareMemberIds.length ? editPrefill.shareMemberIds : members.map((member) => member.id),
   );
   const [composerPayerExpanded, setComposerPayerExpanded] = useState(false);
+  /**
+   * Whether the phone's 明細 step is showing the payer and split editors
+   * underneath their summary line. Closed by default — that is the whole point
+   * — and it stays open once opened, so somebody adjusting several entries in a
+   * row is not re-opening it every time.
+   */
+  const [splitDetailsOpen, setSplitDetailsOpen] = useState(false);
   const [composerTransferToExpanded, setComposerTransferToExpanded] = useState(false);
   const [composerSplitMode, setComposerSplitMode] = useState<ComposerSplitMode>(editPrefill?.splitMode ?? "equal");
   const [composerShareAmounts, setComposerShareAmounts] = useState<Record<string, string>>(editPrefill?.shareAmounts ?? {});
@@ -385,6 +425,8 @@ export function ExpenseComposerSheet({
     closeInstantly: () => dirty,
   });
   const chromeRef = useDialogChrome(requestClose);
+  /** Opening 分帳方式 grows the step by ~300px; without this it teleports. */
+  const splitDetailsRef = useAnimatedHeight<HTMLDivElement>();
   const sheetRef = useMemo(
     () => mergeRefs<HTMLElement>(dragProps.ref, chromeRef),
     [dragProps.ref, chromeRef],
@@ -825,6 +867,56 @@ export function ExpenseComposerSheet({
     );
   }
 
+  /**
+   * The line that replaced two steps, plus the editors it opens.
+   *
+   * The editors are the same renderPayerSection / renderShareSection the
+   * desktop form has always used, rendered as siblings rather than nested, so
+   * the expanded state is exactly the old two screens stacked — nothing here
+   * reimplements the split.
+   */
+  function renderSplitSummarySection() {
+    const summary = buildSplitSummary({
+      mode: composerMode,
+      payerName: composerPayer?.name ?? "",
+      payerCount: composerPayerRows.length > 1 ? composerPayerRows.length : 1,
+      shareCount: composerShareIds.length,
+      splitMode: composerSplitMode,
+    });
+
+    // The summary lives inside the animated box rather than beside it: an
+    // always-mounted sibling that is empty half the time would still collect
+    // one of the step body's 12px grid gaps when there is nothing in it.
+    return (
+      <div className="composer-split-block" ref={splitDetailsRef}>
+        <div className="composer-card-section">
+          <button
+            className="composer-payer-summary"
+            type="button"
+            aria-expanded={splitDetailsOpen}
+            aria-label={splitWords.edit}
+            onClick={() => setSplitDetailsOpen((current) => !current)}
+          >
+            <span className="composer-section-head-label">{splitWords.label}</span>
+            <span className="composer-payer-summary-value composer-split-summary-value">
+              {composerPayerRows.length > 1 ? null : (
+                <MemberAvatar className="member-avatar" name={composerPayer?.name} avatarUrl={composerPayer?.avatarUrl} />
+              )}
+              <strong>{summary}</strong>
+              <ChevronRight aria-hidden="true" size={16} className={splitDetailsOpen ? "chevron rotated" : "chevron"} />
+            </span>
+          </button>
+        </div>
+        {splitDetailsOpen ? (
+          <>
+            {renderPayerSection()}
+            {renderShareSection()}
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   function renderShareSection() {
     return (
       <div className="composer-card-section">
@@ -1201,6 +1293,7 @@ export function ExpenseComposerSheet({
           <>
             {renderTitleField()}
             {renderMetaGrid()}
+            {renderSplitSummarySection()}
             {renderPhotoNoteSection()}
           </>
         );

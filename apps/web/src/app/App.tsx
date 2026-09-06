@@ -31,7 +31,7 @@ import { downscaleDataUrl, downscaleImageFileToDataUrl, RECEIPT_MAX_EDGE_PX } fr
 import { createAutoSync } from "./autoSync";
 import { buildSettlementTransfers } from "./buildSettlementTransfers";
 import { createApiClient } from "./apiClient";
-import { dateKey, formatActivityTime, lastEightDays } from "./appDates";
+import { dateKey, formatActivityTime, formatRecordStamp, lastEightDays } from "./appDates";
 import { describeCloudActionError } from "./describeCloudActionError";
 import { MemberListPanel } from "./MemberListPanel";
 import { type FeedbackType } from "./FeedbackDialog";
@@ -197,12 +197,6 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function formatTime(value: string) {
-  const date = new Date(value);
-  return date.toLocaleTimeString("zh-TW", { hour: "numeric", minute: "2-digit", second: "2-digit" });
-}
-
-
 export function App() {
   const { activeGroupId, openGroup, closeGroup } = useGroupRoute();
   const [startMode, setStartMode] = useState<StartMode>("create");
@@ -243,6 +237,13 @@ export function App() {
    */
   const [nudgedMemberIds, setNudgedMemberIds] = useState<string[]>([]);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  /**
+   * The settlement waiting on a yes. 清償 writes a real entry into the ledger
+   * saying somebody has already handed money over, so it does not fire from a
+   * single tap on the home screen — the app asks before a draft is thrown
+   * away, and this is worth more than a draft.
+   */
+  const [settleConfirm, setSettleConfirm] = useState<{ fromId: string; toId: string; amountMinor: number } | null>(null);
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
@@ -543,6 +544,7 @@ export function App() {
       (Boolean(dialog) ||
         expenseComposerOpen ||
         discardConfirmOpen ||
+        Boolean(settleConfirm) ||
         feedbackOpen ||
         notificationsOpen ||
         groupDrawerOpen ||
@@ -1106,7 +1108,15 @@ export function App() {
     showToast((await copyText(note)) ? UI_TEXT.paymentNote.copied : UI_TEXT.paymentNote.copyUnavailable);
   }
 
-  async function settleTransfer(fromId: string, toId: string, amountMinor: number) {
+  /** Every 清償 affordance lands here - the home card's and the analysis panel's. */
+  function settleTransfer(fromId: string, toId: string, amountMinor: number) {
+    setSettleConfirm({ fromId, toId, amountMinor });
+  }
+
+  async function confirmSettleTransfer() {
+    if (!settleConfirm) return;
+    const { fromId, toId, amountMinor } = settleConfirm;
+    setSettleConfirm(null);
     if (!activeGroup || !cloudStore) return;
     const fromMember = members.find((member) => member.id === fromId);
     const toMember = members.find((member) => member.id === toId);
@@ -1735,7 +1745,7 @@ export function App() {
                         )}
                         <span className="expense-record-main">
                           <strong>{expense.title}</strong>
-                          <small>{formatTime(expense.createdAt)}</small>
+                          <small>{formatRecordStamp(expense.createdAt)}</small>
                         </span>
                         <span className={isIncome ? "expense-record-amount amount-income" : "expense-record-amount"}>
                           <small>{expense.currency}</small>
@@ -1913,6 +1923,7 @@ export function App() {
         <Suspense fallback={null}>
         <ExpenseComposerSheet
           members={members}
+          currentMemberId={currentMember?.id}
           groupId={activeGroup?.id ?? ""}
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
@@ -2484,6 +2495,40 @@ export function App() {
                   </div>
                 </>
               ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {/* Last in the tree on purpose: 清償 can be fired from the analysis
+          panel, which is rendered above, and a confirm that appears behind the
+          thing that raised it is worse than no confirm. */}
+      {settleConfirm ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSettleConfirm(null);
+          }}
+        >
+          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.settleConfirmTitle}>
+            <div className="dialog-header centered">
+              <AlertTriangle aria-hidden="true" size={28} />
+              <h3>{text.settleConfirmTitle}</h3>
+              <p>
+                {text.settleConfirmBody
+                  .replace("{from}", members.find((member) => member.id === settleConfirm.fromId)?.name ?? "")
+                  .replace("{to}", members.find((member) => member.id === settleConfirm.toId)?.name ?? "")
+                  .replace("{amount}", formatAmount(settleConfirm.amountMinor, activeGroup?.currency ?? "TWD"))}
+              </p>
+            </div>
+            <div className="dialog-action-row">
+              <button className="secondary-action" type="button" onClick={() => setSettleConfirm(null)}>
+                {text.settleConfirmCancel}
+              </button>
+              <button className="primary-action" type="button" onClick={confirmSettleTransfer}>
+                {text.settleConfirmAction}
+              </button>
             </div>
           </section>
         </div>

@@ -25,3 +25,13 @@ export const ACTIVE_LOCALE: Locale = resolveLocale();
  * translation arrived.
  */
 export const UI_TEXT: UiDictionary = DICTIONARIES[ACTIVE_LOCALE];
+
+/**
+ * The dictionary for an arbitrary locale, for the few formatters that take a
+ * locale as an argument rather than reading the page's own. Nothing in the
+ * running app needs this — ACTIVE_LOCALE is fixed at load — but a formatter
+ * that says "今天" has to be testable in both languages.
+ */
+export function dictionaryFor(locale: Locale): UiDictionary {
+  return DICTIONARIES[locale];
+}

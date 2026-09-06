@@ -40,6 +40,30 @@
   background: transparent;
 }
 
+/**
+ * 分帳方式 on the phone step: the summary line and, once opened, the payer and
+ * split editors it stands in for. One box so the open/close is a single height
+ * animation (useAnimatedHeight holds the ref) and so the closed state does not
+ * leave an empty grid cell behind in the step body.
+ */
+.composer-split-block {
+  display: grid;
+  gap: 12px;
+}
+
+/* The summary can be long ("小明付 · 自訂比例"); it yields to the label and
+   ellipsises rather than pushing the chevron off the row. */
+.composer-split-summary-value {
+  min-width: 0;
+}
+
+.composer-split-summary-value strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-section-head-label {
   color: rgb(var(--fg) / 0.72);
   font-size: 13px;

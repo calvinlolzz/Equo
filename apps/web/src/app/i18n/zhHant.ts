@@ -57,6 +57,16 @@ export const ZH_HANT = {
     needPay: "需要支付",
     settled: "所有債務都已結清",
     clearDebt: "清償債務",
+    /**
+     * 清償 means "I have been paid", not "I am paying now" — it writes a
+     * settlement into the ledger. The confirm spells that out because the
+     * button sits under a thumb on the home screen.
+     */
+    settleConfirmTitle: "確認收到款項？",
+    /** Whole sentence with {from} / {to} / {amount} placeholders. */
+    settleConfirmBody: "帳本會記下「{from} 已付給 {to} {amount}」。記錯了可以到紀錄裡刪掉這筆。",
+    settleConfirmCancel: "取消",
+    settleConfirmAction: "確認收款",
     viewAll: "查看全部",
     recentActivity: "近期活動",
     noRecords: "沒有任何記錄",
@@ -343,6 +353,23 @@ export const ZH_HANT = {
     krw: "韓元",
     eur: "歐元",
   },
+  /**
+   * The one-line "who paid, how it splits" summary the phone composer shows in
+   * place of the two steps it used to make everyone walk through. Whole
+   * phrases with {name} / {n} placeholders rather than fragments, because the
+   * word order moves between languages: 「我付」 vs 「Alex paid」.
+   */
+  splitSummary: {
+    label: "分帳方式",
+    paidBy: "{name}付",
+    paidByMany: "{n} 人付",
+    collectedBy: "{name}收",
+    equal: "{n} 人均分",
+    customAmount: "自訂金額",
+    customPercent: "自訂比例",
+    nobody: "還沒選分帳對象",
+    edit: "調整分帳方式",
+  },
   composerModes: {
     expense: "支出",
     income: "收入",
@@ -624,6 +651,8 @@ export const ZH_HANT = {
     pullArmed: "放開以重新整理",
     pullIdle: "下拉重新整理",
     dateLabel: "日期",
+    today: "今天",
+    yesterday: "昨天",
     virtualMemberHint: "適合幫沒有帳號的人代記支出。",
     memberNamePlaceholder: "輸入成員名稱",
     deleteGroupWarning: "刪除後這個群組與所有記錄將永久移除，無法復原。",
