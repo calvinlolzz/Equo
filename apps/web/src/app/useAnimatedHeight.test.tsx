@@ -70,6 +70,10 @@ describe("useAnimatedHeight", () => {
     expect(box.style.height).toBe("480px");
     expect(box.style.transition).toContain("height");
     expect(box.style.overflow).toBe("hidden");
+    // Height is a layout property, so each frame re-lays out whatever is
+    // inside. The rows do not depend on this box's height, so the browser is
+    // told it can skip them.
+    expect(box.style.contain).toBe("layout paint");
   });
 
   test("it hands the box back to the layout when the transition ends", () => {
@@ -85,6 +89,8 @@ describe("useAnimatedHeight", () => {
     expect(box.style.height).toBe("");
     expect(box.style.overflow).toBe("");
     expect(box.style.transition).toBe("");
+    // Containment paints-clips too, so it must not outlive the animation.
+    expect(box.style.contain).toBe("");
   });
 
   test("a transition that never fires still releases the box", () => {

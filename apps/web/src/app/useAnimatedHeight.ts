@@ -58,6 +58,7 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
       element.style.height = "";
       element.style.overflow = "";
       element.style.transition = "";
+      element.style.contain = "";
     };
 
     // Where it looks right now. Only meaningful mid-animation - otherwise the
@@ -78,6 +79,14 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
     setResizing(true);
+    // Height is not a compositor property: every frame of this is a layout and
+    // a paint, which is why it stutters where a transform would not. The panel
+    // inside is a grid of fixed-height rows whose layout does not depend on
+    // this box's height at all, so containment lets the browser skip re-laying
+    // it out 60-120 times on the way. Only for the length of the animation:
+    // `contain: paint` also clips, and this box has to be free to overflow the
+    // rest of the time.
+    element.style.contain = "layout paint";
     element.style.overflow = "hidden";
     element.style.height = `${from}px`;
     // Read back, so the start height is a committed style rather than something
