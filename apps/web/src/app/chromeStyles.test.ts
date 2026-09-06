@@ -12,6 +12,7 @@ import { insideAtRule, readAppStylesheet, ruleFor } from "./cssDeclarations";
  * 「上面那排黑色層有點怪怪的」.
  */
 const mobileCss = insideAtRule(readAppStylesheet("app-composer.css"), "max-width: 620px");
+const baseCss = readAppStylesheet("app-base.css");
 const band = ruleFor(mobileCss, ".top-bar::before");
 
 /** The alphas of the `--card-base` stops in a gradient, in order. */
@@ -69,5 +70,35 @@ describe("a sheet in motion", () => {
     for (const selector of [".glass-panel.is-entering", ".glass-panel.closing"]) {
       expect(ruleFor(mobileCss, selector)["backdrop-filter"]).toBe("none");
     }
+  });
+});
+
+describe("a page in motion", () => {
+  test("the glass stops re-blurring while it is scrolled", () => {
+    // 90% of the group home's viewport is inside a blurred surface, and a
+    // backdrop-filter re-blurs what is behind the element at its NEW position -
+    // so a flick convolves nearly the whole screen, every frame, at up to
+    // 120Hz. Dropped for the length of the gesture and back at rest.
+    const moving = ruleFor(baseCss, ":root[data-scrolling] .glass-panel")["backdrop-filter"] ?? "";
+
+    expect(moving).not.toContain("blur");
+    // The saturation stays: it is a per-pixel multiply, and it is what gives
+    // the card its colour over the field. Dropping it too would visibly tint
+    // the panel the moment a scroll started.
+    expect(moving).toContain("saturate");
+  });
+
+  test("both themes, because the light one has its own glass", () => {
+    const light = ruleFor(baseCss, ':root[data-scrolling][data-theme="light"] .glass-panel')["backdrop-filter"] ?? "";
+
+    expect(light).not.toContain("blur");
+    expect(light).toContain("saturate");
+  });
+
+  test("the surfaces with real content behind them keep their blur", () => {
+    // The tab bar has rows scrolling under it and the scrims have the whole
+    // app behind them. Those blurs are doing work you can see.
+    expect(ruleFor(readAppStylesheet("app-home.css"), ".mobile-tab-bar")["backdrop-filter"]).toContain("blur");
+    expect(ruleFor(readAppStylesheet("app-dialogs.css"), ".modal-backdrop")["backdrop-filter"]).toContain("blur");
   });
 });

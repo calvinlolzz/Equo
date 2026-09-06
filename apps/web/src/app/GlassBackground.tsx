@@ -141,8 +141,12 @@ export interface AnimationGate {
   visible: boolean;
   /** document.hidden — the tab is backgrounded. */
   documentHidden: boolean;
-  /** A sheet/dialog/drawer is covering the field (data-overlay on <html>). */
-  overlayPaused: boolean;
+  /**
+   * Something more important than the field is happening: a sheet/drawer is
+   * covering it (data-overlay), or the page is being scrolled (data-scrolling).
+   * Both are set on <html> — see App.tsx and scrollActivity.ts.
+   */
+  paused: boolean;
   /** Milliseconds since the last scroll, tap, key or (on touch) pointer move. */
   msSinceInteraction: number;
   /**
@@ -163,7 +167,7 @@ export function shouldAnimate(gate: AnimationGate): boolean {
   return (
     gate.visible &&
     !gate.documentHidden &&
-    !gate.overlayPaused &&
+    !gate.paused &&
     gate.msSinceInteraction <= (gate.idleFreezeMs ?? IDLE_FREEZE_MS)
   );
 }
@@ -287,7 +291,7 @@ interface SceneOptions {
   speed: number;
   light: boolean;
   /** Start paused because an overlay already covers the screen. */
-  overlayPaused: boolean;
+  paused: boolean;
   /** See IDLE_FREEZE_MS_POINTER. */
   idleFreezeMs: number;
   /**
@@ -302,7 +306,7 @@ interface Scene {
   dispose: () => void;
   resize: () => void;
   setPalette: (light: boolean) => void;
-  setOverlayPaused: (paused: boolean) => void;
+  setPaused: (paused: boolean) => void;
 }
 
 /** One-off seed per blob (base position, radius, phase, hue). */
@@ -431,7 +435,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
   let raf = 0;
   let running = false;
   let visible = true;
-  let overlayPaused = opts.overlayPaused;
+  let paused = opts.paused;
   let lastFrame = 0;
   let clock = 0;
   let mouseX = 0; // final swirl centre fed to the shader (continuously eased)
@@ -577,7 +581,7 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
     const animate = shouldAnimate({
       visible,
       documentHidden: document.hidden,
-      overlayPaused,
+      paused,
       msSinceInteraction: performance.now() - lastInteraction,
       idleFreezeMs: opts.idleFreezeMs,
     });
@@ -620,9 +624,9 @@ function createScene(canvas: HTMLCanvasElement, opts: SceneOptions): Scene | nul
       // (e.g. reduced-motion or offscreen) at the moment the theme flips.
       if (!running) gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
-    setOverlayPaused(paused: boolean) {
-      if (overlayPaused === paused) return;
-      overlayPaused = paused;
+    setPaused(paused: boolean) {
+      if (paused === paused) return;
+      paused = paused;
       // Closing a sheet is an interaction, and it re-exposes the field — reset
       // the idle clock so it animates again rather than coming back frozen
       // because the idle window elapsed while the sheet was up.
@@ -663,7 +667,13 @@ export function GlassBackground() {
     const isLight = () => document.documentElement.getAttribute("data-theme") === "light";
     // Set by App.tsx whenever any sheet/dialog/drawer is open. This component is
     // a sibling of <App />, not a child, so an attribute on <html> is the seam.
-    const isOverlayOpen = () => document.documentElement.hasAttribute("data-overlay");
+    // Scrolling counts as well as an overlay: during a flick the field is a
+    // full-screen shader competing with the thing the finger is actually
+    // moving, and nobody is watching it drift. It restarts when the page
+    // settles, 140ms later.
+    const isPaused = () =>
+      document.documentElement.hasAttribute("data-overlay") ||
+      document.documentElement.hasAttribute("data-scrolling");
     // The per-device switch in 個人資料 (see backgroundStore). Read from the
     // attribute rather than from storage so the toggle takes effect on the spot.
     const motionOff = () => document.documentElement.getAttribute("data-bg-motion") === "off";
@@ -712,7 +722,7 @@ export function GlassBackground() {
         // kept honest for the day a finite budget comes back.
         wakeOnPointerMove: coarse,
         light: isLight(),
-        overlayPaused: isOverlayOpen(),
+        paused: isPaused(),
       });
 
       // createScene returns null when this machine has no WebGL, or a context
@@ -745,11 +755,11 @@ export function GlassBackground() {
       if (motionOff()) teardown();
       else build();
       scene?.setPalette(isLight());
-      scene?.setOverlayPaused(isOverlayOpen());
+      scene?.setPaused(isPaused());
     });
     rootObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-overlay", "data-bg-motion"],
+      attributeFilter: ["data-theme", "data-overlay", "data-scrolling", "data-bg-motion"],
     });
 
     build();

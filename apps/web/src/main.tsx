@@ -11,6 +11,7 @@ import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { initBackgroundMotion } from "./app/backgroundStore";
 import { resolvePublicPage } from "./app/publicRoute";
+import { initScrollActivity } from "./app/scrollActivity";
 import { initTheme } from "./app/themeStore";
 import { ACTIVE_LOCALE, UI_TEXT } from "./app/uiText";
 
@@ -83,6 +84,11 @@ installErrorReporter(isAdminPath ? "admin" : "web");
 // keyboardInset.ts). Both surfaces have forms, and it is a no-op wherever
 // there is no on-screen keyboard, so it is not gated on the path.
 installKeyboardInset();
+
+// Marks <html> while the page is being scrolled, so the glass can stop
+// re-blurring and the field can stop drawing for the length of the gesture
+// (see scrollActivity.ts). Installed for the console too: it scrolls tables.
+initScrollActivity();
 
 createRoot(root).render(
   <React.StrictMode>

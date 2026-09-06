@@ -170,7 +170,7 @@ describe("the blur budget", () => {
   /**
    * Every element that re-blurs what is behind it, listed on purpose.
    *
-   * A backdrop-filter is a full-area GPU pass, every frame, for as long as the
+   * A backdrop BLUR is a full-area GPU pass, every frame, for as long as the
    * element is on screen - and this app draws an animated WebGL field behind
    * everything, so "on screen" means "always repainting". They are worth it
    * exactly where real content passes behind the glass and worthless where the
@@ -178,6 +178,11 @@ describe("the blur budget", () => {
    * used to be (one of them per expense ROW, so a scroll re-blurred once per
    * row). Adding one back is fine - but it should be a line in this test, not a
    * line nobody noticed.
+   *
+   * Only blurs are counted. A saturate-only backdrop-filter is a per-pixel
+   * multiply rather than a 49-tap convolution, and it is what the glass falls
+   * back to mid-scroll (see chromeStyles.test.ts) - putting those in this
+   * budget would make the cheap version look like the expensive one.
    */
   const ALLOWED = [
     ".composer-backdrop",
@@ -192,7 +197,7 @@ describe("the blur budget", () => {
 
   test("only the layers with something behind them still blur", () => {
     const blurring = rules(allCss)
-      .filter((rule) => (rule.declarations["backdrop-filter"] ?? "none") !== "none")
+      .filter((rule) => (rule.declarations["backdrop-filter"] ?? "").includes("blur"))
       .flatMap((rule) => rule.selectors);
 
     expect(blurring.slice().sort()).toEqual(ALLOWED.slice().sort());

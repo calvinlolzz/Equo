@@ -1029,6 +1029,32 @@ label span {
   backdrop-filter: blur(30px) saturate(1.35);
 }
 
+/* While a finger is moving the page, the glass stops re-blurring.
+ *
+ * Measured on the group home at phone size: 274,423 of 304,500 viewport pixels
+ * sit inside a blurred surface — 90% of the screen. A backdrop-filter has to
+ * re-sample and re-blur what is behind an element at its NEW position, so every
+ * one of those pixels is convolved again for every frame of a scroll, at up to
+ * 120Hz. That is the whole of "滑動卡卡的".
+ *
+ * The saturation stays: it is a per-pixel multiply, it is what gives the card
+ * its colour over the field, and dropping it too would tint the panel as the
+ * scroll starts. Only the 24px gaussian goes, and only while moving — at rest
+ * this is pixel-for-pixel what it always was.
+ *
+ * Not the tab bar and not the modal scrims: those are the two places where real
+ * content passes behind the glass, so their blur is doing work you can see.
+ * These rules come after the light override above deliberately — same
+ * specificity, so source order is what decides.
+ */
+:root[data-scrolling] .glass-panel {
+  backdrop-filter: saturate(1.25);
+}
+
+:root[data-scrolling][data-theme="light"] .glass-panel {
+  backdrop-filter: saturate(1.35);
+}
+
 /* Home cards read as frosted glass floating over the light liquid field: a
    translucent white base lets the drifting pastels show through as soft colour,
    while indigo text stays legible. The backdrop blur that used to be here went

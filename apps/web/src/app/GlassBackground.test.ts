@@ -13,7 +13,7 @@ import {
 const running: AnimationGate = {
   visible: true,
   documentHidden: false,
-  overlayPaused: false,
+  paused: false,
   msSinceInteraction: 0,
 };
 
@@ -25,7 +25,7 @@ describe("shouldAnimate", () => {
   test("each gate independently stops the loop", () => {
     expect(shouldAnimate({ ...running, visible: false })).toBe(false);
     expect(shouldAnimate({ ...running, documentHidden: true })).toBe(false);
-    expect(shouldAnimate({ ...running, overlayPaused: true })).toBe(false);
+    expect(shouldAnimate({ ...running, paused: true })).toBe(false);
     expect(shouldAnimate({ ...running, msSinceInteraction: IDLE_FREEZE_MS + 1 })).toBe(false);
   });
 
@@ -36,7 +36,7 @@ describe("shouldAnimate", () => {
   });
 
   test("a fresh interaction is not enough on its own — the other gates still veto", () => {
-    expect(shouldAnimate({ ...running, msSinceInteraction: 0, overlayPaused: true })).toBe(false);
+    expect(shouldAnimate({ ...running, msSinceInteraction: 0, paused: true })).toBe(false);
     expect(shouldAnimate({ ...running, msSinceInteraction: 0, documentHidden: true })).toBe(false);
     expect(shouldAnimate({ ...running, msSinceInteraction: 0, visible: false })).toBe(false);
   });
@@ -71,7 +71,7 @@ describe("shouldAnimate", () => {
     expect(shouldAnimate({ ...forever, msSinceInteraction: Number.MAX_SAFE_INTEGER })).toBe(true);
     expect(shouldAnimate({ ...forever, documentHidden: true })).toBe(false);
     expect(shouldAnimate({ ...forever, visible: false })).toBe(false);
-    expect(shouldAnimate({ ...forever, overlayPaused: true })).toBe(false);
+    expect(shouldAnimate({ ...forever, paused: true })).toBe(false);
   });
 
   test("omitting the budget falls back to the touch one", () => {
