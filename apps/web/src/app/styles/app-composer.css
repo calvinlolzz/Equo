@@ -51,29 +51,30 @@
   gap: 12px;
 }
 
-/* The summary can be long ("小明付 · 自訂比例"); it yields to the label and
-   ellipsises rather than pushing the chevron off the row. */
-.composer-split-summary-value {
-  min-width: 0;
-}
-
-.composer-split-summary-value strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer-section-head-label {
   color: rgb(var(--fg) / 0.72);
   font-size: 13px;
   font-weight: 760;
+  /* 分帳方式 was breaking to 「分帳方 / 式」 on a narrow phone. Now that the
+     value beside it ellipsises, the squeeze has somewhere better to go. */
+  white-space: nowrap;
 }
 
 .composer-payer-summary-value {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* A display name is somebody else's decision about length. Without this the
+     row is as wide as the name, the sheet grows a horizontal scroll, and the
+     labels on the left slide out of sight - which is exactly what happened. */
+  min-width: 0;
+}
+
+.composer-payer-summary-value strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chevron {
@@ -90,6 +91,7 @@
 }
 
 .share-member-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -360,14 +362,33 @@
   background: rgb(var(--surf) / 0.14);
 }
 
+/**
+ * minmax(0, 1fr), not 1fr, here and on every grid inside the sheet.
+ *
+ * `1fr` is `minmax(auto, 1fr)`, and `auto` as a MINIMUM means "no smaller than
+ * the content" - so one stubborn child sets a floor for the whole column. The
+ * date field is exactly that child: input[type=datetime-local] renders a native
+ * control with a 255px intrinsic width that does not shrink for anybody.
+ *
+ * Measured on the real sheet: the step body could not go below 299px before
+ * this, 150px after. A phone narrower than that floor - or a group with long
+ * enough names - got a sheet that panned sideways and hid its own labels.
+ */
 .composer-meta-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
+}
+
+.composer-meta-grid > label,
+.composer-meta-grid input,
+.composer-meta-grid select {
+  min-width: 0;
 }
 
 .composer-card-section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   border-radius: 16px;
   padding: 12px;
@@ -827,7 +848,7 @@
   }
 
   .composer-meta-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .payer-chip-grid {
@@ -989,9 +1010,15 @@
     flex: 1 1 auto;
     min-height: 0;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 12px;
-    overflow-y: auto;
+    /* Both axes named on purpose. `overflow-y: auto` alone computes overflow-x
+       to `auto` as well, so this was a horizontally scrollable box the whole
+       time - and anything that overflowed it by a pixel became a sideways drag
+       that slid the labels off the left edge. The rules above mean nothing
+       should overflow; this means nothing can pan even if something does. */
+    overflow: hidden auto;
     /* This — not the sheet — is the scroll surface of the stepped composer (the
        sheet is overflow:hidden), so contain overscroll here or it chains to the
        page behind the sheet. */
