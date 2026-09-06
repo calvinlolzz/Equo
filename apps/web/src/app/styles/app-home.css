@@ -459,6 +459,12 @@
 .side-nav-list {
   display: grid;
   gap: 9px;
+  /* The drawer is a full-height grid, so its rows stretch by default — with the
+     two items the phone drawer now has, that turned 58px buttons into 100px
+     slabs with the empty space split between them. Keep them their own size and
+     let the gap fall where it belongs: above the archive/delete pair, which is
+     already pinned to the bottom. */
+  align-content: start;
 }
 
 .side-nav-item {
@@ -575,6 +581,13 @@
 
 .side-drawer-right {
   right: 0;
+  /* The cover and the list keep their own height; the slack all goes to the
+     last row, where the archive/delete pair's own `margin-top: auto` puts it
+     against the bottom of the screen. Sharing the slack between all three rows
+     (the grid default) left the card and the list floating in the middle of a
+     mostly empty column once the settings list dropped to two items. Right
+     drawer only — the left one hands its whole height to the group rail. */
+  grid-template-rows: auto auto 1fr;
   /* Clear the landscape sensor housing on the right edge it hugs (top/bottom
      insets come from the base .side-drawer padding). */
   padding-right: calc(20px + env(safe-area-inset-right));

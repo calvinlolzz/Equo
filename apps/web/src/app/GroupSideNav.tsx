@@ -21,7 +21,22 @@ export const sideNavItems: Array<{ id: string; label: string; icon: LucideIcon }
   { id: "recurring", label: text.recurring, icon: Repeat },
 ];
 
+/**
+ * What the mobile drawer shows: everything the bottom bar does not.
+ *
+ * This component is both the desktop rail and the phone's 設定 drawer, and the
+ * same list was wrong for one of them. On a desktop the rail IS the navigation
+ * — 群組首頁, 支出記錄 and 分析 have nowhere else to be. On a phone those three
+ * are the first three buttons of the bar at the bottom of the screen, so the
+ * drawer was offering a second copy of the navigation you had just used to
+ * reach it. What is left is what the bar has no room for: the member list and
+ * the recurring rules, plus the group's own settings above and below them.
+ */
+const DRAWER_ITEMS = new Set(["members", "recurring"]);
+
 type GroupSideNavProps = {
+  /** "rail" is the desktop navigation; "drawer" is the phone's 設定 sheet. */
+  variant?: "rail" | "drawer";
   groupName: string;
   coverImageUrl?: string | null;
   memberCount: number;
@@ -36,6 +51,7 @@ type GroupSideNavProps = {
 
 /** The group side navigation (profile dot, group card, nav list, owner danger actions) - rendered in both the desktop rail and the mobile settings drawer. */
 export function GroupSideNav({
+  variant = "rail",
   groupName,
   coverImageUrl,
   memberCount,
@@ -47,6 +63,7 @@ export function GroupSideNav({
   onDelete,
 }: GroupSideNavProps) {
   const closeDrawer = () => onBeforeNavigate?.();
+  const items = variant === "drawer" ? sideNavItems.filter((item) => DRAWER_ITEMS.has(item.id)) : sideNavItems;
 
   return (
     <>
@@ -75,7 +92,7 @@ export function GroupSideNav({
         </div>
       </div>
       <nav className="side-nav-list" aria-label={text.groupHome}>
-        {sideNavItems.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           return (
             <button

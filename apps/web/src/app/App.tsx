@@ -1800,6 +1800,7 @@ export function App() {
               <div className={settingsDrawerSwipe.closing ? "side-drawer side-drawer-right closing" : "side-drawer side-drawer-right"} role="dialog" aria-modal="true" aria-label={text.groupManage} {...settingsDrawerSwipe.dragProps} ref={settingsDrawerRef}>
                 {activeGroup ? (
               <GroupSideNav
+                variant="drawer"
                 groupName={activeGroup.name}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
