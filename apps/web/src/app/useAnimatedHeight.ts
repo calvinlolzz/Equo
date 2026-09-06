@@ -1,14 +1,20 @@
 import { useLayoutEffect, useRef } from "react";
 
 /**
- * Matches the height transition below; the timer is its safety net.
+ * How long the box takes to reach its new size; the timer below is the safety
+ * net for a transition that never fires.
  *
- * Deliberately the same 260ms as `.enter-content`, the fade the panel inside
- * plays at the same moment. They were 280 and 260: close enough to look like a
- * mistake rather than a decision, and far enough apart that the box finished
- * arriving while its contents were still appearing.
+ * 170ms, chosen by comparison rather than by argument: 260 and 170 were put
+ * side by side on the actual phone (along with a transform-based version that
+ * does no layout at all) and this is the one that read as smoothest. Shorter
+ * turns out to matter more than any of the theory did — by the time the eye has
+ * decided the sheet is moving, it has arrived.
+ *
+ * It does NOT match `.enter-content`'s 260ms fade, and that is the pairing that
+ * was preferred: the move finishes first and the contents settle into a box
+ * that has already stopped. Matching them was tried; this beat it.
  */
-const DURATION_MS = 260;
+const DURATION_MS = 170;
 
 /**
  * Set on <html> while any box is mid-resize, so the glass can stop re-blurring
@@ -47,34 +53,6 @@ function setResizing(on: boolean): void {
  * the new content measures. (`interpolate-size` would do it in one line and is
  * years away from Safari, which is where this app lives.)
  */
-/**
- * ⚠️ PREVIEW BRANCH ONLY — do not merge.
- * ?resize=fast  — the same height animation, 170ms instead of 260ms.
- * ?resize=slide — no height animation at all: the box snaps to its new size and
- *                 the SHEET is slid back into place with a transform, which is
- *                 the only way to move it without a layout per frame. The cost
- *                 is that everything moves, including the bottom edge, so a
- *                 shrink lifts the sheet off the bottom of the screen for the
- *                 length of it.
- */
-function previewMode(): { mode: "height" | "fast" | "slide"; asked: boolean } {
-  const asked = new URLSearchParams(window.location.search).get("resize");
-  if (asked === "fast" || asked === "slide" || asked === "height") return { mode: asked, asked: true };
-  return { mode: "height", asked: false };
-}
-
-/** ⚠️ PREVIEW BRANCH ONLY: says which one you are looking at. */
-function showModeBadge(mode: string): void {
-  const id = "resize-mode-badge";
-  if (document.getElementById(id)) return;
-  const badge = document.createElement("div");
-  badge.id = id;
-  badge.textContent = { height: "高度動畫 260ms（目前正式站）", fast: "高度動畫 170ms", slide: "transform 位移（不做 layout）" }[mode] ?? mode;
-  badge.style.cssText =
-    "position:fixed;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top));z-index:99999;padding:6px 12px;border-radius:999px;background:rgba(0,0,0,0.72);color:#fff;font:700 12px/1 system-ui,sans-serif;pointer-events:none";
-  document.body.appendChild(badge);
-}
-
 export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_MS) {
   const ref = useRef<T | null>(null);
   /** The height last settled on, for the common case of a box sitting at auto. */
@@ -112,44 +90,6 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
 
     if (from === null || Math.round(from) === Math.round(to)) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-
-    // ⚠️ TEMPORARY — see previewMode above. The badge only appears for someone
-    // who asked for a mode by hand; nobody else sees any of this.
-    const { mode, asked } = previewMode();
-    if (asked) showModeBadge(mode);
-
-    if (mode === "slide") {
-      // The box is already at its new size, so the sheet's top edge has
-      // already moved. Put it back with a transform and let the compositor
-      // walk it home: no layout, no paint, one texture moving.
-      const sheet = element.closest<HTMLElement>(".flow-dialog");
-      if (!sheet) return;
-
-      setResizing(true);
-      sheet.style.transition = "none";
-      sheet.style.transform = `translateY(${to - from}px)`;
-      void sheet.offsetHeight;
-      sheet.style.transition = `transform ${durationMs}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-      sheet.style.transform = "";
-
-      const done = () => {
-        stop.current = null;
-        setResizing(false);
-        sheet.style.transition = "";
-        sheet.style.transform = "";
-      };
-      sheet.addEventListener("transitionend", done, { once: true });
-      const slideTimer = window.setTimeout(done, durationMs + 120);
-      stop.current = () => {
-        window.clearTimeout(slideTimer);
-        sheet.removeEventListener("transitionend", done);
-        stop.current = null;
-        setResizing(false);
-      };
-      return;
-    }
-
-    if (mode === "fast") durationMs = 170;
 
     setResizing(true);
     // Height is not a compositor property: every frame of this is a layout and
