@@ -79,6 +79,7 @@ import { clearPendingRoute, readPendingRoute } from "./pendingRoute";
 import { resolveRootLanding } from "./resolveRootLanding";
 import type { DialogMode, InfoDialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount, formatSigned } from "./formatAmount";
+import { heroBalanceMembers } from "./heroBalanceRows";
 import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from "./profileStore";
 import { saveSession, type StoredSession } from "./sessionStore";
 import { useActionGuard } from "./useActionGuard";
@@ -1553,7 +1554,7 @@ export function App() {
                     ))}
                   </div>
                   <div className="hero-balance-list" aria-label={text.analysis}>
-                    {members.slice(0, 2).map((member) => (
+                    {heroBalanceMembers(members, balances, currentMember?.id).map((member) => (
                       <div className="hero-balance-row" key={member.id}>
                         <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
                         <span>
