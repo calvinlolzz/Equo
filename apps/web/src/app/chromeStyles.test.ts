@@ -100,6 +100,14 @@ describe("a page in motion", () => {
     }
   });
 
+  test("a resizing sheet drops its shadow too", () => {
+    // 0 24px 80px is an 80px blur radius redrawn on every frame the box
+    // changes size. Resizing only: a scrolling card keeps its shadow, which is
+    // the only thing separating it from the field.
+    expect(ruleFor(baseCss, ":root[data-resizing] .glass-panel")["box-shadow"]).toBe("none");
+    expect(ruleFor(baseCss, ":root[data-scrolling] .glass-panel")["box-shadow"]).toBeUndefined();
+  });
+
   test("both themes, because the light one has its own glass", () => {
     const light = ruleFor(baseCss, ':root[data-scrolling][data-theme="light"] .glass-panel')["backdrop-filter"] ?? "";
 

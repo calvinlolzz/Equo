@@ -1061,6 +1061,21 @@ label span {
   backdrop-filter: saturate(1.35);
 }
 
+/* The other thing a resizing box repaints every frame.
+ *
+ * `0 24px 80px` is an 80px blur radius around a sheet the size of the screen,
+ * and it has to be redrawn from scratch every time the box changes size —
+ * second only to the backdrop blur above. A sheet mid-travel is over a scrim at
+ * 46% black, so the shadow is doing nothing you can see for those 260ms.
+ *
+ * Resizing only, not scrolling: a scrolling card keeps its distance from the
+ * field precisely BECAUSE of this shadow, and flattening every card the moment
+ * a finger moves would be visible.
+ */
+:root[data-resizing] .glass-panel {
+  box-shadow: none;
+}
+
 /* Home cards read as frosted glass floating over the light liquid field: a
    translucent white base lets the drifting pastels show through as soft colour,
    while indigo text stays legible. The backdrop blur that used to be here went

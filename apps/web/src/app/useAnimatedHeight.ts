@@ -1,7 +1,14 @@
 import { useLayoutEffect, useRef } from "react";
 
-/** Matches the height transition below; the timer is its safety net. */
-const DURATION_MS = 280;
+/**
+ * Matches the height transition below; the timer is its safety net.
+ *
+ * Deliberately the same 260ms as `.enter-content`, the fade the panel inside
+ * plays at the same moment. They were 280 and 260: close enough to look like a
+ * mistake rather than a decision, and far enough apart that the box finished
+ * arriving while its contents were still appearing.
+ */
+const DURATION_MS = 260;
 
 /**
  * Set on <html> while any box is mid-resize, so the glass can stop re-blurring
