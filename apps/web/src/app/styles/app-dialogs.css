@@ -353,9 +353,18 @@
   font-weight: 820;
 }
 
+/* ⚠️ The picker has to have a HEIGHT of its own, and for a long time it did
+   not: `min-height` plus an <img> at `height: 100%` resolves the percentage
+   against an auto height, so the image fell back to its natural size and the
+   box became as tall as the photo. A portrait phone shot turned this into a
+   440px wall that pushed 名稱, 幣別, 每月預算 and both buttons off the bottom of
+   the sheet — the same mistake .side-cover had, in the second place nobody
+   looked. 16:9 is also the honest preview: that is the shape the cover is
+   cropped to everywhere it is shown (see CoverCropSheet). */
 .group-edit-cover {
   position: relative;
-  min-height: 118px;
+  aspect-ratio: 16 / 9;
+  max-height: min(30vh, 220px);
   display: grid;
   place-items: center;
   border-radius: 16px;

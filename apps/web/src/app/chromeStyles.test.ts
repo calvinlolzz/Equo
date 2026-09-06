@@ -13,6 +13,8 @@ import { insideAtRule, readAppStylesheet, ruleFor } from "./cssDeclarations";
  */
 const mobileCss = insideAtRule(readAppStylesheet("app-composer.css"), "max-width: 620px");
 const baseCss = readAppStylesheet("app-base.css");
+const homeCss = readAppStylesheet("app-home.css");
+const dialogCss = readAppStylesheet("app-dialogs.css");
 const band = ruleFor(mobileCss, ".top-bar::before");
 
 /** The alphas of the `--card-base` stops in a gradient, in order. */
@@ -120,5 +122,31 @@ describe("a page in motion", () => {
     // app behind them. Those blurs are doing work you can see.
     expect(ruleFor(readAppStylesheet("app-home.css"), ".mobile-tab-bar")["backdrop-filter"]).toContain("blur");
     expect(ruleFor(readAppStylesheet("app-dialogs.css"), ".modal-backdrop")["backdrop-filter"]).toContain("blur");
+  });
+});
+
+describe("every surface that shows a group cover", () => {
+  /**
+   * A cover box must set its own height. Twice now one has not, and both times
+   * the symptom was the same: the <img> inside is `height: 100%`, a percentage
+   * against an auto height resolves to auto, and the photo's own proportions
+   * become the box. A portrait phone shot then turns a 178px preview into a
+   * 423px wall — measured — which in the edit dialog pushed the name, the
+   * currency, the budget and both buttons off the bottom of the sheet.
+   *
+   * 16:9 is also the honest shape: it is what the cover is cropped to
+   * everywhere it is actually shown.
+   */
+  test("has a shape of its own, so the photo cannot set it", () => {
+    for (const [css, selector] of [
+      [homeCss, ".side-cover"],
+      [dialogCss, ".group-edit-cover"],
+    ] as const) {
+      const rule = ruleFor(css, selector);
+
+      expect(rule["aspect-ratio"]).toBe("16 / 9");
+      // And a ceiling, so a wide screen does not hand the whole sheet to it.
+      expect(rule["max-height"]).toBeTruthy();
+    }
   });
 });
