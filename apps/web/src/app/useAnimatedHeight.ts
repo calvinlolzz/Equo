@@ -57,9 +57,10 @@ function setResizing(on: boolean): void {
  *                 shrink lifts the sheet off the bottom of the screen for the
  *                 length of it.
  */
-function previewMode(): "height" | "fast" | "slide" {
+function previewMode(): { mode: "height" | "fast" | "slide"; asked: boolean } {
   const asked = new URLSearchParams(window.location.search).get("resize");
-  return asked === "fast" || asked === "slide" ? asked : "height";
+  if (asked === "fast" || asked === "slide" || asked === "height") return { mode: asked, asked: true };
+  return { mode: "height", asked: false };
 }
 
 /** ⚠️ PREVIEW BRANCH ONLY: says which one you are looking at. */
@@ -112,9 +113,10 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
     if (from === null || Math.round(from) === Math.round(to)) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
-    // ⚠️ PREVIEW BRANCH ONLY — see previewMode above.
-    const mode = previewMode();
-    showModeBadge(mode);
+    // ⚠️ TEMPORARY — see previewMode above. The badge only appears for someone
+    // who asked for a mode by hand; nobody else sees any of this.
+    const { mode, asked } = previewMode();
+    if (asked) showModeBadge(mode);
 
     if (mode === "slide") {
       // The box is already at its new size, so the sheet's top edge has
