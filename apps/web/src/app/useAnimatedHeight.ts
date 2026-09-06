@@ -4,6 +4,30 @@ import { useLayoutEffect, useRef } from "react";
 const DURATION_MS = 280;
 
 /**
+ * Set on <html> while any box is mid-resize, so the glass can stop re-blurring
+ * for the length of it — the same deal scrollActivity makes for a scroll, and
+ * for the same reason: a sheet that changes size is a sheet whose backdrop has
+ * to be re-blurred every frame, and it is the largest blurred surface here.
+ */
+const RESIZING_ATTR = "data-resizing";
+
+/** How many boxes are animating right now; the attribute is not theirs alone. */
+let animating = 0;
+
+function setResizing(on: boolean): void {
+  const root = document.documentElement;
+
+  if (on) {
+    animating += 1;
+    if (animating === 1) root.setAttribute(RESIZING_ATTR, "1");
+    return;
+  }
+
+  animating = Math.max(0, animating - 1);
+  if (animating === 0) root.removeAttribute(RESIZING_ATTR);
+}
+
+/**
  * Let a box's height change be something you can watch rather than a jump.
  *
  * Written for the profile sheet's two tabs, which are 63px and 483px tall: the
@@ -53,6 +77,7 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
     if (from === null || Math.round(from) === Math.round(to)) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
+    setResizing(true);
     element.style.overflow = "hidden";
     element.style.height = `${from}px`;
     // Read back, so the start height is a committed style rather than something
@@ -63,6 +88,7 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
 
     const settle = () => {
       stop.current = null;
+      setResizing(false);
       clear();
     };
     // transitionend does not fire if the transition never runs (a hidden tab,
@@ -74,6 +100,7 @@ export function useAnimatedHeight<T extends HTMLElement>(durationMs = DURATION_M
       window.clearTimeout(timer);
       element.removeEventListener("transitionend", settle);
       stop.current = null;
+      setResizing(false);
     };
   });
 

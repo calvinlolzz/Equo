@@ -673,7 +673,8 @@ export function GlassBackground() {
     // settles, 140ms later.
     const isPaused = () =>
       document.documentElement.hasAttribute("data-overlay") ||
-      document.documentElement.hasAttribute("data-scrolling");
+      document.documentElement.hasAttribute("data-scrolling") ||
+      document.documentElement.hasAttribute("data-resizing");
     // The per-device switch in 個人資料 (see backgroundStore). Read from the
     // attribute rather than from storage so the toggle takes effect on the spot.
     const motionOff = () => document.documentElement.getAttribute("data-bg-motion") === "off";
@@ -759,7 +760,7 @@ export function GlassBackground() {
     });
     rootObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-overlay", "data-scrolling", "data-bg-motion"],
+      attributeFilter: ["data-theme", "data-overlay", "data-scrolling", "data-resizing", "data-bg-motion"],
     });
 
     build();

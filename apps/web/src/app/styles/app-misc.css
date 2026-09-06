@@ -1,8 +1,8 @@
 
 .profile-avatar-picker {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 60px;
+  height: 60px;
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -84,7 +84,7 @@
   display: inline-flex;
   gap: 22px;
   border-bottom: 1px solid rgb(var(--surf) / 0.1);
-  padding-bottom: 10px;
+  padding-bottom: 6px;
 }
 
 .profile-tab {
@@ -112,7 +112,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -11px;
+  bottom: -7px;
   height: 3px;
   border-radius: 999px;
   background: rgb(var(--gold));
@@ -131,9 +131,15 @@
 }
 
 .profile-account-list,
+/* Tight on purpose: this list has to fit a 375x812 screen without scrolling.
+   It was 87px over on the smallest phone, which is the worst amount to be over
+   by — the sheet scrolls, but only just, so every open starts with a page that
+   moves a little and settles. Rows already sit at the 44px tap minimum, so the
+   spacing between them is where the room comes from. Adding a row will put it
+   back over; that is a fair trade for a list that is finished today. */
 .profile-other-list {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .profile-account-row {
@@ -188,7 +194,9 @@
   align-items: center;
   gap: 12px;
   border-radius: 14px;
-  padding: 12px 14px;
+  /* Vertical padding only binds on the two rows that carry a second line; the
+     rest are held at the 44px tap target either way. */
+  padding: 10px 14px;
   color: rgb(var(--fg));
   background: rgb(var(--surf) / 0.06);
   font-size: 14px;

@@ -1042,16 +1042,22 @@ label span {
  * scroll starts. Only the 24px gaussian goes, and only while moving — at rest
  * this is pixel-for-pixel what it always was.
  *
+ * data-resizing is the same bargain for a sheet changing size (useAnimatedHeight):
+ * a box whose height animates has its backdrop re-blurred every frame too, and
+ * the profile sheet's two tabs are 420px apart.
+ *
  * Not the tab bar and not the modal scrims: those are the two places where real
  * content passes behind the glass, so their blur is doing work you can see.
  * These rules come after the light override above deliberately — same
  * specificity, so source order is what decides.
  */
-:root[data-scrolling] .glass-panel {
+:root[data-scrolling] .glass-panel,
+:root[data-resizing] .glass-panel {
   backdrop-filter: saturate(1.25);
 }
 
-:root[data-scrolling][data-theme="light"] .glass-panel {
+:root[data-scrolling][data-theme="light"] .glass-panel,
+:root[data-resizing][data-theme="light"] .glass-panel {
   backdrop-filter: saturate(1.35);
 }
 

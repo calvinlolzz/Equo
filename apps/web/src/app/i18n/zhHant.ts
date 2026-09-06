@@ -420,7 +420,7 @@ export const ZH_HANT = {
     backgroundSetting: "動態背景",
     backgroundOn: "開啟",
     backgroundOff: "關閉",
-    backgroundHint: "背景會緩慢流動。覺得卡就關掉，只影響這台裝置。",
+    backgroundHint: "覺得卡頓就關掉，只影響這台裝置。",
     /** 這台機器沒有 GPU 加速（或沒有 WebGL），所以本來就畫不出來。 */
     backgroundUnavailable: "這台裝置無法顯示",
     backgroundUnavailableHint: "這個瀏覽器沒有可用的硬體加速，已自動改用靜態背景。",

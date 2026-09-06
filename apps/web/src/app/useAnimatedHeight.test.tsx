@@ -152,3 +152,48 @@ describe("useAnimatedHeight", () => {
     expect(box.style.transition).toBe("");
   });
 });
+
+describe("while a box is resizing", () => {
+  test("the page is marked, so the glass can stop re-blurring", () => {
+    // Same bargain as scrolling: a box whose height animates has its backdrop
+    // re-blurred every frame, and the sheet this runs inside is the largest
+    // blurred surface in the app.
+    const { container, rerender } = render(<Box label="one" />);
+    const box = boxOf(container);
+
+    contentHeight = 480;
+    rerender(<Box label="two" />);
+    expect(document.documentElement.hasAttribute("data-resizing")).toBe(true);
+
+    box.dispatchEvent(new Event("transitionend"));
+    expect(document.documentElement.hasAttribute("data-resizing")).toBe(false);
+  });
+
+  test("two boxes at once do not clear it early", () => {
+    // The attribute is shared, so it is counted rather than owned: the first
+    // one to finish must not un-mark a page that is still moving.
+    const { container: a, rerender: rerenderA } = render(<Box label="a" />);
+    const { container: b, rerender: rerenderB } = render(<Box label="b" />);
+
+    contentHeight = 480;
+    rerenderA(<Box label="a2" />);
+    rerenderB(<Box label="b2" />);
+
+    boxOf(a).dispatchEvent(new Event("transitionend"));
+    expect(document.documentElement.hasAttribute("data-resizing")).toBe(true);
+
+    boxOf(b).dispatchEvent(new Event("transitionend"));
+    expect(document.documentElement.hasAttribute("data-resizing")).toBe(false);
+  });
+
+  test("unmounting mid-animation still clears it", () => {
+    const { container, rerender, unmount } = render(<Box label="one" />);
+    expect(boxOf(container)).toBeTruthy();
+
+    contentHeight = 480;
+    rerender(<Box label="two" />);
+    unmount();
+
+    expect(document.documentElement.hasAttribute("data-resizing")).toBe(false);
+  });
+});

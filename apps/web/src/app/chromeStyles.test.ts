@@ -88,6 +88,18 @@ describe("a page in motion", () => {
     expect(moving).toContain("saturate");
   });
 
+  test("and while a sheet is changing size, for the same reason", () => {
+    // useAnimatedHeight marks the page with data-resizing; without the selector
+    // here that mark is a DOM write that buys nothing. The profile sheet's two
+    // tabs are 420px apart, so this is a 280ms resize of the largest blurred
+    // surface in the app.
+    for (const theme of ["", '[data-theme="light"]']) {
+      const moving = ruleFor(baseCss, `:root[data-resizing]${theme} .glass-panel`)["backdrop-filter"] ?? "";
+      expect(moving).not.toContain("blur");
+      expect(moving).toContain("saturate");
+    }
+  });
+
   test("both themes, because the light one has its own glass", () => {
     const light = ruleFor(baseCss, ':root[data-scrolling][data-theme="light"] .glass-panel')["backdrop-filter"] ?? "";
 

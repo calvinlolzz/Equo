@@ -408,7 +408,7 @@ export const EN: UiDictionary = {
     backgroundSetting: "Animated background",
     backgroundOn: "On",
     backgroundOff: "Off",
-    backgroundHint: "The backdrop drifts slowly. Turn it off if it feels sluggish — this device only.",
+    backgroundHint: "Turn it off if it feels sluggish — this device only.",
     backgroundUnavailable: "Not available here",
     backgroundUnavailableHint: "This browser has no usable hardware acceleration, so a static backdrop is used instead.",
     languageValue: "English",

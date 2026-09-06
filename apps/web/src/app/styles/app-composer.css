@@ -862,6 +862,10 @@
 
   .flow-dialog {
     width: 100%;
+    /* Room for the content, not for the frame: see the note on
+       .profile-other-list about fitting the settings tab without a scroll. */
+    gap: 12px;
+    padding: 18px;
     /* Subtract the safe-area insets: in standalone PWA (viewport-fit=cover) the
        viewport runs under the status bar, so a full-height bottom sheet would
        push its top — and the swipe-to-close drag handle — up behind the status
