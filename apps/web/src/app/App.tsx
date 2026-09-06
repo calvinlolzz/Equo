@@ -36,6 +36,7 @@ import { describeCloudActionError } from "./describeCloudActionError";
 import { MemberListPanel } from "./MemberListPanel";
 import { type FeedbackType } from "./FeedbackDialog";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
+import { PanelSkeleton } from "./PanelSkeleton";
 import { InstallHint } from "./InstallHint";
 import { useInstallPrompt } from "./useInstallPrompt";
 import { GroupSideNav } from "./GroupSideNav";
@@ -111,10 +112,15 @@ const templates = [
  * has to arrive before the app can paint. Splitting these out is worth roughly
  * a third of the entry bundle, most of it the composer.
  *
- * Each render site gets its own <Suspense fallback={null}>: they are overlays
- * over a screen that is already there, so "nothing yet" is the correct
- * intermediate state - a spinner would flash for a chunk that is usually
- * already warm (see prefetchOverlayChunks).
+ * Small dialogs get <Suspense fallback={null}>: they are overlays over a screen
+ * that is already there, so "nothing yet" is the correct intermediate state -
+ * a spinner would flash for a chunk that is usually already warm (see
+ * prefetchOverlayChunks).
+ *
+ * The full-height PANELS do not, and that was a real bug rather than a matter
+ * of taste: their sheet shell ships in the entry chunk, so `null` gave you an
+ * empty strip stuck to the bottom of the screen for as long as the fetch took.
+ * They reserve the height instead (PanelSkeleton).
  */
 const AnalysisPanel = lazyChunk(() => import("./AnalysisPanel").then((m) => ({ default: m.AnalysisPanel })));
 const ArchivedListPanel = lazyChunk(() => import("./ArchivedListPanel").then((m) => ({ default: m.ArchivedListPanel })));
@@ -138,13 +144,22 @@ const InviteQrCode = lazyChunk(() => import("./InviteQrCode").then((m) => ({ def
 const ScanSheet = lazyChunk(() => import("./ScanSheet").then((m) => ({ default: m.ScanSheet })));
 
 /**
- * Warm the two chunks a user reaches for first, once the browser is idle.
+ * Warm every chunk that is one tap from the home screen, once the browser is
+ * idle.
  *
  * Without this, splitting the composer out would trade 46KB off the critical
  * path for a stall on the 記一筆 tap - which is the one interaction this app
  * exists for. Fetching it after first paint costs nothing anybody can see and
  * makes the tap instant. requestIdleCallback is missing on iOS Safari, hence
  * the timeout fallback.
+ *
+ * ⚠️ The list has to match the bottom bar, and for a long time it did not: it
+ * warmed the composer and the expense detail while 記錄 and 分析 - two of the
+ * five buttons down there - were left cold. What that looks like was caught on
+ * video: tap 分析, the scrim comes up, and an EMPTY sheet sits at the bottom of
+ * the screen for two and a half seconds before the panel appears. The sheet
+ * shell is in the entry chunk, so it arrives instantly and then waits, which
+ * reads as the app hanging on the way up.
  */
 function prefetchOverlayChunks(): void {
   const warm = () => {
@@ -154,6 +169,9 @@ function prefetchOverlayChunks(): void {
     // either sheet yet. The real import when they do tap is what recovers.
     void import("./ExpenseComposerSheet").catch(() => {});
     void import("./ExpenseDetailDialog").catch(() => {});
+    void import("./RecordsPanel").catch(() => {});
+    void import("./AnalysisPanel").catch(() => {});
+    void import("./ProfileDialog").catch(() => {});
   };
 
   if (typeof window.requestIdleCallback === "function") {
@@ -2179,7 +2197,7 @@ export function App() {
 
 
               {dialog === "recordsPanel" ? (
-                <Suspense fallback={null}>
+                <Suspense fallback={<PanelSkeleton />}>
                 <RecordsPanel
                   expenseCount={aggregates.expenseCount}
                   totalExpenseMinor={totalExpenseMinor}
@@ -2203,7 +2221,7 @@ export function App() {
               ) : null}
 
               {dialog === "recurringList" ? (
-                <Suspense fallback={null}>
+                <Suspense fallback={<PanelSkeleton />}>
                   <RecurringPanel
                     members={members}
                     currency={activeGroup?.currency ?? "TWD"}
@@ -2220,7 +2238,7 @@ export function App() {
               ) : null}
 
               {dialog === "analysisPanel" ? (
-                <Suspense fallback={null}>
+                <Suspense fallback={<PanelSkeleton />}>
                 <AnalysisPanel
                   totalExpenseMinor={totalExpenseMinor}
                   currency={activeGroup?.currency ?? "TWD"}
@@ -2432,7 +2450,7 @@ export function App() {
               ) : null}
 
               {dialog === "archivedList" ? (
-                <Suspense fallback={null}>
+                <Suspense fallback={<PanelSkeleton />}>
                   <ArchivedListPanel
                     archivedGroups={archivedGroups}
                     loading={archivedGroupsLoading}

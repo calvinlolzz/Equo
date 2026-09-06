@@ -646,6 +646,23 @@ label span {
   }
 }
 
+/* Holds a bottom sheet open at roughly its real size while the panel inside is
+   still being fetched - see PanelSkeleton.tsx. The height is deliberately a
+   viewport fraction rather than a guess in pixels: it only has to be close
+   enough that the sheet does not visibly resize when the content lands. */
+.panel-skeleton {
+  display: grid;
+  gap: 14px;
+  min-height: min(52vh, 420px);
+  align-content: start;
+}
+
+.panel-skeleton-rows {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
 /* The other half of the skeleton: what arrives in its place.
  *
  * The grey shapes used to be swapped for the real screen between two frames,
