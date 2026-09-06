@@ -53,7 +53,6 @@ type RecordsPanelProps = {
   /** Expense ids still waiting to reach the server - see offlineQueue.ts. */
   pendingWriteIds: Set<string>;
   onLoadMore: () => void;
-  onExportCsv: () => void;
   onOpenExpense: (expenseId: string) => void;
   /** Swipe-row shortcuts. Same handlers the detail dialog uses — the gesture is
       a shortcut to them, not a second path with its own rules. */
@@ -77,7 +76,6 @@ export function RecordsPanel({
   pendingAction,
   pendingWriteIds,
   onLoadMore,
-  onExportCsv,
   onOpenExpense,
   onEditExpense,
   onDeleteExpense,
@@ -284,14 +282,6 @@ export function RecordsPanel({
         ) : null}
       </div>
 
-      <button
-        className="text-action records-export"
-        type="button"
-        disabled={pendingAction === "exportCsv"}
-        onClick={onExportCsv}
-      >
-        {pendingAction === "exportCsv" ? text.processing : text.exportCsv}
-      </button>
       <div className="dialog-section-list">
         <span className="dialog-list-title">{text.expense}</span>
         {visibleExpenses.length ? (

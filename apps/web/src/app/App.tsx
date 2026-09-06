@@ -1786,6 +1786,9 @@ export function App() {
                 groupName={activeGroup.name}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
+                currency={activeGroup.currency}
+                exporting={pendingAction === "exportCsv"}
+                onExportCsv={handleExportCsv}
                 isOwner={isCurrentMemberOwner}
                 onEditGroup={openEditGroup}
                 onNavigate={handleSideNavClick}
@@ -1804,6 +1807,9 @@ export function App() {
                 groupName={activeGroup.name}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
+                currency={activeGroup.currency}
+                exporting={pendingAction === "exportCsv"}
+                onExportCsv={handleExportCsv}
                 isOwner={isCurrentMemberOwner}
                 onEditGroup={openEditGroup}
                 onNavigate={handleSideNavClick}
@@ -2169,10 +2175,6 @@ export function App() {
                     <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
                   </label>
                   <label>
-                    <span>{text.currency}</span>
-                    <input value={activeGroup?.currency ?? "TWD"} aria-label={text.currency} readOnly />
-                  </label>
-                  <label>
                     <span>{UI_TEXT.budget.label}</span>
                     <input
                       type="number"
@@ -2211,7 +2213,6 @@ export function App() {
                   pendingAction={pendingAction}
                   pendingWriteIds={pendingWriteIds}
                   onLoadMore={handleLoadMoreExpenses}
-                  onExportCsv={handleExportCsv}
                   onOpenExpense={openExpenseDetail}
                   onEditExpense={openExpenseEdit}
                   onDeleteExpense={deleteExpense}

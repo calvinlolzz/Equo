@@ -207,13 +207,15 @@ describe("the bottom tab bar", () => {
 
     screen.getByRole("button", { name: app.navRecords }).click();
 
-    // The panel is the flow-dialog (aria-label 群組首頁); 匯出 CSV lives only in
-    // the records panel, so finding it inside that dialog proves the tab wired
-    // through to the right panel.
+    // The panel is the flow-dialog (aria-label 群組首頁). 支出記錄's own heading
+    // is what proves the tab wired through to the right panel — it used to be
+    // 匯出 CSV, which has since moved to the settings drawer (see
+    // groupSideNav.test.tsx), and a marker that lives somewhere else proves
+    // nothing about this one.
     const panel = await screen.findByRole("dialog", { name: app.groupHome });
     // findBy, not getBy: the panel's own chunk is lazy (see App.tsx), so the
     // dialog frame is on screen a tick before its contents are.
-    expect(await within(panel).findByText(app.exportCsv)).toBeTruthy();
+    expect(await within(panel).findByText(app.records)).toBeTruthy();
   });
 });
 

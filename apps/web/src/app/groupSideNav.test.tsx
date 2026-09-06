@@ -12,6 +12,8 @@ function renderNav(variant?: "rail" | "drawer") {
       variant={variant}
       groupName="東京旅行"
       memberCount={4}
+      currency="TWD"
+      onExportCsv={() => {}}
       isOwner
       onEditGroup={() => {}}
       onNavigate={() => {}}
@@ -53,5 +55,47 @@ describe("the group side nav", () => {
     expect(screen.getByRole("button", { name: text.recurring })).toBeTruthy();
     expect(screen.getByRole("button", { name: text.archiveGroup })).toBeTruthy();
     expect(screen.getByRole("button", { name: text.deleteGroup })).toBeTruthy();
+  });
+});
+
+describe("the group's own settings", () => {
+  test("the drawer shows the currency and offers the export", () => {
+    // Both moved here from elsewhere: the currency was a readOnly input in the
+    // edit dialog (a field that looked broken), and the export was a text link
+    // at the bottom of 支出記錄.
+    renderNav("drawer");
+
+    expect(screen.getByText("TWD")).toBeTruthy();
+    expect(screen.getByRole("button", { name: text.exportCsv })).toBeTruthy();
+  });
+
+  test("the currency is shown, not offered as a field", () => {
+    // It is fixed when the group is created and every amount is denominated in
+    // it — a fact about the group, not a preference.
+    renderNav("drawer");
+
+    expect(screen.queryByRole("textbox", { name: text.currency })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: text.currency })).toBeNull();
+  });
+
+  test("an export in flight says so and cannot be started twice", () => {
+    render(
+      <GroupSideNav
+        variant="drawer"
+        groupName="東京旅行"
+        memberCount={4}
+        currency="TWD"
+        exporting
+        onExportCsv={() => {}}
+        isOwner
+        onEditGroup={() => {}}
+        onNavigate={() => {}}
+        onArchive={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: text.processing });
+    expect(button.hasAttribute("disabled")).toBe(true);
   });
 });

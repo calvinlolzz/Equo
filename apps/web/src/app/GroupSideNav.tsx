@@ -1,10 +1,12 @@
 import {
   Archive,
   ChartNoAxesColumn,
+  CircleDollarSign,
   History,
   House,
   Pencil,
   Repeat,
+  Share,
   Trash2,
   UserRound,
   type LucideIcon,
@@ -38,6 +40,10 @@ type GroupSideNavProps = {
   /** "rail" is the desktop navigation; "drawer" is the phone's 設定 sheet. */
   variant?: "rail" | "drawer";
   groupName: string;
+  /** Fixed when the group is created, so this is shown rather than edited. */
+  currency: string;
+  exporting?: boolean;
+  onExportCsv: () => void;
   coverImageUrl?: string | null;
   memberCount: number;
   isOwner: boolean;
@@ -53,6 +59,9 @@ type GroupSideNavProps = {
 export function GroupSideNav({
   variant = "rail",
   groupName,
+  currency,
+  exporting = false,
+  onExportCsv,
   coverImageUrl,
   memberCount,
   isOwner,
@@ -110,6 +119,25 @@ export function GroupSideNav({
           );
         })}
       </nav>
+      {/* The group's own settings, below the things you can open.
+          幣別 is read-only on purpose: it is chosen when the group is created
+          and every amount ever entered is denominated in it, so it is a fact
+          about the group rather than a preference. It used to be a readOnly
+          input in the edit dialog, which looked like a field somebody had
+          forgotten to make work. 匯出 CSV moved here from the bottom of 支出記錄
+          for the same reason it sits here in the app this drawer is modelled
+          on: it is something you do to the group, not part of reading it. */}
+      <div className="side-settings-list">
+        <div className="side-settings-row">
+          <CircleDollarSign aria-hidden="true" size={19} />
+          <span>{text.currency}</span>
+          <strong>{currency}</strong>
+        </div>
+        <button className="side-settings-row side-settings-action" type="button" disabled={exporting} onClick={onExportCsv}>
+          <Share aria-hidden="true" size={19} />
+          <span>{exporting ? text.processing : text.exportCsv}</span>
+        </button>
+      </div>
       {isOwner ? (
         <div className="side-danger-actions">
           <button
