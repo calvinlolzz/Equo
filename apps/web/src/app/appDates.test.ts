@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { formatRecordStamp } from "./appDates";
+import { formatDateTimeField, formatRecordStamp } from "./appDates";
 
 /**
  * Fixed "now" so the today/yesterday branches are testable at all: these are
@@ -48,5 +48,38 @@ describe("formatRecordStamp", () => {
     expect(formatRecordStamp(at(9, 6, 0, 10), "zh-Hant", NOW)).toBe("今天 00:10");
     // 23:50 yesterday is "昨天" even though it is under two hours back.
     expect(formatRecordStamp(at(9, 5, 23, 50), "zh-Hant", NOW)).toBe("昨天 23:50");
+  });
+});
+
+/**
+ * The composer's 日期 field draws its own value on touch devices, because iOS
+ * Safari centres the native one and honours neither `text-align` on the input
+ * nor on ::-webkit-date-and-time-value. Both were shipped; it stayed centred.
+ */
+describe("formatDateTimeField", () => {
+  test("reads as a date and a clock, in either language", () => {
+    expect(formatDateTimeField("2026-09-07T08:14", "zh-Hant")).toBe("2026年9月7日 08:14");
+    expect(formatDateTimeField("2026-09-07T08:14", "en")).toBe("Sep 7, 2026 08:14");
+  });
+
+  test("carries the year, unlike the record stamp - this field can be any date", () => {
+    expect(formatDateTimeField("2019-12-31T23:59", "zh-Hant")).toBe("2019年12月31日 23:59");
+  });
+
+  test("pads the clock, so the row does not change width as the minute ticks", () => {
+    expect(formatDateTimeField("2026-01-03T09:05", "zh-Hant")).toBe("2026年1月3日 09:05");
+    expect(formatDateTimeField("2026-01-03T00:00", "zh-Hant")).toBe("2026年1月3日 00:00");
+  });
+
+  test("the datetime-local string is read as local time, matching the control", () => {
+    // Same wall clock in, same wall clock out - no timezone shift.
+    const value = "2026-06-15T14:30";
+    expect(formatDateTimeField(value, "zh-Hant")).toContain("14:30");
+    expect(formatDateTimeField(value, "zh-Hant")).toContain("6月15日");
+  });
+
+  test("an empty or unparseable value renders nothing rather than 'Invalid Date'", () => {
+    expect(formatDateTimeField("", "zh-Hant")).toBe("");
+    expect(formatDateTimeField("not a date", "zh-Hant")).toBe("");
   });
 });

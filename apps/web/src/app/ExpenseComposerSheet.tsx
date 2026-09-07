@@ -7,6 +7,7 @@ import { convertToGroupAmountMinor, readLastCurrency, writeLastCurrency } from "
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
 import { formatExchangeRate, loadCrossRate } from "./exchangeRates";
 import { isComposerDirty, type ComposerSnapshot } from "./expenseComposerDirty";
+import { formatDateTimeField } from "./appDates";
 import { buildSplitSummary } from "./expenseSplitSummary";
 import {
   buildExpenseDuplicatePrefill,
@@ -1114,12 +1115,22 @@ export function ExpenseComposerSheet({
       ) : null}
       <label>
         <span>{text.date}</span>
-        <input
-          type="datetime-local"
-          value={composerDateTime}
-          onChange={(event) => setComposerDateTime(event.target.value)}
-          aria-label={text.date}
-        />
+        {/* The native control keeps the picker; on a touch device the text you
+            read is the span, because iOS centres its own and will not be talked
+            out of it (see formatDateTimeField). The input is still the field —
+            focus, value and the label all stay on it — so this is a repaint,
+            not a replacement. */}
+        <span className="composer-date-shell">
+          <input
+            type="datetime-local"
+            value={composerDateTime}
+            onChange={(event) => setComposerDateTime(event.target.value)}
+            aria-label={text.date}
+          />
+          <span className="composer-date-display" aria-hidden="true">
+            {formatDateTimeField(composerDateTime)}
+          </span>
+        </span>
       </label>
     </div>
   );

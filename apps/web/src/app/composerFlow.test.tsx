@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { configure, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { configure, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
+import { insideAtRule, readAppStylesheet, ruleFor } from "./cssDeclarations";
 import { UI_TEXT } from "./uiText";
 
 // Lazy chunks again - see the note in App.scan.test.tsx.
@@ -181,3 +182,76 @@ function fetchedExpenseBody(): unknown {
   }
   return null;
 }
+
+/**
+ * 日期, drawn by the app rather than read off the native control.
+ *
+ * iOS Safari centres a datetime-local's value in its box and honours neither
+ * `text-align` on the input nor on ::-webkit-date-and-time-value — both were
+ * shipped, and the date stayed floating in the middle of a full-width field
+ * while every other field started at the padding edge. So on a touch device the
+ * text you read is ours; the input keeps the value, the label and the picker.
+ */
+describe("the 日期 field", () => {
+  const composerCss = readAppStylesheet("app-composer.css");
+  const coarseCss = insideAtRule(composerCss, "pointer: coarse");
+
+  async function dateField() {
+    await landAsBob();
+    const composer = await openComposer();
+    await toDetailsStep(composer);
+    const input = within(composer).getByLabelText(app.date);
+    const shell = input.closest(".composer-date-shell");
+    if (!shell) throw new Error("the date input is not inside its shell");
+    return { composer, input: input as HTMLInputElement, shell };
+  }
+
+  test("shows the value as our own text, beside the input rather than instead of it", async () => {
+    const { input, shell } = await dateField();
+    const display = shell.querySelector(".composer-date-display");
+
+    expect(display?.textContent).toBeTruthy();
+    // The input is still the field: it holds the value and answers to the label.
+    expect(input.value).toBeTruthy();
+    expect(input.type).toBe("datetime-local");
+  });
+
+  test("that text follows the value, so picking a date is not a no-op on screen", async () => {
+    const { input, shell } = await dateField();
+    const display = () => shell.querySelector(".composer-date-display")?.textContent;
+    const before = display();
+
+    fireEvent.change(input, { target: { value: "2027-01-03T21:05" } });
+
+    await waitFor(() => expect(display()).not.toBe(before));
+    expect(display()).toContain("2027");
+    expect(display()).toContain("21:05");
+  });
+
+  test("is announced once - the input carries the label, the text is decoration", async () => {
+    const { shell } = await dateField();
+    expect(shell.querySelector(".composer-date-display")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  test("hides the native text only where a tap opens a picker", () => {
+    // A mouse and keyboard edit a datetime-local segment by segment and have to
+    // see what they are editing - and desktop browsers align it correctly.
+    expect(ruleFor(coarseCss, ".composer-date-shell input").color).toBe("transparent");
+    expect(ruleFor(composerCss, ".composer-date-shell input").color).toBeUndefined();
+  });
+
+  test("and lets every tap through to the input underneath", () => {
+    const display = ruleFor(coarseCss, ".composer-date-display");
+    expect(display.position).toBe("absolute");
+    expect(display["pointer-events"]).toBe("none");
+  });
+
+  test("starts where the other fields' text starts", () => {
+    // Same horizontal padding as the input it sits on top of; if that ever
+    // drifts, our text and the native caret stop lining up.
+    const inputPadding = ruleFor(readAppStylesheet("app-base.css"), "input").padding ?? "";
+    const inset = inputPadding.split(/\s+/)[1];
+    expect(inset).toBeTruthy();
+    expect(ruleFor(coarseCss, ".composer-date-display").padding).toBe(`0 ${inset}`);
+  });
+});

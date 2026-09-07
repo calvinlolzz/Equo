@@ -61,3 +61,28 @@ export function formatRecordStamp(value: string, locale: Locale = ACTIVE_LOCALE,
 
   return `${monthDayLabel(date.getMonth() + 1, date.getDate(), locale)} ${clock}`;
 }
+
+/**
+ * The 日期 field's own rendering of a datetime-local value.
+ *
+ * iOS Safari centres a datetime-local's value inside its box, and it does not
+ * honour `text-align` on the input or on ::-webkit-date-and-time-value — tried,
+ * shipped, still centred. Its shadow root positions that value itself, and the
+ * only reliable way out is to stop reading the native text: the input keeps the
+ * picker, this string is what a touch device actually shows. See
+ * `.composer-date-display`.
+ *
+ * `value` is a datetime-local string ("2026-09-07T08:14"), which Date parses as
+ * local time — the same clock the field is showing.
+ */
+export function formatDateTimeField(value: string, locale: Locale = ACTIVE_LOCALE): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const clock = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  if (locale === "zh-Hant") return `${date.getFullYear()}年${month}月${day}日 ${clock}`;
+  return `${monthDayLabel(month, day, locale)}, ${date.getFullYear()} ${clock}`;
+}

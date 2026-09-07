@@ -264,16 +264,17 @@ select {
 }
 
 /**
- * The date field, left-aligned like every other field beside it.
+ * Ask a native date control to align its value like everything around it.
  *
- * iOS Safari centres a datetime-local's value inside its box, so the date sat
- * floating in the middle of a full-width field while the title placeholder and
- * the 分類 select above it started at the padding edge — reported as 「日期那邊
- * 框框怪怪的」. Desktop Chrome left-aligns it already and draws a calendar icon
- * on the right, which is why this only ever showed up on a phone.
+ * This is the polite version, and iOS Safari declines it — both halves were
+ * shipped and the date stayed centred in its box. Its shadow root places that
+ * value itself and neither the input's `text-align` nor the pseudo-element's
+ * reaches the decision. Touch devices are therefore handled by not reading the
+ * native text at all: see `.composer-date-shell` in app-composer.css.
  *
- * The value lives in a shadow-DOM pseudo-element, so aligning the input alone
- * does not reach it.
+ * Kept because it is correct where it is honoured (Android Chrome, desktop
+ * Safari), and those are exactly the places the overlay deliberately leaves
+ * alone.
  */
 input[type="datetime-local"],
 input[type="date"],

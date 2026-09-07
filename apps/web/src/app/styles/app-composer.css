@@ -386,6 +386,43 @@
   min-width: 0;
 }
 
+/**
+ * 日期, drawn by us rather than read off the native control.
+ *
+ * Only where the primary pointer is coarse: those are the devices that answer a
+ * tap with a picker, so nothing is lost by hiding the native text. A mouse and
+ * keyboard edit a datetime-local segment by segment and need to see what they
+ * are editing, and desktop browsers left-align it correctly anyway.
+ */
+.composer-date-shell {
+  display: block;
+}
+
+@media (pointer: coarse) {
+  .composer-date-shell {
+    position: relative;
+  }
+
+  /* The value is in a shadow root, but it inherits colour - which is the one
+     thing about it that IS reliably styleable, and all this needs. */
+  .composer-date-shell input {
+    color: transparent;
+  }
+
+  .composer-date-display {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    /* Matches the input's own padding, so the text starts where every other
+       field's text starts. */
+    padding: 0 14px;
+    color: rgb(var(--fg));
+    /* Every tap belongs to the input underneath. */
+    pointer-events: none;
+  }
+}
+
 .composer-card-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
