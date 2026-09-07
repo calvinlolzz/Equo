@@ -83,9 +83,31 @@ export function buildAdminExpensesCsv(expenses: AdminExpenseRow[]): string {
   );
 }
 
-/** `equo-使用者-2026-07-29.csv` - the console's export filename convention. */
-export function adminCsvFileName(kind: string, today: string): string {
-  return `equo-${kind}-${today}.csv`;
+/**
+ * `equo-使用者-2026-07-29.csv` - the console's export filename convention.
+ *
+ * A capped export says so in its name. The name is the only part of a file that
+ * survives being downloaded, renamed in a folder, and mailed to somebody who
+ * was not there when it was exported — a note buried under 5,000 rows is not
+ * going to reach that person.
+ */
+export function adminCsvFileName(kind: string, today: string, truncated = false): string {
+  return `equo-${kind}-${today}${truncated ? "-已截斷" : ""}.csv`;
+}
+
+/**
+ * The row an export that hit the cap carries at the end of itself.
+ *
+ * Without it a capped export is indistinguishable from a complete one — it
+ * opens, it has a header, it has thousands of rows, and it is missing however
+ * many did not fit. Somebody reconciling numbers against it has no way to find
+ * out. (The console's own comment claimed this row existed long before it did.)
+ */
+export function appendCsvTruncationNotice(csv: string, exported: number, total: number): string {
+  if (total <= exported) return csv;
+  const note = `已截斷：這個檔案只包含前 ${exported.toLocaleString("zh-TW")} 列，符合條件的共 ${total.toLocaleString("zh-TW")} 列。`;
+  return `${csv}${csvField(note)}
+`;
 }
 
 /**

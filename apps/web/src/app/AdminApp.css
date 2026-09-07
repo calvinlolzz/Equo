@@ -395,6 +395,13 @@ button.admin-inbox__item:hover {
   color: #1f7a44;
 }
 
+/* An export that could not fit is not a success, and the green treatment reads
+   as one. Same shape, amber, so it sits where the eye already looks. */
+.admin-notice--warn {
+  background: #fdf1dc;
+  color: #8a5a10;
+}
+
 .admin-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

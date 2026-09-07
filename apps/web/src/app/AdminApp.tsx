@@ -38,6 +38,7 @@ import {
 } from "./apiClient";
 import {
   adminCsvFileName,
+  appendCsvTruncationNotice,
   buildAdminExpensesCsv,
   buildAdminGroupsCsv,
   buildAdminUsersCsv,
@@ -100,24 +101,46 @@ const EXPORT_PAGE_SIZE = 100;
  */
 const EXPORT_MAX_ROWS = 5_000;
 
+type ExportPages<T> = {
+  rows: T[];
+  /** How many rows matched, which is not how many came back once the cap bites. */
+  total: number;
+  truncated: boolean;
+};
+
 /**
  * Walk a paginated admin list until everything (up to EXPORT_MAX_ROWS) is
  * collected. Exports have to cover the whole table, not the 20 rows on screen -
  * an export that silently matches the current page is worse than none, because
  * it looks complete.
+ *
+ * Which is exactly what the cap used to do: `total` was read on every page and
+ * thrown away, so an export of a table with more rows than the cap came back as
+ * a file that opened cleanly, had a header, had 5,000 rows, and was missing the
+ * rest with nothing anywhere saying so. Reporting it is the caller's job now,
+ * and every caller does it in two places - the filename and the last row.
  */
 async function fetchAllPages<T>(
   fetchPage: (offset: number, limit: number) => Promise<{ total: number; rows: T[] }>,
-): Promise<T[]> {
+): Promise<ExportPages<T>> {
   const collected: T[] = [];
+  let total = 0;
 
   for (let offset = 0; offset < EXPORT_MAX_ROWS; offset += EXPORT_PAGE_SIZE) {
-    const { total, rows } = await fetchPage(offset, EXPORT_PAGE_SIZE);
-    collected.push(...rows);
-    if (rows.length === 0 || collected.length >= total) break;
+    const page = await fetchPage(offset, EXPORT_PAGE_SIZE);
+    total = page.total;
+    collected.push(...page.rows);
+    if (page.rows.length === 0 || collected.length >= page.total) break;
   }
 
-  return collected.slice(0, EXPORT_MAX_ROWS);
+  const rows = collected.slice(0, EXPORT_MAX_ROWS);
+  return { rows, total, truncated: total > rows.length };
+}
+
+/** What the panel says out loud after an export that could not fit. */
+function truncationNotice(exported: ExportPages<unknown>): string {
+  if (!exported.truncated) return "";
+  return `已匯出前 ${exported.rows.length.toLocaleString("zh-TW")} 列，符合條件的共 ${exported.total.toLocaleString("zh-TW")} 列。檔名與檔案最後一列都有註記。`;
 }
 
 function todayKey(): string {
@@ -632,6 +655,7 @@ function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
   const selectedUserId = route.userId;
   const [state, setState] = useState<ListState<AdminUserListPage>>({ page: null, loading: true, error: "" });
   const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
 
   useEffect(() => {
     setSearchInput(route.search);
@@ -640,12 +664,17 @@ function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
   /** Exports every user matching the current search, not just this page. */
   async function exportUsers() {
     setExporting(true);
+    setExportNotice("");
     try {
       const users = await fetchAllPages(async (offset, limit) => {
         const page = await client.adminListUsers({ search, limit, offset });
         return { total: page.total, rows: page.users };
       });
-      downloadCsv(adminCsvFileName("使用者", todayKey()), buildAdminUsersCsv(users));
+      downloadCsv(
+        adminCsvFileName("使用者", todayKey(), users.truncated),
+        appendCsvTruncationNotice(buildAdminUsersCsv(users.rows), users.rows.length, users.total),
+      );
+      setExportNotice(truncationNotice(users));
     } catch {
       setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
     } finally {
@@ -697,6 +726,7 @@ function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
       </form>
 
       {state.error && <p className="admin-error">{state.error}</p>}
+      {exportNotice && <p className="admin-notice admin-notice--warn">{exportNotice}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
       {state.page && !state.loading && (
@@ -1059,12 +1089,28 @@ function MergeAccountSection({
     }
   }
 
+  /**
+   * Merging moves every membership this account has into another one and
+   * disables it, and there is no unmerge. Deleting an account — which leaves
+   * the ledger standing behind an anonymised member — already asks for the
+   * email to be typed; this asked for one click on a browser confirm. The
+   * risk was calibrated backwards.
+   *
+   * The TARGET's email is the one to type, because the target is the half
+   * picked off a search list and therefore the half that gets picked wrong.
+   * The source is simply whichever account's page this is.
+   */
   async function merge(target: AdminUserRow) {
-    const confirmed = window.confirm(
-      `確定把「${user.email}」的所有群組成員身分轉到「${target.email}」嗎？\n` +
-        `轉移後「${user.email}」會被停用，帳目本身不會移動（帳目掛在成員身分上）。`,
+    const typed = window.prompt(
+      `把「${user.email}」的所有群組成員身分轉到「${target.email}」無法復原：\n` +
+        `轉移後「${user.email}」會被停用，帳目本身不會移動（帳目掛在成員身分上）。\n` +
+        `確定的話，請輸入要轉入的帳號 email：`,
     );
-    if (!confirmed) return;
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== target.email.toLowerCase()) {
+      setError("輸入的 email 不符，已取消合併。");
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -1425,11 +1471,13 @@ function GroupExpensesSection({
   const [state, setState] = useState<ListState<AdminExpensePage>>({ page: null, loading: true, error: "" });
   const [selected, setSelected] = useState<AdminExpenseRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
   /** The group's whole ledger, honouring the 顯示已刪除 toggle. */
   async function exportExpenses() {
     setExporting(true);
+    setExportNotice("");
     try {
       const expenses = await fetchAllPages(async (pageOffset, limit) => {
         const page = await client.adminListGroupExpenses(group.id, {
@@ -1439,7 +1487,11 @@ function GroupExpensesSection({
         });
         return { total: page.total, rows: page.expenses };
       });
-      downloadCsv(adminCsvFileName(`${group.name}-帳目`, todayKey()), buildAdminExpensesCsv(expenses));
+      downloadCsv(
+        adminCsvFileName(`${group.name}-帳目`, todayKey(), expenses.truncated),
+        appendCsvTruncationNotice(buildAdminExpensesCsv(expenses.rows), expenses.rows.length, expenses.total),
+      );
+      setExportNotice(truncationNotice(expenses));
     } catch {
       setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
     } finally {
@@ -1484,6 +1536,7 @@ function GroupExpensesSection({
       </div>
 
       {state.error && <p className="admin-error">{state.error}</p>}
+      {exportNotice && <p className="admin-notice admin-notice--warn">{exportNotice}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
       {state.page && !state.loading && (
@@ -1849,6 +1902,7 @@ function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
   const [busyGroupId, setBusyGroupId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
 
   useEffect(() => {
     setSearchInput(route.search);
@@ -1857,12 +1911,17 @@ function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
   /** Exports every group matching the current search AND filter. */
   async function exportGroups() {
     setExporting(true);
+    setExportNotice("");
     try {
       const groups = await fetchAllPages(async (pageOffset, limit) => {
         const page = await client.adminListGroups({ search, limit, offset: pageOffset, filter });
         return { total: page.total, rows: page.groups };
       });
-      downloadCsv(adminCsvFileName("群組", todayKey()), buildAdminGroupsCsv(groups));
+      downloadCsv(
+        adminCsvFileName("群組", todayKey(), groups.truncated),
+        appendCsvTruncationNotice(buildAdminGroupsCsv(groups.rows), groups.rows.length, groups.total),
+      );
+      setExportNotice(truncationNotice(groups));
     } catch {
       setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
     } finally {
@@ -1964,6 +2023,7 @@ function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
       </div>
 
       {state.error && <p className="admin-error">{state.error}</p>}
+      {exportNotice && <p className="admin-notice admin-notice--warn">{exportNotice}</p>}
       {state.loading && <p className="admin-loading">載入中…</p>}
 
       {state.page && !state.loading && (

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import type { AdminExpenseRow, AdminGroupRow, AdminUserRow } from "./apiClient";
-import { adminCsvFileName, buildAdminExpensesCsv, buildAdminGroupsCsv, buildAdminUsersCsv } from "./adminCsv";
+import {
+  adminCsvFileName,
+  appendCsvTruncationNotice,
+  buildAdminExpensesCsv,
+  buildAdminGroupsCsv,
+  buildAdminUsersCsv,
+} from "./adminCsv";
 
 function rows(csv: string): string[] {
   // Strip the BOM, then split on the CRLF endings Excel expects.
@@ -132,5 +138,55 @@ describe("buildAdminExpensesCsv", () => {
 describe("adminCsvFileName", () => {
   test("names the file after what is inside it and when it was taken", () => {
     expect(adminCsvFileName("使用者", "2026-07-29")).toBe("equo-使用者-2026-07-29.csv");
+  });
+});
+
+/**
+ * A capped export used to be indistinguishable from a complete one: it opened,
+ * it had a header, it had 5,000 rows, and the rest were missing with nothing
+ * anywhere saying so. (fetchAllPages read `total` on every page and threw it
+ * away, while its own comment claimed "the file says when it was truncated".)
+ */
+describe("appendCsvTruncationNotice", () => {
+  const csv = buildAdminUsersCsv([user]);
+
+  test("says how much is missing, in the file itself", () => {
+    const noted = appendCsvTruncationNotice(csv, 5_000, 12_345);
+    const last = rows(noted).at(-1) ?? "";
+
+    expect(last).toContain("已截斷");
+    expect(last).toContain("5,000");
+    expect(last).toContain("12,345");
+  });
+
+  test("leaves a complete export completely alone", () => {
+    expect(appendCsvTruncationNotice(csv, 1, 1)).toBe(csv);
+    // Defensive: a total that somehow came back smaller is not a truncation.
+    expect(appendCsvTruncationNotice(csv, 5, 3)).toBe(csv);
+  });
+
+  test("adds exactly one row, and does not disturb the ones above it", () => {
+    const before = rows(csv);
+    const after = rows(appendCsvTruncationNotice(csv, 1, 9));
+
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.slice(0, before.length)).toEqual(before);
+  });
+
+  test("the note is one quoted field, so a comma in it cannot shift columns", () => {
+    const last = rows(appendCsvTruncationNotice(csv, 5_000, 12_345)).at(-1) ?? "";
+    expect(last.startsWith('"')).toBe(true);
+    expect(last.endsWith('"')).toBe(true);
+  });
+});
+
+describe("adminCsvFileName marks a capped export", () => {
+  test("because the name is the part that survives being mailed to somebody", () => {
+    expect(adminCsvFileName("使用者", "2026-09-08", true)).toBe("equo-使用者-2026-09-08-已截斷.csv");
+  });
+
+  test("and a complete export keeps the plain name", () => {
+    expect(adminCsvFileName("使用者", "2026-09-08", false)).toBe("equo-使用者-2026-09-08.csv");
+    expect(adminCsvFileName("使用者", "2026-09-08")).toBe("equo-使用者-2026-09-08.csv");
   });
 });

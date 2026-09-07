@@ -1270,3 +1270,219 @@ describe("the retention table", () => {
     expect(await screen.findByText(/從不記帳、但每次都準時付錢的人/)).toBeTruthy();
   });
 });
+
+/** Captures whatever downloadCsv hands the browser. */
+function captureDownload() {
+  const captured: Array<{ fileName: string; blob: Blob }> = [];
+  let pending: Blob | null = null;
+
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: (blob: Blob) => {
+      pending = blob;
+      return "blob:fake";
+    },
+    revokeObjectURL: () => {},
+  });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    if (pending) captured.push({ fileName: this.download, blob: pending });
+    pending = null;
+  });
+
+  return captured;
+}
+
+/**
+ * An export that hits the 5,000-row cap.
+ *
+ * The fake answers every page with the same body regardless of offset, so the
+ * walk collects a page at a time until the cap stops it - which is the shape
+ * that matters here: `total` is far larger than what came back.
+ */
+const cappedUserRoutes = {
+  ...baseRoutes,
+  "GET /admin/users": {
+    total: 12_345,
+    users: Array.from({ length: 100 }, (_, index) => ({
+      id: `user_${index}`,
+      email: `u${index}@example.com`,
+      display_name: `U${index}`,
+      avatar_url: null,
+      created_at: "2026-07-01T00:00:00.000Z",
+      last_seen_at: "2026-07-29T00:00:00.000Z",
+      disabled_at: null,
+      group_count: 1,
+      expense_count: 3,
+    })),
+  },
+};
+
+describe("an export that could not fit says so", () => {
+  test("in the filename, which is the part that survives being mailed on", async () => {
+    fakeAdminApi(cappedUserRoutes);
+    const downloads = captureDownload();
+    renderAdmin("?tab=users");
+    await screen.findByRole("region", { name: "使用者查詢" });
+
+    fireEvent.click(screen.getByRole("button", { name: "匯出 CSV" }));
+
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(downloads[0].fileName).toContain("已截斷");
+  });
+
+  test("in the file, on a row of its own", async () => {
+    fakeAdminApi(cappedUserRoutes);
+    const downloads = captureDownload();
+    renderAdmin("?tab=users");
+    await screen.findByRole("region", { name: "使用者查詢" });
+
+    fireEvent.click(screen.getByRole("button", { name: "匯出 CSV" }));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+
+    const text = await downloads[0].blob.text();
+    expect(text).toContain("已截斷");
+    expect(text).toContain("12,345");
+  });
+
+  test("and on screen, while whoever pressed the button is still looking", async () => {
+    fakeAdminApi(cappedUserRoutes);
+    captureDownload();
+    renderAdmin("?tab=users");
+    await screen.findByRole("region", { name: "使用者查詢" });
+
+    fireEvent.click(screen.getByRole("button", { name: "匯出 CSV" }));
+
+    const notice = await screen.findByText(/已匯出前/);
+    expect(notice.textContent).toContain("12,345");
+  });
+
+  test("while a complete export says none of it", async () => {
+    // baseRoutes has one user and total: 1 - nothing was left behind.
+    fakeAdminApi(baseRoutes);
+    const downloads = captureDownload();
+    renderAdmin("?tab=users");
+    await screen.findByRole("region", { name: "使用者查詢" });
+
+    fireEvent.click(screen.getByRole("button", { name: "匯出 CSV" }));
+
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(downloads[0].fileName).not.toContain("已截斷");
+    expect(await downloads[0].blob.text()).not.toContain("已截斷");
+    expect(screen.queryByText(/已匯出前/)).toBeNull();
+  });
+});
+
+/** A user detail page with the merge search already answered. */
+const mergeRoutes = {
+  ...baseRoutes,
+  "GET /admin/users/user_alice": {
+    user: {
+      id: "user_alice",
+      email: "alice@example.com",
+      display_name: "Alice",
+      avatar_url: null,
+      created_at: "2026-07-01T00:00:00.000Z",
+      last_seen_at: "2026-07-29T00:00:00.000Z",
+      disabled_at: null,
+      group_count: 0,
+      expense_count: 0,
+    },
+    groups: [],
+  },
+  "POST /admin/users/user_alice/merge": { memberships_moved: 3, groups_reowned: 1 },
+};
+
+/** Opens 使用者詳情 → 合併到另一個帳號… → search → one candidate on screen. */
+async function openMergeCandidate() {
+  const urls = fakeAdminApi({
+    ...mergeRoutes,
+    "GET /admin/users": {
+      total: 2,
+      users: [
+        {
+          id: "user_alice",
+          email: "alice@example.com",
+          display_name: "Alice",
+          avatar_url: null,
+          created_at: "2026-07-01T00:00:00.000Z",
+          last_seen_at: "2026-07-29T00:00:00.000Z",
+          disabled_at: null,
+          group_count: 1,
+          expense_count: 3,
+        },
+        {
+          id: "user_bob",
+          email: "bob@example.com",
+          display_name: "Bob",
+          avatar_url: null,
+          created_at: "2026-07-01T00:00:00.000Z",
+          last_seen_at: "2026-07-29T00:00:00.000Z",
+          disabled_at: null,
+          group_count: 1,
+          expense_count: 1,
+        },
+      ],
+    },
+  });
+
+  renderAdmin("?tab=users&user=user_alice");
+  await screen.findByRole("region", { name: "使用者詳情" });
+
+  // The merge section is owner-only, and the role arrives with /admin/me a
+  // tick after the panel itself.
+  fireEvent.click(await screen.findByRole("button", { name: "合併到另一個帳號…" }));
+  const panel = await screen.findByRole("region", { name: "合併帳號" });
+
+  fireEvent.change(within(panel).getByPlaceholderText("用 email 或名稱搜尋要保留的帳號"), {
+    target: { value: "bob" },
+  });
+  fireEvent.click(within(panel).getByRole("button", { name: "搜尋" }));
+
+  const mergeButton = await within(panel).findByRole("button", { name: "合併到這個帳號" });
+  const merged = () => urls.some((url) => url.includes("POST /admin/users/user_alice/merge"));
+  return { panel, mergeButton, merged };
+}
+
+/**
+ * Merging moves every membership and disables the source account, and there is
+ * no unmerge. It used to be one click on window.confirm, while DELETING an
+ * account - which leaves the ledger standing behind an anonymised member - has
+ * always asked for the email to be typed. The risk was calibrated backwards.
+ */
+describe("merging two accounts", () => {
+  test("asks for the target's email rather than a yes", async () => {
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue(null);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { mergeButton, merged } = await openMergeCandidate();
+
+    fireEvent.click(mergeButton);
+
+    await waitFor(() => expect(prompt).toHaveBeenCalled());
+    // Not a confirm that an over-eager Enter can carry.
+    expect(confirm).not.toHaveBeenCalled();
+    expect(prompt.mock.calls[0][0]).toContain("bob@example.com");
+    // Cancelling the prompt merges nothing.
+    expect(merged()).toBe(false);
+  });
+
+  test("the email has to be the one being merged INTO - that is the half picked off a list", async () => {
+    // The source account's own email is the plausible wrong answer.
+    vi.spyOn(window, "prompt").mockReturnValue("alice@example.com");
+    const { panel, mergeButton, merged } = await openMergeCandidate();
+
+    fireEvent.click(mergeButton);
+
+    expect(await within(panel).findByText("輸入的 email 不符，已取消合併。")).toBeTruthy();
+    expect(merged()).toBe(false);
+  });
+
+  test("and it goes through once that email is typed", async () => {
+    vi.spyOn(window, "prompt").mockReturnValue("  BOB@example.com  ");
+    const { mergeButton, merged } = await openMergeCandidate();
+
+    fireEvent.click(mergeButton);
+
+    // Trimmed and case-insensitive, the same way the delete guard reads it.
+    await waitFor(() => expect(merged()).toBe(true));
+  });
+});
