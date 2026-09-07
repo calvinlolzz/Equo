@@ -171,6 +171,25 @@ const baseRoutes: AdminRoutes = {
   "POST /admin/error-groups/fp_boom/status": { fingerprint: "fp_boom", status: "resolved" },
 };
 
+/**
+ * Answers the console's own confirm dialog (AdminConfirm.tsx), which replaced
+ * window.confirm and window.prompt everywhere.
+ *
+ * `typed` is for the guards that make you write the email out — the confirm
+ * button stays disabled until it matches, so a wrong answer is refused here
+ * rather than accepted and reported as an error afterwards.
+ */
+async function answerConfirm(typed?: string) {
+  const dialog = await screen.findByRole("alertdialog");
+  if (typed !== undefined) {
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: typed } });
+  }
+  const buttons = within(dialog).getAllByRole("button");
+  // [取消, 確定] - the affirmative one is last.
+  fireEvent.click(buttons[buttons.length - 1]);
+  return dialog;
+}
+
 function renderAdmin(search = "") {
   window.history.replaceState(null, "", `/admin${search}`);
   return render(<AdminApp />);
@@ -874,12 +893,12 @@ describe("support actions", () => {
 
   test("transferring posts the member id and re-reads the group", async () => {
     const urls = fakeAdminApi(groupDetailRoutes);
-    vi.stubGlobal("confirm", () => true);
     renderAdmin("?tab=groups&group=group_1");
 
     const select = await screen.findByLabelText("轉移擁有者");
     fireEvent.change(select, { target: { value: "member_bob" } });
     fireEvent.click(screen.getByRole("button", { name: "轉移" }));
+    await answerConfirm();
 
     await waitFor(() =>
       expect(urls.filter((url) => url === "POST /admin/groups/group_1/transfer-owner")).toHaveLength(1),
@@ -960,7 +979,6 @@ describe("addressing a notification", () => {
         return { ok: true, status: 200, json: async () => body } as Response;
       }),
     );
-    vi.stubGlobal("confirm", () => true);
 
     renderAdmin("?tab=notifications");
     await screen.findByRole("region", { name: "發送通知" });
@@ -981,6 +999,7 @@ describe("addressing a notification", () => {
     fireEvent.change(screen.getByLabelText("標題"), { target: { value: "測試" } });
     fireEvent.change(screen.getByLabelText("內容"), { target: { value: "內容" } });
     fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
+    await answerConfirm();
 
     await waitFor(() =>
       expect(sent).toEqual({ audience: "user", target: "user_alice", title: "測試", body: "內容" }),
@@ -1084,7 +1103,6 @@ describe("notifying one person from their page", () => {
         return { ok: true, status: 200, json: async () => body } as Response;
       }),
     );
-    vi.stubGlobal("confirm", () => true);
 
     renderAdmin("?tab=notifications&user=user_alice");
     await screen.findByRole("region", { name: "發送通知" });
@@ -1092,6 +1110,7 @@ describe("notifying one person from their page", () => {
     fireEvent.change(screen.getByLabelText("標題"), { target: { value: "關於你的回報" } });
     fireEvent.change(screen.getByLabelText("內容"), { target: { value: "已經修好了" } });
     fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
+    await answerConfirm();
 
     await waitFor(() =>
       expect(sent).toEqual({
@@ -1147,7 +1166,6 @@ describe("notifying a whole group from its page", () => {
         return { ok: true, status: 200, json: async () => body } as Response;
       }),
     );
-    vi.stubGlobal("confirm", () => true);
 
     renderAdmin("?tab=notifications&group=group_1");
     await screen.findByRole("region", { name: "發送通知" });
@@ -1156,6 +1174,7 @@ describe("notifying a whole group from its page", () => {
     fireEvent.change(screen.getByLabelText("標題"), { target: { value: "這個群組的帳目已修正" } });
     fireEvent.change(screen.getByLabelText("內容"), { target: { value: "請重新整理" } });
     fireEvent.click(screen.getByRole("button", { name: "送出通知" }));
+    await answerConfirm();
 
     await waitFor(() =>
       expect(sent).toEqual({
@@ -1451,38 +1470,49 @@ async function openMergeCandidate() {
  */
 describe("merging two accounts", () => {
   test("asks for the target's email rather than a yes", async () => {
-    const prompt = vi.spyOn(window, "prompt").mockReturnValue(null);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const { mergeButton, merged } = await openMergeCandidate();
 
     fireEvent.click(mergeButton);
 
-    await waitFor(() => expect(prompt).toHaveBeenCalled());
-    // Not a confirm that an over-eager Enter can carry.
-    expect(confirm).not.toHaveBeenCalled();
-    expect(prompt.mock.calls[0][0]).toContain("bob@example.com");
-    // Cancelling the prompt merges nothing.
+    const dialog = await screen.findByRole("alertdialog");
+    // Not a yes/no: there is a box, and it names the account being merged INTO.
+    expect(within(dialog).getByRole("textbox")).toBeTruthy();
+    expect(dialog.textContent).toContain("bob@example.com");
     expect(merged()).toBe(false);
   });
 
-  test("the email has to be the one being merged INTO - that is the half picked off a list", async () => {
-    // The source account's own email is the plausible wrong answer.
-    vi.spyOn(window, "prompt").mockReturnValue("alice@example.com");
-    const { panel, mergeButton, merged } = await openMergeCandidate();
-
+  test("refuses a wrong email at the dialog, instead of accepting it and erroring after", async () => {
+    const { mergeButton, merged } = await openMergeCandidate();
     fireEvent.click(mergeButton);
+    const dialog = await screen.findByRole("alertdialog");
 
-    expect(await within(panel).findByText("輸入的 email 不符，已取消合併。")).toBeTruthy();
+    // The source account's own email is the plausible wrong answer.
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "alice@example.com" } });
+
+    const buttons = within(dialog).getAllByRole("button");
+    expect((buttons[buttons.length - 1] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(buttons[buttons.length - 1]);
     expect(merged()).toBe(false);
   });
 
   test("and it goes through once that email is typed", async () => {
-    vi.spyOn(window, "prompt").mockReturnValue("  BOB@example.com  ");
     const { mergeButton, merged } = await openMergeCandidate();
 
     fireEvent.click(mergeButton);
-
     // Trimmed and case-insensitive, the same way the delete guard reads it.
+    await answerConfirm("  BOB@example.com  ");
+
     await waitFor(() => expect(merged()).toBe(true));
+  });
+
+  test("backing out of the dialog merges nothing", async () => {
+    const { mergeButton, merged } = await openMergeCandidate();
+    fireEvent.click(mergeButton);
+    const dialog = await screen.findByRole("alertdialog");
+
+    fireEvent.click(within(dialog).getAllByRole("button")[0]);
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(merged()).toBe(false);
   });
 });

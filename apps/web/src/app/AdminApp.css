@@ -838,6 +838,31 @@ button.admin-inbox__item:hover {
   border-bottom: none;
 }
 
+/* The console's own confirm (AdminConfirm.tsx), replacing window.confirm and
+   window.prompt. Narrower than the detail modal because it is one question. */
+.admin-confirm {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.admin-confirm__type {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.admin-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admin-confirm__actions .admin-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .admin-modal__footer {
   margin: 18px 0 0;
   font-size: 12px;

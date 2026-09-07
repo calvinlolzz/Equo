@@ -83,6 +83,7 @@ import {
   type AdminRoute,
   type AdminTab,
 } from "./adminRoute";
+import { AdminConfirmProvider, useAdminConfirm } from "./AdminConfirm";
 import { AdminCommandPalette } from "./AdminCommandPalette";
 import { hydrateCatalog } from "./catalog";
 import { useAdminRoute } from "./useAdminRoute";
@@ -196,7 +197,22 @@ type PanelProps = {
   onCountsChanged?: () => void;
 };
 
+/**
+ * The console, wrapped in its own confirm.
+ *
+ * A thin shell rather than a provider inside the tree: every panel below asks
+ * for a confirmation through context, so the provider has to be above all of
+ * them, and this is the only place that is.
+ */
 export function AdminApp() {
+  return (
+    <AdminConfirmProvider>
+      <AdminConsole />
+    </AdminConfirmProvider>
+  );
+}
+
+function AdminConsole() {
   const [session] = useState(() => loadSession());
   const [client] = useState<EquoApiClient | null>(() =>
     session ? createApiClient() : null,
@@ -781,6 +797,7 @@ function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
 }
 
 function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
+  const confirm = useAdminConfirm();
   const userId = route.userId;
   const selectedGroupId = route.groupId;
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
@@ -807,12 +824,15 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
     if (!detail) return;
     const disabling = !detail.user.disabled_at;
     const label = detail.user.display_name || detail.user.email;
-    const confirmed = window.confirm(
-      disabling
-        ? `確定要停用「${label}」嗎？停用後該帳號無法登入，群組內的歷史帳目會保留。`
-        : `確定要恢復「${label}」的帳號嗎？恢復後即可重新登入。`,
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: disabling ? `停用「${label}」？` : `恢復「${label}」的帳號？`,
+      body: disabling
+        ? "停用後該帳號無法登入，群組內的歷史帳目會保留。"
+        : "恢復後即可重新登入。",
+      confirmLabel: disabling ? "停用" : "恢復",
+      danger: disabling,
+    });
+    if (!ok) return;
 
     setActionBusy(true);
     try {
@@ -840,16 +860,12 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
   async function viewAsUser() {
     if (!detail) return;
     const label = detail.user.display_name || detail.user.email;
-    if (
-      !window.confirm(
-        `以「${label}」的身分開啟唯讀檢視？
-
-` +
-          "你會看到他看到的畫面，但不能修改任何東西。這次檢視會寫進稽核記錄，15 分鐘後自動失效。",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `以「${label}」的身分開啟唯讀檢視？`,
+      body: "你會看到他看到的畫面，但不能修改任何東西。這次檢視會寫進稽核記錄，15 分鐘後自動失效。",
+      confirmLabel: "開啟檢視",
+    });
+    if (!ok) return;
 
     setActionBusy(true);
     setError("");
@@ -893,15 +909,15 @@ function UserDetailPanel({ client, route, onNavigate, role }: PanelProps) {
    */
   async function deleteAccount() {
     if (!detail) return;
-    const typed = window.prompt(
-      `刪除「${detail.user.email}」的帳號無法復原：個人資料會被清除，共用群組裡的帳目會保留成匿名成員。\n` +
-        `確定的話，請輸入這個帳號的 email：`,
-    );
-    if (typed === null) return;
-    if (typed.trim().toLowerCase() !== detail.user.email.toLowerCase()) {
-      setError("輸入的 email 不符，已取消刪除。");
-      return;
-    }
+    const ok = await confirm({
+      title: `刪除「${detail.user.email}」的帳號？`,
+      body: "無法復原：個人資料會被清除，共用群組裡的帳目會保留成匿名成員。",
+      typeToConfirm: detail.user.email,
+      typeToConfirmHint: "請輸入這個帳號的 email",
+      confirmLabel: "刪除帳號",
+      danger: true,
+    });
+    if (!ok) return;
 
     setActionBusy(true);
     setError("");
@@ -1066,6 +1082,7 @@ function MergeAccountSection({
   user: AdminUserDetail["user"];
   onMerged: (message: string) => void;
 }) {
+  const confirm = useAdminConfirm();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [candidates, setCandidates] = useState<AdminUserRow[]>([]);
@@ -1101,16 +1118,15 @@ function MergeAccountSection({
    * The source is simply whichever account's page this is.
    */
   async function merge(target: AdminUserRow) {
-    const typed = window.prompt(
-      `把「${user.email}」的所有群組成員身分轉到「${target.email}」無法復原：\n` +
-        `轉移後「${user.email}」會被停用，帳目本身不會移動（帳目掛在成員身分上）。\n` +
-        `確定的話，請輸入要轉入的帳號 email：`,
-    );
-    if (typed === null) return;
-    if (typed.trim().toLowerCase() !== target.email.toLowerCase()) {
-      setError("輸入的 email 不符，已取消合併。");
-      return;
-    }
+    const ok = await confirm({
+      title: `把「${user.email}」併到「${target.email}」？`,
+      body: `無法復原：轉移後「${user.email}」會被停用。帳目本身不會移動（帳目掛在成員身分上）。`,
+      typeToConfirm: target.email,
+      typeToConfirmHint: "請輸入要轉入的帳號 email",
+      confirmLabel: "合併",
+      danger: true,
+    });
+    if (!ok) return;
 
     setBusy(true);
     setError("");
@@ -1216,6 +1232,7 @@ function GroupDetailPanel({
   /** Reached from two different lists, so it navigates rather than owning a route. */
   onNavigate: (patch: Partial<AdminRoute>) => void;
 }) {
+  const confirm = useAdminConfirm();
   const [detail, setDetail] = useState<AdminGroupDetail | null>(null);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -1253,11 +1270,12 @@ function GroupDetailPanel({
   async function transferOwner() {
     if (!detail || !transferTo) return;
     const member = detail.members.find((candidate) => candidate.id === transferTo);
-    const confirmed = window.confirm(
-      `確定把「${detail.group.name}」的擁有者換成「${member?.display_name || member?.email || "這位成員"}」嗎？` +
-        `原擁有者會降為一般成員。`,
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: "轉移群組擁有者？",
+      body: `「${detail.group.name}」的擁有者會換成「${member?.display_name || member?.email || "這位成員"}」，原擁有者降為一般成員。`,
+      confirmLabel: "轉移",
+    });
+    if (!ok) return;
 
     setTransferBusy(true);
     setError("");
@@ -1651,6 +1669,7 @@ function ExpenseDetailDialog({
   /** A write landed; the caller re-reads the page rather than patching a row. */
   onChanged: () => void;
 }) {
+  const confirm = useAdminConfirm();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(expense.title);
   const [category, setCategory] = useState(expense.category);
@@ -1704,12 +1723,15 @@ function ExpenseDetailDialog({
 
   async function toggleDeleted() {
     const deleting = !expense.deleted_at;
-    const confirmed = window.confirm(
-      deleting
-        ? `確定要刪除「${expense.title}」嗎？這是軟刪除，之後可以在「顯示已刪除」裡復原，但所有成員的結餘會立刻改變。`
-        : `確定要復原「${expense.title}」嗎？這筆帳會重新計入所有成員的結餘。`,
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: deleting ? `刪除「${expense.title}」？` : `復原「${expense.title}」？`,
+      body: deleting
+        ? "這是軟刪除，之後可以在「顯示已刪除」裡復原，但所有成員的結餘會立刻改變。"
+        : "這筆帳會重新計入所有成員的結餘。",
+      confirmLabel: deleting ? "刪除" : "復原",
+      danger: deleting,
+    });
+    if (!ok) return;
 
     setBusy(true);
     setError("");
@@ -1893,6 +1915,7 @@ function groupStatusLabel(group: { archived_at: string | null; deleted_at: strin
 }
 
 function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
+  const confirm = useAdminConfirm();
   const [searchInput, setSearchInput] = useState(route.search);
   const search = route.search;
   const filter: AdminGroupFilterOption = route.filter;
@@ -1946,13 +1969,31 @@ function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
   }, [client, search, offset, filter, reloadKey]);
 
   async function runGroupAction(groupId: string, name: string, action: "archive" | "unarchive" | "delete" | "restore") {
-    const confirmText: Record<typeof action, string> = {
-      archive: `確定要封存「${name}」嗎？成員將無法再記帳，但資料保留。`,
-      unarchive: `確定要解除封存「${name}」嗎？`,
-      delete: `確定要刪除「${name}」嗎？群組會從所有成員的列表消失，之後可在「已刪除」檢視復原。`,
-      restore: `確定要復原「${name}」嗎？群組會重新出現在成員的列表。`,
+    const confirmTitle: Record<typeof action, string> = {
+      archive: `封存「${name}」？`,
+      unarchive: `解除封存「${name}」？`,
+      delete: `刪除「${name}」？`,
+      restore: `復原「${name}」？`,
     };
-    if (!window.confirm(confirmText[action])) return;
+    const confirmText: Record<typeof action, string> = {
+      archive: "成員將無法再記帳，但資料保留。",
+      unarchive: "成員可以重新記帳。",
+      delete: "群組會從所有成員的列表消失，之後可在「已刪除」檢視復原。",
+      restore: "群組會重新出現在成員的列表。",
+    };
+    const confirmAction: Record<typeof action, string> = {
+      archive: "封存",
+      unarchive: "解除封存",
+      delete: "刪除",
+      restore: "復原",
+    };
+    const ok = await confirm({
+      title: confirmTitle[action],
+      body: confirmText[action],
+      confirmLabel: confirmAction[action],
+      danger: action === "delete",
+    });
+    if (!ok) return;
 
     setBusyGroupId(groupId);
     try {
@@ -2505,6 +2546,7 @@ function NotificationsPanel({
    *
    * A user wins if both are somehow present, so the address is never ambiguous.
    */
+  const confirm = useAdminConfirm();
   const arrivedForUser = route.userId;
   const arrivedForGroup = arrivedForUser ? "" : route.groupId;
   const [audience, setAudience] = useState<AdminNotificationAudienceOption>(
@@ -2544,12 +2586,15 @@ function NotificationsPanel({
   }, [client, sentReloadKey]);
 
   async function recall(batchId: string, title: string, recipients: number, readCount: number) {
-    const confirmed = window.confirm(
-      `確定要收回「${title}」嗎？它會從 ${recipients} 個收件匣消失。` +
-        (readCount > 0 ? `
-注意：已經有 ${readCount} 人讀過了，收回不會讓他們忘記。` : ""),
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: `收回「${title}」？`,
+      body:
+        `它會從 ${recipients} 個收件匣消失。` +
+        (readCount > 0 ? `已經有 ${readCount} 人讀過了，收回不會讓他們忘記。` : ""),
+      confirmLabel: "收回",
+      danger: true,
+    });
+    if (!ok) return;
 
     setRecalling(batchId);
     setSentError("");
@@ -2570,10 +2615,12 @@ function NotificationsPanel({
 
     // Name the actual recipient when there is one. "送給指定使用者" is not a
     // thing anybody can check before pressing send.
-    const confirmed = window.confirm(
-      `這則通知會送給「${needsTarget ? targetLabel || selected?.label : selected?.label}」，送出後無法收回。確定要送出嗎？`,
-    );
-    if (!confirmed) return;
+    const ok = await confirm({
+      title: "送出這則通知？",
+      body: `會送給「${needsTarget ? targetLabel || selected?.label : selected?.label}」。送出後無法收回。`,
+      confirmLabel: "送出",
+    });
+    if (!ok) return;
 
     setBusy(true);
     setError("");
@@ -3178,6 +3225,7 @@ const ADMIN_ROLE_OPTIONS = [
 ] as const;
 
 function AdminsPanel({ client, meUserId }: { client: EquoApiClient; meUserId: string }) {
+  const confirm = useAdminConfirm();
   const [admins, setAdmins] = useState<AdminAccountRow[] | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -3230,7 +3278,13 @@ function AdminsPanel({ client, meUserId }: { client: EquoApiClient; meUserId: st
   async function remove(admin: AdminAccountRow) {
     const label = admin.email || admin.display_name || admin.user_id;
     const selfWarning = admin.user_id === meUserId ? "\n\n注意：這會移除你自己的後台權限。" : "";
-    if (!window.confirm(`確定要移除「${label}」的後台權限嗎？${selfWarning}`)) return;
+    const ok = await confirm({
+      title: `移除「${label}」的後台權限？`,
+      body: selfWarning || "這個帳號將無法再進入後台。",
+      confirmLabel: "移除權限",
+      danger: true,
+    });
+    if (!ok) return;
     setBusyUserId(admin.user_id);
     setError("");
     setNotice("");
