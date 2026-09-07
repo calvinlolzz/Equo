@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronRight, Delete, Plus, X } from "lucide-react";
+import { CalendarDays, ChevronRight, Delete, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { createApiClient, type ExchangeRatesResponse } from "./apiClient";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
@@ -1127,8 +1127,12 @@ export function ExpenseComposerSheet({
             onChange={(event) => setComposerDateTime(event.target.value)}
             aria-label={text.date}
           />
+          {/* Hiding the native control also hid the calendar glyph a desktop
+              browser draws for free, and iOS never drew one — so the field had
+              nothing left saying it could be tapped. */}
           <span className="composer-date-display" aria-hidden="true">
             {formatDateTimeField(composerDateTime)}
+            <CalendarDays size={17} />
           </span>
         </span>
       </label>

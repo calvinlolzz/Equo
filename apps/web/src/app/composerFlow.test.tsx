@@ -194,7 +194,6 @@ function fetchedExpenseBody(): unknown {
  */
 describe("the 日期 field", () => {
   const composerCss = readAppStylesheet("app-composer.css");
-  const coarseCss = insideAtRule(composerCss, "pointer: coarse");
 
   async function dateField() {
     await landAsBob();
@@ -208,9 +207,8 @@ describe("the 日期 field", () => {
 
   test("shows the value as our own text, beside the input rather than instead of it", async () => {
     const { input, shell } = await dateField();
-    const display = shell.querySelector(".composer-date-display");
 
-    expect(display?.textContent).toBeTruthy();
+    expect(shell.querySelector(".composer-date-display")?.textContent).toBeTruthy();
     // The input is still the field: it holds the value and answers to the label.
     expect(input.value).toBeTruthy();
     expect(input.type).toBe("datetime-local");
@@ -233,16 +231,52 @@ describe("the 日期 field", () => {
     expect(shell.querySelector(".composer-date-display")?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  test("hides the native text only where a tap opens a picker", () => {
-    // A mouse and keyboard edit a datetime-local segment by segment and have to
-    // see what they are editing - and desktop browsers align it correctly.
-    expect(ruleFor(coarseCss, ".composer-date-shell input").color).toBe("transparent");
-    expect(ruleFor(composerCss, ".composer-date-shell input").color).toBeUndefined();
+  test("keeps something on screen saying it can be tapped", async () => {
+    // Hiding the native control also hid the calendar glyph a desktop browser
+    // draws for free, and iOS never drew one.
+    const { shell } = await dateField();
+    expect(shell.querySelector(".composer-date-display svg")).toBeTruthy();
   });
 
-  test("and lets every tap through to the input underneath", () => {
-    const display = ruleFor(coarseCss, ".composer-date-display");
+  test("hides the native control outright rather than restyling its text", () => {
+    // Three attempts: text-align on the input, text-align on
+    // ::-webkit-date-and-time-value, then color: transparent. All shipped, all
+    // ignored by iOS. Opacity composites the element and asks nothing of
+    // whatever is drawn inside it.
+    expect(ruleFor(composerCss, ".composer-date-shell input").opacity).toBe("0");
+  });
+
+  test("unconditionally - a media query is one more thing that can be the reason", () => {
+    // The colour attempt lived inside (pointer: coarse), and the query was as
+    // plausible a suspect as the property.
+    expect(insideAtRule(composerCss, "pointer: coarse")).toBe("");
+  });
+
+  test("so the field's box moves to the shell, and only one element draws it", () => {
+    const shell = ruleFor(composerCss, ".composer-date-shell");
+    expect(shell.border).toBeTruthy();
+    expect(shell.background).toBeTruthy();
+    // A second (even transparent) border here made this field 2px taller than
+    // the 分類 select beside it.
+    expect(ruleFor(composerCss, ".composer-date-shell input").border).toBe("0");
+  });
+
+  test("and neither span is typeset as a field caption", () => {
+    // `label span` in app-base is the caption rule - 13px, muted, 8px below it.
+    // Both of these live inside a <label> and are the field, not its caption:
+    // the overlay came out at caption size, and that caption margin is why it
+    // measured 8px shorter than the box it is supposed to fill.
+    for (const selector of [".composer-date-shell", ".composer-date-display"]) {
+      const rule = ruleFor(composerCss, selector);
+      expect(rule.margin).toBe("0");
+      expect(rule["font-size"]).toBe("inherit");
+    }
+  });
+
+  test("lets every tap through to the input underneath", () => {
+    const display = ruleFor(composerCss, ".composer-date-display");
     expect(display.position).toBe("absolute");
+    expect(display.inset).toBe("0");
     expect(display["pointer-events"]).toBe("none");
   });
 
@@ -252,6 +286,11 @@ describe("the 日期 field", () => {
     const inputPadding = ruleFor(readAppStylesheet("app-base.css"), "input").padding ?? "";
     const inset = inputPadding.split(/\s+/)[1];
     expect(inset).toBeTruthy();
-    expect(ruleFor(coarseCss, ".composer-date-display").padding).toBe(`0 ${inset}`);
+    expect(ruleFor(composerCss, ".composer-date-display").padding).toBe(`0 ${inset}`);
+  });
+
+  test("and gives the real control back to a keyboard, which needs to watch itself type", () => {
+    expect(ruleFor(composerCss, ".composer-date-shell input:focus").opacity).toBe("1");
+    expect(ruleFor(composerCss, ".composer-date-shell input:focus ~ .composer-date-display").opacity).toBe("0");
   });
 });

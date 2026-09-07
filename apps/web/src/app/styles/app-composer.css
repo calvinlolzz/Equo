@@ -387,40 +387,86 @@
 }
 
 /**
- * 日期, drawn by us rather than read off the native control.
+ * 日期, drawn by the app rather than read off the native control.
  *
- * Only where the primary pointer is coarse: those are the devices that answer a
- * tap with a picker, so nothing is lost by hiding the native text. A mouse and
- * keyboard edit a datetime-local segment by segment and need to see what they
- * are editing, and desktop browsers left-align it correctly anyway.
+ * Third attempt, and the first that depends on nothing WebKit gets a say in.
+ * `text-align` on the input did nothing; `text-align` on
+ * ::-webkit-date-and-time-value did nothing; `color: transparent` inside a
+ * (pointer: coarse) query did nothing. All three shipped and were checked on
+ * the device. The value is drawn inside a shadow root that iOS positions and
+ * paints on its own terms, so this stops asking: the input is made invisible
+ * outright and the field is painted around it.
+ *
+ * Unconditional now, because two of those three failures could have been the
+ * media query as easily as the property inside it — and there is nothing left
+ * in here that a desktop needs protecting from, see the focus rule at the end.
  */
 .composer-date-shell {
+  position: relative;
   display: block;
+  /* The box moves here: an invisible input cannot draw its own border. */
+  border: 1px solid rgb(var(--surf) / 0.16);
+  border-radius: 12px;
+  background: rgb(var(--surf) / 0.08);
 }
 
-@media (pointer: coarse) {
-  .composer-date-shell {
-    position: relative;
-  }
+/* `label span` in app-base styles a field's CAPTION — 13px, muted, 8px of space
+   under it. These two spans are the field itself, and they are inside a label,
+   so they were being typeset as captions: the overlay came out at caption size
+   and the shell carried a caption's margin (which is also why the overlay
+   measured 8px shorter than the box it is supposed to fill). */
+.composer-date-shell,
+.composer-date-display {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
 
-  /* The value is in a shadow root, but it inherits colour - which is the one
-     thing about it that IS reliably styleable, and all this needs. */
-  .composer-date-shell input {
-    color: transparent;
-  }
+.composer-date-shell:focus-within {
+  border-color: rgb(var(--accent) / 0.78);
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.16);
+}
 
-  .composer-date-display {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    /* Matches the input's own padding, so the text starts where every other
-       field's text starts. */
-    padding: 0 14px;
-    color: rgb(var(--fg));
-    /* Every tap belongs to the input underneath. */
-    pointer-events: none;
-  }
+/* Invisible, not absent: it still holds the value, still answers to the label,
+   still takes the tap and opens the picker. `opacity` rather than a colour,
+   because opacity composites the whole element and needs no cooperation from
+   whatever is drawn inside it. */
+.composer-date-shell input {
+  opacity: 0;
+  /* The border is the shell's now. Leaving a transparent one here still takes
+     up space, and this field came out 2px taller than the 分類 select beside
+     it. */
+  border: 0;
+  background: transparent;
+}
+
+.composer-date-display {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  /* Matches the input's own padding, so the text starts where every other
+     field's text starts. */
+  padding: 0 14px;
+  color: rgb(var(--fg));
+  /* Every tap belongs to the input underneath. */
+  pointer-events: none;
+}
+
+.composer-date-display svg {
+  margin-left: auto;
+  color: rgb(var(--fg) / 0.5);
+}
+
+/* Editing a datetime-local with a keyboard means watching the segments change,
+   so the real control comes back while it has focus. A touch device answers the
+   same tap with a picker and leaves this state as soon as the picker closes. */
+.composer-date-shell input:focus {
+  opacity: 1;
+}
+
+.composer-date-shell input:focus ~ .composer-date-display {
+  opacity: 0;
 }
 
 .composer-card-section {
