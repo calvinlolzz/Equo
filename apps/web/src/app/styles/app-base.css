@@ -263,6 +263,31 @@ select {
   outline: none;
 }
 
+/**
+ * The date field, left-aligned like every other field beside it.
+ *
+ * iOS Safari centres a datetime-local's value inside its box, so the date sat
+ * floating in the middle of a full-width field while the title placeholder and
+ * the 分類 select above it started at the padding edge — reported as 「日期那邊
+ * 框框怪怪的」. Desktop Chrome left-aligns it already and draws a calendar icon
+ * on the right, which is why this only ever showed up on a phone.
+ *
+ * The value lives in a shadow-DOM pseudo-element, so aligning the input alone
+ * does not reach it.
+ */
+input[type="datetime-local"],
+input[type="date"],
+input[type="time"] {
+  text-align: left;
+}
+
+input[type="datetime-local"]::-webkit-date-and-time-value,
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
 /* :focus-visible (not :focus) so the accent ring appears for keyboard focus and
    while typing, but never latches after a touch tap on a <select> whose native
    picker has already closed. */

@@ -100,43 +100,50 @@ export function GroupSideNav({
           </span>
         </div>
       </div>
-      <nav className="side-nav-list" aria-label={text.groupHome}>
-        {items.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              className={item.id === "home" ? "side-nav-item active" : "side-nav-item"}
-              type="button"
-              key={item.id}
-              onClick={() => {
-                closeDrawer();
-                onNavigate(item.id);
-              }}
-            >
-              <Icon aria-hidden="true" size={19} />
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-      {/* The group's own settings, below the things you can open.
-          幣別 is read-only on purpose: it is chosen when the group is created
-          and every amount ever entered is denominated in it, so it is a fact
-          about the group rather than a preference. It used to be a readOnly
-          input in the edit dialog, which looked like a field somebody had
-          forgotten to make work. 匯出 CSV moved here from the bottom of 支出記錄
-          for the same reason it sits here in the app this drawer is modelled
-          on: it is something you do to the group, not part of reading it. */}
-      <div className="side-settings-list">
-        <div className="side-settings-row">
-          <CircleDollarSign aria-hidden="true" size={19} />
-          <span>{text.currency}</span>
-          <strong>{currency}</strong>
+      {/* One visual list, two elements: the destinations stay inside a <nav>
+          because they are navigation, and 幣別 / 匯出 CSV are not - one is a
+          fact and the other an action. Wrapping them keeps that distinction in
+          the markup while closing the 16px drawer gap that fell between them
+          and made four rows read as two stranded pairs. */}
+      <div className="side-lists">
+        <nav className="side-nav-list" aria-label={text.groupHome}>
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                className={item.id === "home" ? "side-nav-item active" : "side-nav-item"}
+                type="button"
+                key={item.id}
+                onClick={() => {
+                  closeDrawer();
+                  onNavigate(item.id);
+                }}
+              >
+                <Icon aria-hidden="true" size={19} />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+        {/* The group's own settings, below the things you can open.
+            幣別 is read-only on purpose: it is chosen when the group is created
+            and every amount ever entered is denominated in it, so it is a fact
+            about the group rather than a preference. It used to be a readOnly
+            input in the edit dialog, which looked like a field somebody had
+            forgotten to make work. 匯出 CSV moved here from the bottom of 支出記錄
+            for the same reason it sits here in the app this drawer is modelled
+            on: it is something you do to the group, not part of reading it. */}
+        <div className="side-settings-list">
+          <div className="side-settings-row">
+            <CircleDollarSign aria-hidden="true" size={19} />
+            <span>{text.currency}</span>
+            <strong>{currency}</strong>
+          </div>
+          <button className="side-settings-row side-settings-action" type="button" disabled={exporting} onClick={onExportCsv}>
+            <Share aria-hidden="true" size={19} />
+            <span>{exporting ? text.processing : text.exportCsv}</span>
+          </button>
         </div>
-        <button className="side-settings-row side-settings-action" type="button" disabled={exporting} onClick={onExportCsv}>
-          <Share aria-hidden="true" size={19} />
-          <span>{exporting ? text.processing : text.exportCsv}</span>
-        </button>
       </div>
       {isOwner ? (
         <div className="side-danger-actions">
