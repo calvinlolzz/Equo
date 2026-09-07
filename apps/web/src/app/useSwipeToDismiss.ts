@@ -22,6 +22,33 @@ function matches(query: string) {
 }
 
 /**
+ * The box that actually scrolls under the finger, searched from where the touch
+ * landed up to the sheet itself.
+ *
+ * This used to read `scrollTop` off the sheet, which is right only when the
+ * sheet is its own scroll surface. The stepped composer is not: the sheet is
+ * `overflow: hidden` and the scrolling happens in `.composer-step-body` inside
+ * it — so the sheet's scrollTop was 0 no matter how far down the content was,
+ * the "only from the top" guard never fired, and every downward swipe anywhere
+ * in a scrolled sheet was a dismissal. Reported as 「展開後上下滑動容易整個項下滑
+ * 掉觸發放棄紀錄」, which is the worst version of it: the discard confirm.
+ */
+function scrollableUnder(target: EventTarget | null, sheet: HTMLElement): HTMLElement | null {
+  let element = target instanceof HTMLElement ? target : null;
+
+  while (element) {
+    if (element.scrollHeight > element.clientHeight) {
+      const overflowY = window.getComputedStyle(element).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") return element;
+    }
+    if (element === sheet) return null;
+    element = element.parentElement;
+  }
+
+  return null;
+}
+
+/**
  * Drag-to-dismiss gesture for mobile bottom-sheet dialogs.
  *
  * Spread `dragProps` onto the sheet element and add the `closing` class to both
@@ -52,6 +79,8 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
   const dragStart = useRef<number | null>(null);
   const dragY = useRef(0);
   const node = useRef<HTMLElement | null>(null);
+  /** What is scrolling under this gesture, resolved once per touch. */
+  const scroller = useRef<HTMLElement | null>(null);
   const detachListener = useRef<(() => void) | null>(null);
   const closeTimer = useRef<number | null>(null);
   // Read through a ref so requestClose's identity (and every listener keyed to
@@ -98,13 +127,31 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
   function onTouchStart(event: ReactTouchEvent<HTMLElement>) {
     if (closingRef.current) return;
     if (!matches(MOBILE_QUERY)) return;
-    // Only begin a dismiss drag from the top of the scroll area.
-    if (event.currentTarget.scrollTop > 0) return;
+    // Resolved once, then consulted on every move below. One rule, checked
+    // continuously, rather than a gate at touchstart AND a correction later:
+    // the two would shadow each other, so neither could be tested on its own.
+    scroller.current = scrollableUnder(event.target, event.currentTarget);
     dragStart.current = event.touches[0].clientY;
   }
 
   function onTouchMove(event: ReactTouchEvent<HTMLElement>) {
     if (dragStart.current === null) return;
+
+    // While the box under the finger is off its top, the gesture belongs to
+    // that box and not to this sheet. The baseline moves with the finger rather
+    // than the gesture being dropped, so that scrolling back to the top and
+    // carrying on downwards hands over to the drag — and so that the distance
+    // already travelled is not banked: a 200px scroll up would otherwise
+    // dismiss on the way back down.
+    if ((scroller.current?.scrollTop ?? 0) > 0) {
+      dragStart.current = event.touches[0].clientY;
+      if (dragY.current !== 0) {
+        dragY.current = 0;
+        applyTransform(0, false);
+      }
+      return;
+    }
+
     const delta = event.touches[0].clientY - dragStart.current;
     dragY.current = delta > 0 ? delta : 0;
     applyTransform(dragY.current, false);
@@ -137,6 +184,7 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
       detachListener.current = null;
     }
     node.current = next;
+    scroller.current = null;
     dragStart.current = null;
     dragY.current = 0;
     // Cancel any in-flight close and reset state on both detach and (re)attach,
@@ -152,6 +200,10 @@ export function useSwipeToDismiss(onClose: () => void, options: Options = {}) {
     if (!next) return;
     const onNativeMove = (event: TouchEvent) => {
       if (dragStart.current === null) return;
+      // Same test as the handler above, and for a sharper reason: swallowing
+      // downward moves while the list is scrolled does not merely dismiss by
+      // accident, it stops the list scrolling at all.
+      if ((scroller.current?.scrollTop ?? 0) > 0) return;
       const delta = event.touches[0].clientY - dragStart.current;
       if (delta > 0) event.preventDefault();
     };
