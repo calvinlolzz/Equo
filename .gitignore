@@ -38,3 +38,6 @@ key.txt
 # import a script, so tracking it means churn in every release verification).
 __pycache__/
 *.pyc
+
+# Playwright MCP scratch output (page snapshots, console logs).
+.playwright-mcp/
