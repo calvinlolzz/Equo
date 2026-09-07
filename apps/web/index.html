@@ -21,6 +21,12 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Equo — 和朋友、室友、旅伴輕鬆分帳" />
     <meta property="og:locale" content="zh_TW" />
+    <!-- The app renders in English for an English reader, but every visitor is
+         served this one document, so the card above is the 繁體中文 one. This
+         says the page exists in English too; making the card itself follow the
+         reader would take locale negotiation on the HTML, which is a server
+         change and not a tag. -->
+    <meta property="og:locale:alternate" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Equo — 輕鬆分帳" />
     <meta name="twitter:description" content="和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。" />

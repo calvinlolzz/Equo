@@ -44,6 +44,46 @@
   padding: 0 var(--landing-gutter);
 }
 
+/* The product shot above the sign-in card.
+   Sized so that the shot AND the card AND the scroll cue fit one phone screen
+   together - the point is that you can see what you are signing into without
+   scrolling, and a shot that pushes the button below the fold has just moved
+   the problem. */
+.landing-hero-shot {
+  width: min(268px, 60vw);
+  border: 1px solid rgb(var(--surf) / 0.18);
+  border-radius: 22px;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
+  /* The image is the only child; without this the inline box adds a few px of
+     descender space under it and the rounded corner shows a seam. */
+  line-height: 0;
+  overflow: hidden;
+}
+
+.landing-hero-shot img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* The sign-in card is shared with the standalone login screen, which has a
+   whole screen to itself. Here it is sharing one with the product. */
+.landing-hero .login-card {
+  gap: 20px;
+  padding: 24px 28px;
+}
+
+.landing-hero .login-logo-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  font-size: 19px;
+}
+
+.landing-hero .login-brand h1 {
+  font-size: 25px;
+}
+
 /* The invite card, above the sign-in card. Only ever rendered for somebody who
    arrived from a link, so it is allowed to be the loudest thing on the screen:
    it is the answer to the only question they have. */

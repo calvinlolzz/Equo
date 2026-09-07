@@ -32,6 +32,7 @@ import { dismissAppSplash } from "./app/appSplash";
 import { initScrollActivity } from "./app/scrollActivity";
 import { initTheme } from "./app/themeStore";
 import { DEFAULT_CATALOG } from "./app/catalog";
+import { daysAgo } from "./screenshotDates";
 import type { GroupDetail, GroupSummary } from "./app/apiClient";
 
 const GROUP_ID = "group_demo";
@@ -50,16 +51,6 @@ const MEMBERS: GroupDetail["members"] = [
 ];
 
 const EVERYONE = MEMBERS.map((member) => member.id);
-
-/**
- * Dates are relative to the day the screenshot is taken, so the home screen's
- * date strip never reads as a group that was abandoned in 2026.
- */
-function daysAgo(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
 
 function expense(
   id: string,

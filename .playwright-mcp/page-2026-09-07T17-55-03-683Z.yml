@@ -1,0 +1,152 @@
+- main [ref=f3e3]:
+  - generic [ref=f3e4]:
+    - button "群組列表" [ref=f3e5] [cursor=pointer]
+    - button "東京旅行" [ref=f3e7] [cursor=pointer]
+    - generic [ref=f3e8]:
+      - button "通知" [ref=f3e9] [cursor=pointer]
+      - button "個人資料" [ref=f3e13] [cursor=pointer]
+  - generic [ref=f3e17]:
+    - region "群組首頁" [ref=f3e18]:
+      - heading "東京旅行" [level=1] [ref=f3e19]
+      - article [ref=f3e20]:
+        - paragraph [ref=f3e23]:
+          - text: 群組成員
+          - strong [ref=f3e24]: "4"
+          - text: 總計
+          - strong [ref=f3e25]: $18,060
+        - generic "群組成員" [ref=f3e26]:
+          - generic "群組成員" [ref=f3e27]:
+            - generic [ref=f3e28]: 我
+            - generic [ref=f3e29]: 小
+            - generic [ref=f3e30]: 小
+            - generic [ref=f3e31]: 阿
+          - generic "分析" [ref=f3e32]:
+            - generic [ref=f3e33]:
+              - generic [ref=f3e34]: 我
+              - generic [ref=f3e35]:
+                - text: 我
+                - generic [ref=f3e36]: 群主
+              - strong [ref=f3e37]: +$7,785
+            - generic [ref=f3e38]:
+              - generic [ref=f3e39]: 阿
+              - generic [ref=f3e40]: 阿哲
+              - strong [ref=f3e41]: "-$4,355"
+        - generic [ref=f3e42]:
+          - button "新增成員" [ref=f3e43] [cursor=pointer]
+          - button "邀請成員" [ref=f3e46] [cursor=pointer]
+          - button "掃描收據" [ref=f3e51] [cursor=pointer]
+      - region "個人消費" [ref=f3e58]:
+        - generic [ref=f3e59]:
+          - generic "個人消費" [ref=f3e60]:
+            - button "個人消費" [ref=f3e61] [cursor=pointer]
+            - button "群組消費" [ref=f3e62] [cursor=pointer]
+          - button "查看全部" [ref=f3e63] [cursor=pointer]
+        - generic [ref=f3e66]:
+          - generic [ref=f3e67]:
+            - generic [ref=f3e68]: 9月8日
+            - strong [ref=f3e69]: $600
+          - generic "日期" [ref=f3e70]:
+            - button "1" [ref=f3e71] [cursor=pointer]
+            - button "2" [ref=f3e72] [cursor=pointer]
+            - button "3" [ref=f3e73] [cursor=pointer]
+            - button "4" [ref=f3e74] [cursor=pointer]
+            - button "5" [ref=f3e75] [cursor=pointer]
+            - button "6" [ref=f3e76] [cursor=pointer]
+            - button "7" [ref=f3e77] [cursor=pointer]
+            - button "8" [ref=f3e78] [cursor=pointer]
+      - region "債務關係" [ref=f3e79]:
+        - generic [ref=f3e80]:
+          - heading "債務關係" [level=3] [ref=f3e81]
+          - button "查看全部" [ref=f3e82] [cursor=pointer]
+        - generic [ref=f3e85]:
+          - generic [ref=f3e86]:
+            - generic [ref=f3e87]: 阿
+            - strong [ref=f3e88]: 阿哲
+          - generic [ref=f3e89]:
+            - generic [ref=f3e90]: 需要支付
+            - generic [ref=f3e91]: →
+            - strong [ref=f3e92]: $4,355
+          - generic [ref=f3e93]:
+            - generic [ref=f3e94]: 我
+            - strong [ref=f3e95]: 我
+          - button "清償債務" [ref=f3e97] [cursor=pointer]
+        - button "還有 2 筆清償建議" [ref=f3e98] [cursor=pointer]
+      - region "支出記錄" [ref=f3e99]:
+        - generic [ref=f3e100]:
+          - heading "支出記錄" [level=3] [ref=f3e101]
+          - button "查看全部" [ref=f3e102] [cursor=pointer]
+        - generic [ref=f3e105]:
+          - button "小 居酒屋 今天 20:00 $2,400" [ref=f3e106] [cursor=pointer]:
+            - generic [ref=f3e107]: 小
+            - generic [ref=f3e108]:
+              - strong [ref=f3e109]: 居酒屋
+              - generic [ref=f3e110]: 今天 20:00
+            - generic [ref=f3e111]:
+              - text: $2,400
+              - generic [aria-hidden] [ref=f3e112]:
+                - emphasis [ref=f3e113]:
+                  - generic [ref=f3e114]: 我
+                - emphasis [ref=f3e115]:
+                  - generic [ref=f3e116]: 小
+                - emphasis [ref=f3e117]:
+                  - generic [ref=f3e118]: 小
+          - button "我 地鐵一日券 昨天 20:00 $1,600" [ref=f3e119] [cursor=pointer]:
+            - generic [ref=f3e120]: 我
+            - generic [ref=f3e121]:
+              - strong [ref=f3e122]: 地鐵一日券
+              - generic [ref=f3e123]: 昨天 20:00
+            - generic [ref=f3e124]:
+              - text: $1,600
+              - generic [aria-hidden] [ref=f3e125]:
+                - emphasis [ref=f3e126]:
+                  - generic [ref=f3e127]: 我
+                - emphasis [ref=f3e128]:
+                  - generic [ref=f3e129]: 小
+                - emphasis [ref=f3e130]:
+                  - generic [ref=f3e131]: 小
+          - button "我 民宿兩晚 9月6日 20:00 $8,600" [ref=f3e132] [cursor=pointer]:
+            - generic [ref=f3e133]: 我
+            - generic [ref=f3e134]:
+              - strong [ref=f3e135]: 民宿兩晚
+              - generic [ref=f3e136]: 9月6日 20:00
+            - generic [ref=f3e137]:
+              - text: $8,600
+              - generic [aria-hidden] [ref=f3e138]:
+                - emphasis [ref=f3e139]:
+                  - generic [ref=f3e140]: 我
+                - emphasis [ref=f3e141]:
+                  - generic [ref=f3e142]: 小
+                - emphasis [ref=f3e143]:
+                  - generic [ref=f3e144]: 小
+          - button "小 藥妝店 9月6日 20:00 $3,200" [ref=f3e145] [cursor=pointer]:
+            - generic [ref=f3e146]: 小
+            - generic [ref=f3e147]:
+              - strong [ref=f3e148]: 藥妝店
+              - generic [ref=f3e149]: 9月6日 20:00
+            - generic [ref=f3e150]:
+              - text: $3,200
+              - generic [aria-hidden] [ref=f3e151]:
+                - emphasis [ref=f3e152]:
+                  - generic [ref=f3e153]: 小
+                - emphasis [ref=f3e154]:
+                  - generic [ref=f3e155]: 阿
+          - button "阿 拉麵 9月5日 20:00 $960" [ref=f3e156] [cursor=pointer]:
+            - generic [ref=f3e157]: 阿
+            - generic [ref=f3e158]:
+              - strong [ref=f3e159]: 拉麵
+              - generic [ref=f3e160]: 9月5日 20:00
+            - generic [ref=f3e161]:
+              - text: $960
+              - generic [aria-hidden] [ref=f3e162]:
+                - emphasis [ref=f3e163]:
+                  - generic [ref=f3e164]: 我
+                - emphasis [ref=f3e165]:
+                  - generic [ref=f3e166]: 小
+                - emphasis [ref=f3e167]:
+                  - generic [ref=f3e168]: 小
+    - navigation "群組首頁" [ref=f3e169]:
+      - button "首頁" [ref=f3e170] [cursor=pointer]
+      - button "紀錄" [ref=f3e175] [cursor=pointer]
+      - button "新增支出" [ref=f3e181] [cursor=pointer]
+      - button "分析" [ref=f3e183] [cursor=pointer]
+      - button "設定" [ref=f3e186] [cursor=pointer]

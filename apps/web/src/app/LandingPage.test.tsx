@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
 import { LegalPage } from "./LegalPage";
 import { PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
+import { readAppFile } from "./cssDeclarations";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.landing;
@@ -113,5 +114,85 @@ describe("arriving from an invite link", () => {
     // No token, no request: the landing page stays a page that needs no server.
     expect(fetchInvitePreview).not.toHaveBeenCalled();
     expect(screen.queryByText(text.inviteTitle)).toBeNull();
+  });
+});
+
+/**
+ * What a stranger can see before being asked for their Google account.
+ *
+ * This page used to spend its whole first screen — 772px of 812 — on an icon, a
+ * name, a tagline and a sign-in button. The demo, the value props and the FAQ
+ * were all below a scroll cue, and the real screenshots (public/screenshots)
+ * were wired to the install prompt and nowhere else.
+ */
+describe("the product, above the fold", () => {
+  const shot = () => document.querySelector<HTMLImageElement>(".landing-hero-shot img");
+
+  test("the hero shows the app itself, not just its name", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const image = shot();
+    expect(image).toBeTruthy();
+    expect(image?.getAttribute("src")).toContain("/screenshots/");
+  });
+
+  test("it is described, because it carries the argument the page is making", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    expect(shot()?.getAttribute("alt")).toBe(text.heroShotAlt);
+  });
+
+  test("and it is not queued behind everything else - it is the largest thing up there", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    const image = shot();
+
+    expect(image?.getAttribute("loading")).not.toBe("lazy");
+    // Intrinsic size on the tag, so the card below it does not jump when the
+    // image lands.
+    expect(image?.getAttribute("width")).toBeTruthy();
+    expect(image?.getAttribute("height")).toBeTruthy();
+  });
+
+  test("but it stands aside for somebody who arrived from an invite", async () => {
+    window.history.replaceState(null, "", "/?invite=EQO-ABC123");
+    render(
+      <LandingPage
+        onGoogleLogin={() => {}}
+        fetchInvitePreview={vi.fn().mockResolvedValue({ group: { name: "東京旅行", member_count: 4 } })}
+      />,
+    );
+
+    // They have already decided; the invite card is the answer they came for,
+    // and two cards plus a phone do not fit one screen.
+    expect(await screen.findByText(text.inviteTitle)).toBeTruthy();
+    expect(shot()).toBeNull();
+  });
+});
+
+describe("the FAQ", () => {
+  const items = () => [...document.querySelectorAll<HTMLDetailsElement>(".landing-faq-item")];
+
+  test("answers its first question without being asked", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    const open = items().filter((item) => item.open);
+
+    expect(items().length).toBeGreaterThan(1);
+    expect(open).toHaveLength(1);
+    expect(open[0].textContent).toContain(text.faq1Q);
+  });
+
+  test("and leaves the rest closed, so the section is still skimmable", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    expect(items().slice(1).every((item) => !item.open)).toBe(true);
+  });
+});
+
+describe("the page's own metadata", () => {
+  const html = readAppFile("..", "..", "index.html");
+
+  test("says the page exists in English too", () => {
+    // One document is served to everybody, so the card itself is the 繁體中文
+    // one; this is the part that can be told without locale negotiation.
+    expect(html).toContain('property="og:locale" content="zh_TW"');
+    expect(html).toContain('property="og:locale:alternate" content="en_US"');
   });
 });

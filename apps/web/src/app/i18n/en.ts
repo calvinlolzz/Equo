@@ -266,6 +266,7 @@ export const EN: UiDictionary = {
     oauthErrorPrefix: "Sign-in failed: ",
   },
   landing: {
+    heroShotAlt: "Equo's group home: member balances, the day's spending, and who owes whom.",
     heroPitch: "Free · nothing to install · works in your browser",
     inviteTitle: "You have been invited to join",
     /** Joined as `${n} ${this}`. */

@@ -275,6 +275,7 @@ export const ZH_HANT = {
    * 所以清單只能攤平成有編號的鍵。
    */
   landing: {
+    heroShotAlt: "Equo 的群組首頁：成員餘額、當日花費，還有誰該付誰多少。",
     heroPitch: "免費・免下載・開瀏覽器就能用",
     /** 帶著 ?invite= 進來的人才看得到的那張卡。只說得出群組名與人數。 */
     inviteTitle: "你被邀請加入",

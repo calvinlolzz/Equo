@@ -82,7 +82,29 @@ export function LandingPage({
             </span>
             <span className="landing-invite-hint">{text.inviteHint}</span>
           </div>
-        ) : null}
+        ) : (
+          /* The product, above the fold.
+             This screen used to ask a stranger for their Google account before
+             showing them a single thing the account was for - the demo, the
+             value props and the FAQ were all below a scroll cue. The real
+             screenshots existed the whole time; they were only ever wired to
+             the install prompt.
+             Not shown to somebody arriving from an invite: they have already
+             decided, and the invite card is the answer to the only question
+             they came with. Two cards plus a phone would not fit either. */
+          <div className="landing-hero-shot">
+            <img
+              src="/screenshots/hero-home.webp"
+              width={390}
+              height={416}
+              alt={text.heroShotAlt}
+              // The largest thing above the fold, so it is not lazy and not
+              // queued behind the rest.
+              fetchPriority="high"
+              decoding="async"
+            />
+          </div>
+        )}
         <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} />
         <p className="landing-pitch">{text.heroPitch}</p>
         {/* A scroll cue, not a control. The first version put a single chevron
@@ -183,8 +205,14 @@ export function LandingPage({
               { q: text.faq3Q, a: text.faq3A },
               { q: text.faq4Q, a: text.faq4A },
               { q: text.faq5Q, a: text.faq5A },
-            ].map((entry) => (
-              <details className="landing-faq-item glass-panel" key={entry.q}>
+            ].map((entry, index) => (
+              /* The first one starts open. Five collapsed rows is five
+                 questions and no answers, and 要付費嗎 is the answer most
+                 likely to end the visit early in the right direction — a
+                 disclosure that hides the reassurance is working against the
+                 page it is on. The rest stay closed so the section is still
+                 skimmable. */
+              <details className="landing-faq-item glass-panel" key={entry.q} open={index === 0}>
                 <summary>
                   {entry.q}
                   <ChevronDown aria-hidden="true" size={16} />
