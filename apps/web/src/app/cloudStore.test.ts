@@ -106,7 +106,7 @@ describe("createCloudGroupsStore", () => {
     await store.refreshGroups();
 
     expect(store.getState().groups).toEqual([{ id: "group_1", name: "Tokyo Trip", currency: "TWD", coverImageUrl: undefined }]);
-    expect(store.getState().loadingGroups).toBe(false);
+    expect(store.getState().groupsSyncAttempted).toBe(true);
   });
 
   test("refreshGroupDetail populates the per-group cache with adapted data", async () => {
@@ -1054,25 +1054,25 @@ describe("createCloudGroupsStore", () => {
       return { promise, resolve };
     }
 
-    test("the first groups load raises loadingGroups, so the skeleton still shows on a cold start", () => {
+    test("the empty state waits for a first read to finish, so a cold start shows the skeleton", () => {
       const gate = deferred<{ groups: (typeof group1)[] }>();
       const apiClient = makeFakeApiClient({ listGroups: vi.fn(() => gate.promise) });
       const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
 
       const inFlight = store.refreshGroups();
-      expect(store.getState().loadingGroups).toBe(true);
+      expect(store.getState().groupsSyncAttempted).toBe(false);
       expect(store.getState().groupsLoaded).toBe(false);
       expect(store.getState().groupsSynced).toBe(false);
 
       gate.resolve({ groups: [group1] });
       return inFlight.then(() => {
-        expect(store.getState().loadingGroups).toBe(false);
+        expect(store.getState().groupsSyncAttempted).toBe(true);
         expect(store.getState().groupsLoaded).toBe(true);
         expect(store.getState().groupsSynced).toBe(true);
       });
     });
 
-    test("a background groups refresh never flips loadingGroups back on", async () => {
+    test("a background groups refresh never takes the answer back", async () => {
       const gate = deferred<{ groups: (typeof group1)[] }>();
       let call = 0;
       const apiClient = makeFakeApiClient({
@@ -1088,12 +1088,12 @@ describe("createCloudGroupsStore", () => {
       // This is the one that used to blank the whole group list back to
       // GroupHomeSkeleton — every 60s, and on every return to the app.
       const inFlight = store.refreshGroups();
-      expect(store.getState().loadingGroups).toBe(false);
+      expect(store.getState().groupsSyncAttempted).toBe(true);
       expect(store.getState().groups).toHaveLength(1);
 
       gate.resolve({ groups: [group1] });
       await inFlight;
-      expect(store.getState().loadingGroups).toBe(false);
+      expect(store.getState().groupsSyncAttempted).toBe(true);
     });
 
     test("a cache-seeded store treats even its very first refresh as background", async () => {
@@ -1126,7 +1126,10 @@ describe("createCloudGroupsStore", () => {
         expect(reopened.getState().groupsSynced).toBe(false);
 
         const inFlight = reopened.refreshGroups();
-        expect(reopened.getState().loadingGroups).toBe(false);
+        // The cache is a list worth SHOWING, not an answer worth routing off -
+        // and not one the empty state may act on either, which is the whole of
+        // 「一打開的畫面會閃過這一頁」.
+        expect(reopened.getState().groupsSyncAttempted).toBe(false);
 
         gate.resolve({ groups: [group1] });
         await inFlight;

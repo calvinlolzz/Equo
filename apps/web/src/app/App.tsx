@@ -876,7 +876,7 @@ export function App() {
 
   useEffect(() => {
     if (!session) return;
-    // groupsSynced, NOT loadingGroups: every branch below decides something
+    // groupsSynced, NOT groupsSyncAttempted: every branch below decides something
     // about a group id (land on it, forward to it, or throw it away with a
     // 「群組不存在」 toast), and those may only be judged against the server's
     // list. The cloud cache can seed a list from a previous session that
@@ -1468,7 +1468,11 @@ export function App() {
         </div>
       ) : null}
 
-      {!activeGroup && (!cloudState || cloudState.loadingGroups) ? (
+      {/* 建立或加入一個群組 answers "you have no groups". Until the server's
+          list has been read it is not an answer to anything — see
+          groupsSyncAttempted, and the note on it about what a returning
+          visitor used to be shown while GET /groups was in flight. */}
+      {!activeGroup && (!cloudState || !cloudState.groupsSyncAttempted) ? (
         <section className="workspace-grid">
           <GroupHomeSkeleton />
         </section>

@@ -69,13 +69,24 @@ export type CloudGroupsState = {
   groups: Group[];
   groupDetails: Record<string, CloudGroupData>;
   /**
-   * A FIRST groups load is in flight - i.e. there is nothing to show yet.
-   * Drives GroupHomeSkeleton, so it must NOT be set by background
-   * revalidation: autoSync refreshes the list on every focus and every third
-   * sync, and flipping this each time blanked the whole group list back to a
-   * skeleton every minute and on every return to the app. See groupsLoaded.
+   * Whether a first read of the SERVER's list has finished - arrived, or failed
+   * and given up.
+   *
+   * The empty state (建立或加入一個群組) is gated on this, and this replaced a
+   * `loadingGroups` flag that answered `false` to two very different
+   * situations. A returning visitor starts with a cache, so the first refresh
+   * was not a "first load" and that flag was never raised at all - while the
+   * effect that decides WHICH group to open waits for groupsSynced, i.e.
+   * server truth. In between, the app had a list, no active group, and nothing
+   * claiming to be busy, so it told somebody with groups that they had none for
+   * as long as GET /groups took. Reported as
+   * 「一打開的畫面會閃過這一頁才進入首頁」.
+   *
+   * Not groupsSynced either: that one stays false forever when the request
+   * fails, and a skeleton that never resolves is worse than the page it stands
+   * in for.
    */
-  loadingGroups: boolean;
+  groupsSyncAttempted: boolean;
   /**
    * Whether there is a list worth showing - a load completed, or the cloud
    * cache seeded one from a previous session. Governs the skeleton only.
@@ -187,7 +198,7 @@ function initialState(userId?: string, cacheStorage?: CacheStorage): CloudGroups
   return {
     groups: cached?.groups ?? [],
     groupDetails: cached?.groupDetails ?? {},
-    loadingGroups: false,
+    groupsSyncAttempted: false,
     // A cache hit means a load completed in an earlier session, so the very
     // first refresh of this one is already a background revalidate: show the
     // cached list immediately instead of a skeleton over the top of it.
@@ -576,9 +587,6 @@ export function createCloudGroupsStore({
   }
 
   async function refreshGroups() {
-    // Only the first load gets the skeleton - see CloudGroupsState.loadingGroups.
-    const firstLoad = !state.groupsLoaded;
-    if (firstLoad) setState({ loadingGroups: true });
     try {
       const { groups: summaries } = await apiClient.listGroups();
       const next = summaries.map(toGroup);
@@ -591,7 +599,10 @@ export function createCloudGroupsStore({
     } catch (error) {
       handleError(error);
     } finally {
-      if (firstLoad) setState({ loadingGroups: false });
+      // Whatever happened, the question has been asked and answered - which is
+      // what the empty state is waiting to hear. Guarded so the background
+      // revalidates autoSync runs every minute do not notify for nothing.
+      if (!state.groupsSyncAttempted) setState({ groupsSyncAttempted: true });
     }
   }
 
