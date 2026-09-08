@@ -301,14 +301,29 @@
   background: rgb(var(--gold));
 }
 
+/**
+ * The wide layout's right column.
+ *
+ * NOT sticky, and it never usefully was. .workspace-grid is a fixed-height box
+ * with overflow:hidden, so the page does not scroll on this layout at all -
+ * each column scrolls inside itself, which is what the max-height and overflow
+ * below are for. That made the grid this column's sticky scrollport, and a
+ * scrollport that never scrolls has nothing to stick to: the only thing
+ * `top: 20px` did was push the column down by
+ * `min(20px, grid height - column height)` — 16px on a 900px window, a
+ * different number on every other one — so it started lower than the group
+ * list and the card beside it. The left rail has the same max-height/overflow
+ * pair and no sticky, and has always lined up.
+ *
+ * No padding on top either: the cover is the first thing in here, and it lines
+ * up with the top of the card rather than sitting 16px below it.
+ */
 .group-side-nav {
-  position: sticky;
-  top: 20px;
   display: grid;
   gap: 16px;
   max-height: calc(100vh - 132px);
   overflow: auto;
-  padding: 16px;
+  padding: 0 16px 16px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -1116,9 +1131,28 @@
   text-align: right;
 }
 
+/**
+ * Add expense, on the wide layout.
+ *
+ * Offset by a whole column, because it used to be pinned 26px inside the
+ * shell's right edge — which on this layout IS the right column, so it sat on
+ * top of 封存群組 / 刪除群組 and covered the bottom of the delete button.
+ * A floating action belongs over the thing it acts on: the middle column is
+ * the ledger, the right one is navigation.
+ *
+ * Shortening the right column to duck underneath was tried first and was
+ * worse: the pair stopped being covered by becoming invisible, and you had to
+ * scroll the column to reach 刪除群組 on a window where it used to be in view.
+ *
+ * 292px = the WIDE end of the rail's minmax(220px, 260px) + the grid's 16px
+ * gap + a 16px inset. The wide end, because that is the case where the button
+ * comes closest to the rail — sizing off the narrow end left 2px between them,
+ * which is not clearance, it is a coincidence. Where the rail is narrower the
+ * button simply sits a little further inside the content column.
+ */
 .floating-action {
   position: fixed;
-  right: max(26px, calc((100vw - 1180px) / 2 + 26px));
+  right: calc(max(26px, (100vw - 1180px) / 2) + 292px);
   bottom: 28px;
   z-index: 20;
   width: 64px;
