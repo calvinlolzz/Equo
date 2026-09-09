@@ -318,6 +318,12 @@ export type AdminExpenseListRecord = {
 /** 'all' = non-deleted, 'empty' = non-deleted with zero live expenses, 'deleted' = soft-deleted only. */
 export type AdminGroupFilter = "all" | "archived" | "empty" | "deleted";
 
+/**
+ * Which table an export came from. Three values, matched by a CHECK inside
+ * admin_console_log_export - so the audit rows stay filterable by kind.
+ */
+export type AdminExportKind = "users" | "groups" | "expenses";
+
 /** Who performed an admin write - recorded in admin_audit_logs by the RPC. */
 export type AdminActor = {
   id: string;
@@ -636,6 +642,18 @@ export type AdminRepository = {
     targetUserId: string,
     expiresAt: string,
   ): Promise<{ target_user_id: string; target_email: string }>;
+  /**
+   * Records a bulk CSV export. Reported by the console after the download,
+   * which is why it is a write of its own rather than a side effect of the
+   * list reads it is made of - those are ordinary GETs that anything may make.
+   */
+  logExport(
+    actor: { id: string; email: string },
+    kind: AdminExportKind,
+    rows: number,
+    total: number,
+    search: string,
+  ): Promise<{ logged: boolean }>;
   listGroups(search: string, limit: number, offset: number, filter: AdminGroupFilter): Promise<AdminGroupListRecord>;
   /**
    * Group roster + aggregates. Records a 'group.view' audit row for the actor,

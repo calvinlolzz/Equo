@@ -30,6 +30,7 @@ export const ADMIN_AUDIT_ACTION_LABELS: Record<string, string> = {
   "user.enable": "恢復帳號",
   "user.merge": "合併帳號",
   "user.export": "匯出個資",
+  "admin.export": "匯出 CSV",
   "user.delete": "刪除帳號",
   "user.view_as": "以使用者身分檢視",
   "group.archive": "封存群組",

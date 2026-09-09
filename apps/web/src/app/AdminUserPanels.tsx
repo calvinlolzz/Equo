@@ -18,6 +18,7 @@ import {
   ListBody,
   isConsoleOwner,
   PAGE_SIZE,
+  reportExport,
   Pagination,
   todayKey,
   truncationNotice,
@@ -56,6 +57,7 @@ export function UsersPanel({ client, route, onNavigate, role, refreshKey }: Pane
         adminCsvFileName("使用者", todayKey(), users.truncated),
         appendCsvTruncationNotice(buildAdminUsersCsv(users.rows), users.rows.length, users.total),
       );
+      await reportExport(client, "users", users, search);
       setExportNotice(truncationNotice(users));
     } catch {
       setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));

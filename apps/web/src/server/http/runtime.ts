@@ -67,6 +67,7 @@ import {
   adminGetSiteNoticeRoute,
   adminRetentionRoute,
   adminStopViewAsRoute,
+  adminLogExportRoute,
   adminViewAsRoute,
   adminSetSiteNoticeRoute,
   adminHealthRoute,
@@ -736,6 +737,18 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "PATCH /api/v1/me/avatar",
       async handle(request) {
         const result = await updateMyAvatarRoute(routeOptions(options, request), body<UpdateMyAvatarRequest>(request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/admin\/exports$/,
+      label: "POST /api/v1/admin/exports",
+      async handle(request) {
+        const result = await adminLogExportRoute(
+          routeOptions(options, request),
+          body<{ kind?: unknown; rows?: unknown; total?: unknown; search?: unknown }>(request),
+        );
         return jsonResponse(result.status, result.body);
       },
     },

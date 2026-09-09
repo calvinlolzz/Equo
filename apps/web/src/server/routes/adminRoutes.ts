@@ -14,6 +14,7 @@ import {
   handleAdminGetAutoNudgeSettings,
   handleAdminGetSiteNotice,
   handleAdminRetention,
+  handleAdminLogExport,
   handleAdminViewAs,
   handleAdminSetSiteNotice,
   handleAdminGetReceiptScanSettings,
@@ -260,6 +261,19 @@ export async function adminSetAutoNudgeRoute(
  * just clearing this one - there is no moment where a mistake could sign them
  * out of their own account or strand them as somebody else.
  */
+export async function adminLogExportRoute(
+  options: RouteOptions,
+  body: { kind?: unknown; rows?: unknown; total?: unknown; search?: unknown },
+) {
+  const auth = await buildAuthContext(options);
+
+  if (auth.ok === false) {
+    return { ok: false, status: 401, body: auth.error };
+  }
+
+  return handleAdminLogExport(createSupabaseAdminRepository(options.client), auth.context, body ?? {});
+}
+
 export async function adminViewAsRoute(options: RouteOptions, body: { user_id?: unknown }) {
   const auth = await buildAuthContext(options);
 

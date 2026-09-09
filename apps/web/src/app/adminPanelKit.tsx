@@ -15,8 +15,15 @@ import { ADMIN_PAGE_SIZE, type AdminRoute } from "./adminRoute";
 
 export const PAGE_SIZE = ADMIN_PAGE_SIZE;
 
-/** The server caps a list page at 100; exports walk pages at that size. */
-export const EXPORT_PAGE_SIZE = 100;
+/**
+ * How big a bite an export takes.
+ *
+ * Has to stay <= ADMIN_LIST_MAX_LIMIT on the server, which clamps silently -
+ * asking for more than the cap does not fail, it just quietly gives back the
+ * cap, and the loop below would still terminate correctly while doing five
+ * times the round trips it thought it was doing.
+ */
+export const EXPORT_PAGE_SIZE = 500;
 
 /**
  * Hard stop on an export. Nothing here is meant to be a bulk data pipe, and a
@@ -59,6 +66,28 @@ export async function fetchAllPages<T>(
 
   const rows = collected.slice(0, EXPORT_MAX_ROWS);
   return { rows, total, truncated: total > rows.length };
+}
+
+/**
+ * Record a finished export in the audit log.
+ *
+ * Called AFTER downloadCsv, and swallowing its own failure on purpose: the
+ * file is already on the operator's disk by this point, so turning a failed
+ * audit write into a red banner would report the export as broken when the
+ * only thing that broke was the note about it. The log is best-effort by
+ * construction (see handleAdminLogExport) and this is where that shows.
+ */
+export async function reportExport(
+  client: EquoApiClient,
+  kind: "users" | "groups" | "expenses",
+  exported: ExportPages<unknown>,
+  search: string,
+): Promise<void> {
+  try {
+    await client.adminLogExport({ kind, rows: exported.rows.length, total: exported.total, search });
+  } catch {
+    // See above.
+  }
 }
 
 /** What the panel says out loud after an export that could not fit. */

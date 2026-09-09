@@ -32,6 +32,7 @@ import {
   fetchAllPages,
   ListBody,
   PAGE_SIZE,
+  reportExport,
   Pagination,
   todayKey,
   truncationNotice,
@@ -338,6 +339,7 @@ function GroupExpensesSection({
         adminCsvFileName(`${group.name}-帳目`, todayKey(), expenses.truncated),
         appendCsvTruncationNotice(buildAdminExpensesCsv(expenses.rows), expenses.rows.length, expenses.total),
       );
+      await reportExport(client, "expenses", expenses, group.name);
       setExportNotice(truncationNotice(expenses));
     } catch {
       setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));
@@ -773,6 +775,7 @@ export function GroupsPanel({ client, route, onNavigate, role, refreshKey }: Pan
         adminCsvFileName("群組", todayKey(), groups.truncated),
         appendCsvTruncationNotice(buildAdminGroupsCsv(groups.rows), groups.rows.length, groups.total),
       );
+      await reportExport(client, "groups", groups, search);
       setExportNotice(truncationNotice(groups));
     } catch {
       setState((current) => ({ ...current, error: "匯出失敗，請稍後再試。" }));

@@ -60,7 +60,17 @@ type HandlerResult<T> =
   | { ok: false; status: number; body: ApiError };
 
 export const ADMIN_LIST_DEFAULT_LIMIT = 20;
-export const ADMIN_LIST_MAX_LIMIT = 100;
+/**
+ * The biggest page a list endpoint will hand back.
+ *
+ * 500, not the 100 it was. The console pages at 20; this cap exists for the
+ * CSV exports, which walk the whole table one page at a time up to 5,000 rows
+ * - at 100 that was fifty sequential round trips to sin1 for one button, call
+ * it eight to fifteen seconds behind a control that only says 匯出中. At 500 it
+ * is ten. Not higher: a page of expenses carries its payers, and a 5,000-row
+ * single response is a shape nothing else here has to survive.
+ */
+export const ADMIN_LIST_MAX_LIMIT = 500;
 
 export type AdminListQuery = {
   search?: string;
@@ -1597,6 +1607,64 @@ export async function handleAdminSetAutoNudgeSettings(
  * Returns the identity to sign a token for. The route does the signing and the
  * cookie, because tokens are the HTTP layer's business, not this one's.
  */
+/**
+ * Records that somebody pulled a table out of the console as a CSV.
+ *
+ * The gap this closes: exporting ONE person's data was audited (user.export),
+ * while exporting five thousand people's was three GET loops in the browser
+ * and left nothing behind. Same data, more of it, no record.
+ *
+ * Reported by the client after the file is handed to the browser, so a tab
+ * closed at exactly the wrong moment can lose a row. That makes this a
+ * best-effort record rather than a guarantee - the guarantee needs the export
+ * generated server-side, which is a different piece of work. Every row that IS
+ * here is true, which is the property worth having in the meantime.
+ *
+ * Support can do this too: exporting is a read, and every account that reaches
+ * the console can already read these tables one page at a time.
+ */
+export async function handleAdminLogExport(
+  repository: AdminRepository,
+  context: AuthenticatedContext,
+  body: { kind?: unknown; rows?: unknown; total?: unknown; search?: unknown },
+): Promise<HandlerResult<{ logged: boolean }>> {
+  const role = await repository.findAdminRole(context.user.id);
+
+  if (!role) {
+    return adminForbidden();
+  }
+
+  const kind = body?.kind;
+
+  if (kind !== "users" && kind !== "groups" && kind !== "expenses") {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: {
+          code: "INVALID_ADMIN",
+          message: "Unknown export kind.",
+          request_id: "req_admin",
+        },
+      },
+    };
+  }
+
+  const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? Math.max(Math.trunc(value), 0) : 0);
+
+  return {
+    ok: true,
+    status: 200,
+    body: await repository.logExport(
+      { id: context.user.id, email: context.user.email },
+      kind,
+      count(body?.rows),
+      count(body?.total),
+      typeof body?.search === "string" ? body.search : "",
+    ),
+  };
+}
+
 export async function handleAdminViewAs(
   repository: AdminRepository,
   context: AuthenticatedContext,

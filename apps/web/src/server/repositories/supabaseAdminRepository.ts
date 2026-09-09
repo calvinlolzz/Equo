@@ -60,6 +60,17 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       });
     },
 
+    logExport(actor, kind, rows, total, search) {
+      return client.rpc<{ logged: boolean }>("admin_console_log_export", {
+        p_actor: actor.id,
+        p_actor_email: actor.email,
+        p_kind: kind,
+        p_rows: rows,
+        p_total: total,
+        p_search: search,
+      });
+    },
+
     listAdmins() {
       return client.rpc<AdminAccountRecord[]>("admin_console_admins", {});
     },

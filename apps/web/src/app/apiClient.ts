@@ -557,6 +557,18 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     stopViewAs() {
       return request<{ stopped: boolean }>("/admin/view-as", { method: "DELETE" });
     },
+    /**
+     * "I just downloaded this table." Writes an admin.export audit row.
+     *
+     * Reported after the file is handed over rather than before it is built,
+     * so the log says what actually left rather than what somebody started.
+     */
+    adminLogExport(entry: { kind: "users" | "groups" | "expenses"; rows: number; total: number; search: string }) {
+      return request<{ logged: boolean }>("/admin/exports", {
+        method: "POST",
+        body: JSON.stringify(entry),
+      });
+    },
     adminViewAs(userId: string) {
       return request<{ target: { id: string; email: string; display_name: string | null }; expires_at: string }>(
         "/admin/view-as",

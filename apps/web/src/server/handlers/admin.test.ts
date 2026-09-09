@@ -130,6 +130,9 @@ function makeRepository(overrides: Partial<AdminRepository> = {}): AdminReposito
     async logViewAs(_actor, targetUserId) {
       return { target_user_id: targetUserId, target_email: "target@example.com" };
     },
+    async logExport() {
+      return { logged: true };
+    },
     async getRetention(period) {
       return { period, total_users: 8, never_active: 3, cohorts: [] };
     },
