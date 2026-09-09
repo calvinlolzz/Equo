@@ -864,6 +864,20 @@ export function formatDateTime(iso: string | null | undefined): string {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/**
+ * Just the clock, for "how old is what I am looking at".
+ *
+ * Takes epoch millis rather than an ISO string: the caller is stamping its own
+ * fetch, not rendering a value that came off a row, and there is no reason to
+ * round-trip through a string to do that. Local time, like everything else in
+ * the console — the operator and the browser are in the same place.
+ */
+export function formatClock(ms: number): string {
+  const date = new Date(ms);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const ms = Date.parse(iso);

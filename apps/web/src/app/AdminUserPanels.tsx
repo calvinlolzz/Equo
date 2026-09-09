@@ -15,6 +15,7 @@ import {
   canWrite,
   ExportButton,
   fetchAllPages,
+  ListBody,
   isConsoleOwner,
   PAGE_SIZE,
   Pagination,
@@ -25,7 +26,7 @@ import {
 } from "./adminPanelKit";
 import { GroupDetailPanel } from "./AdminGroupPanels";
 
-export function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
+export function UsersPanel({ client, route, onNavigate, role, refreshKey }: PanelProps) {
   // The typing buffer is the one piece of list state that stays local - the URL
   // carries what was actually searched for, not every keystroke on the way
   // there. It re-syncs whenever the route changes underneath (Back, or a
@@ -77,7 +78,7 @@ export function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [client, search, offset]);
+  }, [client, search, offset, refreshKey]);
 
   if (selectedUserId) {
     return <UserDetailPanel client={client} route={route} onNavigate={onNavigate} role={role} />;
@@ -106,12 +107,12 @@ export function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
         <ExportButton busy={exporting} onExport={exportUsers} />
       </form>
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {exportNotice && <p className="admin-notice admin-notice--warn">{exportNotice}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {exportNotice && <p className="admin-notice admin-notice--warn" aria-live="polite">{exportNotice}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -155,7 +156,7 @@ export function UsersPanel({ client, route, onNavigate, role }: PanelProps) {
               onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
-        </>
+        </ListBody>
       )}
     </section>
   );
@@ -319,8 +320,8 @@ export function UserDetailPanel({ client, route, onNavigate, role }: PanelProps)
         ← 回使用者列表
       </button>
 
-      {error && <p className="admin-error">{error}</p>}
-      {!detail && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!detail && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {detail && (
         <>
@@ -385,7 +386,7 @@ export function UserDetailPanel({ client, route, onNavigate, role }: PanelProps)
             </div>
           </article>
 
-          {notice && <p className="admin-notice">{notice}</p>}
+          {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
 
           {isConsoleOwner(role) && <MergeAccountSection client={client} user={detail.user} onMerged={setNotice} />}
 
@@ -550,9 +551,9 @@ function MergeAccountSection({
         </button>
       </form>
 
-      {error && <p className="admin-error">{error}</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
       {conflicts.length > 0 && (
-        <p className="admin-error">
+        <p className="admin-error" role="alert">
           兩個帳號都在這些群組裡：{conflicts.map((group) => group.name).join("、")}。
           請先在其中一個群組移除其中一邊的成員身分，再合併。
         </p>

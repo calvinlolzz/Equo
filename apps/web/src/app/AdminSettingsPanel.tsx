@@ -78,9 +78,9 @@ export function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canE
 
   return (
     <section aria-label="設定">
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-notice">{notice}</p>}
-      {!settings && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
+      {!settings && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {settings && (
         <form className="admin-settings-card" onSubmit={save}>
@@ -95,7 +95,7 @@ export function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canE
               say so rather than letting someone "turn on" a model that cannot
               run. Named per provider, because the env var to add differs. */}
           {!selected?.available && (
-            <p className="admin-error">
+            <p className="admin-error" role="alert">
               這個部署沒有設定 {selected?.provider === "google" ? "GEMINI_API_KEY" : "ANTHROPIC_API_KEY"}
               ，選定的模型無法運作。請先在 Vercel 環境變數加入後重新部署。
             </p>
@@ -248,8 +248,8 @@ export function RetentionCard({ client }: { client: EquoApiClient }) {
         ))}
       </div>
 
-      {error && <p className="admin-error">{error}</p>}
-      {!data && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!data && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {data && (
         <>
@@ -406,9 +406,9 @@ function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit
         </p>
       </div>
 
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-notice">{notice}</p>}
-      {!saved && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
+      {!saved && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {saved && (
         <form onSubmit={save}>
@@ -595,9 +595,9 @@ function AutoNudgeSection({ client, canEdit }: { client: EquoApiClient; canEdit:
         </p>
       </div>
 
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-notice">{notice}</p>}
-      {!saved && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
+      {!saved && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {saved && (
         <form onSubmit={save}>
@@ -718,8 +718,8 @@ function ScanUsageSection({ client }: { client: EquoApiClient }) {
         </div>
       </div>
 
-      {error && <p className="admin-error">{error}</p>}
-      {!usage && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!usage && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {usage && (
         <>
@@ -904,8 +904,8 @@ function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: b
         分類只能停用不能刪除：已經記過帳的分類鍵值還留在支出上，刪掉會讓那些帳目顯示不出名稱。
       </p>
 
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-notice">{notice}</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
 
       <div className="admin-table-wrap">
         <table className="admin-table">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Bug, Download, LayoutDashboard, Megaphone, MessageSquareText, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
+import { Bug, Download, LayoutDashboard, Megaphone, MessageSquareText, RefreshCw, ScrollText, Search, ShieldCheck, SlidersHorizontal, UsersRound, WalletCards } from "lucide-react";
 import "./AdminApp.css";
 import {
   createApiClient,
@@ -57,6 +57,7 @@ import {
   expenseImageUrl,
   expenseKindLabel,
   formatDate,
+  formatClock,
   formatDateTime,
   formatExpenseAmount,
   formatLatency,
@@ -91,6 +92,7 @@ import {
   canWrite,
   ExportButton,
   fetchAllPages,
+  ListBody,
   isConsoleOwner,
   PAGE_SIZE,
   Pagination,
@@ -109,6 +111,15 @@ import { loadSession } from "./sessionStore";
 
 
 type AccessState = "checking" | "no-session" | "forbidden" | "error" | "ok";
+
+/**
+ * How often the sidebar badges and the overview inbox re-read themselves.
+ *
+ * A minute: the queues behind them are human-paced (a piece of feedback, a new
+ * error group), so anything faster is a request per operator per few seconds
+ * for numbers that did not move.
+ */
+const HEALTH_POLL_MS = 60_000;
 
 
 
@@ -141,17 +152,64 @@ function AdminConsole() {
   const [health, setHealth] = useState<AdminHealthSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  const [healthAt, setHealthAt] = useState<number | null>(null);
+  /**
+   * Bumped to tell every panel below to re-read.
+   *
+   * The panels are driven by the URL, so without this the only way to see new
+   * rows was F5 - which reloads the whole SPA, and an operator watching an
+   * incident was doing it every couple of minutes. It rides in PanelProps and
+   * sits in each list effect's deps; changing nothing else about the request
+   * is the point, so the same page comes back, only newer.
+   */
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const reloadHealth = useCallback(() => {
     if (!client) return;
     client
       .adminHealth()
-      .then(setHealth)
+      .then((result) => {
+        setHealth(result);
+        setHealthAt(Date.now());
+      })
       .catch(() => {
         // Non-fatal: the console works without its badges.
       });
   }, [client]);
 
   useEffect(reloadHealth, [reloadHealth]);
+
+  const refreshAll = useCallback(() => {
+    reloadHealth();
+    setRefreshKey((key) => key + 1);
+  }, [reloadHealth]);
+
+  /**
+   * Keep the backlog counts honest on a console somebody leaves open.
+   *
+   * Only while the tab is actually being looked at: a background tab polling
+   * every minute is a request an operator will never read, and the browser
+   * throttles the timer there anyway. Coming back to the tab refreshes
+   * immediately rather than waiting out the rest of an interval - that is the
+   * moment the numbers are most likely to be stale and most likely to be read.
+   */
+  useEffect(() => {
+    if (!client) return;
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") reloadHealth();
+    }, HEALTH_POLL_MS);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reloadHealth();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [client, reloadHealth]);
 
   // ⌘K anywhere in the console, Ctrl+K off a Mac. Bound on the window rather
   // than a container so it works with focus anywhere, including inside a
@@ -256,6 +314,19 @@ function AdminConsole() {
           <kbd>⌘K</kbd>
         </button>
 
+        {/* Says how old what you are looking at is, and gives you the one
+            action that fixes it. Before this the only refresh in the console
+            was F5, which throws away the whole SPA to re-read one table. */}
+        <div className="admin-refresh-row">
+          <button className="admin-refresh" type="button" onClick={refreshAll}>
+            <RefreshCw aria-hidden="true" size={14} />
+            <span>重新整理</span>
+          </button>
+          <span className="admin-refresh__stamp" aria-live="polite">
+            {healthAt ? `${formatClock(healthAt)} 更新` : "尚未更新"}
+          </span>
+        </div>
+
         <nav className="admin-nav" aria-label="後台功能">
           <p className="admin-nav__section">平台</p>
           {navItems.map((item) => {
@@ -285,20 +356,20 @@ function AdminConsole() {
 
       <main className="admin-main">
         {tab === "overview" && (
-          <OverviewPanel client={client} route={route} onNavigate={navigate} health={health} />
+          <OverviewPanel client={client} route={route} onNavigate={navigate} health={health} refreshKey={refreshKey} />
         )}
-        {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} role={me?.role} />}
-        {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} role={me?.role} />}
+        {tab === "users" && <UsersPanel client={client} route={route} onNavigate={navigate} role={me?.role} refreshKey={refreshKey} />}
+        {tab === "groups" && <GroupsPanel client={client} route={route} onNavigate={navigate} role={me?.role} refreshKey={refreshKey} />}
         {tab === "feedback" && (
-          <FeedbackPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
+          <FeedbackPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} refreshKey={refreshKey} />
         )}
         {tab === "notifications" && (
-          <NotificationsPanel client={client} canSend={canWrite(me?.role)} route={route} />
+          <NotificationsPanel client={client} canSend={canWrite(me?.role)} route={route} refreshKey={refreshKey} />
         )}
         {tab === "errors" && (
-          <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} />
+          <ErrorsPanel client={client} route={route} onNavigate={navigate} onCountsChanged={reloadHealth} refreshKey={refreshKey} />
         )}
-        {tab === "audit" && <AuditPanel client={client} route={route} onNavigate={navigate} />}
+        {tab === "audit" && <AuditPanel client={client} route={route} onNavigate={navigate} refreshKey={refreshKey} />}
         {tab === "settings" && <SettingsPanel client={client} canEdit={me?.role === "owner" || me?.role === "admin"} />}
         {tab === "admins" && <AdminsPanel client={client} meUserId={me?.user.id ?? ""} />}
       </main>
@@ -372,7 +443,16 @@ function TrendChartCard({ trends }: { trends: AdminTrendsSummary }) {
   );
 }
 
-function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { health: AdminHealthSummary | null }) {
+/**
+ * The tile labels, spelled out so the placeholders can carry them.
+ *
+ * Kept next to the panel rather than derived from overviewTiles(), which needs
+ * the payload that has not arrived yet - that is the whole point.
+ * overviewTilesMatchLabels in AdminApp.test.tsx fails if the two drift.
+ */
+const OVERVIEW_TILE_LABELS = ["使用者", "新使用者（7 日）", "群組", "支出筆數"];
+
+function OverviewPanel({ client, route, onNavigate, health, refreshKey }: PanelProps & { health: AdminHealthSummary | null }) {
   const [overview, setOverview] = useState<AdminOverviewSummary | null>(null);
   const [storage, setStorage] = useState<AdminStorageSummary | null>(null);
   const [trends, setTrends] = useState<AdminTrendsSummary | null>(null);
@@ -403,7 +483,7 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [client, refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,10 +498,9 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
     return () => {
       cancelled = true;
     };
-  }, [client, trendDays]);
+  }, [client, trendDays, refreshKey]);
 
-  if (error) return <p className="admin-error">{error}</p>;
-  if (!overview) return <p className="admin-loading">載入中…</p>;
+  if (error) return <p className="admin-error" role="alert">{error}</p>;
 
   const inbox = health ? inboxItems(health, Date.now()) : [];
 
@@ -460,14 +539,27 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
         </section>
       )}
 
-      <div className="admin-tiles">
-        {overviewTiles(overview).map((tile) => (
-          <article key={tile.key} className="admin-tile">
-            <p className="admin-tile__label">{tile.label}</p>
-            <p className="admin-tile__value">{tile.value.toLocaleString("zh-TW")}</p>
-            {tile.hint && <p className="admin-tile__hint">{tile.hint}</p>}
-          </article>
-        ))}
+      {/* The four counters are the only thing on this screen that waits on
+          adminOverview. They used to hold the whole page hostage - the panel
+          returned one line of 載入中… and nothing else, including the inbox
+          above, which is drawn from `health` and was already in memory before
+          this component mounted. Now only the tiles wait, and they wait as
+          themselves rather than as an absence. */}
+      <div className="admin-tiles" aria-busy={!overview}>
+        {overview
+          ? overviewTiles(overview).map((tile) => (
+              <article key={tile.key} className="admin-tile">
+                <p className="admin-tile__label">{tile.label}</p>
+                <p className="admin-tile__value">{tile.value.toLocaleString("zh-TW")}</p>
+                {tile.hint && <p className="admin-tile__hint">{tile.hint}</p>}
+              </article>
+            ))
+          : OVERVIEW_TILE_LABELS.map((label) => (
+              <article key={label} className="admin-tile admin-tile--pending">
+                <p className="admin-tile__label">{label}</p>
+                <p className="admin-tile__value">—</p>
+              </article>
+            ))}
       </div>
 
       <div className="admin-subheading-row admin-subheading--spaced">
@@ -486,7 +578,7 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
           ))}
         </div>
       </div>
-      {trends ? <TrendChartCard trends={trends} /> : <p className="admin-loading">載入中…</p>}
+      {trends ? <TrendChartCard trends={trends} /> : <p className="admin-loading" role="status">載入中…</p>}
 
       <RetentionCard client={client} />
 
@@ -570,7 +662,7 @@ function OverviewPanel({ client, route, onNavigate, health }: PanelProps & { hea
 }
 
 
-function AuditPanel({ client, route, onNavigate }: PanelProps) {
+function AuditPanel({ client, route, onNavigate, refreshKey }: PanelProps) {
   const [searchInput, setSearchInput] = useState(route.search);
   const search = route.search;
   const action = route.action;
@@ -595,7 +687,7 @@ function AuditPanel({ client, route, onNavigate }: PanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [client, search, action, offset]);
+  }, [client, search, action, offset, refreshKey]);
 
   const info = state.page ? pageInfo(state.page.total, PAGE_SIZE, offset, state.page.logs.length) : null;
 
@@ -631,11 +723,11 @@ function AuditPanel({ client, route, onNavigate }: PanelProps) {
         <button type="submit">搜尋</button>
       </form>
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -673,7 +765,7 @@ function AuditPanel({ client, route, onNavigate }: PanelProps) {
               onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
-        </>
+        </ListBody>
       )}
     </section>
   );
@@ -806,9 +898,9 @@ function AdminsPanel({ client, meUserId }: { client: EquoApiClient; meUserId: st
         </button>
       </form>
 
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-notice">{notice}</p>}
-      {!admins && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
+      {!admins && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {admins && (
         <div className="admin-table-wrap">

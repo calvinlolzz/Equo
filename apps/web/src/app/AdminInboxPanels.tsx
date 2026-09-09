@@ -13,7 +13,7 @@ import {
 import { errorGroupStatusLabel, errorSourceLabel, formatDateTime, pageInfo } from "./adminDashboard";
 import { routeOffset, type AdminRoute } from "./adminRoute";
 import { useAdminConfirm } from "./AdminConfirm";
-import { PAGE_SIZE, Pagination, type ListState, type PanelProps } from "./adminPanelKit";
+import { ListBody, PAGE_SIZE, Pagination, type ListState, type PanelProps } from "./adminPanelKit";
 
 const FEEDBACK_STATUS_CHIPS = [
   { key: "all", label: "全部" },
@@ -35,7 +35,7 @@ const FEEDBACK_STATUS_LABELS: Record<string, string> = {
   done: "已完成",
 };
 
-export function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: PanelProps) {
+export function FeedbackPanel({ client, route, onNavigate, onCountsChanged, refreshKey }: PanelProps) {
   const statusFilter = route.status;
   const offset = routeOffset(route);
   const [state, setState] = useState<ListState<AdminFeedbackPage>>({ page: null, loading: true, error: "" });
@@ -59,7 +59,7 @@ export function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: Pa
     return () => {
       cancelled = true;
     };
-  }, [client, offset, statusFilter, reloadKey]);
+  }, [client, offset, statusFilter, reloadKey, refreshKey]);
 
   async function updateStatus(feedbackId: string, status: string) {
     setBusyId(feedbackId);
@@ -111,11 +111,11 @@ export function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: Pa
         ))}
       </div>
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -227,7 +227,7 @@ export function FeedbackPanel({ client, route, onNavigate, onCountsChanged }: Pa
               onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
-        </>
+        </ListBody>
       )}
     </section>
   );
@@ -348,7 +348,7 @@ function TargetPicker({
             selectable, or the form would silently lose its address. */}
         {selected && !known && <option value={selected}>{selected.slice(0, 8)}…</option>}
       </select>
-      {error && <p className="admin-error">{error}</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
       {total > options.length && (
         <p className="admin-modal__hint">
           只列出前 {options.length} 筆（共 {total} 筆）。要送給沒列出的對象，請先從列表頁進去再用「發通知給這個人」。
@@ -377,10 +377,13 @@ export function NotificationsPanel({
   client,
   canSend,
   route,
+  refreshKey,
 }: {
   client: EquoApiClient;
   canSend: boolean;
   route: AdminRoute;
+  /** See PanelProps.refreshKey — this panel takes its own props, not those. */
+  refreshKey?: number;
 }) {
   /**
    * Arriving from a person's or a group's page opens the form already
@@ -432,7 +435,7 @@ export function NotificationsPanel({
     return () => {
       cancelled = true;
     };
-  }, [client, sentReloadKey]);
+  }, [client, sentReloadKey, refreshKey]);
 
   async function recall(batchId: string, title: string, recipients: number, readCount: number) {
     const ok = await confirm({
@@ -501,9 +504,9 @@ export function NotificationsPanel({
         通知會出現在使用者 app 右上角的鈴鐺裡，不需要他們開啟推播權限。送出後會記入稽核紀錄。
       </p>
 
-      {!canSend && <p className="admin-error">你的角色沒有發送通知的權限（需要管理員或擁有者）。</p>}
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-notice">{notice}</p>}
+      {!canSend && <p className="admin-error" role="alert">你的角色沒有發送通知的權限（需要管理員或擁有者）。</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
 
       <form className="admin-notify-form" onSubmit={send}>
         <label className="admin-field">
@@ -592,7 +595,7 @@ export function NotificationsPanel({
         「已讀」是實際打開通知中心看過的人數——公告沒被讀跟沒送出去是兩件不同的事。收回會把每一份都刪掉，但已經讀過的人不會因此忘記。
       </p>
 
-      {sentError && <p className="admin-error">{sentError}</p>}
+      {sentError && <p className="admin-error" role="alert">{sentError}</p>}
 
       <div className="admin-table-wrap">
         <table className="admin-table">
@@ -668,7 +671,7 @@ const ERROR_STATUS_CHIPS = [
  * something matters - how often, and to how many people - and a status, so a
  * handled problem can be put away instead of scrolling forever.
  */
-export function ErrorsPanel({ client, route, onNavigate, onCountsChanged }: PanelProps) {
+export function ErrorsPanel({ client, route, onNavigate, onCountsChanged, refreshKey }: PanelProps) {
   const [searchInput, setSearchInput] = useState(route.search);
   const [state, setState] = useState<ListState<AdminErrorGroupPage>>({ page: null, loading: true, error: "" });
   const [busyFingerprint, setBusyFingerprint] = useState("");
@@ -697,7 +700,7 @@ export function ErrorsPanel({ client, route, onNavigate, onCountsChanged }: Pane
     return () => {
       cancelled = true;
     };
-  }, [client, route.search, route.status, route.fingerprint, offset, reloadKey]);
+  }, [client, route.search, route.status, route.fingerprint, offset, reloadKey, refreshKey]);
 
   async function updateStatus(group: AdminErrorGroupRow, status: "open" | "resolved") {
     setBusyFingerprint(group.fingerprint);
@@ -756,11 +759,11 @@ export function ErrorsPanel({ client, route, onNavigate, onCountsChanged }: Pane
         ))}
       </div>
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -847,7 +850,7 @@ export function ErrorsPanel({ client, route, onNavigate, onCountsChanged }: Pane
               onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
-        </>
+        </ListBody>
       )}
     </section>
   );
@@ -904,11 +907,11 @@ export function ErrorGroupPanel({
         </article>
       )}
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -952,7 +955,7 @@ export function ErrorGroupPanel({
               onNext={() => setOffset(offset + PAGE_SIZE)}
             />
           )}
-        </>
+        </ListBody>
       )}
     </section>
   );

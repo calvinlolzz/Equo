@@ -116,7 +116,34 @@ export type PanelProps = {
    * than at the next full page load.
    */
   onCountsChanged?: () => void;
+  /**
+   * Bumped by the console's 重新整理. Panels put it in their fetch effect's
+   * deps and otherwise ignore it: the request is identical, so what comes back
+   * is the same page of the same query, only current.
+   */
+  refreshKey?: number;
 };
+
+/**
+ * A list panel's table and pagination, kept on screen while the next page
+ * loads.
+ *
+ * Every list here used to render `{state.page && !state.loading && ...}` with a
+ * bare 載入中… beside it, so each 下一頁 went table → one line of text → table.
+ * At 20 rows a page that is every single click, and the console flashed empty
+ * on all seven of them. The rows that are already right stay put and go quiet
+ * instead; `aria-busy` is what says so to anything not looking at the opacity.
+ *
+ * Only the first load still gets the text, because then there really is
+ * nothing to keep.
+ */
+export function ListBody({ loading, children }: { loading: boolean; children: ReactNode }) {
+  return (
+    <div className={loading ? "admin-list admin-list--reloading" : "admin-list"} aria-busy={loading}>
+      {children}
+    </div>
+  );
+}
 
 export type ListState<T> = {
   page: T | null;

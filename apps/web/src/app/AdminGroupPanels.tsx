@@ -30,6 +30,7 @@ import {
   canWrite,
   ExportButton,
   fetchAllPages,
+  ListBody,
   PAGE_SIZE,
   Pagination,
   todayKey,
@@ -128,8 +129,8 @@ export function GroupDetailPanel({
         ← {backLabel}
       </button>
 
-      {error && <p className="admin-error">{error}</p>}
-      {!detail && !error && <p className="admin-loading">載入中…</p>}
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!detail && !error && <p className="admin-loading" role="status">載入中…</p>}
 
       {detail && (
         <>
@@ -173,7 +174,7 @@ export function GroupDetailPanel({
             )}
           </article>
 
-          {notice && <p className="admin-notice">{notice}</p>}
+          {notice && <p className="admin-notice" aria-live="polite">{notice}</p>}
 
           <div className="admin-subheading-row">
             <h3 className="admin-subheading">成員</h3>
@@ -381,12 +382,12 @@ function GroupExpensesSection({
         <ExportButton busy={exporting} onExport={exportExpenses} />
       </div>
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {exportNotice && <p className="admin-notice admin-notice--warn">{exportNotice}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {exportNotice && <p className="admin-notice admin-notice--warn" aria-live="polite">{exportNotice}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -458,7 +459,7 @@ function GroupExpensesSection({
               onNext={() => setOffset(offset + PAGE_SIZE)}
             />
           )}
-        </>
+        </ListBody>
       )}
 
       {selected && (
@@ -642,7 +643,7 @@ function ExpenseDetailDialog({
           {expense.deleted_at && `・刪除於 ${formatDateTime(expense.deleted_at)}`}
         </p>
 
-        {error && <p className="admin-error">{error}</p>}
+        {error && <p className="admin-error" role="alert">{error}</p>}
 
         {canEdit && !editing && (
           <div className="admin-modal__actions">
@@ -742,7 +743,7 @@ function groupStatusLabel(group: { archived_at: string | null; deleted_at: strin
   return "使用中";
 }
 
-export function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
+export function GroupsPanel({ client, route, onNavigate, role, refreshKey }: PanelProps) {
   const confirm = useAdminConfirm();
   const [searchInput, setSearchInput] = useState(route.search);
   const search = route.search;
@@ -794,7 +795,7 @@ export function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [client, search, offset, filter, reloadKey]);
+  }, [client, search, offset, filter, reloadKey, refreshKey]);
 
   async function runGroupAction(groupId: string, name: string, action: "archive" | "unarchive" | "delete" | "restore") {
     const confirmTitle: Record<typeof action, string> = {
@@ -891,12 +892,12 @@ export function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
         ))}
       </div>
 
-      {state.error && <p className="admin-error">{state.error}</p>}
-      {exportNotice && <p className="admin-notice admin-notice--warn">{exportNotice}</p>}
-      {state.loading && <p className="admin-loading">載入中…</p>}
+      {state.error && <p className="admin-error" role="alert">{state.error}</p>}
+      {exportNotice && <p className="admin-notice admin-notice--warn" aria-live="polite">{exportNotice}</p>}
+      {state.loading && !state.page && <p className="admin-loading" role="status">載入中…</p>}
 
-      {state.page && !state.loading && (
-        <>
+      {state.page && (
+        <ListBody loading={state.loading}>
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -988,7 +989,7 @@ export function GroupsPanel({ client, route, onNavigate, role }: PanelProps) {
               onNext={() => onNavigate({ page: route.page + 1 })}
             />
           )}
-        </>
+        </ListBody>
       )}
     </section>
   );

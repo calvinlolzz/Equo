@@ -1032,6 +1032,66 @@ button.admin-inbox__item:hover {
 
 /* ---- Narrow screens: sidebar becomes a stacked top bar ---- */
 
+/* A list that is being replaced, not removed.
+   Every list panel used to swap its table for one line of 載入中… on each
+   下一頁, so the console flashed empty on all seven of them at 20 rows a page.
+   The rows that are already right stay where they are and go quiet. */
+.admin-list--reloading {
+  opacity: 0.45;
+  /* No interaction while what is under the cursor is about to change: a click
+     landing on row 4 of the OLD page is why this is not just opacity. */
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+/* The four overview counters before their payload lands. Same box, same label,
+   an em dash where the number goes - so nothing reflows when it arrives, and
+   so it reads as "not yet" rather than as zero. */
+.admin-tile--pending .admin-tile__value {
+  color: #b6bcc4;
+}
+
+/* Sits directly under 快速搜尋 and lines up with it. */
+.admin-refresh-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.admin-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d5d9de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1c1f23;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-refresh:hover {
+  background: #f4f5f7;
+}
+
+.admin-refresh__stamp {
+  color: #8a8f98;
+  font-size: 12px;
+  white-space: nowrap;
+  /* The sidebar is 224px wide and this must never be what decides that. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-list--reloading {
+    transition: none;
+  }
+}
+
 @media (max-width: 760px) {
   .admin-shell {
     flex-direction: column;
@@ -1879,4 +1939,20 @@ button.admin-inbox__item:hover {
   border-radius: 3px;
   vertical-align: -1px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-refresh {
+    background: #1f2229;
+    border-color: #2c3038;
+    color: #e6e8ec;
+  }
+
+  .admin-refresh:hover {
+    background: #262a32;
+  }
+
+  .admin-tile--pending .admin-tile__value {
+    color: #5b6270;
+  }
 }
