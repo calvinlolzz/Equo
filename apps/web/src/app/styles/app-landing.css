@@ -36,12 +36,28 @@
   padding: 24px 0;
 }
 
+/* The sign-in card, the pitch and the cue, stacked. Same gap as the hero's own,
+   so on a phone this wrapper is invisible: shot, card, pitch, cue, 18px apart,
+   exactly as before it existed. */
+.landing-hero-panel {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 18px;
+  width: min(400px, 100%);
+}
+
 /* The sign-in card is the shared LoginScreen, which centres itself in a full
    screen of its own. Inside the hero the hero owns the height, so hand the
    sizing back rather than stacking two full-height boxes. */
 .landing-hero .login-screen {
   min-height: 0;
   padding: 0 var(--landing-gutter);
+  /* .login-card is width: min(400px, 100%), and without this the 100% resolves
+     against a parent that has itself shrunk to fit — so the card came out at
+     its intrinsic width, 220px, on every screen including a desktop. The card
+     was never meant to be the narrowest thing on the page. */
+  width: 100%;
 }
 
 /* The product shot above the sign-in card.
@@ -519,6 +535,48 @@
 
   .landing-demo-card {
     padding: 24px;
+  }
+}
+
+/* Two columns, once there is honestly room for both.
+   900px, not the 760px the sections below use: this needs the shot at its
+   native 390px plus a column the sign-in card can fill plus the gutters, and
+   squeezing that into 760 gives back the cramped hero it replaces.
+
+   What it replaces: at 1280x900 the shot rendered 266x284 and the card 220px
+   wide, the whole hero stacked in a ~270px ribbon down the middle of a 1265px
+   viewport — while the sections BELOW it ran 860px wide. The one screen that
+   decides whether a stranger signs up was the narrowest thing on the page. */
+@media (min-width: 900px) {
+  .landing-hero {
+    grid-auto-flow: column;
+    justify-content: center;
+    align-items: center;
+    gap: clamp(36px, 5vw, 72px);
+  }
+
+  /* Native size, so the browser stops downscaling it and the 2x source in the
+     srcset has something to be twice OF. */
+  .landing-hero-shot {
+    width: 390px;
+  }
+
+  .landing-invite {
+    width: 390px;
+  }
+
+  .landing-hero-panel {
+    /* The gutter is the hero's own padding on a phone; here the columns carry
+       their own spacing, so the panel is free to use its full 400px. */
+    width: 400px;
+  }
+
+  .landing-hero .login-screen {
+    padding: 0;
+  }
+
+  .landing-pitch {
+    padding: 0;
   }
 }
 

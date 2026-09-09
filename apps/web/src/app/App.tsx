@@ -148,6 +148,11 @@ const ScanSheet = lazyChunk(() => import("./ScanSheet").then((m) => ({ default: 
  * Warm every chunk that is one tap from the home screen, once the browser is
  * idle.
  *
+ * Called only when there is a session (see the gate at the call site). Signed
+ * out there is no home screen to be one tap from - the same component renders
+ * the public landing page, and warming these there was 31.3 kB gzipped of
+ * screens the visitor cannot open.
+ *
  * Without this, splitting the composer out would trade 46KB off the critical
  * path for a stall on the 記一筆 tap - which is the one interaction this app
  * exists for. Fetching it after first paint costs nothing anybody can see and
@@ -803,9 +808,23 @@ export function App() {
    */
   const shortcutRef = useRef<ShortcutAction | null>(readShortcutAction(window.location.search));
 
-  // Once, after the first paint: pull the composer's chunk down while nothing
-  // else is competing for the connection.
-  useEffect(prefetchOverlayChunks, []);
+  // Once there is a session, after the first paint: pull the composer's chunk
+  // down while nothing else is competing for the connection.
+  //
+  // Gated, and the gate is the point. Signed out, this is the marketing page,
+  // and every chunk below is a screen that page cannot reach - measured on
+  // production, an unauthenticated visitor was fetching 31.3 kB gzipped
+  // (93.7 kB to parse) of composer, records, analysis, profile and the legal
+  // documents that ride along with the profile dialog. Depending on the
+  // boolean rather than the session object so this fires at most twice: once
+  // for somebody who arrives already signed in, once at the moment somebody
+  // signs in - not again every time the session is refreshed underneath.
+  const hasSession = Boolean(session);
+
+  useEffect(() => {
+    if (!hasSession) return;
+    prefetchOverlayChunks();
+  }, [hasSession]);
 
   useEffect(() => {
     if (!session || !shortcutRef.current) return;

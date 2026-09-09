@@ -95,6 +95,15 @@ export function LandingPage({
           <div className="landing-hero-shot">
             <img
               src="/screenshots/hero-home.webp"
+              // Two sources, because one was never enough for a phone: this is
+              // shown at 232 CSS px on a 390px screen, which a 3x display draws
+              // with 696 device pixels — so a 390px file was being upscaled
+              // 1.78x, and the only product image on the page was soft on every
+              // modern phone. x-descriptors rather than w/sizes: the displayed
+              // width is decided by a breakpoint (232 on a phone, 390 on the
+              // desktop two-column hero), not by a fluid container, so density
+              // is the only thing left to choose on.
+              srcSet="/screenshots/hero-home.webp 1x, /screenshots/hero-home@2x.webp 2x"
               width={390}
               height={416}
               alt={text.heroShotAlt}
@@ -105,19 +114,27 @@ export function LandingPage({
             />
           </div>
         )}
-        <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} />
-        <p className="landing-pitch">{text.heroPitch}</p>
-        {/* A scroll cue, not a control. The first version put a single chevron
-            beside the label inside a bordered pill, which is the shape of a
-            dropdown — people tapped it, the page jumped, and it read as "this
-            expanded", with no way to collapse what had never opened. So: no
-            pill, the double chevron BELOW the label (a shape no dropdown uses),
-            and the jump is smoothed in CSS so the motion itself says scrolled
-            rather than opened. */}
-        <a className="landing-scroll-cue" href="#landing-value">
-          <span>{text.scrollCue}</span>
-          <ChevronsDown aria-hidden="true" size={18} />
-        </a>
+        {/* The sign-in card, the one-line pitch and the scroll cue, as one
+            block. On a phone this wrapper changes nothing — it stacks in the
+            same order with the same gap. It exists for the desktop layout,
+            where the hero becomes two columns and this is the right one: a
+            flat list of four siblings could only spread those three items down
+            the full height of the product shot beside them. */}
+        <div className="landing-hero-panel">
+          <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} />
+          <p className="landing-pitch">{text.heroPitch}</p>
+          {/* A scroll cue, not a control. The first version put a single
+              chevron beside the label inside a bordered pill, which is the
+              shape of a dropdown — people tapped it, the page jumped, and it
+              read as "this expanded", with no way to collapse what had never
+              opened. So: no pill, the double chevron BELOW the label (a shape
+              no dropdown uses), and the jump is smoothed in CSS so the motion
+              itself says scrolled rather than opened. */}
+          <a className="landing-scroll-cue" href="#landing-value">
+            <span>{text.scrollCue}</span>
+            <ChevronsDown aria-hidden="true" size={18} />
+          </a>
+        </div>
       </section>
 
       {/* Everything below the hero sits on a scrim (see .landing-below). The

@@ -23,6 +23,22 @@
  * To retake the screenshots:
  *   npm --workspace apps/web run dev   →   http://localhost:14100/screenshot.html
  * then capture 390×844 (narrow) and 1280×800 (wide) into public/screenshots/.
+ *
+ * The landing page's hero shot is the top 390×416 of the narrow screen, and it
+ * needs two things the store screenshots do not:
+ *
+ * - deviceScaleFactor 2, so the 780×832 source exists for hero-home@2x.webp.
+ *   The 1x file is a Lanczos downscale of that same capture rather than a
+ *   second one, so the pair is the same frame at two densities.
+ * - prefers-reduced-motion: reduce, which freezes the animated backdrop. Its
+ *   blobs seed their position, phase and hue from Math.random at module load,
+ *   so without this every capture is a different colour behind the glass —
+ *   twelve seeded runs came out between 141 and 190 mean card luminance, i.e.
+ *   white text on a bright wash. Frozen it lands at 101, which is where the
+ *   text is legible.
+ *
+ * Also hide the scrollbar (`html{scrollbar-width:none}`): desktop Chromium
+ * draws a classic one that eats 15px of layout width and a phone has none.
  */
 import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
