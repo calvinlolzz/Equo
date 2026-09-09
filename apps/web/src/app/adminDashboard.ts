@@ -1,3 +1,4 @@
+import { ADMIN_AUDIT_ACTION_LABELS } from "./adminAuditActions";
 import type {
   AdminGroupInvite,
   AdminExpenseRow,
@@ -723,34 +724,6 @@ export function describeLastSeen(iso: string, nowMs: number): string {
   return formatDate(iso);
 }
 
-const AUDIT_ACTION_LABELS: Record<string, string> = {
-  "user.disable": "停用帳號",
-  "user.enable": "恢復帳號",
-  "user.merge": "合併帳號",
-  "user.export": "匯出個資",
-  "user.delete": "刪除帳號",
-  "group.archive": "封存群組",
-  "group.unarchive": "解除封存",
-  "group.delete": "刪除群組",
-  "group.restore": "復原群組",
-  "group.transfer_owner": "轉移群組擁有者",
-  "group.view": "檢視群組帳目",
-  "expense.update": "修改支出內容",
-  "expense.delete": "刪除支出",
-  "expense.restore": "復原支出",
-  "notification.send": "發送通知",
-  "notification.delete": "收回通知",
-  "feedback.reply": "回覆意見",
-  "catalog.category": "編輯分類",
-  "catalog.currency": "編輯幣別",
-  "catalog.rate_set": "設定匯率覆寫",
-  "catalog.rate_clear": "清除匯率覆寫",
-  "admin.grant": "新增管理員",
-  "admin.role_change": "變更管理員角色",
-  "admin.remove": "移除管理員",
-  "error.status": "標記錯誤狀態",
-};
-
 const ERROR_GROUP_STATUS_LABELS: Record<string, string> = {
   open: "未處理",
   resolved: "已處理",
@@ -779,12 +752,12 @@ export function adminRoleLabel(role: string): string {
 
 /** zh-TW label for an admin_audit_logs action; unknown actions pass through raw. */
 export function auditActionLabel(action: string): string {
-  return AUDIT_ACTION_LABELS[action] ?? action;
+  return ADMIN_AUDIT_ACTION_LABELS[action] ?? action;
 }
 
 /** {value,label} pairs for the audit action filter dropdown, same source of truth. */
 export function auditActionOptions(): Array<{ value: string; label: string }> {
-  return Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => ({ value, label }));
+  return Object.entries(ADMIN_AUDIT_ACTION_LABELS).map(([value, label]) => ({ value, label }));
 }
 
 /** Human-readable target from an audit row's metadata (group name or user email). */

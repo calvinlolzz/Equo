@@ -1,3 +1,4 @@
+import { ADMIN_AUDIT_ACTIONS } from "../../app/adminAuditActions.js";
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 import type {
@@ -568,31 +569,16 @@ export async function handleAdminListGroupExpenses(
   return { ok: true, status: 200, body: page };
 }
 
-/** The admin_audit_logs actions the console knows how to label and filter by. */
-export const AUDIT_ACTIONS: readonly string[] = [
-  "user.disable",
-  "user.enable",
-  "user.merge",
-  "user.export",
-  "user.delete",
-  "group.archive",
-  "group.unarchive",
-  "group.delete",
-  "group.restore",
-  "group.transfer_owner",
-  "group.view",
-  "expense.update",
-  "expense.delete",
-  "expense.restore",
-  "error.status",
-  "notification.send",
-  "notification.delete",
-  "feedback.reply",
-  "catalog.category",
-  "catalog.currency",
-  "catalog.rate_set",
-  "catalog.rate_clear",
-];
+/**
+ * The admin_audit_logs actions the filter accepts.
+ *
+ * Derived from the console's label map rather than typed out again: this list
+ * and that one used to be separate, drifted apart in both directions, and the
+ * cost was silent — normalizeAuditActionFilter below turns anything it does not
+ * recognise into "any", so filtering by a real-but-unlisted action answered
+ * with the entire log. See app/adminAuditActions.ts.
+ */
+export const AUDIT_ACTIONS: readonly string[] = ADMIN_AUDIT_ACTIONS;
 
 /** An unknown/absent action means "any", matching the RPC's '' / 'all' handling. */
 export function normalizeAuditActionFilter(action: string | undefined): string {
