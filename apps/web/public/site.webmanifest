@@ -9,7 +9,11 @@
   "background_color": "#0e1a17",
   "theme_color": "#07110f",
   "lang": "zh-Hant",
-  "categories": ["finance", "productivity", "utilities"],
+  "categories": [
+    "finance",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/icons/equo-icon.svg",
@@ -37,23 +41,23 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshots/narrow.png",
-      "sizes": "390x844",
-      "type": "image/png",
+      "src": "/screenshots/narrow.webp",
+      "sizes": "780x1688",
+      "type": "image/webp",
       "form_factor": "narrow",
       "label": "群組首頁：誰付了多少、誰還欠誰"
     },
     {
-      "src": "/screenshots/narrow-analysis.png",
-      "sizes": "390x844",
-      "type": "image/png",
+      "src": "/screenshots/narrow-analysis.webp",
+      "sizes": "780x1688",
+      "type": "image/webp",
       "form_factor": "narrow",
       "label": "分析：分類佔比，以及跟上期比多花還是少花"
     },
     {
-      "src": "/screenshots/wide.png",
-      "sizes": "1280x800",
-      "type": "image/png",
+      "src": "/screenshots/wide.webp",
+      "sizes": "2560x1600",
+      "type": "image/webp",
       "form_factor": "wide",
       "label": "Equo 在桌面瀏覽器上的樣子"
     }
@@ -66,7 +70,14 @@
       "title": "title",
       "text": "text",
       "url": "url",
-      "files": [{ "name": "receipt", "accept": ["image/*"] }]
+      "files": [
+        {
+          "name": "receipt",
+          "accept": [
+            "image/*"
+          ]
+        }
+      ]
     }
   },
   "shortcuts": [

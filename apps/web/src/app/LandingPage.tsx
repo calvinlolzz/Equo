@@ -121,7 +121,7 @@ export function LandingPage({
             flat list of four siblings could only spread those three items down
             the full height of the product shot beside them. */}
         <div className="landing-hero-panel">
-          <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} />
+          <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} brandIsHeading={false} />
           <p className="landing-pitch">{text.heroPitch}</p>
           {/* A scroll cue, not a control. The first version put a single
               chevron beside the label inside a bordered pill, which is the
@@ -183,7 +183,12 @@ export function LandingPage({
         </section>
 
         <section className="landing-section" id="landing-value">
-          <h2 className="landing-section-title">{text.valueTitle}</h2>
+          {/* The page's h1. Not the brand in the sign-in card, which is what it
+              used to be: "Equo" is the one thing about this page a stranger
+              cannot already guess, and it was the whole heading. The section is
+              below the fold and that is fine - a heading is judged on what it
+              says, not on where it sits. */}
+          <h1 className="landing-section-title">{text.valueTitle}</h1>
           <div className="landing-value-grid">
             {[
               { icon: <ReceiptText aria-hidden="true" size={20} />, title: text.value1Title, body: text.value1Body },

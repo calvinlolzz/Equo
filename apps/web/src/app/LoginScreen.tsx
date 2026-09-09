@@ -29,17 +29,33 @@ export function LoginScreen({
   loading,
   errorMessage,
   onGoogleLogin,
+  brandIsHeading = true,
 }: {
   loading?: boolean;
   errorMessage?: string;
   onGoogleLogin: () => void;
+  /**
+   * Whether "Equo" is this document's <h1>.
+   *
+   * True on the standalone login screen, which is the only thing on it. False
+   * inside the landing page, where it made the brand name the page's entire
+   * headline - so the one thing a search result had to say about a
+   * splitting-the-bill app was a word nobody has heard of, while the sentence
+   * that says what it does sat below it as an h2. Same pixels either way; the
+   * styling is on .login-brand-name, which both carry.
+   */
+  brandIsHeading?: boolean;
 }) {
   return (
     <section className="login-screen">
       <div className="login-card glass-panel">
         <div className="login-brand">
           <span className="login-logo-mark">Eq</span>
-          <h1>Equo</h1>
+          {brandIsHeading ? (
+            <h1 className="login-brand-name">Equo</h1>
+          ) : (
+            <p className="login-brand-name">Equo</p>
+          )}
           <p>{text.tagline}</p>
         </div>
 

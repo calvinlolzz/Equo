@@ -1,7 +1,5 @@
-import { readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import { webpSize } from "./assetProbe";
 import { insideAtRule, readAppFile, readAppStylesheet, ruleFor } from "./cssDeclarations";
 
 /**
@@ -19,34 +17,10 @@ const landingCss = readAppStylesheet("app-landing.css");
 const desktop = insideAtRule(landingCss, "(min-width: 900px)");
 const page = readAppFile("LandingPage.tsx");
 
-const SCREENSHOTS = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public", "screenshots");
-
-/**
- * A WebP's real pixel dimensions, straight out of the file header.
- *
- * Read rather than trusted: the whole defect was a file whose size did not
- * match what the page asked of it, so a test that took the filename's word for
- * it would be checking the same assumption that failed.
- */
-function webpSize(name: string): { width: number; height: number; bytes: number } {
-  const buffer = readFileSync(join(SCREENSHOTS, name));
-  expect(buffer.subarray(0, 4).toString("ascii")).toBe("RIFF");
-  expect(buffer.subarray(8, 12).toString("ascii")).toBe("WEBP");
-  // Simple lossy VP8: 3-byte frame tag, the 0x9D012A sync code, then two
-  // 14-bit dimensions.
-  expect(buffer.subarray(12, 16).toString("ascii")).toBe("VP8 ");
-  expect([...buffer.subarray(23, 26)]).toEqual([0x9d, 0x01, 0x2a]);
-  return {
-    width: buffer.readUInt16LE(26) & 0x3fff,
-    height: buffer.readUInt16LE(28) & 0x3fff,
-    bytes: statSync(join(SCREENSHOTS, name)).size,
-  };
-}
-
 describe("the product shot is sharp on a retina phone", () => {
   test("both densities ship, and the 2x really is twice the 1x", () => {
-    const one = webpSize("hero-home.webp");
-    const two = webpSize("hero-home@2x.webp");
+    const one = webpSize("screenshots/hero-home.webp");
+    const two = webpSize("screenshots/hero-home@2x.webp");
 
     expect(one).toMatchObject({ width: 390, height: 416 });
     expect(two).toMatchObject({ width: 780, height: 832 });
@@ -54,14 +28,14 @@ describe("the product shot is sharp on a retina phone", () => {
 
   test("780px covers the densest phone this is drawn on", () => {
     // 232 CSS px at the mobile size (measured), times a 3x screen.
-    expect(webpSize("hero-home@2x.webp").width).toBeGreaterThanOrEqual(232 * 3);
+    expect(webpSize("screenshots/hero-home@2x.webp").width).toBeGreaterThanOrEqual(232 * 3);
   });
 
   test("the extra file is worth what it costs", () => {
     // The point of the pair is that a 1x screen never pays for the 2x. If the
     // 2x ever grows past ~60 kB, re-encode rather than ship it.
-    expect(webpSize("hero-home@2x.webp").bytes).toBeLessThan(60_000);
-    expect(webpSize("hero-home.webp").bytes).toBeLessThan(webpSize("hero-home@2x.webp").bytes);
+    expect(webpSize("screenshots/hero-home@2x.webp").bytes).toBeLessThan(60_000);
+    expect(webpSize("screenshots/hero-home.webp").bytes).toBeLessThan(webpSize("screenshots/hero-home@2x.webp").bytes);
   });
 
   test("the markup offers both, by density", () => {
@@ -99,7 +73,7 @@ describe("the hero is two columns on a desktop", () => {
 
   test("the shot is served at its native size, so nothing downscales it", () => {
     expect(ruleFor(desktop, ".landing-hero-shot").width).toBe("390px");
-    expect(webpSize("hero-home.webp").width).toBe(390);
+    expect(webpSize("screenshots/hero-home.webp").width).toBe(390);
   });
 
   test("an invite arrives in the same column as the shot it replaces", () => {

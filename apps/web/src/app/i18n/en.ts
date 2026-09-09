@@ -312,7 +312,8 @@ export const EN: UiDictionary = {
     faq4Q: "Is there an app to download?",
     faq4A: "No, it runs in your browser. Add it to your home screen and it behaves like an installed app.",
     faq5Q: "Who can see my data?",
-    faq5A: "Only the members of a group can see that group's expenses. We do not sell data and we do not run ads, and you can delete your whole account from the profile page at any time.",
+    faq5A:
+      "Only the members of a group can see that group's expenses. We do not sell data and we do not run ads, and you can delete your whole account from the profile page at any time. When you use the receipt scanner, that photo is sent to Google Gemini to be read — Google may use it to improve their products and their staff may see it. If you would rather not, use the photo field in the expense form instead: the picture is still attached to the expense, but it is never sent out. See section 3 of the privacy policy.",
 
     footerTagline: "Split expenses with friends, flatmates and travel companions.",
     footerContact: "Contact us",

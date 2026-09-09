@@ -916,12 +916,18 @@
   font-weight: 900;
 }
 
-.login-brand h1 {
+.login-brand-name {
   margin: 0;
   font-size: 30px;
 }
 
-.login-brand p {
+/* The tagline under the name.
+   The :not() is load-bearing rather than tidy: on the landing page the brand
+   name is a <p> too (it is not that document's heading), and a bare
+   `.login-brand p` outranks `.login-brand-name` on specificity - so without
+   this the name renders at 14px and muted, which is the tagline's styling
+   wearing the name's text. */
+.login-brand p:not(.login-brand-name) {
   margin: 0;
   color: rgb(var(--fg) / 0.68);
   font-size: 14px;

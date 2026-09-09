@@ -6,7 +6,7 @@
   ],
   "scripts": {
     "dev": "npm --workspace apps/web run dev",
-    "build": "npm --workspace apps/web run build",
+    "build": "npm --workspace apps/web run build && node scripts/prerender-public-pages.mjs",
     "test": "npm --workspace apps/web run test",
     "check:encoding": "python scripts/check-encoding.py",
     "check:launch-readiness": "python scripts/check-launch-readiness-stage.py",
