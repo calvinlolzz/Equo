@@ -177,7 +177,25 @@ export function useExpenseComposer({
       setDuplicatingExpense(null);
       setReceiptPrefill(null);
       haptic("success");
-      showToast(editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`);
+      /**
+       * A new entry offers another one; an edit does not.
+       *
+       * Recording is bursty — dinner, then the taxi, then the convenience
+       * store — and the way back in was the FAB, which on a phone is a reach
+       * across the screen from where the toast just appeared. The toast
+       * mechanism was already here for the delete undo, and an actionable
+       * toast lingers longer than a plain one, so the offer is up for as long
+       * as somebody is deciding whether to take it.
+       *
+       * Deliberately a blank composer rather than a copy of what was just
+       * saved: the next thing is usually a different thing. Repeating one is
+       * what 以此新增一筆 in the detail dialog is for, and the category now
+       * carries over on its own.
+       */
+      showToast(
+        editingId ? `${text.editExpense}: ${draft.title}` : `${text.addExpense}: ${draft.title}`,
+        editingId ? undefined : { label: text.addAnother, onAction: openExpenseComposer },
+      );
     } catch (error) {
       showToast(describeCloudActionError(error));
     }

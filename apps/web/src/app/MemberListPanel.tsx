@@ -1,6 +1,7 @@
 import { BellRing, Check, Inbox, Pencil, UserMinus, UserRound, Wallet, X } from "lucide-react";
 import type { Member } from "./appTypes";
 import { formatSigned } from "./formatAmount";
+import { settlementBetween, type SettlementIntent } from "./settlementActions";
 import { MemberAvatar } from "./MemberAvatar";
 import { UI_TEXT } from "./uiText";
 
@@ -22,6 +23,13 @@ type MemberListPanelProps = {
   /** Members already reminded in this session — the button stays, spent, rather than vanishing. */
   nudgedMemberIds?: string[];
   onNudge?: (member: Member) => void;
+  /**
+   * Settle up directly with this row. Only offered where something can
+   * actually pass between the two of you — the row works that out from the
+   * balances it already has (see settlementBetween) and hands over the
+   * transfer it decided on, so nothing recomputes it a second way.
+   */
+  onSettleWith?: (member: Member, intent: SettlementIntent) => void;
   onRenameValueChange: (value: string) => void;
   onStartRename: (member: Member) => void;
   onCancelRename: () => void;
@@ -49,6 +57,7 @@ export function MemberListPanel({
   currentMemberId,
   nudgedMemberIds = [],
   onNudge,
+  onSettleWith,
   onRenameValueChange,
   onStartRename,
   onCancelRename,
@@ -88,6 +97,25 @@ export function MemberListPanel({
             member.id !== currentMemberId &&
             (balances.get(member.id) ?? 0) < 0;
           const nudged = nudgedMemberIds.includes(member.id);
+          /**
+           * What settling straight with this person would mean, if anything.
+           *
+           * The suggestions on the home card are the MINIMAL set — A owing B
+           * is routinely routed as A → C — so a pair with money between them
+           * may never appear there. "I want to pay Bob back" is a thing people
+           * say about Bob, not about the transfer graph.
+           *
+           * null when the two of you are on the same side of zero, or either
+           * is square: there is genuinely nothing to record.
+           */
+          const settleIntent =
+            onSettleWith && currentMemberId && member.id !== currentMemberId
+              ? settlementBetween(
+                  { id: currentMemberId, balanceMinor: balances.get(currentMemberId) ?? 0 },
+                  { id: member.id, balanceMinor: balances.get(member.id) ?? 0 },
+                )
+              : null;
+          const settleable = Boolean(settleIntent);
           const nudgePending = pendingAction === `nudge:${member.id}`;
           // 收款資訊 is yours to write, or anybody's to write for a virtual
           // member (which has nobody to speak for it). Owning the group is not
@@ -100,7 +128,7 @@ export function MemberListPanel({
           return (
             <div className="member-dialog-entry" key={member.id}>
             <div
-              className={manageable || nudgeable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
+              className={manageable || nudgeable || settleable ? "member-dialog-row has-member-actions" : "member-dialog-row"}
             >
               <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
               {isRenaming ? (
@@ -140,18 +168,31 @@ export function MemberListPanel({
                     <strong>{member.name}</strong>
                     <small>{member.virtual ? text.virtualMember : member.role === "owner" ? text.owner : text.member}</small>
                   </span>
-                  {nudgeable ? (
+                  {nudgeable || settleable ? (
                     <span className="member-row-actions">
-                      <button
-                        className={nudged ? "member-icon-action nudge sent" : "member-icon-action nudge"}
-                        type="button"
-                        aria-label={`${text.nudgeAria}: ${member.name}`}
-                        disabled={nudgePending || nudged}
-                        onClick={() => onNudge?.(member)}
-                      >
-                        <BellRing aria-hidden="true" size={14} />
-                        {nudged ? text.nudgeSent : text.nudge}
-                      </button>
+                      {settleable ? (
+                        <button
+                          className="member-icon-action settle"
+                          type="button"
+                          aria-label={`${text.settleWithMember}: ${member.name}`}
+                          disabled={pendingAction === `settle:${member.id}`}
+                          onClick={() => settleIntent && onSettleWith?.(member, settleIntent)}
+                        >
+                          <Wallet aria-hidden="true" size={15} />
+                        </button>
+                      ) : null}
+                      {nudgeable ? (
+                        <button
+                          className={nudged ? "member-icon-action nudge sent" : "member-icon-action nudge"}
+                          type="button"
+                          aria-label={`${text.nudgeAria}: ${member.name}`}
+                          disabled={nudgePending || nudged}
+                          onClick={() => onNudge?.(member)}
+                        >
+                          <BellRing aria-hidden="true" size={14} />
+                          {nudged ? text.nudgeSent : text.nudge}
+                        </button>
+                      ) : null}
                     </span>
                   ) : null}
                   {manageable ? (

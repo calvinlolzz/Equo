@@ -670,8 +670,44 @@
   text-align: right;
 }
 
+/* A row with actions has a VARIABLE number of them: 清償 alone, 清償 plus
+   提醒, or 清償 plus rename plus remove on a virtual member — and at 390px
+   that last one plus a name plus a four-figure balance does not fit on one
+   line however the columns are sliced.
+   So: flex rather than a fixed four columns. The name keeps a floor of 84px
+   and the BALANCE is what drops to a second line, which is the right thing to
+   move — it is the one part of the row that reads fine on its own. */
 .member-dialog-row.has-member-actions {
-  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.member-dialog-row.has-member-actions > .member-avatar {
+  flex: 0 0 auto;
+}
+
+/* The name block. Second child in every arrangement of this row.
+   The basis is small on purpose: the name has an ellipsis and shrinks
+   gracefully, while the balance is the number somebody opened this sheet to
+   read. Measured at 390px — a basis of 84 overshot the 308px content box by
+   four pixels and sent the balance to a line of its own on every row that had
+   any actions at all. */
+.member-dialog-row.has-member-actions > span:not(.member-avatar):not(.member-row-actions) {
+  flex: 1 1 64px;
+}
+
+.member-dialog-row.has-member-actions > span.member-row-actions {
+  flex: 0 0 auto;
+}
+
+/* The balance, which is a <b>. The name's flex-grow is what pushes it right;
+   a `margin-left: auto` here as well fought with that — the name took the free
+   space, the auto margin then had none to take, and the balance wrapped to a
+   second line on EVERY row with actions rather than only the crowded one. */
+.member-dialog-row.has-member-actions > b {
+  flex: 0 0 auto;
 }
 
 .member-dialog-row span.member-row-actions {
@@ -693,6 +729,54 @@
   background: rgb(var(--surf) / 0.1);
   font-size: 12px;
   font-weight: 860;
+}
+
+/* 清償 from a member row. The mint reads as "money moving", against the nudge
+   beside it which is only a message — two actions on one row that must not
+   look like the same button. */
+.member-icon-action.settle {
+  color: rgb(var(--brand));
+  background: rgb(var(--brand) / 0.14);
+}
+
+/* The amount on the settle confirm. Part of a debt is the common case that had
+   nowhere to go before this: 「先給你一千」 meant the composer's 轉帳 mode or
+   nothing. */
+.settle-amount-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 2px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgb(var(--surf) / 0.08);
+}
+
+.settle-amount-field > span {
+  color: rgb(var(--fg) / 0.62);
+  font-size: 13px;
+  font-weight: 800;
+  /* Never the reason the row wraps. */
+  white-space: nowrap;
+}
+
+.settle-amount-field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: rgb(var(--fg));
+  font-size: 19px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.settle-amount-error {
+  margin: 0;
+  color: rgb(var(--danger));
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .member-icon-action:hover {

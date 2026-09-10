@@ -65,6 +65,10 @@ export const ZH_HANT = {
     settleConfirmTitle: "確認收到款項？",
     /** Whole sentence with {from} / {to} / {amount} placeholders. */
     settleConfirmBody: "帳本會記下「{from} 已付給 {to} {amount}」。記錯了可以到紀錄裡刪掉這筆。",
+    settleConfirmAmountLabel: "金額",
+    /** 部分清償：預設是全額，改小一點就是「先還一部分」。 */
+    settleConfirmFull: "全額",
+    settleConfirmTooMuch: "不能超過應清償的金額。要記其他方向的錢，用新增支出的「轉帳」。",
     settleConfirmCancel: "取消",
     settleConfirmAction: "確認收款",
     viewAll: "查看全部",
@@ -205,6 +209,10 @@ export const ZH_HANT = {
     editExpenseAction: "編輯",
     duplicateExpense: "重複這筆",
     deleteExpense: "刪除支出",
+    /** 記完之後的 toast 上那顆；旅行時常常是連著記三筆。 */
+    addAnother: "再記一筆",
+    /** 成員列上跟這個人直接結清。 */
+    settleWithMember: "跟這個人結清",
     undo: "復原",
     undoRestored: "已復原支出",
     confirmDelete: "確認刪除？",

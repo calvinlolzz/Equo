@@ -60,6 +60,7 @@ import { useSiteNotice } from "./useSiteNotice";
 import { SiteNoticeBar } from "./SiteNoticeBar";
 import { monthDayLabel } from "./i18n/format";
 import { categoryOptions } from "./catalog";
+import { parseSettleAmountMinor, settleAmountInputValue, type SettlementIntent } from "./settlementActions";
 import { recentExpenseTitles } from "./composerMemory";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
@@ -252,6 +253,13 @@ export function App() {
    * away, and this is worth more than a draft.
    */
   const [settleConfirm, setSettleConfirm] = useState<{ fromId: string; toId: string; amountMinor: number } | null>(null);
+  /**
+   * What is actually going to be recorded, as typed.
+   *
+   * Separate from settleConfirm.amountMinor, which stays the FULL balance: the
+   * dialog needs both to offer 全額 and to refuse anything above it.
+   */
+  const [settleAmountInput, setSettleAmountInput] = useState("");
   const [spendTab, setSpendTab] = useState<"personal" | "group">("personal");
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKey(new Date().toISOString()));
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
@@ -277,6 +285,16 @@ export function App() {
     [groupDrawerSwipe.dragProps.ref, groupDrawerChromeRef],
   );
   const settingsDrawerChromeRef = useDialogChrome(settingsDrawerSwipe.requestClose);
+  /**
+   * The settle confirm's Esc key and focus trap.
+   *
+   * It had neither: it is a plain backdrop plus a panel rather than one of the
+   * sheets, so it never picked up the chrome the rest of the app's dialogs
+   * share. Two buttons could be tabbed to and clicked, so nobody noticed —
+   * but it now holds a focused text field, and a box you are typing in that
+   * Esc cannot close is the one place that gap is felt.
+   */
+  const settleConfirmChromeRef = useDialogChrome(() => setSettleConfirm(null));
   const settingsDrawerRef = useMemo(
     () => mergeRefs<HTMLElement>(settingsDrawerSwipe.dragProps.ref, settingsDrawerChromeRef),
     [settingsDrawerSwipe.dragProps.ref, settingsDrawerChromeRef],
@@ -748,6 +766,17 @@ export function App() {
     if (!from || !to) return null;
     return { from, to, amountMinor: firstTransfer.amount.amount_minor };
   }, [firstTransfer, members]);
+  const settleAmount = parseSettleAmountMinor(settleAmountInput, settleConfirm?.amountMinor ?? 0);
+  /**
+   * Typed a real number, and it is over the balance.
+   *
+   * Told apart from "not a number yet" on purpose: an empty field mid-typing
+   * disables the button quietly, while asking to settle more than is owed gets
+   * an explanation, because it is a thing somebody meant to do.
+   */
+  const settleAmountTooMuch =
+    Boolean(settleConfirm) && !settleAmount.valid && settleAmount.minor > settleConfirm!.amountMinor;
+
   const extraTransferCount = Math.max(0, settlementTransfers.length - 1);
   /**
    * Whether the top debt's payer can be reminded from the home card: somebody
@@ -1143,14 +1172,25 @@ export function App() {
     showToast((await copyText(note)) ? UI_TEXT.paymentNote.copied : UI_TEXT.paymentNote.copyUnavailable);
   }
 
-  /** Every 清償 affordance lands here - the home card's and the analysis panel's. */
+  /**
+   * Every 清償 affordance lands here — the home card's, the analysis panel's,
+   * and the member list's.
+   *
+   * amountMinor is the whole balance between the two. The confirm seeds its
+   * field with it, so agreeing with the suggestion is still one tap and paying
+   * part of it is a number away.
+   */
   function settleTransfer(fromId: string, toId: string, amountMinor: number) {
     setSettleConfirm({ fromId, toId, amountMinor });
+    setSettleAmountInput(settleAmountInputValue(amountMinor));
   }
 
   async function confirmSettleTransfer() {
     if (!settleConfirm) return;
-    const { fromId, toId, amountMinor } = settleConfirm;
+    const { fromId, toId } = settleConfirm;
+    const typed = parseSettleAmountMinor(settleAmountInput, settleConfirm.amountMinor);
+    if (!typed.valid) return;
+    const amountMinor = typed.minor;
     setSettleConfirm(null);
     if (!activeGroup || !cloudStore) return;
     const fromMember = members.find((member) => member.id === fromId);
@@ -1177,6 +1217,17 @@ export function App() {
   function settleDebt() {
     if (!debt) return;
     settleTransfer(debt.from.id, debt.to.id, debt.amountMinor);
+  }
+
+  /**
+   * 清償 from a member row, for a pair the minimal-transfer suggestions never
+   * named. The row worked out the direction and the amount from the balances
+   * it was already showing; this just closes the sheet and puts the same
+   * confirm up, so partial payment works here exactly as it does on the card.
+   */
+  function settleWithMember(_member: Member, intent: SettlementIntent) {
+    setDialog(null);
+    settleTransfer(intent.fromMemberId, intent.toMemberId, intent.amountMinor);
   }
 
   function openReceiptScan() {
@@ -2454,6 +2505,7 @@ export function App() {
                   currentMemberId={currentMember?.id}
                   nudgedMemberIds={nudgedMemberIds}
                   onNudge={nudgeMember}
+                  onSettleWith={settleWithMember}
                   onRenameValueChange={setRenameMemberValue}
                   onStartRename={startRenameMember}
                   onCancelRename={cancelRenameMember}
@@ -2550,22 +2602,67 @@ export function App() {
             if (event.target === event.currentTarget) setSettleConfirm(null);
           }}
         >
-          <section className="flow-dialog glass-panel" role="dialog" aria-modal="true" aria-label={text.settleConfirmTitle}>
+          <section
+            className="flow-dialog glass-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label={text.settleConfirmTitle}
+            ref={settleConfirmChromeRef}
+          >
             <div className="dialog-header centered">
               <AlertTriangle aria-hidden="true" size={28} />
               <h3>{text.settleConfirmTitle}</h3>
+              {/* The sentence reads back the amount in the field, not the
+                  suggested one — so what it promises to record is what will be
+                  recorded, including after somebody types over it. */}
               <p>
                 {text.settleConfirmBody
                   .replace("{from}", members.find((member) => member.id === settleConfirm.fromId)?.name ?? "")
                   .replace("{to}", members.find((member) => member.id === settleConfirm.toId)?.name ?? "")
-                  .replace("{amount}", formatAmount(settleConfirm.amountMinor, activeGroup?.currency ?? "TWD"))}
+                  .replace(
+                    "{amount}",
+                    formatAmount(
+                      settleAmount.valid ? settleAmount.minor : settleConfirm.amountMinor,
+                      activeGroup?.currency ?? "TWD",
+                    ),
+                  )}
               </p>
             </div>
+            {/* Part of a debt is the common case nobody could record: "先給你
+                一千" went through the composer's 轉帳 mode or not at all. */}
+            <label className="settle-amount-field">
+              <span>{text.settleConfirmAmountLabel}</span>
+              <input
+                value={settleAmountInput}
+                onChange={(event) => setSettleAmountInput(event.target.value)}
+                inputMode="decimal"
+                aria-label={text.settleConfirmAmountLabel}
+                autoFocus
+              />
+              <button
+                className="text-action"
+                type="button"
+                disabled={settleAmount.minor === settleConfirm.amountMinor}
+                onClick={() => setSettleAmountInput(settleAmountInputValue(settleConfirm.amountMinor))}
+              >
+                {text.settleConfirmFull}
+              </button>
+            </label>
+            {settleAmountTooMuch ? (
+              <p className="settle-amount-error" role="alert">
+                {text.settleConfirmTooMuch}
+              </p>
+            ) : null}
             <div className="dialog-action-row">
               <button className="secondary-action" type="button" onClick={() => setSettleConfirm(null)}>
                 {text.settleConfirmCancel}
               </button>
-              <button className="primary-action" type="button" onClick={confirmSettleTransfer}>
+              <button
+                className="primary-action"
+                type="button"
+                disabled={!settleAmount.valid}
+                onClick={confirmSettleTransfer}
+              >
                 {text.settleConfirmAction}
               </button>
             </div>
