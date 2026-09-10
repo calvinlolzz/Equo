@@ -1,10 +1,8 @@
+import { readGroupMemory, writeGroupMemory } from "./composerMemory";
+
 const LAST_CURRENCY_KEY = "equo.clean.last_currency";
 
 type CurrencyStorage = Pick<Storage, "getItem" | "setItem">;
-
-function browserStorage(): CurrencyStorage | null {
-  return typeof window === "undefined" ? null : window.localStorage;
-}
 
 /**
  * The currency this group's last expense was entered in.
@@ -13,35 +11,22 @@ function browserStorage(): CurrencyStorage | null {
  * in the same week, and the right default in one is the wrong one in the other.
  * A miss just falls back to the group currency, which is what the composer did
  * before this existed.
+ *
+ * The storage mechanics moved to composerMemory.ts when the category grew the
+ * same memory — one copy of "a map of groupId to a string, and never throw".
  */
-export function readLastCurrency(groupId: string, storage: CurrencyStorage | null = browserStorage()): string {
-  if (!storage || !groupId) return "";
-  try {
-    const raw = storage.getItem(LAST_CURRENCY_KEY);
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const value = parsed?.[groupId];
-    return typeof value === "string" ? value : "";
-  } catch {
-    return "";
-  }
+export function readLastCurrency(groupId: string, storage?: CurrencyStorage | null): string {
+  return storage === undefined
+    ? readGroupMemory(LAST_CURRENCY_KEY, groupId)
+    : readGroupMemory(LAST_CURRENCY_KEY, groupId, storage);
 }
 
-export function writeLastCurrency(
-  groupId: string,
-  currency: string,
-  storage: CurrencyStorage | null = browserStorage(),
-): void {
-  if (!storage || !groupId || !currency) return;
-  try {
-    const raw = storage.getItem(LAST_CURRENCY_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const entries = parsed && typeof parsed === "object" ? parsed : {};
-    storage.setItem(LAST_CURRENCY_KEY, JSON.stringify({ ...entries, [groupId]: currency }));
-  } catch {
-    // Remembering the currency is a convenience; a full localStorage must not
-    // take the expense down with it.
+export function writeLastCurrency(groupId: string, currency: string, storage?: CurrencyStorage | null): void {
+  if (storage === undefined) {
+    writeGroupMemory(LAST_CURRENCY_KEY, groupId, currency);
+    return;
   }
+  writeGroupMemory(LAST_CURRENCY_KEY, groupId, currency, storage);
 }
 
 export function convertToGroupAmountMinor({

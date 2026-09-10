@@ -59,6 +59,8 @@ import { useExpenseComments } from "./useExpenseComments";
 import { useSiteNotice } from "./useSiteNotice";
 import { SiteNoticeBar } from "./SiteNoticeBar";
 import { monthDayLabel } from "./i18n/format";
+import { categoryOptions } from "./catalog";
+import { recentExpenseTitles } from "./composerMemory";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ScanSheetMode } from "./ScanSheet";
 import { readInviteToken } from "./inviteToken";
@@ -795,6 +797,19 @@ export function App() {
       showToast(describeCloudActionError(error));
     }
   }
+
+  /**
+   * What this group has called things before, for the composer's title field.
+   *
+   * Built here because this is where the expenses already are - the composer
+   * should not need its own copy of the ledger to fill one dropdown. Category
+   * labels are excluded: the composer writes those itself when the title is
+   * left blank, so offering them back is offering somebody their own blank.
+   */
+  const recentExpenseTitleSuggestions = useMemo(
+    () => recentExpenseTitles(expenses, new Set(categoryOptions().map((option) => option.label))),
+    [expenses],
+  );
 
   useEffect(() => writeJson(PROFILE_KEY, profile), [profile]);
 
@@ -1948,6 +1963,7 @@ export function App() {
           members={members}
           currentMemberId={currentMember?.id}
           groupId={activeGroup?.id ?? ""}
+          recentTitles={recentExpenseTitleSuggestions}
           groupCurrency={activeGroup?.currency ?? "TWD"}
           currencyOptions={currencyOptions}
           initialExpense={editingExpense ?? duplicatingExpense ?? undefined}

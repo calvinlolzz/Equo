@@ -4,6 +4,7 @@ import type { Expense, Member } from "./appTypes";
 import { createApiClient, type ExchangeRatesResponse } from "./apiClient";
 import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
 import { convertToGroupAmountMinor, readLastCurrency, writeLastCurrency } from "./expenseCurrency";
+import { readLastCategory, writeLastCategory } from "./composerMemory";
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
 import { formatExchangeRate, loadCrossRate } from "./exchangeRates";
 import { isComposerDirty, type ComposerSnapshot } from "./expenseComposerDirty";
@@ -144,6 +145,9 @@ export type ExpenseDraft = {
 
 type PayerRow = { key: number; payerId: string; amount: string };
 
+/** One id for the title <datalist>; only one composer is ever mounted. */
+const TITLE_SUGGESTIONS_ID = "composer-title-suggestions";
+
 /** The composer's own reach for the daily rates; overridable so tests never hit the network. */
 function defaultFetchExchangeRates(base: string): Promise<ExchangeRatesResponse> {
   return createApiClient().getExchangeRates(base);
@@ -153,6 +157,7 @@ export function ExpenseComposerSheet({
   members,
   currentMemberId,
   groupId = "",
+  recentTitles = [],
   groupCurrency,
   currencyOptions,
   initialExpense,
@@ -177,8 +182,17 @@ export function ExpenseComposerSheet({
    * ledger was a step they were being asked to tap past.
    */
   currentMemberId?: string;
-  /** Scopes the "last currency used here" memory. Empty disables it (tests, previews). */
+  /** Scopes the "last used here" memories (currency, category). Empty disables them (tests, previews). */
   groupId?: string;
+  /**
+   * Titles this group has used before, newest first, offered as suggestions on
+   * the title field.
+   *
+   * Passed in rather than derived here: the owner already holds the group's
+   * expenses, and the composer should not need a second copy of them to fill
+   * one dropdown.
+   */
+  recentTitles?: string[];
   groupCurrency: string;
   currencyOptions: Array<{ code: string; label: string }>;
   initialExpense?: Expense;
@@ -240,7 +254,18 @@ export function ExpenseComposerSheet({
   // one but saves as new, so it takes the create labels and the auto rate.
   const isEditing = Boolean(initialExpense) && !duplicating;
   const [composerMode, setComposerMode] = useState<ComposerMode>(editPrefill?.mode ?? "expense");
-  const [composerCategory, setComposerCategory] = useState<string>(editPrefill?.category ?? "general");
+  // Seeded here rather than assigned later, for the same reason the currency
+  // is: the dirty baseline is captured from this first render, so a remembered
+  // value arriving afterwards would make an untouched sheet raise the discard
+  // confirm on the way out.
+  const [composerCategory, setComposerCategory] = useState<string>(() => {
+    if (editPrefill) return editPrefill.category;
+    const remembered = readLastCategory(groupId);
+    // Checked against the live catalog: a category can be switched off in the
+    // console, and defaulting to one that no longer exists is worse than
+    // defaulting to 一般.
+    return categoryOptions().some((option) => option.key === remembered) ? remembered : "general";
+  });
   const [composerDateTime, setComposerDateTime] = useState<string>(() =>
     toLocalDateTimeInputValue(editPrefill?.dateTimeIso ?? new Date().toISOString()),
   );
@@ -438,6 +463,62 @@ export function ExpenseComposerSheet({
   // scrolling form below. stepIndex is clamped to the current mode's step
   // count so switching modes never lands on a nonexistent step.
   const isPhone = useIsPhone();
+
+  /**
+   * The title suggestions, minus anything the field already says.
+   *
+   * A <datalist> whose only entry is exactly what is in the box is a dropdown
+   * that opens to tell you nothing, and on a transfer the title is a fixed
+   * default nobody is picking from a list.
+   */
+  /**
+   * Enter does what Enter does everywhere else: moves it along.
+   *
+   * This sheet is not a <form> — it is a dialog full of buttons — so it got
+   * none of that for free. Measured before this: on the wide layout, where the
+   * whole thing is one page, typing an amount and pressing Enter did nothing
+   * at all, and saving meant going back to the mouse.
+   *
+   * Three things it deliberately keeps its hands off:
+   *
+   * - **A composition.** Enter is how an IME commits 「居酒屋」, and submitting
+   *   the expense instead would be the single most annoying bug in the app.
+   *   Same guard useDialogChrome uses: Chrome reports key "Process", the rest
+   *   set isComposing.
+   * - **A textarea.** Enter there is a newline, and 備註 is one.
+   * - **A button or a link.** Enter on those is already a click; handling it
+   *   here as well would fire both.
+   */
+  function handleEnter(event: React.KeyboardEvent<HTMLElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
+    if (event.nativeEvent.isComposing || event.nativeEvent.key === "Process" || event.nativeEvent.keyCode === 229) return;
+
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName;
+    if (tag === "TEXTAREA" || tag === "BUTTON" || tag === "A" || target?.isContentEditable) return;
+
+    if (isPhone) {
+      // Stepped: Enter is 下一步, and on the last step it is the save button.
+      if (!isLastStep) {
+        if (!canAdvanceStep) return;
+        event.preventDefault();
+        setStepIndex(activeStep + 1);
+        return;
+      }
+    }
+
+    if (composerSubmitState.disabled || composerSubmitting) return;
+    event.preventDefault();
+    void submitComposer();
+  }
+
+  const titleSuggestions = useMemo(
+    () =>
+      composerMode === "transfer"
+        ? []
+        : recentTitles.filter((title) => title.toLocaleLowerCase() !== composerTitle.trim().toLocaleLowerCase()),
+    [recentTitles, composerTitle, composerMode],
+  );
   const stepKeys = stepKeysForMode(composerMode);
   const [stepIndex, setStepIndex] = useState(0);
   const activeStep = Math.min(stepIndex, stepKeys.length - 1);
@@ -746,7 +827,10 @@ export function ExpenseComposerSheet({
       // Written before the await, because the owner unmounts this sheet on
       // success. Creates only: fixing the currency on a months-old expense
       // says nothing about what the next new one should default to.
-      if (!isEditing) writeLastCurrency(groupId, composerCurrency);
+      if (!isEditing) {
+        writeLastCurrency(groupId, composerCurrency);
+        writeLastCategory(groupId, composerCategory);
+      }
       await onSubmit(draft);
     } finally {
       composerSubmittingRef.current = false;
@@ -1165,6 +1249,15 @@ export function ExpenseComposerSheet({
         inputMode="decimal"
         placeholder="0"
         aria-label={text.amount}
+        /* Only on this branch, and only for an entry that starts empty.
+           This input exists on the wide layout only - the phone gets a keypad,
+           where autoFocus would summon the system keyboard on top of it.
+           Measured before this: opening the composer on a desktop left focus on
+           the 支出 chip, so typing an amount straight away did nothing at all
+           and every entry began with a click into this field.
+           useDialogChrome pulls focus into the sheet on open "unless an
+           autoFocus field already claimed it", so the two do not fight. */
+        autoFocus={!editPrefill}
       />
       {scanPending ? <p className="composer-scan-pending">{text.scanReading}</p> : null}
     </div>
@@ -1197,7 +1290,19 @@ export function ExpenseComposerSheet({
         onChange={(event) => setComposerTitle(event.target.value)}
         placeholder={composerMode === "transfer" ? text.transferDefaultTitle : text.titlePlaceholder}
         aria-label={text.title}
+        /* What this group has called things before. A trip records 居酒屋 and
+           地鐵一日券 more than once, and the app already knew both. Native
+           <datalist>: it stays a plain text field, so anything not on the list
+           is typed exactly as before and no keyboard behaviour changes. */
+        list={titleSuggestions.length > 0 ? TITLE_SUGGESTIONS_ID : undefined}
       />
+      {titleSuggestions.length > 0 ? (
+        <datalist id={TITLE_SUGGESTIONS_ID}>
+          {titleSuggestions.map((title) => (
+            <option value={title} key={title} />
+          ))}
+        </datalist>
+      ) : null}
     </label>
   );
 
@@ -1341,6 +1446,7 @@ export function ExpenseComposerSheet({
         role="dialog"
         aria-modal="true"
         aria-label={text.addExpense}
+        onKeyDown={handleEnter}
         {...dragProps}
         ref={sheetRef}
       >
