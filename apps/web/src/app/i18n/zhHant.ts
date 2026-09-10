@@ -211,6 +211,9 @@ export const ZH_HANT = {
     deleteExpense: "刪除支出",
     /** 記完之後的 toast 上那顆；旅行時常常是連著記三筆。 */
     addAnother: "再記一筆",
+    /** 滑鼠停在新增鍵上時的提示。桌機才看得到——手機沒有 hover，也沒有鍵盤。 */
+    addExpenseShortcutHint: "新增支出（按 N）",
+    searchShortcutHint: "按 / 可以直接跳到這裡",
     /** 成員列上跟這個人直接結清。 */
     settleWithMember: "跟這個人結清",
     undo: "復原",

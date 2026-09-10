@@ -206,6 +206,8 @@ export const EN: UiDictionary = {
     duplicateExpense: "Duplicate",
     deleteExpense: "Delete expense",
     addAnother: "Add another",
+    addExpenseShortcutHint: "Add an expense (press N)",
+    searchShortcutHint: "Press / to jump here",
     settleWithMember: "Settle up with this person",
     undo: "Undo",
     undoRestored: "Expense restored",

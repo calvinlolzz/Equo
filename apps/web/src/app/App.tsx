@@ -60,6 +60,7 @@ import { useSiteNotice } from "./useSiteNotice";
 import { SiteNoticeBar } from "./SiteNoticeBar";
 import { monthDayLabel } from "./i18n/format";
 import { categoryOptions } from "./catalog";
+import { useAppShortcuts } from "./useAppShortcuts";
 import { parseSettleAmountMinor, settleAmountInputValue, type SettlementIntent } from "./settlementActions";
 import { recentExpenseTitles } from "./composerMemory";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
@@ -211,6 +212,8 @@ export function App() {
   const [startMode, setStartMode] = useState<StartMode>("create");
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
   const [dialog, setDialog] = useState<DialogMode>(null);
+  /** Bumped by `/` to move the cursor into the records search. See useAppShortcuts. */
+  const [focusSearchSignal, setFocusSearchSignal] = useState(0);
   // The privacy/terms sheet that stacks on top of the profile dialog. Lifted out
   // of ProfileDialog so it can be a layer of its own in the Back-button stack.
   const [infoDialog, setInfoDialog] = useState<InfoDialogMode>(null);
@@ -576,6 +579,38 @@ export function App() {
         groupDrawerOpen ||
         settingsDrawerOpen),
   );
+
+  /**
+   * The two keyboard shortcuts, and the conditions under which they mean
+   * anything.
+   *
+   * Off whenever something is already on top: the keystroke belongs to that,
+   * and a second sheet arriving over the one somebody is reading is worse than
+   * no shortcut. Off without a group for the plainer reason that there is
+   * nothing to record an expense against.
+   */
+  const shortcutsEnabled =
+    Boolean(session && activeGroup) &&
+    !expenseComposerOpen &&
+    !discardConfirmOpen &&
+    !settleConfirm &&
+    !feedbackOpen &&
+    !notificationsOpen &&
+    !groupDrawerOpen &&
+    !settingsDrawerOpen &&
+    // The records sheet is the exception: `/` is for putting the cursor in ITS
+    // search box, and refusing while it is open would mean the shortcut only
+    // worked the first time.
+    (!dialog || dialog === "recordsPanel");
+
+  useAppShortcuts({
+    enabled: shortcutsEnabled,
+    onNewExpense: openExpenseComposer,
+    onFocusSearch: () => {
+      setDialog("recordsPanel");
+      setFocusSearchSignal((signal) => signal + 1);
+    },
+  });
 
   /** Dismiss the shared dialog slot, clearing whatever it was showing. */
   function closeDialog() {
@@ -1925,6 +1960,11 @@ export function App() {
             className="floating-action"
             type="button"
             aria-label={text.addExpense}
+            /* The only place the N shortcut is advertised. A hover tooltip
+               rather than a visible <kbd>: this is a round icon button with no
+               room for one, and hovering is something only the people who have
+               a keyboard can do anyway. */
+            title={text.addExpenseShortcutHint}
             inert={isMobileLayout}
             aria-hidden={isMobileLayout || undefined}
             onClick={openExpenseComposer}
@@ -2319,6 +2359,7 @@ export function App() {
                   onDeleteExpense={deleteExpense}
                   searchExpenses={searchExpensesInGroup}
                   describeError={describeCloudActionError}
+                  focusSearchSignal={focusSearchSignal}
                 />
                 </Suspense>
               ) : null}

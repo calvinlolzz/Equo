@@ -61,6 +61,13 @@ type RecordsPanelProps = {
   /** Server-side search over the whole history; null when offline/signed out. */
   searchExpenses: Searcher | null;
   describeError: (error: unknown) => string;
+  /**
+   * Bumped by the `/` shortcut to put the cursor in the search box.
+   *
+   * A counter and not a boolean: pressing `/` while this sheet is ALREADY open
+   * has to work too, and a flag that is already true is not an event.
+   */
+  focusSearchSignal?: number;
 };
 
 /** The 支出記錄 bottom-sheet content (stats, search/filter, CSV export, expense rows, recent activity). */
@@ -81,12 +88,29 @@ export function RecordsPanel({
   onDeleteExpense,
   searchExpenses,
   describeError,
+  focusSearchSignal = 0,
 }: RecordsPanelProps) {
   const [filter, setFilter] = useState<ExpenseFilter>(EMPTY_EXPENSE_FILTER);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [rowLimit, setRowLimit] = useState(RENDER_WINDOW_STEP);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Put the cursor in the search box when `/` asks for it.
+   *
+   * Skipped on the first render (signal 0) so opening this sheet by tapping
+   * 支出記錄 does not summon a phone keyboard over the list. Only the shortcut
+   * bumps it, and the shortcut needs a physical keyboard to press.
+   */
+  useEffect(() => {
+    if (focusSearchSignal <= 0) return;
+    // preventScroll for the same reason useDialogChrome does it: focusing
+    // inside a sheet that is still sliding up must not jump the page.
+    searchInputRef.current?.focus({ preventScroll: true });
+    searchInputRef.current?.select();
+  }, [focusSearchSignal]);
   /** The one row currently swiped open — at most one, like every native list. */
   const [openRowId, setOpenRowId] = useState<string | null>(null);
 
@@ -198,10 +222,12 @@ export function RecordsPanel({
         <div className="records-search">
           <Search aria-hidden="true" size={16} />
           <input
+            ref={searchInputRef}
             type="search"
             value={filter.query}
             placeholder={UI_TEXT.records.searchPlaceholder}
             aria-label={UI_TEXT.records.searchLabel}
+            title={text.searchShortcutHint}
             onChange={(event) => patchFilter({ query: event.target.value })}
           />
           {filter.query ? (
