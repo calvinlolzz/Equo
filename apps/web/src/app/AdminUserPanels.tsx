@@ -346,15 +346,11 @@ export function UserDetailPanel({ client, route, onNavigate, role }: PanelProps)
                 ・{detail.user.group_count} 個群組・{detail.user.expense_count} 筆支出
               </p>
             </div>
+            {/* Five buttons in one undifferentiated row, with a red one at each
+                end and 刪除帳號 sitting next to 以他的身分檢視. Grouped by what
+                they cost instead: everything you can undo, then a rule, then
+                the two you cannot. */}
             <div className="admin-user-card__actions">
-              <button
-                type="button"
-                className={detail.user.disabled_at ? "admin-action" : "admin-action admin-action--danger"}
-                disabled={actionBusy}
-                onClick={toggleDisabled}
-              >
-                {actionBusy ? "處理中…" : detail.user.disabled_at ? "恢復帳號" : "停用帳號"}
-              </button>
               {canWrite(role) && (
                 <button
                   type="button"
@@ -375,6 +371,19 @@ export function UserDetailPanel({ client, route, onNavigate, role }: PanelProps)
                   以他的身分檢視（唯讀）
                 </button>
               )}
+
+              {/* Nothing to separate when the reversible half is hidden: a
+                  support account sees only 停用帳號. */}
+              {canWrite(role) && <span className="admin-action-rule" aria-hidden="true" />}
+
+              <button
+                type="button"
+                className={detail.user.disabled_at ? "admin-action" : "admin-action admin-action--danger"}
+                disabled={actionBusy}
+                onClick={toggleDisabled}
+              >
+                {actionBusy ? "處理中…" : detail.user.disabled_at ? "恢復帳號" : "停用帳號"}
+              </button>
               {isConsoleOwner(role) && (
                 <button
                   type="button"

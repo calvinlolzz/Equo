@@ -368,20 +368,26 @@ function GroupExpensesSection({
 
   return (
     <>
+      {/* The filter and the export are both controls for the table below, so
+          they travel together on the right. Left as three children of a
+          space-between row, the checkbox floated in the middle of the gap
+          belonging to neither the title nor the button. */}
       <div className="admin-subheading-row">
         <h3 className="admin-subheading">帳目明細</h3>
-        <label className="admin-toggle">
-          <input
-            type="checkbox"
-            checked={includeDeleted}
-            onChange={(event) => {
-              setOffset(0);
-              setIncludeDeleted(event.target.checked);
-            }}
-          />
-          顯示已刪除（{group.deleted_expense_count} 筆）
-        </label>
-        <ExportButton busy={exporting} onExport={exportExpenses} />
+        <div className="admin-inline-form">
+          <label className="admin-toggle">
+            <input
+              type="checkbox"
+              checked={includeDeleted}
+              onChange={(event) => {
+                setOffset(0);
+                setIncludeDeleted(event.target.checked);
+              }}
+            />
+            <span>顯示已刪除（{group.deleted_expense_count} 筆）</span>
+          </label>
+          <ExportButton busy={exporting} onExport={exportExpenses} />
+        </div>
       </div>
 
       {state.error && <p className="admin-error" role="alert">{state.error}</p>}

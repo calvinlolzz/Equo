@@ -449,18 +449,6 @@ button.admin-inbox__item:hover {
   color: inherit;
 }
 
-/* Day counts in the 自動催繳 card. Narrow, because a number between 1 and 365
-   in a field sized for prose reads as an open-ended text box. */
-.admin-number-input {
-  width: 84px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid rgb(var(--surf) / 0.25);
-  background: rgb(var(--surf) / 0.08);
-  color: rgb(var(--fg));
-  font: inherit;
-}
-
 .admin-select {
   padding: 8px 12px;
   border: 1px solid #d5d9de;
@@ -565,6 +553,7 @@ button.admin-inbox__item:hover {
 
 .admin-user-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   background: #ffffff;
@@ -622,7 +611,7 @@ button.admin-inbox__item:hover {
 }
 
 .admin-user-card__body {
-  flex: 1;
+  flex: 1 1 300px;
   min-width: 0;
 }
 
@@ -706,13 +695,33 @@ button.admin-inbox__item:hover {
   color: #8a8f98;
 }
 
+/* A section title with its controls on the right. Centred rather than
+   baseline-aligned: the right-hand side is a 40px select or a 39px button, and
+   sitting those on the 15px heading's baseline hangs them off the bottom. */
 .admin-subheading-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-top: 24px;
   flex-wrap: wrap;
+}
+
+/* The heading's own bottom margin is for the block flow it usually sits in. */
+.admin-subheading-row .admin-subheading {
+  margin-bottom: 0;
+}
+
+/* A label, a picker and a button are one control, so they stay on one line and
+   the row wraps as a whole - left to itself the inner flex wrapped first,
+   stacking three rows into a 291px column beside a heading with 700px of empty
+   space next to it. */
+.admin-subheading-row .admin-inline-form {
+  flex-wrap: nowrap;
+}
+
+.admin-subheading-row .admin-inline-form select {
+  max-width: 220px;
 }
 
 .admin-toggle {
@@ -722,6 +731,25 @@ button.admin-inbox__item:hover {
   font-size: 13px;
   color: #5b6069;
   cursor: pointer;
+}
+
+/* Both halves of this were wrong and the result was a nine-character label
+   three lines tall.
+   The box: an <input> with no width is a flex item sized from the UA's text
+   field, so the checkbox painted 13px inside a 70px slot and pushed the words
+   off the end.
+   The words: 顯示已刪除（{count} 筆）is THREE text nodes, and a flex container
+   makes an anonymous item out of each one - so the label broke at exactly the
+   interpolation, every time, whatever the room. The span makes it one item. */
+.admin-toggle input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.admin-toggle > span {
+  white-space: nowrap;
 }
 
 /* Receipt thumbnail in the expense list; the full image lives in the dialog. */
@@ -1196,9 +1224,22 @@ button.admin-inbox__item:hover {
 
   /* Tap targets. Measured at 31px for chips and actions. */
   .admin-chip,
-  .admin-action,
-  .admin-primary {
+  .admin-action {
     min-height: 44px;
+  }
+
+  /* One line for a heading plus a picker plus a button does not fit a phone;
+     the desktop rule that keeps them together has to give way here. */
+  .admin-subheading-row {
+    align-items: flex-start;
+  }
+
+  .admin-subheading-row .admin-inline-form {
+    flex-wrap: wrap;
+  }
+
+  .admin-subheading-row .admin-inline-form select {
+    max-width: none;
   }
 
   /* The search row is an input plus an export button, and at 375px the button
@@ -1671,11 +1712,14 @@ button.admin-inbox__item:hover {
   line-height: 1.6;
 }
 
-/* Control first, label second: the switch and the picker line up in a column
-   so the eye can find "what is currently set" without reading the prose. */
+/* A switch and what it does. Only checkboxes live here now - everything that
+   holds a VALUE moved to .admin-field, because "control first, label second"
+   sized the first column to the control, and a card with a text box, a picker
+   and a checkbox in it got four different label positions down one 620px
+   column. Fixed at the checkbox's own width, every label starts at the same x. */
 .admin-settings-row {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 18px 1fr;
   align-items: start;
   gap: 12px;
 }
@@ -1694,7 +1738,7 @@ button.admin-inbox__item:hover {
 .admin-settings-row input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  margin-top: 2px;
+  margin: 2px 0 0;
 }
 
 .admin-settings-foot {
@@ -1706,6 +1750,44 @@ button.admin-inbox__item:hover {
   padding-top: 4px;
   border-top: 1px solid #e3e6ea;
   font-size: 12px;
+}
+
+/* A foot with nothing to say on the left, so the button does not sit alone in
+   the middle of a space-between row. */
+.admin-settings-foot--end {
+  justify-content: flex-end;
+}
+
+/* Two short answers about the same thing, on one line. Collapses below rather
+   than letting either field get too narrow to read its own label. */
+.admin-field-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+
+/* The seam inside a card that holds two features (the banner, and the switch
+   that stops everybody recording expenses). */
+.admin-settings-rule {
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid #e3e6ea;
+}
+
+/* Two of the three cards put their controls inside a <form>, which meant the
+   card's own 18px gap stopped at the form and every field inside it sat on
+   whatever margin it happened to carry. The form lays out like the card. */
+.admin-settings-card > form {
+  display: grid;
+  gap: 18px;
+}
+
+/* ...so .admin-field's margin, which is for the dialogs it was written for,
+   would double the spacing here. */
+.admin-settings-card .admin-field {
+  margin-bottom: 0;
 }
 
 /* Without this the 儲存 label breaks one character per line once the
@@ -1747,7 +1829,8 @@ button.admin-inbox__item:hover {
     color: #a2a7b0;
   }
 
-  .admin-settings-foot {
+  .admin-settings-foot,
+  .admin-settings-rule {
     border-top-color: #2c3037;
   }
 
@@ -1793,7 +1876,19 @@ button.admin-inbox__item:hover {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
+  margin-left: auto;
+}
+
+/* Separates the reversible actions from 停用 and 刪除. Disappears when the row
+   wraps at that exact point, which is the one place a vertical rule would be
+   lying about what it separates. */
+.admin-action-rule {
+  align-self: stretch;
+  width: 1px;
+  min-height: 24px;
+  margin: 0 4px;
+  background: #e3e6ea;
 }
 
 .admin-merge {
@@ -1858,6 +1953,23 @@ button.admin-inbox__item:hover {
   color: #5f6672;
 }
 
+/* The sentence under a control that says what changing it will do. */
+.admin-field > small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #5f6672;
+}
+
+/* A date and a day count are short answers; a field sized for prose makes them
+   read as open-ended. */
+.admin-field input[type="number"] {
+  max-width: 120px;
+}
+
+.admin-field input[type="datetime-local"] {
+  max-width: 240px;
+}
+
 .admin-field input,
 .admin-field select,
 .admin-field textarea {
@@ -1883,8 +1995,13 @@ button.admin-inbox__item:hover {
 @media (prefers-color-scheme: dark) {
   .admin-inline-form__label,
   .admin-field > span,
+  .admin-field > small,
   .admin-modal__hint {
     color: #a2a7b0;
+  }
+
+  .admin-action-rule {
+    background: #2c3037;
   }
 
   .admin-input,

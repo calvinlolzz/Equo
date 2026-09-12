@@ -115,9 +115,9 @@ export function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canE
             </span>
           </label>
 
-          <label className="admin-settings-row">
+          <label className="admin-field">
+            <span>辨識模型</span>
             <select
-              className="admin-select"
               value={model}
               disabled={!canEdit || busy}
               aria-label="辨識模型"
@@ -130,10 +130,7 @@ export function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canE
                 </option>
               ))}
             </select>
-            <span>
-              <strong>辨識模型</strong>
-              <small>{selected?.note ?? "換模型後下一次掃描立即生效。"}</small>
-            </span>
+            <small>{selected?.note ?? "換模型後下一次掃描立即生效。"}</small>
           </label>
 
           {selected?.provider === "google" && (
@@ -153,7 +150,7 @@ export function SettingsPanel({ client, canEdit }: { client: EquoApiClient; canE
                 : "尚未變更過，目前為預設值"}
             </span>
             {canEdit && (
-              <button type="submit" disabled={!dirty || busy}>
+              <button type="submit" className="admin-action admin-action--primary" disabled={!dirty || busy}>
                 {busy ? "儲存中…" : "儲存"}
               </button>
             )}
@@ -412,9 +409,9 @@ function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit
 
       {saved && (
         <form onSubmit={save}>
-          <label className="admin-settings-row">
+          <label className="admin-field">
+            <span>公告內容</span>
             <input
-              className="admin-text-input"
               type="text"
               maxLength={500}
               value={message}
@@ -423,42 +420,43 @@ function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit
               aria-label="公告內容"
               onChange={(event) => setMessage(event.target.value)}
             />
-            <span>
-              <strong>公告內容</strong>
-              <small>留空就是沒有公告。這句話不會被翻譯，使用者看到的就是你寫的。</small>
-            </span>
+            <small>留空就是沒有公告。這句話不會被翻譯，使用者看到的就是你寫的。</small>
           </label>
 
-          <label className="admin-settings-row">
-            <select
-              value={level}
-              disabled={!canEdit || busy}
-              aria-label="公告樣式"
-              onChange={(event) => setLevel(event.target.value === "warning" ? "warning" : "info")}
-            >
-              <option value="info">一般</option>
-              <option value="warning">警告</option>
-            </select>
-            <span>
-              <strong>公告樣式</strong>
+          {/* Style and expiry are both short answers about the same banner, so
+              they share a line instead of each taking a full-width row. */}
+          <div className="admin-field-pair">
+            <label className="admin-field">
+              <span>公告樣式</span>
+              <select
+                value={level}
+                disabled={!canEdit || busy}
+                aria-label="公告樣式"
+                onChange={(event) => setLevel(event.target.value === "warning" ? "warning" : "info")}
+              >
+                <option value="info">一般</option>
+                <option value="warning">警告</option>
+              </select>
               <small>只影響顏色，不影響是否顯示。</small>
-            </span>
-          </label>
+            </label>
 
-          <label className="admin-settings-row">
-            <input
-              className="admin-text-input"
-              type="datetime-local"
-              value={endsAt}
-              disabled={!canEdit || busy}
-              aria-label="公告結束時間"
-              onChange={(event) => setEndsAt(event.target.value)}
-            />
-            <span>
-              <strong>公告結束時間</strong>
+            <label className="admin-field">
+              <span>公告結束時間</span>
+              <input
+                type="datetime-local"
+                value={endsAt}
+                disabled={!canEdit || busy}
+                aria-label="公告結束時間"
+                onChange={(event) => setEndsAt(event.target.value)}
+              />
               <small>時間到就自動收起來。留空＝一直掛著——但沒有人會記得回來拿掉。</small>
-            </span>
-          </label>
+            </label>
+          </div>
+
+          {/* Everything above is the banner; everything below stops people
+              recording expenses. One card, because you post the notice and do
+              the work in one sitting - but not one undifferentiated list. */}
+          <hr className="admin-settings-rule" />
 
           <label className="admin-settings-row">
             <input
@@ -476,9 +474,9 @@ function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit
             </span>
           </label>
 
-          <label className="admin-settings-row">
+          <label className="admin-field">
+            <span>維護說明</span>
             <input
-              className="admin-text-input"
               type="text"
               maxLength={500}
               value={maintenanceMessage}
@@ -487,15 +485,12 @@ function SiteNoticeSection({ client, canEdit }: { client: EquoApiClient; canEdit
               aria-label="維護說明"
               onChange={(event) => setMaintenanceMessage(event.target.value)}
             />
-            <span>
-              <strong>維護說明</strong>
-              <small>留空的話會用預設句子。</small>
-            </span>
+            <small>留空的話會用預設句子。</small>
           </label>
 
-          <div className="admin-settings-actions">
+          <div className="admin-settings-foot admin-settings-foot--end">
             {canEdit && (
-              <button className="admin-primary" type="submit" disabled={!dirty || busy}>
+              <button className="admin-action admin-action--primary" type="submit" disabled={!dirty || busy}>
                 {busy ? "儲存中…" : "儲存"}
               </button>
             )}
@@ -615,39 +610,37 @@ function AutoNudgeSection({ client, canEdit }: { client: EquoApiClient; canEdit:
             </span>
           </label>
 
-          <label className="admin-settings-row">
-            <input
-              className="admin-number-input"
-              type="number"
-              min={1}
-              max={365}
-              value={overdueDays}
-              disabled={!canEdit || busy}
-              aria-label="欠款幾天後提醒"
-              onChange={(event) => setOverdueDays(Number(event.target.value))}
-            />
-            <span>
-              <strong>欠款幾天後提醒</strong>
+          {/* Two numbers of days, which is one thought about pacing. Side by
+              side they can be compared; stacked they read as two features. */}
+          <div className="admin-field-pair">
+            <label className="admin-field">
+              <span>欠款幾天後提醒</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={overdueDays}
+                disabled={!canEdit || busy}
+                aria-label="欠款幾天後提醒"
+                onChange={(event) => setOverdueDays(Number(event.target.value))}
+              />
               <small>從「最舊一筆還沒結清的支出」算起。</small>
-            </span>
-          </label>
+            </label>
 
-          <label className="admin-settings-row">
-            <input
-              className="admin-number-input"
-              type="number"
-              min={1}
-              max={365}
-              value={cooldownDays}
-              disabled={!canEdit || busy}
-              aria-label="同一個人幾天內最多提醒一次"
-              onChange={(event) => setCooldownDays(Number(event.target.value))}
-            />
-            <span>
-              <strong>同一個人幾天內最多提醒一次</strong>
+            <label className="admin-field">
+              <span>同一個人幾天內最多提醒一次</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={cooldownDays}
+                disabled={!canEdit || busy}
+                aria-label="同一個人幾天內最多提醒一次"
+                onChange={(event) => setCooldownDays(Number(event.target.value))}
+              />
               <small>手動的「提醒還款」也算進這個間隔，不會兩邊各送一次。</small>
-            </span>
-          </label>
+            </label>
+          </div>
 
           <div className="admin-settings-foot">
             <span className="admin-muted">
@@ -656,7 +649,12 @@ function AutoNudgeSection({ client, canEdit }: { client: EquoApiClient; canEdit:
                 : "尚未變更過，目前為預設值（關閉）"}
             </span>
             {canEdit && (
-              <button type="submit" disabled={!dirty || busy} aria-label="儲存自動催繳設定">
+              <button
+                type="submit"
+                className="admin-action admin-action--primary"
+                disabled={!dirty || busy}
+                aria-label="儲存自動催繳設定"
+              >
                 {busy ? "儲存中…" : "儲存"}
               </button>
             )}
