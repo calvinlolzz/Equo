@@ -122,6 +122,19 @@ describe("the controls that had drifted", () => {
     expect(panel).toContain("<span>顯示已刪除（{group.deleted_expense_count} 筆）</span>");
   });
 
+  test("a section header's controls keep their own words on one line", () => {
+    // Measured on the live console after the first pass: the row was centred
+    // and the inner form told not to wrap, and 轉移擁有者 still came out 41px
+    // wide over two lines beside 700px of empty space. A flex row's
+    // max-content is built from its children's contributions, and anything
+    // that CAN break contributes its min-content instead.
+    const at = unconditional.indexOf(".admin-subheading-row .admin-inline-form > button");
+    expect(at).toBeGreaterThan(0);
+    const open = unconditional.indexOf("{", at);
+    const body = unconditional.slice(open + 1, unconditional.indexOf("}", open));
+    expect(body).toContain("white-space: nowrap");
+  });
+
   test("a settings row's first column is the checkbox, not whatever is in it", () => {
     // `auto` sized the column per row, so one 620px card had its labels
     // starting at four different x positions.

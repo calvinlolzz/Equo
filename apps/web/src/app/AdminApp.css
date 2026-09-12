@@ -724,6 +724,16 @@ button.admin-inbox__item:hover {
   max-width: 220px;
 }
 
+/* And the words inside it are not what gives way. A flex row's max-content is
+   built from its children's contributions, and a label or a button that CAN
+   break contributes its MIN-content - so 轉移擁有者 came out 41px wide and two
+   lines tall, and 轉移 was a two-line button, in a row with 700px to spare.
+   Only the picker may narrow. */
+.admin-subheading-row .admin-inline-form > label,
+.admin-subheading-row .admin-inline-form > button {
+  white-space: nowrap;
+}
+
 .admin-toggle {
   display: flex;
   align-items: center;
