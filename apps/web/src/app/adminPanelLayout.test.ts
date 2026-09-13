@@ -135,6 +135,21 @@ describe("the controls that had drifted", () => {
     expect(body).toContain("white-space: nowrap");
   });
 
+  test("a picker in a row is told how wide it is", () => {
+    // A <select> is an inline-block in normal flow, where width:auto
+    // shrink-wraps its widest option - but a flex item is blockified, and a
+    // block-level select with width:auto fills its containing block. 稽核 and
+    // 管理員 both shipped a 915px dropdown beside a 26px search box.
+    const at = unconditional.indexOf(".admin-inline-form > select");
+    expect(at).toBeGreaterThan(0);
+    const open = unconditional.indexOf("{", at);
+    const body = unconditional.slice(open + 1, unconditional.indexOf("}", open));
+    expect(body).toContain("width: max-content");
+    expect(body).toMatch(/flex:\s*0 0 auto/);
+    // The same rule has to cover the search rows, which is where it bit.
+    expect(unconditional.slice(at - 80, at)).toContain(".admin-search select");
+  });
+
   test("a settings row's first column is the checkbox, not whatever is in it", () => {
     // `auto` sized the column per row, so one 620px card had its labels
     // starting at four different x positions.

@@ -459,6 +459,27 @@ button.admin-inbox__item:hover {
   cursor: pointer;
 }
 
+/* A <select> in a row has to be told how wide it is.
+   It is an inline-block in normal flow, where width:auto shrink-wraps its
+   widest option - but a flex item is BLOCKIFIED, and a block-level select with
+   width:auto fills its containing block instead. So the picker ate the line
+   and every sibling was squeezed to its min-content: 稽核 and 管理員 both
+   shipped a 26px search box and a 搜尋 / 新增 button broken over two lines
+   next to a 915px dropdown. max-content is the width it would have had in
+   normal flow; the cap is for an option nobody sized for, like a member's
+   full name. */
+.admin-search select,
+.admin-inline-form > select {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 260px;
+}
+
+/* Nor does the button beside it break its own label. */
+.admin-search button {
+  white-space: nowrap;
+}
+
 .admin-search button,
 .admin-pagination button,
 .admin-back {
@@ -720,9 +741,6 @@ button.admin-inbox__item:hover {
   flex-wrap: nowrap;
 }
 
-.admin-subheading-row .admin-inline-form select {
-  max-width: 220px;
-}
 
 /* And the words inside it are not what gives way. A flex row's max-content is
    built from its children's contributions, and a label or a button that CAN
@@ -1248,9 +1266,6 @@ button.admin-inbox__item:hover {
     flex-wrap: wrap;
   }
 
-  .admin-subheading-row .admin-inline-form select {
-    max-width: none;
-  }
 
   /* The search row is an input plus an export button, and at 375px the button
      ended 9px past the edge - enough to make the whole page slide. Wrap it
