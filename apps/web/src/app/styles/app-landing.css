@@ -24,199 +24,294 @@
   gap: clamp(40px, 8vw, 72px);
 }
 
-/* ---- hero -------------------------------------------------------------- */
+/* ---- top bar ------------------------------------------------------------ */
 
-.landing-hero {
-  min-height: calc(100vh - 40px);
-  min-height: calc(100dvh - 40px);
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 18px;
-  padding: 24px 0;
+.landing-topbar {
+  width: min(var(--landing-column), 100%);
+  margin-inline: auto;
+  padding: 14px var(--landing-gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-/* The sign-in card, the pitch and the cue, stacked. Same gap as the hero's own,
-   so on a phone this wrapper is invisible: shot, card, pitch, cue, 18px apart,
-   exactly as before it existed. */
-.landing-hero-panel {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 18px;
-  width: min(400px, 100%);
-}
-
-/* The sign-in card is the shared LoginScreen, which centres itself in a full
-   screen of its own. Inside the hero the hero owns the height, so hand the
-   sizing back rather than stacking two full-height boxes. */
-.landing-hero .login-screen {
-  min-height: 0;
-  padding: 0 var(--landing-gutter);
-  /* .login-card is width: min(400px, 100%), and without this the 100% resolves
-     against a parent that has itself shrunk to fit — so the card came out at
-     its intrinsic width, 220px, on every screen including a desktop. The card
-     was never meant to be the narrowest thing on the page. */
-  width: 100%;
-}
-
-/* The product shot above the sign-in card.
-   Sized so that the shot AND the card AND the scroll cue fit one phone screen
-   together - the point is that you can see what you are signing into without
-   scrolling, and a shot that pushes the button below the fold has just moved
-   the problem. */
-.landing-hero-shot {
-  width: min(268px, 60vw);
-  border: 1px solid rgb(var(--surf) / 0.18);
-  border-radius: 22px;
-  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
-  /* The image is the only child; without this the inline box adds a few px of
-     descender space under it and the rounded corner shows a seam. */
-  line-height: 0;
-  overflow: hidden;
-}
-
-.landing-hero-shot img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-/* The sign-in card is shared with the standalone login screen, which has a
-   whole screen to itself. Here it is sharing one with the product. */
-.landing-hero .login-card {
-  gap: 20px;
-  padding: 24px 28px;
-}
-
-.landing-hero .login-logo-mark {
-  width: 46px;
-  height: 46px;
-  border-radius: 15px;
+.landing-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: rgb(var(--fg));
   font-size: 19px;
-}
-
-.landing-hero .login-brand-name {
-  font-size: 25px;
-}
-
-/* The invite card, above the sign-in card. Only ever rendered for somebody who
-   arrived from a link, so it is allowed to be the loudest thing on the screen:
-   it is the answer to the only question they have. */
-.landing-invite {
-  /* The gutter is subtracted from the width rather than added as a margin: the
-     hero centres its items, so a margin on a 100%-wide box pushes the card off
-     both edges instead of insetting it. Matches the sign-in card below it. */
-  width: min(400px, calc(100% - 2 * var(--landing-gutter)));
-  display: grid;
-  justify-items: center;
-  gap: 4px;
-  margin-bottom: 4px;
-  padding: 16px 20px;
-  text-align: center;
-  /* Surface, border and blur all come from .glass-panel — the same treatment as
-     the sign-in card directly below it. Nothing tints this one: two stacked
-     cards in the same place should look like two cards, not like a warning and
-     a card. */
-}
-
-.landing-invite-label {
-  color: rgb(var(--fg) / 0.66);
-  font-size: 12.5px;
   font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
-.landing-invite-group {
-  font-size: 19px;
-  line-height: 1.3;
-  /* A group name is somebody else's words and can be anything, including one
-     very long unbroken string. Wrapping beats a card that runs off the screen. */
-  overflow-wrap: anywhere;
+/* Hidden on a phone: there is nothing above the hero worth spending width on
+   there, and the hero's own CTA already reaches everyone who scrolled past
+   it. See the 760px rule for where it turns on. */
+.landing-topbar-nav {
+  display: none;
+  align-items: center;
+  gap: 22px;
 }
 
-.landing-invite-meta {
+.landing-topbar-nav a {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  color: rgb(var(--fg) / 0.6);
-  font-size: 12.5px;
-}
-
-.landing-invite-hint {
-  margin-top: 4px;
-  color: rgb(var(--fg) / 0.55);
-  font-size: 12px;
-}
-
-.landing-pitch {
-  margin: 0;
-  padding: 0 var(--landing-gutter);
+  /* A real tap target even though this row is desktop-only pointer input —
+     matches every other link on the page rather than carving out an
+     exception for one that happens not to need it today. */
+  min-height: 44px;
   color: rgb(var(--fg) / 0.62);
-  font-size: 13px;
-  text-align: center;
-}
-
-/* Reads as "there is more below", not as a control. A bordered pill with one
-   chevron beside the label is the shape of a dropdown, and that is exactly how
-   it was read: tapped, the page jumped, and the next tap "failed to collapse"
-   something that had never opened. Stacked label-over-double-chevron is a
-   shape no dropdown uses. */
-.landing-scroll-cue {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  /* Generous padding rather than a border: the tap target stays finger-sized
-     without drawing a box that looks like a button. */
-  padding: 8px 20px;
-  color: rgb(var(--fg) / 0.72);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 15px;
   text-decoration: none;
 }
 
-.landing-scroll-cue svg {
-  color: rgb(var(--fg) / 0.5);
-  animation: landing-cue-nudge 2.4s ease-in-out infinite;
+.landing-topbar-nav a:hover {
+  color: rgb(var(--fg));
 }
 
-/* Smooth the jump so the movement itself says "you were scrolled" rather than
-   "something appeared". Scoped with :has so it only applies while the landing
-   page is what is mounted — the app's own routing does its own scrolling and
-   should not inherit this. Browsers without :has simply keep the instant jump. */
-@media (prefers-reduced-motion: no-preference) {
-  html:has(.landing) {
-    scroll-behavior: smooth;
-  }
+/* ---- hero -------------------------------------------------------------- */
+
+.landing-hero {
+  display: grid;
+  gap: clamp(20px, 5vw, 28px);
+  width: min(var(--landing-column), 100%);
+  margin-inline: auto;
+  padding: clamp(8px, 3vw, 24px) var(--landing-gutter) clamp(24px, 6vw, 40px);
 }
 
-@keyframes landing-cue-nudge {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.75;
-  }
-  50% {
-    transform: translateY(4px);
-    opacity: 1;
-  }
+/* The invite card's own width formula subtracts the gutter itself, on the
+   assumption that the hero around it carries none — true before this hero
+   grew horizontal padding of its own to host a full-width chat card. Placed
+   here rather than touched on the shared rule, since nothing outside the
+   hero uses .landing-invite. */
+.landing-hero .landing-invite {
+  width: 100%;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .landing-scroll-cue svg {
-    animation: none;
-  }
+/* The copy: eyebrow, headline, lede, sign-in. Left-aligned even though
+   everything below the hero is centred — a headline reads better ragged than
+   centred past two lines, and the sign-in button under it wants a fixed edge
+   to align to, not a moving one. */
+.landing-hero-copy {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  text-align: start;
+}
+
+.landing-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgb(var(--brand) / 0.22);
+  color: rgb(var(--fg) / 0.78);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.landing-hero-title {
+  margin: 0;
+  font-size: clamp(32px, 7.4vw, 54px);
+  line-height: 1.24;
+  font-weight: 800;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.landing-hero-lede {
+  margin: 0;
+  max-width: 470px;
+  color: rgb(var(--fg) / 0.7);
+  font-size: clamp(15px, 3.6vw, 18px);
+  line-height: 1.8;
+}
+
+.landing-cta-error {
+  margin: 0;
+  color: rgb(var(--danger));
+  font-size: 13px;
+}
+
+.landing-cta-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgb(var(--fg) / 0.72);
+  font-size: 14px;
+}
+
+.landing-cta {
+  width: 100%;
+  min-height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-fg));
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgb(var(--accent) / 0.32);
+}
+
+/* A press should feel immediate, and there is nothing here to ease back from —
+   this button is not part of the shared hover/select transition group in
+   app-base.css, so it does not need an opt-out entry there. */
+.landing-cta:active {
+  transform: scale(0.98);
+}
+
+/* ---- the chat card ------------------------------------------------------ */
+
+/* Every card on this page carries .glass-panel, so the whole column reads as
+   one material.
+   ⚠️ The cost is real and was measured: each backdrop-filter re-blurs what is
+   behind it whenever that changes, and behind these is the animated field on a
+   page several screens tall whose whole job is to be scrolled. This card is
+   the largest one on the page — if the desktop drags, it is the first place
+   to look — and 個人資料 → 動態背景 switches off the thing they are blurring. */
+.landing-chat {
+  margin: 0;
+  display: grid;
+  gap: 13px;
+  padding: 22px 20px 24px;
+  border-radius: 28px;
+}
+
+/* The one label load-bearing enough that it must never become sr-only,
+   aria-hidden, or faint: these four lines are invented, and this is the only
+   thing on the page saying so. 0.6, not fainter — the same opacity the demo
+   card's label read at before this replaced it, and low enough already that
+   dropping it further failed AA in light mode. */
+.landing-chat-label {
+  justify-self: start;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(var(--fg) / 0.6);
+}
+
+.landing-chat-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+}
+
+.landing-chat-row--self {
+  justify-content: flex-end;
+}
+
+.landing-chat-avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: rgb(var(--ink));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.landing-chat-avatar--gold {
+  background: rgb(var(--gold));
+}
+
+.landing-chat-avatar--mint {
+  background: rgb(var(--brand));
+}
+
+.landing-chat-bubble {
+  padding: 12px 16px;
+  border-radius: 18px 18px 18px 5px;
+  background: rgb(var(--surf) / 0.1);
+  font-size: 15px;
+  line-height: 1.6;
+  /* A message is somebody else's words in this fiction too, and could in
+     principle be long; wrap it rather than let it run past the card. */
+  overflow-wrap: anywhere;
+}
+
+.landing-chat-bubble--self {
+  border-radius: 18px 18px 5px 18px;
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-fg));
+}
+
+/* Equo's own answer, inside the conversation rather than beside it — the
+   point of the card is that the app resolves the argument, not that it
+   illustrates one. */
+.landing-settle {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgb(var(--surf) / 0.06);
+  border: 1px solid rgb(var(--accent) / 0.24);
+}
+
+.landing-settle-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.landing-settle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: rgb(var(--card-base) / 0.72);
+  font-size: 14.5px;
+}
+
+.landing-settle-names {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--fg) / 0.86);
+}
+
+.landing-settle-names svg {
+  color: rgb(var(--fg) / 0.4);
+}
+
+/* Gold, matching every other settlement figure in the app (group home,
+   dialogs) — painting this one green would make the marketing page disagree
+   with the product it is selling. */
+.landing-settle-amount {
+  color: rgb(var(--gold-ink));
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.landing-settle-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: rgb(var(--fg) / 0.58);
 }
 
 /* ---- scrim under the content ------------------------------------------- */
 
 /* The backdrop is a bright animated field, and the hero is the only part of
-   this page that can live on it unaided — its content is inside the sign-in
-   card. Below that there are headings and paragraphs sitting directly on the
-   canvas, so the whole block gets a wash of the theme's own card colour:
-   near-black in dark, white in light, which is the right direction in both
-   because the text colour flips with it. Without this a mint blob drifting
-   under a heading takes it from readable to invisible and back. */
+   this page that can live on it unaided — its content is inside the chat
+   card and the copy column's own contrast. Below that there are headings and
+   paragraphs sitting directly on the canvas, so the whole block gets a wash
+   of the theme's own card colour: near-black in dark, white in light, which
+   is the right direction in both because the text colour flips with it.
+   Without this a mint blob drifting under a heading takes it from readable
+   to invisible and back. */
 .landing-below {
   display: grid;
   gap: clamp(40px, 8vw, 72px);
@@ -247,117 +342,87 @@
   text-align: center;
 }
 
-/* ---- illustrated product card ----------------------------------------- */
+/* ---- the real product screenshot --------------------------------------- */
 
-/* Every card on this page carries .glass-panel, so the whole column reads as
-   one material — the sign-in card was always glass, and a page of flat cards
-   stacked under it looked like two different designs.
-   ⚠️ The cost is real and was measured: each backdrop-filter re-blurs what is
-   behind it whenever that changes, and behind these is the animated field on a
-   page 2.5 screens tall whose whole job is to be scrolled. They were flattened
-   for exactly that reason and put back deliberately. If the desktop drags, this
-   is the first place to look — and 個人資料 → 動態背景 switches off the thing
-   they are blurring. */
-.landing-demo-card {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
+/* Sized so a phone still gets a sharp image: 60vw was measured against the
+   232 CSS px this actually renders at on a typical phone, which a 3x screen
+   draws from 696 device pixels — the reason hero-home@2x.webp exists. */
+.landing-shot {
+  margin: 4px auto 0;
+  width: min(268px, 60vw);
+  border: 1px solid rgb(var(--surf) / 0.18);
   border-radius: 22px;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
+  /* The image is the only child; without this the inline box adds a few px of
+     descender space under it and the rounded corner shows a seam. */
+  line-height: 0;
+  overflow: hidden;
 }
 
-.landing-demo-label {
-  justify-self: start;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgb(var(--surf) / 0.12);
-  color: rgb(var(--fg) / 0.6);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+.landing-shot img {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
-.landing-demo-expense {
+/* ---- invite card -------------------------------------------------------- */
+
+/* Only ever rendered for somebody who arrived from a link, so it is allowed
+   to be the loudest thing on the screen: it is the answer to the only
+   question they have. */
+.landing-invite {
+  /* The gutter is subtracted from the width rather than added as a margin: a
+     margin on a 100%-wide box pushes the card off both edges instead of
+     insetting it. */
+  width: min(400px, calc(100% - 2 * var(--landing-gutter)));
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
+  justify-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  padding: 16px 20px;
+  text-align: center;
+  /* Surface, border and blur all come from .glass-panel — the same treatment
+     as every other card on the page. Nothing tints this one: it should look
+     like a card, not like a warning. */
 }
 
-.landing-demo-avatar {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 13px;
-  background: rgb(var(--brand) / 0.18);
-  color: rgb(var(--brand));
+.landing-invite-label {
+  color: rgb(var(--fg) / 0.66);
+  font-size: 12.5px;
+  font-weight: 800;
 }
 
-.landing-demo-expense-text {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
+.landing-invite-group {
+  font-size: 19px;
+  line-height: 1.3;
+  /* A group name is somebody else's words and can be anything, including one
+     very long unbroken string. Wrapping beats a card that runs off the screen. */
+  overflow-wrap: anywhere;
 }
 
-.landing-demo-expense-text strong {
-  font-size: 15px;
-}
-
-.landing-demo-expense-text span {
-  color: rgb(var(--fg) / 0.6);
-  font-size: 12px;
-}
-
-.landing-demo-amount {
-  font-size: 17px;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.landing-demo-settle {
-  display: grid;
-  gap: 8px;
-  padding: 14px;
-  border-radius: 16px;
-  background: rgb(var(--surf) / 0.08);
-}
-
-.landing-demo-settle-title {
-  color: rgb(var(--fg) / 0.6);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.landing-demo-settle ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 8px;
-}
-
-.landing-demo-settle li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
-}
-
-.landing-demo-names {
+.landing-invite-meta {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: rgb(var(--fg) / 0.86);
+  gap: 5px;
+  color: rgb(var(--fg) / 0.6);
+  font-size: 12.5px;
 }
 
-.landing-demo-names svg {
-  color: rgb(var(--fg) / 0.4);
+.landing-invite-hint {
+  margin-top: 4px;
+  color: rgb(var(--fg) / 0.55);
+  font-size: 12px;
 }
 
-.landing-demo-transfer {
-  color: rgb(var(--gold-ink));
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
+/* Smooth the jump for the header nav's anchors so the motion itself says
+   "you were scrolled" rather than "something appeared". Scoped with :has so
+   it only applies while the landing page is what is mounted — the app's own
+   routing does its own scrolling and should not inherit this. Browsers
+   without :has simply keep the instant jump. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing) {
+    scroll-behavior: smooth;
+  }
 }
 
 /* ---- value cards ------------------------------------------------------- */
@@ -479,6 +544,45 @@
   line-height: 1.7;
 }
 
+/* ---- closing band -------------------------------------------------------- */
+
+.landing-closing {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: clamp(36px, 8vw, 56px) clamp(22px, 5vw, 40px);
+  border-radius: 32px;
+  /* Not the mockup's solid dark slab: --fg is near-white in this app's
+     default (dark) theme, and a literal token swap here would drop a glaring
+     white slab into a dark page. A tinted glass surface inverts correctly in
+     both themes instead. */
+  background: linear-gradient(150deg, rgb(var(--accent) / 0.2), rgb(var(--brand) / 0.14)), rgb(var(--card-base) / 0.86);
+  border: 1px solid rgb(var(--surf) / 0.14);
+  text-align: center;
+}
+
+.landing-closing-title {
+  margin: 0;
+  font-size: clamp(24px, 5.4vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.32;
+  text-wrap: balance;
+}
+
+.landing-closing-line {
+  margin: 0;
+  color: rgb(var(--fg) / 0.68);
+  font-size: 15px;
+}
+
+.landing-cta--closing {
+  width: 100%;
+  background: rgb(var(--brand));
+  color: rgb(var(--ink));
+  box-shadow: none;
+}
+
 /* ---- footer ------------------------------------------------------------ */
 
 .landing-footer {
@@ -524,6 +628,10 @@
     --landing-column: 900px;
   }
 
+  .landing-topbar-nav {
+    display: flex;
+  }
+
   .landing-value-grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 14px;
@@ -533,50 +641,71 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .landing-demo-card {
-    padding: 24px;
+  .landing-faq {
+    grid-template-columns: repeat(2, 1fr);
+    /* Two columns of <details> at different open heights must not stretch a
+       short row to match a tall neighbour in the same track. */
+    align-items: start;
   }
-}
 
-/* Two columns, once there is honestly room for both.
-   900px, not the 760px the sections below use: this needs the shot at its
-   native 390px plus a column the sign-in card can fill plus the gutters, and
-   squeezing that into 760 gives back the cramped hero it replaces.
-
-   What it replaces: at 1280x900 the shot rendered 266x284 and the card 220px
-   wide, the whole hero stacked in a ~270px ribbon down the middle of a 1265px
-   viewport — while the sections BELOW it ran 860px wide. The one screen that
-   decides whether a stranger signs up was the narrowest thing on the page. */
-@media (min-width: 900px) {
-  .landing-hero {
-    grid-auto-flow: column;
-    justify-content: center;
-    align-items: center;
-    gap: clamp(36px, 5vw, 72px);
+  .landing-cta,
+  .landing-cta--closing {
+    width: auto;
+    padding-inline: 32px;
   }
 
   /* Native size, so the browser stops downscaling it and the 2x source in the
      srcset has something to be twice OF. */
-  .landing-hero-shot {
+  .landing-shot {
     width: 390px;
   }
+}
 
-  .landing-invite {
-    width: 390px;
+/* Two columns in the hero, once there is honestly room for both.
+   900px, not the 760px the sections below use: this needs the chat card at
+   its own comfortable width plus a copy column wide enough for a multi-line
+   headline plus the gutters, and squeezing that into 760 gives back the
+   cramped hero it replaces.
+
+   What the old two-column rule replaced: at 1280x900 the shot rendered
+   266x284 and the sign-in card 220px wide, the whole hero stacked in a
+   ~270px ribbon down the middle of a 1265px viewport — while the sections
+   BELOW it ran 860px wide. The one screen that decides whether a stranger
+   signs up was the narrowest thing on the page. This hero runs wider than
+   --landing-column for the same reason: at 900px total, the copy column
+   would collapse to ~460px, too narrow for a 54px headline beside a 390px
+   card. */
+@media (min-width: 900px) {
+  .landing-topbar {
+    width: min(1080px, 100%);
   }
 
-  .landing-hero-panel {
-    /* The gutter is the hero's own padding on a phone; here the columns carry
-       their own spacing, so the panel is free to use its full 400px. */
-    width: 400px;
+  .landing-hero {
+    width: min(1080px, 100%);
+    grid-template-columns: minmax(0, 1fr) 390px;
+    align-items: center;
+    gap: clamp(36px, 5vw, 72px);
+    padding-block: clamp(28px, 5vw, 56px) clamp(40px, 6vw, 72px);
   }
 
-  .landing-hero .login-screen {
-    padding: 0;
+  /* Explicit placement rather than DOM order: the invite and the chat card
+     never appear in the same render, so they can share a cell, and a phone
+     needs the invite to lead (see LandingPage.tsx) while a desktop needs it
+     on the right regardless of which element came first in the markup. */
+  .landing-hero-copy {
+    grid-column: 1;
+    grid-row: 1;
+    gap: 22px;
   }
 
-  .landing-pitch {
-    padding: 0;
+  /* No separate width rule needed here: .landing-hero .landing-invite's own
+     100% (above) already resolves to this column's fixed 390px track, so a
+     bare `.landing-invite { width: 390px }` here would be inert — beaten by
+     the more specific rule regardless of what it said. */
+  .landing-chat,
+  .landing-hero .landing-invite {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 

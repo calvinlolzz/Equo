@@ -178,34 +178,35 @@ describe("the landing page says what it is, in a form a machine reads", () => {
 
 describe("the page's heading says what the page is", () => {
   const landing = readAppFile("LandingPage.tsx");
-  const login = readAppFile("LoginScreen.tsx");
 
   test("the h1 is the proposition, not the brand", () => {
-    expect(landing).toContain('<h1 className="landing-section-title">{text.valueTitle}</h1>');
+    expect(landing).toContain('<h1 className="landing-hero-title">{text.valueTitle}</h1>');
     // 「一起花的錢，不用再算到傷感情」 rather than 「Equo」.
     expect(ZH_HANT.landing.valueTitle.length).toBeGreaterThan(6);
   });
 
-  test("the sign-in card gives up its h1 on the landing page only", () => {
-    expect(landing).toContain("brandIsHeading={false}");
-    // The standalone login screen is the whole document there, so it keeps it.
-    expect(login).toContain("brandIsHeading = true");
-  });
-
   test("there is exactly one h1 in the landing markup", () => {
+    // The brand wordmark in the topbar is a <span>, not a heading — the same
+    // property `brandIsHeading={false}` used to protect before the standalone
+    // sign-in card (and that prop) were retired.
     const hero = landing.match(/<h1/g) ?? [];
     expect(hero).toHaveLength(1);
+    expect(landing).toContain('<span className="landing-topbar-brand">');
+  });
+});
+
+describe("the header's links point at sections that actually exist", () => {
+  const landing = readAppFile("LandingPage.tsx");
+  const anchors = [...landing.matchAll(/href="#([\w-]+)"/g)].map((match) => match[1]);
+
+  test("the scan is actually finding anchors", () => {
+    expect(anchors.length).toBeGreaterThan(0);
   });
 
-  test("the brand looks the same either way", () => {
-    // Styling moved from `.login-brand h1` to `.login-brand-name`, which both
-    // the heading and the paragraph carry.
-    const misc = readAppFile("styles", "app-misc.css");
-    expect(misc).toContain(".login-brand-name {");
-    expect(misc).not.toContain(".login-brand h1");
-    // And the tagline rule must exclude it: `.login-brand p` outranks
-    // `.login-brand-name`, so without this the name renders as the tagline.
-    expect(misc).toContain(".login-brand p:not(.login-brand-name)");
+  test("every #id the topbar links to has a matching id in the same file", () => {
+    for (const id of anchors) {
+      expect(landing).toContain(`id="${id}"`);
+    }
   });
 });
 

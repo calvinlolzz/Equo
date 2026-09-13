@@ -275,6 +275,8 @@ export const EN: UiDictionary = {
   landing: {
     heroShotAlt: "Equo's group home: member balances, the day's spending, and who owes whom.",
     heroPitch: "Free · nothing to install · works in your browser",
+    heroLede:
+      "Add the expense and Equo does the rest — evenly, by amount, by percentage or by shares, across currencies, settled in the fewest transfers.",
     inviteTitle: "You have been invited to join",
     /** Joined as `${n} ${this}`. */
     inviteMemberSuffix: "members",
@@ -289,10 +291,12 @@ export const EN: UiDictionary = {
     value3Title: "Photograph the receipt, the amount fills itself in",
     value3Body: "Snap a receipt and the amount and merchant land in the form. Up to five per expense, and you can talk it over in the comments underneath.",
 
-    demoLabel: "Illustration",
-    demoExpenseTitle: "Izakaya",
-    demoExpenseMeta: "Ming paid · split 4 ways",
-    demoExpenseAmount: "NT$2,400",
+    demoChatLabel: "Illustrative conversation",
+    chatLine1: "I covered the izakaya — 2,400",
+    chatLine2: "I still owe you for the cab last time",
+    chatLine3: "So who owes who, and how much…",
+    chatLine4: "Just sent it",
+    chatSettleNote: "Mei and Jay both owe Ming — two transfers settle it.",
     demoSettleTitle: "Suggested transfers",
     demoSettleFrom1: "Mei",
     demoSettleTo1: "Ming",
@@ -321,6 +325,9 @@ export const EN: UiDictionary = {
     faq5Q: "Who can see my data?",
     faq5A:
       "Only the members of a group can see that group's expenses. We do not sell data and we do not run ads, and you can delete your whole account from the profile page at any time. When you use the receipt scanner, that photo is sent to Google Gemini to be read — Google may use it to improve their products and their staff may see it. If you would rather not, use the photo field in the expense form instead: the picture is still attached to the expense, but it is never sent out. See section 3 of the privacy policy.",
+
+    closingTitle: "Next time the bill comes, put the calculator away",
+    closingCta: "Start with Google",
 
     footerTagline: "Split expenses with friends, flatmates and travel companions.",
     footerContact: "Contact us",

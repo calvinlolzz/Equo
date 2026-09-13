@@ -1,32 +1,74 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Calculator, Camera, ChevronDown, ChevronsDown, ReceiptText, UsersRound } from "lucide-react";
-import { LoginScreen } from "./LoginScreen";
+import { ArrowRight, Calculator, Camera, ChevronDown, ReceiptText, UsersRound } from "lucide-react";
 import { readPendingInviteToken } from "./useInviteFlow";
 import { LEGAL_CONTACT_EMAIL } from "./legalContact";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.landing;
 const profileText = UI_TEXT.profile;
+const loginText = UI_TEXT.login;
+
+/**
+ * The one icon this page draws itself, so the hero's CTA and the closing
+ * band's CTA do not each need their own copy of it. Lifted verbatim from the
+ * standalone login screen — same paths, same colours, same 20×20 box.
+ */
+function GoogleGlyph() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+      <path
+        fill="#FFC107"
+        d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+      />
+      <path
+        fill="#FF3D00"
+        d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
+      />
+      <path
+        fill="#4CAF50"
+        d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
+      />
+      <path
+        fill="#1976D2"
+        d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+      />
+    </svg>
+  );
+}
+
+/**
+ * The first letter/character of a name, for a chat avatar.
+ *
+ * Deliberately the FIRST character rather than a fixed nickname: it is the
+ * only rule that means the same thing in 小明 and in "Ming". Purely
+ * decorative — every avatar it feeds is `aria-hidden`.
+ */
+function initial(name: string): string {
+  return [...name][0] ?? "";
+}
 
 /**
  * What a signed-out visitor sees at "/".
  *
- * Until this existed, the entire public face of Equo was a card with a logo, a
- * six-word tagline and a Google button — which is a lot to ask of somebody who
- * arrived from a friend's invite link and has never heard of it. Three things
- * follow from that and shape this page:
+ * The hero used to be a card with a logo, a six-word tagline and a Google
+ * button — a lot to ask of somebody who has never heard of Equo. It now leads
+ * with the argument instead: a headline, and a fabricated group chat (clearly
+ * labelled as an illustration, not a testimonial) that dramatises the exact
+ * problem this app exists to solve — two people arguing over who owes whom —
+ * followed by Equo's own answer to it. The real product screenshot moves
+ * below the fold, beside the three claims it backs up, because a screenshot
+ * earns its place next to a feature list and does not earn top billing over a
+ * headline nobody has read yet.
  *
- * - the sign-in card stays exactly where it was, first thing on the screen, so
- *   returning visitors lose nothing and nobody has to scroll to sign in;
- * - everything below it answers "what is this and why would I hand over my
- *   Google account", in that order, ending at the FAQ where the awkward
- *   questions (cost, data, no-account friends) get answered plainly;
+ * Three things this keeps from before:
+ * - somebody arriving from a friend's invite link sees the invite card in
+ *   place of the chat — they have already decided, and the invite card is
+ *   the answer to the only question they came with;
+ * - everything below the hero answers "what is this and why would I hand
+ *   over my Google account", ending at the FAQ where the awkward questions
+ *   (cost, data, no-account friends) get answered plainly;
  * - it is static markup with no session, no API call and no store, so it
- *   renders for a crawler and for a first-time visitor identically.
- *
- * The product illustration is drawn in markup rather than screenshotted on
- * purpose: a screenshot of somebody's real group is somebody's real data, and a
- * screenshot of a fake one goes stale the first time the UI moves.
+ *   renders for a crawler and a first-time visitor identically.
  */
 export function LandingPage({
   loading,
@@ -66,12 +108,40 @@ export function LandingPage({
     };
   }, [inviteToken, fetchInvitePreview]);
 
+  const cta = loading ? (
+    <div className="landing-cta-loading" role="status" aria-live="polite">
+      <span className="pulse-dot active" />
+      <span>{loginText.loggingIn}</span>
+    </div>
+  ) : (
+    <button className="landing-cta" type="button" onClick={onGoogleLogin}>
+      <GoogleGlyph />
+      {loginText.googleLogin}
+    </button>
+  );
+
   return (
     <div className="landing">
+      <header className="landing-topbar">
+        <span className="landing-topbar-brand">
+          <img src="/icons/equo-icon.svg" width={30} height={30} alt="" aria-hidden="true" />
+          Equo
+        </span>
+        {/* Desktop only (see the 760px rule) — a phone has nothing above the
+            hero to spend width on, and the hero's own CTA already reaches
+            everyone else. */}
+        <nav className="landing-topbar-nav" aria-label={text.scrollCue}>
+          <a href="#landing-value">{text.scrollCue}</a>
+          <a href="#landing-faq">{text.faqTitle}</a>
+        </nav>
+      </header>
+
       <section className="landing-hero">
         {/* Someone arriving from a friend's link is the one visitor who already
             knows they want in — and used to be shown the same anonymous sign-in
-            card as everybody else, with no sign that the link had worked. */}
+            card as everybody else, with no sign that the link had worked. It
+            takes the chat card's slot below: they do not need the argument for
+            why Equo exists, only the confirmation that this link works. */}
         {invite ? (
           <div className="landing-invite glass-panel">
             <span className="landing-invite-label">{text.inviteTitle}</span>
@@ -82,59 +152,74 @@ export function LandingPage({
             </span>
             <span className="landing-invite-hint">{text.inviteHint}</span>
           </div>
-        ) : (
-          /* The product, above the fold.
-             This screen used to ask a stranger for their Google account before
-             showing them a single thing the account was for - the demo, the
-             value props and the FAQ were all below a scroll cue. The real
-             screenshots existed the whole time; they were only ever wired to
-             the install prompt.
-             Not shown to somebody arriving from an invite: they have already
-             decided, and the invite card is the answer to the only question
-             they came with. Two cards plus a phone would not fit either. */
-          <div className="landing-hero-shot">
-            <img
-              src="/screenshots/hero-home.webp"
-              // Two sources, because one was never enough for a phone: this is
-              // shown at 232 CSS px on a 390px screen, which a 3x display draws
-              // with 696 device pixels — so a 390px file was being upscaled
-              // 1.78x, and the only product image on the page was soft on every
-              // modern phone. x-descriptors rather than w/sizes: the displayed
-              // width is decided by a breakpoint (232 on a phone, 390 on the
-              // desktop two-column hero), not by a fluid container, so density
-              // is the only thing left to choose on.
-              srcSet="/screenshots/hero-home.webp 1x, /screenshots/hero-home@2x.webp 2x"
-              width={390}
-              height={416}
-              alt={text.heroShotAlt}
-              // The largest thing above the fold, so it is not lazy and not
-              // queued behind the rest.
-              fetchPriority="high"
-              decoding="async"
-            />
-          </div>
-        )}
-        {/* The sign-in card, the one-line pitch and the scroll cue, as one
-            block. On a phone this wrapper changes nothing — it stacks in the
-            same order with the same gap. It exists for the desktop layout,
-            where the hero becomes two columns and this is the right one: a
-            flat list of four siblings could only spread those three items down
-            the full height of the product shot beside them. */}
-        <div className="landing-hero-panel">
-          <LoginScreen loading={loading} errorMessage={errorMessage} onGoogleLogin={onGoogleLogin} brandIsHeading={false} />
-          <p className="landing-pitch">{text.heroPitch}</p>
-          {/* A scroll cue, not a control. The first version put a single
-              chevron beside the label inside a bordered pill, which is the
-              shape of a dropdown — people tapped it, the page jumped, and it
-              read as "this expanded", with no way to collapse what had never
-              opened. So: no pill, the double chevron BELOW the label (a shape
-              no dropdown uses), and the jump is smoothed in CSS so the motion
-              itself says scrolled rather than opened. */}
-          <a className="landing-scroll-cue" href="#landing-value">
-            <span>{text.scrollCue}</span>
-            <ChevronsDown aria-hidden="true" size={18} />
-          </a>
+        ) : null}
+
+        <div className="landing-hero-copy">
+          <span className="landing-eyebrow">{text.heroPitch}</span>
+          {/* The page's h1. Not the brand — "Equo" is a word nobody arriving
+              here has heard yet, and it used to be the whole heading. This is
+              the one thing about the page a stranger cannot already guess. */}
+          <h1 className="landing-hero-title">{text.valueTitle}</h1>
+          <p className="landing-hero-lede">{text.heroLede}</p>
+          {errorMessage ? <p className="landing-cta-error">{errorMessage}</p> : null}
+          {cta}
         </div>
+
+        {invite ? null : (
+          /* The argument, above the fold: a fabricated group chat where two
+             people cannot agree who owes whom, resolved by Equo's own
+             suggestion. demoChatLabel is not decoration — without it these
+             four invented lines would read as a real customer's words. */
+          <figure className="landing-chat glass-panel">
+            <figcaption className="landing-chat-label">{text.demoChatLabel}</figcaption>
+
+            <div className="landing-chat-row">
+              <span className="landing-chat-avatar landing-chat-avatar--gold" aria-hidden="true">
+                {initial(text.demoSettleTo1)}
+              </span>
+              <span className="landing-chat-bubble">{text.chatLine1}</span>
+            </div>
+
+            <div className="landing-chat-row">
+              <span className="landing-chat-avatar landing-chat-avatar--mint" aria-hidden="true">
+                {initial(text.demoSettleFrom2)}
+              </span>
+              <span className="landing-chat-bubble">{text.chatLine2}</span>
+            </div>
+
+            <div className="landing-chat-row landing-chat-row--self">
+              <span className="landing-chat-bubble landing-chat-bubble--self">{text.chatLine3}</span>
+            </div>
+
+            <div className="landing-settle">
+              <div className="landing-settle-head">
+                <img src="/icons/equo-icon.svg" width={20} height={20} alt="" aria-hidden="true" />
+                <strong>{text.demoSettleTitle}</strong>
+              </div>
+              <div className="landing-settle-row">
+                <span className="landing-settle-names">
+                  {text.demoSettleFrom1}
+                  <ArrowRight aria-hidden="true" size={14} />
+                  {text.demoSettleTo1}
+                </span>
+                <strong className="landing-settle-amount">{text.demoSettleAmount1}</strong>
+              </div>
+              <div className="landing-settle-row">
+                <span className="landing-settle-names">
+                  {text.demoSettleFrom2}
+                  <ArrowRight aria-hidden="true" size={14} />
+                  {text.demoSettleTo2}
+                </span>
+                <strong className="landing-settle-amount">{text.demoSettleAmount2}</strong>
+              </div>
+              <p className="landing-settle-note">{text.chatSettleNote}</p>
+            </div>
+
+            <div className="landing-chat-row landing-chat-row--self">
+              <span className="landing-chat-bubble landing-chat-bubble--self">{text.chatLine4}</span>
+            </div>
+          </figure>
+        )}
       </section>
 
       {/* Everything below the hero sits on a scrim (see .landing-below). The
@@ -143,52 +228,8 @@ export function LandingPage({
           without the scrim, a light blob drifting past takes a paragraph's
           contrast with it. */}
       <div className="landing-below">
-        <section className="landing-section landing-demo" aria-label={text.demoLabel}>
-          <div className="landing-demo-card glass-panel">
-            <span className="landing-demo-label">{text.demoLabel}</span>
-
-            <div className="landing-demo-expense">
-              <span className="landing-demo-avatar" aria-hidden="true">
-                <ReceiptText size={18} />
-              </span>
-              <div className="landing-demo-expense-text">
-                <strong>{text.demoExpenseTitle}</strong>
-                <span>{text.demoExpenseMeta}</span>
-              </div>
-              <span className="landing-demo-amount">{text.demoExpenseAmount}</span>
-            </div>
-
-            <div className="landing-demo-settle">
-              <span className="landing-demo-settle-title">{text.demoSettleTitle}</span>
-              <ul>
-                <li>
-                  <span className="landing-demo-names">
-                    {text.demoSettleFrom1}
-                    <ArrowRight aria-hidden="true" size={14} />
-                    {text.demoSettleTo1}
-                  </span>
-                  <span className="landing-demo-transfer">{text.demoSettleAmount1}</span>
-                </li>
-                <li>
-                  <span className="landing-demo-names">
-                    {text.demoSettleFrom2}
-                    <ArrowRight aria-hidden="true" size={14} />
-                    {text.demoSettleTo2}
-                  </span>
-                  <span className="landing-demo-transfer">{text.demoSettleAmount2}</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
         <section className="landing-section" id="landing-value">
-          {/* The page's h1. Not the brand in the sign-in card, which is what it
-              used to be: "Equo" is the one thing about this page a stranger
-              cannot already guess, and it was the whole heading. The section is
-              below the fold and that is fine - a heading is judged on what it
-              says, not on where it sits. */}
-          <h1 className="landing-section-title">{text.valueTitle}</h1>
+          <h2 className="landing-section-title">{text.scrollCue}</h2>
           <div className="landing-value-grid">
             {[
               { icon: <ReceiptText aria-hidden="true" size={20} />, title: text.value1Title, body: text.value1Body },
@@ -202,6 +243,29 @@ export function LandingPage({
               </article>
             ))}
           </div>
+
+          {/* The real product, once there is a claim on screen for it to back
+              up. Below the fold now, so it is lazy rather than the largest
+              thing queued on load — the headline is. */}
+          <figure className="landing-shot">
+            <img
+              src="/screenshots/hero-home.webp"
+              // Two sources, because one was never enough for a phone: this is
+              // shown at 232 CSS px on a 390px screen, which a 3x display draws
+              // with 696 device pixels — so a 390px file was being upscaled
+              // 1.78x, and the only product image on the page was soft on every
+              // modern phone. x-descriptors rather than w/sizes: the displayed
+              // width is decided by a breakpoint (232 on a phone, 390 on a
+              // wider screen), not by a fluid container, so density is the
+              // only thing left to choose on.
+              srcSet="/screenshots/hero-home.webp 1x, /screenshots/hero-home@2x.webp 2x"
+              width={390}
+              height={416}
+              alt={text.heroShotAlt}
+              loading="lazy"
+              decoding="async"
+            />
+          </figure>
         </section>
 
         <section className="landing-section">
@@ -215,7 +279,7 @@ export function LandingPage({
           </ul>
         </section>
 
-        <section className="landing-section">
+        <section className="landing-section" id="landing-faq">
           <h2 className="landing-section-title">{text.faqTitle}</h2>
           {/* Native <details>: open/close with no JavaScript, reachable by
               keyboard and announced as a disclosure, and it survives the page
@@ -242,6 +306,29 @@ export function LandingPage({
                 <p>{entry.a}</p>
               </details>
             ))}
+          </div>
+        </section>
+
+        <section className="landing-section">
+          <div className="landing-closing">
+            <h2 className="landing-closing-title">{text.closingTitle}</h2>
+            <p className="landing-closing-line">{loginText.tagline}</p>
+            {/* A second sign-in button needs its own label — "使用 Google
+                登入" already appears once in the hero, and Testing Library's
+                getByText/getByRole throw on finding the same accessible name
+                twice. closingCta names Google without repeating the string.
+                Disabled while a login is already in flight: the hero swaps
+                to a loading row when that happens, and without this a click
+                down here fires a second sign-in on top of the first one. */}
+            <button
+              className="landing-cta landing-cta--closing"
+              type="button"
+              disabled={loading}
+              onClick={onGoogleLogin}
+            >
+              <GoogleGlyph />
+              {text.closingCta}
+            </button>
           </div>
         </section>
 

@@ -288,6 +288,8 @@ export const ZH_HANT = {
   landing: {
     heroShotAlt: "Equo 的群組首頁：成員餘額、當日花費，還有誰該付誰多少。",
     heroPitch: "免費・免下載・開瀏覽器就能用",
+    /** hero 標題下面那句，取代了原本的 login.tagline 出現在這個位置。 */
+    heroLede: "記一筆，剩下的它算。均分、指定金額、比例、份數都可以，多幣別自動換算，結清的時候只轉最少次。",
     /** 帶著 ?invite= 進來的人才看得到的那張卡。只說得出群組名與人數。 */
     inviteTitle: "你被邀請加入",
     inviteMemberSuffix: "位成員",
@@ -302,11 +304,18 @@ export const ZH_HANT = {
     value3Title: "拍收據，金額自動填",
     value3Body: "拍一張收據，金額和店名自動帶進表單。一筆最多五張，還能在底下留言討論這筆是誰付的。",
 
-    /** 首頁那張示意卡。是畫出來的示意圖，不是真的資料。 */
-    demoLabel: "示意畫面",
-    demoExpenseTitle: "居酒屋",
-    demoExpenseMeta: "小明付了・4 人均分",
-    demoExpenseAmount: "NT$2,400",
+    /**
+     * hero 裡那段示意對話：兩個人在群組裡對不清楚誰欠誰，Equo 的清償建議卡片
+     * 接著出現把它解決掉。demoChatLabel 是這段對話唯一的免責聲明，不能拿掉——
+     * 沒有它，這幾句編出來的對話會被當成真實使用者的證言。
+     */
+    demoChatLabel: "示意對話",
+    chatLine1: "居酒屋我先付了，2,400",
+    chatLine2: "我上次的車錢還沒給你耶",
+    chatLine3: "所以到底誰欠誰多少…",
+    chatLine4: "錢轉好了",
+    /** 描述的是卡片裡實際畫的兩筆——小美、阿哲都欠小明——不是三人循環互欠，用詞要對得上畫面。 */
+    chatSettleNote: "小美和阿哲都欠小明，兩筆轉帳就對平了。",
     demoSettleTitle: "清償建議",
     demoSettleFrom1: "小美",
     demoSettleTo1: "小明",
@@ -335,6 +344,12 @@ export const ZH_HANT = {
     faq5Q: "我的資料誰看得到？",
     faq5A:
       "只有同一個群組的成員看得到那個群組的帳。我們不賣資料、不放廣告，你也可以隨時在個人資料頁刪掉整個帳號。用掃描收據時，那張照片會送給 Google Gemini 辨識，Google 可能拿它改善產品、也可能有人員讀到——不想這樣就用表單裡的照片功能，照片一樣附在支出上但不會送出去。詳見隱私權政策第 3 節。",
+
+    /** 頁面結尾那條 CTA 帶狀區塊，跟 hero 那顆按鈕文字刻意不同——兩顆都叫「使用
+     *  Google 登入」的話，Testing Library 的 getByText 系列在同一頁找到兩個相
+     *  同的文字會直接丟例外。 */
+    closingTitle: "下次吃完飯，別再翻計算機",
+    closingCta: "用 Google 開始",
 
     footerTagline: "和朋友、室友、旅伴輕鬆記帳分帳。",
     footerContact: "聯絡我們",

@@ -26,7 +26,7 @@ describe("LandingPage", () => {
     expect(onGoogleLogin).toHaveBeenCalledTimes(1);
   });
 
-  test("surfaces the sign-in error the login card was given", () => {
+  test("surfaces the sign-in error next to the button that failed", () => {
     render(<LandingPage onGoogleLogin={() => {}} errorMessage="登入失敗：boom" />);
     expect(screen.getByText("登入失敗：boom")).toBeTruthy();
   });
@@ -115,44 +115,62 @@ describe("arriving from an invite link", () => {
     expect(fetchInvitePreview).not.toHaveBeenCalled();
     expect(screen.queryByText(text.inviteTitle)).toBeNull();
   });
+
+  test("the invite leads the hero on a phone, so the link is confirmed before the argument", async () => {
+    window.history.replaceState(null, "", "/?invite=EQO-ABC123");
+    render(
+      <LandingPage
+        onGoogleLogin={() => {}}
+        fetchInvitePreview={vi.fn().mockResolvedValue(preview)}
+      />,
+    );
+
+    const invite = await screen.findByText(text.inviteTitle);
+    const copy = document.querySelector(".landing-hero-copy");
+    expect(copy).toBeTruthy();
+
+    // DOCUMENT_POSITION_FOLLOWING (4) on the copy column means the invite
+    // card precedes it in the DOM — which is what makes it lead in the
+    // single-column mobile layout, where placement is decided by source
+    // order rather than the desktop's explicit grid-column.
+    // eslint-disable-next-line no-bitwise
+    const position = invite.closest(".landing-invite")!.compareDocumentPosition(copy!);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
 
 /**
  * What a stranger can see before being asked for their Google account.
  *
- * This page used to spend its whole first screen — 772px of 812 — on an icon, a
- * name, a tagline and a sign-in button. The demo, the value props and the FAQ
- * were all below a scroll cue, and the real screenshots (public/screenshots)
- * were wired to the install prompt and nowhere else.
+ * The hero leads with a headline and a fabricated group chat rather than a
+ * screenshot — the product shot moved into the value section, beside the
+ * three claims it backs up (see the "the real product" describe block below).
  */
-describe("the product, above the fold", () => {
-  const shot = () => document.querySelector<HTMLImageElement>(".landing-hero-shot img");
-
-  test("the hero shows the app itself, not just its name", () => {
+describe("the hero dramatises the argument", () => {
+  test("a group can't agree who owes whom, and Equo settles it", () => {
     render(<LandingPage onGoogleLogin={() => {}} />);
 
-    const image = shot();
-    expect(image).toBeTruthy();
-    expect(image?.getAttribute("src")).toContain("/screenshots/");
+    expect(screen.getByText(text.chatLine1)).toBeTruthy();
+    expect(screen.getByText(text.chatLine2)).toBeTruthy();
+    expect(screen.getByText(text.chatLine3)).toBeTruthy();
+    expect(screen.getByText(text.chatLine4)).toBeTruthy();
+    expect(screen.getByText(text.chatSettleNote)).toBeTruthy();
+    expect(screen.getByText(text.demoSettleAmount1)).toBeTruthy();
+    expect(screen.getByText(text.demoSettleAmount2)).toBeTruthy();
   });
 
-  test("it is described, because it carries the argument the page is making", () => {
+  test("and says, in the markup, that the conversation is made up", () => {
+    // Mutation-verified: removing the <figcaption> (or its wrapping <figure>)
+    // turns this red, which is the point — the label is not decoration.
     render(<LandingPage onGoogleLogin={() => {}} />);
-    expect(shot()?.getAttribute("alt")).toBe(text.heroShotAlt);
+
+    const label = screen.getByText(text.demoChatLabel);
+    expect(label.tagName).toBe("FIGCAPTION");
+    expect(label.getAttribute("aria-hidden")).toBeNull();
+    expect(label.closest("figure.landing-chat")).toBeTruthy();
   });
 
-  test("and it is not queued behind everything else - it is the largest thing up there", () => {
-    render(<LandingPage onGoogleLogin={() => {}} />);
-    const image = shot();
-
-    expect(image?.getAttribute("loading")).not.toBe("lazy");
-    // Intrinsic size on the tag, so the card below it does not jump when the
-    // image lands.
-    expect(image?.getAttribute("width")).toBeTruthy();
-    expect(image?.getAttribute("height")).toBeTruthy();
-  });
-
-  test("but it stands aside for somebody who arrived from an invite", async () => {
+  test("an invite replaces the conversation, not the page", async () => {
     window.history.replaceState(null, "", "/?invite=EQO-ABC123");
     render(
       <LandingPage
@@ -161,10 +179,83 @@ describe("the product, above the fold", () => {
       />,
     );
 
-    // They have already decided; the invite card is the answer they came for,
-    // and two cards plus a phone do not fit one screen.
-    expect(await screen.findByText(text.inviteTitle)).toBeTruthy();
-    expect(shot()).toBeNull();
+    expect(await screen.findByText("東京旅行")).toBeTruthy();
+    expect(screen.queryByText(text.demoChatLabel)).toBeNull();
+    expect(screen.queryByText(text.chatLine1)).toBeNull();
+    // Everything else the page argues stays intact.
+    expect(screen.getByRole("button", { name: new RegExp(UI_TEXT.login.googleLogin) })).toBeTruthy();
+    expect(screen.getByText(text.faq1A)).toBeTruthy();
+  });
+});
+
+describe("the closing band offers the same sign-in a second time", () => {
+  test("with a distinct label, so the page never asks the same question by the same name twice", () => {
+    const onGoogleLogin = vi.fn();
+    render(<LandingPage onGoogleLogin={onGoogleLogin} />);
+
+    // Regression guard: a second button with the SAME accessible name as the
+    // hero's would make every getByText/getByRole(name: googleLogin) call
+    // site elsewhere in the suite throw on finding two matches.
+    expect(screen.getByText(UI_TEXT.login.googleLogin)).toBeTruthy();
+    const closing = screen.getByRole("button", { name: new RegExp(text.closingCta) });
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+
+    fireEvent.click(closing);
+    expect(onGoogleLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test("but not while a sign-in is already in flight", () => {
+    // The hero swaps to a loading row when `loading` is true, so there is no
+    // hero button to double-click by then — but this one stayed a plain,
+    // clickable button until this test existed, and a click on it re-fires
+    // sign-in on top of the one already running.
+    render(<LandingPage onGoogleLogin={() => {}} loading />);
+
+    const closing = screen.getByRole("button", { name: new RegExp(text.closingCta) });
+    expect((closing as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("no copy is invented in the component itself", () => {
+  test("every user-facing string comes from the dictionary, not a literal", () => {
+    // Strips comments (which do quote Chinese in their explanations) and then
+    // looks for any remaining CJK codepoint — the signature of a string that
+    // was typed directly into the JSX instead of read from `text.*`.
+    const source = readAppFile("LandingPage.tsx");
+    const stripped = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+    // Unified ideographs plus the punctuation a literal would actually use \u2014
+    // CJK punctuation (\u3002\u3001\u300c\u300d), fullwidth forms (\uff0c\uff1a\uff01), and the katakana
+    // middle dot (\u30fb) \u2014 so a string with no ideograph in it, only punctuation
+    // around an interpolation, cannot slip past as "not CJK".
+    expect(stripped).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/);
+  });
+});
+
+describe("the real product, beside the claims it backs up", () => {
+  const shot = () => document.querySelector<HTMLImageElement>(".landing-shot img");
+
+  test("the value section shows the app itself, not just a description of it", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const image = shot();
+    expect(image).toBeTruthy();
+    expect(image?.getAttribute("src")).toContain("/screenshots/");
+  });
+
+  test("it is described, because it carries the argument the section is making", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    expect(shot()?.getAttribute("alt")).toBe(text.heroShotAlt);
+  });
+
+  test("and it is lazy — the headline is the largest thing queued on load now", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    const image = shot();
+
+    expect(image?.getAttribute("loading")).toBe("lazy");
+    // Intrinsic size on the tag, so the layout does not jump when it lands.
+    expect(image?.getAttribute("width")).toBeTruthy();
+    expect(image?.getAttribute("height")).toBeTruthy();
   });
 });
 
