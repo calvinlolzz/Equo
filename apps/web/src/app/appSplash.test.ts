@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { dismissAppSplash } from "./appSplash";
-import { insideAtRule, keyframesBody, readAppFile, ruleFor, styleBlocks } from "./cssDeclarations";
+import { insideAtRule, keyframesBody, readAppFile, readAppStylesheet, ruleFor, styleBlocks } from "./cssDeclarations";
 
 /**
  * The launch screen itself is markup and CSS inside index.html, on purpose:
@@ -11,6 +11,16 @@ import { insideAtRule, keyframesBody, readAppFile, ruleFor, styleBlocks } from "
 const indexHtml = readAppFile("..", "..", "index.html");
 /** Its rules, lifted out of <style> - see styleBlocks for why that matters. */
 const splashCss = styleBlocks(indexHtml);
+
+/**
+ * The splash's background is a hand-copied echo of `body` in app-base.css
+ * (it has to paint before that stylesheet exists - see the module comment
+ * above). Read the real recipe out of app-base.css rather than hard-coding
+ * its colours a second time here, so a future re-tune of the aurora blobs
+ * doesn't leave this test asserting stale numbers nobody noticed drifted.
+ */
+const bodyBackground = ruleFor(readAppStylesheet("app-base.css"), "body").background ?? "";
+const bodyBlobColors = [...bodyBackground.matchAll(/rgba\((\d+,\s*\d+,\s*\d+)/g)].map(([, rgb]) => rgb);
 
 /** The ms values in an `animation` shorthand, in the order they appear. */
 function timings(shorthand: string): number[] {
@@ -146,10 +156,13 @@ describe("the launch screen says it is loading", () => {
     const shell = ruleFor(splashCss, "#app-splash");
 
     // Same recipe as `body` in app-base.css, so lifting the cover reveals the
-    // same background instead of cutting between two different darks.
+    // same background instead of cutting between two different darks - checked
+    // against the real token values, not a copy of them.
     expect(shell.background).toContain("radial-gradient");
-    expect(shell.background).toContain("109, 226, 184");
-    expect(shell.background).toContain("255, 214, 122");
+    expect(bodyBlobColors.length).toBeGreaterThanOrEqual(3);
+    for (const rgb of bodyBlobColors) {
+      expect(shell.background).toContain(rgb);
+    }
   });
 
   test("the mark turns, and only after it has finished being drawn", () => {

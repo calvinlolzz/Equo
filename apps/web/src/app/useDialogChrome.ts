@@ -23,13 +23,14 @@ const ENTRANCE_MS = 260;
 /**
  * Flag a dialog as "travelling" for the length of its entrance.
  *
- * The class exists for one thing: a moving element with a backdrop-filter is
- * the most expensive thing this app can ask a phone to draw. A composited
- * transform is nearly free, but a backdrop blur has to re-sample and re-blur
- * everything behind the panel at its NEW position, every frame — so the sheets,
- * which are the biggest blurred surfaces here, are also the ones that move
- * furthest. CSS drops the frost while `.is-entering` or `.closing` is on, and
- * it comes back the moment the sheet lands.
+ * `.is-entering` used to be the hook a CSS rule read to drop `.glass-panel`'s
+ * backdrop blur while the sheet was moving — the aurora redesign removed that
+ * blur outright (see --card-solid in app-base.css), so the rule is gone and
+ * this class is currently a no-op on the CSS side. Left in place rather than
+ * pulled: `.closing` (added the same way, for the mirror case) still has a
+ * live consumer (`.flow-dialog.closing` / `.panel-dialog.closing`), the two
+ * share this plumbing, and a blur-conditional rule keyed on `.is-entering` is
+ * exactly the kind of thing a future stage might reintroduce.
  */
 function markEntering(node: HTMLElement, stop: { current: (() => void) | null }): void {
   stop.current?.();

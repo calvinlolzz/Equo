@@ -9,7 +9,6 @@ const text = UI_TEXT.profile;
 
 function renderDialog(props: Partial<Parameters<typeof ProfileDialog>[0]> = {}) {
   const onToggleTheme = vi.fn();
-  const onToggleBackgroundMotion = vi.fn();
 
   const view = render(
     <ProfileDialog
@@ -19,9 +18,6 @@ function renderDialog(props: Partial<Parameters<typeof ProfileDialog>[0]> = {}) 
       onOpenInfoDialog={() => {}}
       theme="dark"
       onToggleTheme={onToggleTheme}
-      backgroundMotion="on"
-      backgroundUnavailable={false}
-      onToggleBackgroundMotion={onToggleBackgroundMotion}
       onClose={() => {}}
       onSave={() => {}}
       onToast={() => {}}
@@ -32,7 +28,7 @@ function renderDialog(props: Partial<Parameters<typeof ProfileDialog>[0]> = {}) 
     />,
   );
 
-  return { view, onToggleTheme, onToggleBackgroundMotion };
+  return { view, onToggleTheme };
 }
 
 async function openOtherTab() {
@@ -122,38 +118,5 @@ describe("the 其他設定 rows", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: new RegExp(text.deleteAccount) })).toBeTruthy(),
     );
-  });
-});
-
-describe("the animated background switch", () => {
-  test("shows the current state and hands the toggle back", async () => {
-    const { onToggleBackgroundMotion } = renderDialog({ backgroundMotion: "on" });
-    await openOtherTab();
-
-    const row = screen.getByRole("button", { name: new RegExp(text.backgroundSetting) });
-    expect(within(row).getByText(text.backgroundOn)).toBeTruthy();
-
-    fireEvent.click(row);
-    expect(onToggleBackgroundMotion).toHaveBeenCalledTimes(1);
-  });
-
-  test("reads off when it is off", async () => {
-    renderDialog({ backgroundMotion: "off" });
-    await openOtherTab();
-
-    const row = screen.getByRole("button", { name: new RegExp(text.backgroundSetting) });
-    expect(within(row).getByText(text.backgroundOff)).toBeTruthy();
-  });
-
-  test("a machine that cannot draw it gets an explanation, not a dead switch", async () => {
-    // The software-renderer fallback already took the field away. Offering a
-    // control that visibly does nothing is worse than saying why.
-    const { onToggleBackgroundMotion } = renderDialog({ backgroundUnavailable: true });
-    await openOtherTab();
-
-    expect(screen.getByText(text.backgroundUnavailable)).toBeTruthy();
-    expect(screen.getByText(text.backgroundUnavailableHint)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: new RegExp(text.backgroundSetting) })).toBeNull();
-    expect(onToggleBackgroundMotion).not.toHaveBeenCalled();
   });
 });

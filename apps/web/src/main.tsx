@@ -9,9 +9,7 @@ import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
-import { initBackgroundMotion } from "./app/backgroundStore";
 import { resolvePublicPage } from "./app/publicRoute";
-import { initScrollActivity } from "./app/scrollActivity";
 import { initTheme } from "./app/themeStore";
 import { ACTIVE_LOCALE, UI_TEXT } from "./app/uiText";
 
@@ -36,8 +34,7 @@ if (!root) {
 }
 
 // /admin serves the operator console as a lazy chunk of the same SPA bundle:
-// regular users never download it, and the admin page skips the WebGL
-// backdrop entirely.
+// regular users never download it.
 const isAdminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 const AdminApp = lazyChunk(() => import("./app/AdminApp").then((module) => ({ default: module.AdminApp })));
 
@@ -49,30 +46,10 @@ const AdminApp = lazyChunk(() => import("./app/AdminApp").then((module) => ({ de
 const publicPage = isAdminPath ? null : resolvePublicPage(window.location.pathname);
 const LegalPage = lazyChunk(() => import("./app/LegalPage").then((module) => ({ default: module.LegalPage })));
 
-// The animated backdrop is decoration: a WebGL shader that nobody interacts
-// with and that the app is fully usable without. Loading it in the entry chunk
-// meant the first screen waited on it; as a lazy sibling it arrives a beat
-// later behind an already-interactive page, and the CSS gradient underneath
-// covers the gap.
-// Note this one is a sibling of <ErrorBoundary>, not a child: nothing upstream
-// catches for it, so a rejected import here takes the whole root down with it —
-// a white screen because the decoration failed to arrive. It gets a fallback of
-// its own rather than lazyChunk's reload: the app is fully usable without the
-// backdrop, and the CSS gradient underneath already covers the gap.
-const GlassBackground = React.lazy<React.ComponentType>(() =>
-  import("./app/GlassBackground")
-    .then((module) => ({ default: module.GlassBackground as React.ComponentType }))
-    .catch(() => ({ default: (() => null) as React.ComponentType })),
-);
-
 // Apply the persisted day/night theme to <html> before first paint (no flash).
 // The admin console keeps its own dark styling, so skip theming there.
 if (!isAdminPath) {
   initTheme();
-  // Applied before the first paint for the same reason as the theme: a machine
-  // that has the animated field switched off must not pay for a single frame of
-  // it while React mounts.
-  initBackgroundMotion();
 }
 
 // Global crash telemetry -> POST /api/v1/errors (deduped, capped per page
@@ -85,11 +62,6 @@ installErrorReporter(isAdminPath ? "admin" : "web");
 // there is no on-screen keyboard, so it is not gated on the path.
 installKeyboardInset();
 
-// Marks <html> while the page is being scrolled, so the glass can stop
-// re-blurring and the field can stop drawing for the length of the gesture
-// (see scrollActivity.ts). Installed for the console too: it scrolls tables.
-initScrollActivity();
-
 createRoot(root).render(
   <React.StrictMode>
     {isAdminPath ? (
@@ -100,9 +72,6 @@ createRoot(root).render(
       </ErrorBoundary>
     ) : (
       <>
-        <Suspense fallback={null}>
-          <GlassBackground />
-        </Suspense>
         <ErrorBoundary source="web">
           {publicPage ? (
             <Suspense fallback={null}>

@@ -63,6 +63,12 @@ export function useSwipeToDismissX(direction: DismissDirection, onClose: () => v
    * .side-drawer-backdrop > .side-drawer markup), so parentElement is it.
    * Restored on release; harmless if absent since each open remounts a fresh
    * backdrop element.
+   *
+   * `.side-drawer-backdrop` carries no backdrop-filter any more — the aurora
+   * redesign removed it (see var(--card-solid) in app-base.css) — so setting
+   * `backdropFilter` here currently has nothing to suspend and is a no-op.
+   * Left in place: it is cheap, and exactly what a reintroduced blur on this
+   * element would need.
    */
   function setBackdropBlur(suppressed: boolean) {
     if (blurOff.current === suppressed) return;

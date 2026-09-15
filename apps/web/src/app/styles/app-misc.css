@@ -999,8 +999,12 @@
   background: rgb(var(--brand) / 0.1);
 }
 
+/* Border in --gold-ink (the saturated variant), fill in --gold (the pale
+   one): --gold alone is a light-fill token now and reads as barely-there at
+   border strength, so the two tokens split the job - pale wash behind,
+   saturated edge in front - the way the rest of the "loud" surfaces below do. */
 .site-notice--warning {
-  border-color: rgb(var(--gold) / 0.45);
+  border-color: rgb(var(--gold-ink) / 0.45);
   background: rgb(var(--gold) / 0.12);
 }
 
@@ -1008,7 +1012,7 @@
    it belongs to somebody else, and an admin who forgets that is the entire risk
    this feature carries. */
 .site-notice--view-as {
-  border-color: rgb(var(--gold) / 0.6);
+  border-color: rgb(var(--gold-ink) / 0.6);
   background: rgb(var(--gold) / 0.16);
 }
 
@@ -1056,14 +1060,13 @@
   align-items: center;
   max-width: calc(100vw - 32px);
   padding: 8px 16px;
-  border: 1px solid rgb(var(--gold) / 0.4);
+  border: 1px solid rgb(var(--gold-ink) / 0.4);
   border-radius: 999px;
-  background: rgb(var(--card-base) / 0.92);
+  background: var(--card-solid);
   color: rgb(var(--fg));
   font-size: 13px;
   font-weight: 700;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(12px);
   pointer-events: none;
 }
 
@@ -1178,7 +1181,7 @@
   place-items: center;
   width: min(240px, 62vw);
   aspect-ratio: 1;
-  border: 3px solid rgb(var(--gold));
+  border: 3px solid rgb(var(--gold-ink));
   border-radius: 20px;
   color: rgb(var(--gold) / 0.85);
 }

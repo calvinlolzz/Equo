@@ -26,7 +26,7 @@ export function readStoredTheme(): ThemeMode {
  * prefers-color-scheme. These are the two --page-1 token values (see
  * app-base.css) so the chrome always matches the page background.
  */
-const THEME_COLORS: Record<ThemeMode, string> = { dark: "#07110f", light: "#f2f2f7" };
+const THEME_COLORS: Record<ThemeMode, string> = { dark: "#07080D", light: "#F4F5F9" };
 
 function syncThemeColorMeta(theme: ThemeMode): void {
   if (typeof document === "undefined") return;

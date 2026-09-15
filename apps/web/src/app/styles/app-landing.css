@@ -170,12 +170,9 @@
 /* ---- the chat card ------------------------------------------------------ */
 
 /* Every card on this page carries .glass-panel, so the whole column reads as
-   one material.
-   ⚠️ The cost is real and was measured: each backdrop-filter re-blurs what is
-   behind it whenever that changes, and behind these is the animated field on a
-   page several screens tall whose whole job is to be scrolled. This card is
-   the largest one on the page — if the desktop drags, it is the first place
-   to look — and 個人資料 → 動態背景 switches off the thing they are blurring. */
+   one material. .glass-panel carries no backdrop-filter any more (see
+   --card-solid in app-base.css) — this card used to be the one place that
+   warning applied to, back when it did. */
 .landing-chat {
   margin: 0;
   display: grid;
@@ -381,9 +378,9 @@
   margin-bottom: 4px;
   padding: 16px 20px;
   text-align: center;
-  /* Surface, border and blur all come from .glass-panel — the same treatment
-     as every other card on the page. Nothing tints this one: it should look
-     like a card, not like a warning. */
+  /* Surface and border come from .glass-panel — the same treatment as every
+     other card on the page. Nothing tints this one: it should look like a
+     card, not like a warning. */
 }
 
 .landing-invite-label {

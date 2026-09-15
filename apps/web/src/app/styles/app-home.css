@@ -571,8 +571,7 @@
   position: fixed;
   inset: 0;
   z-index: 45;
-  background: rgba(0, 0, 0, 0.46);
-  backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.56);
   animation: backdrop-fade-in 200ms ease-out;
 }
 
@@ -596,7 +595,7 @@
   /* Clear the status bar (top) and home indicator (bottom) in standalone PWA.
      The left drawer sets padding:0 and defers to its inner .group-rail below. */
   padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
-  background: linear-gradient(145deg, rgba(20, 26, 24, 0.98), rgba(8, 12, 11, 0.98));
+  background: var(--card-solid);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
 }
 
@@ -763,23 +762,12 @@
   grid-template-columns: minmax(70px, 1fr) minmax(110px, 1.2fr) minmax(70px, 1fr);
   align-items: center;
   gap: 12px;
-  border: 1px solid rgb(var(--surf) / 0.13);
+  border: 1px solid var(--edge-2);
   border-radius: 18px;
   padding: 20px 16px 16px;
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.12), rgb(var(--surf) / 0.045)),
-    radial-gradient(circle at 16% 10%, rgb(var(--brand) / 0.18), transparent 34%),
-    rgb(var(--card-base) / 0.9);
+  background: var(--card-solid);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
-  /* No backdrop-filter, deliberately.
-     These three sit on a base that is already 88-90% opaque, over a background
-     that is a slow gradient - so a blur of what shows through changes nothing
-     anyone can see (checked side by side, both themes). What it did cost was a
-     full-area GPU blur pass per element per frame, and the expense row is per
-     ROW: a screen of records was one blur layer each, re-composited the whole
-     way down a scroll. The blurs that remain are the ones with real content
-     behind them - the glass cards, the tab bar rows scroll under, and the
-     modal/drawer backdrops. */
+  /* No backdrop-filter — flat card, see app-base.css --card-solid. */
 }
 
 .pizo-debt-card::before {
@@ -818,15 +806,10 @@
   padding: 0 14px;
   border: 1px solid rgb(var(--gold) / 0.5);
   border-radius: 12px;
-  color: rgb(var(--gold));
+  color: rgb(var(--gold-ink));
   background: rgb(var(--gold) / 0.1);
   font-weight: 860;
   white-space: nowrap;
-}
-
-/* Keeps the gold language in day mode too, via the readable variant. */
-:root[data-theme="light"] .pizo-debt-nudge-action {
-  color: rgb(var(--gold-ink));
 }
 
 .pizo-debt-nudge-action.sent,
@@ -840,11 +823,11 @@
   position: relative;
   grid-column: 1 / -1;
   min-height: 40px;
-  border: 1px solid rgb(var(--gold) / 0.28);
+  border: 1px solid var(--edge-2);
   border-radius: 12px;
-  color: #17130a;
-  background: linear-gradient(135deg, rgb(var(--gold)), #f6c657);
-  box-shadow: 0 10px 24px rgb(var(--gold) / 0.18);
+  color: rgb(var(--ink));
+  background: var(--cta);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
 }
 
 .pizo-debt-person {
@@ -924,13 +907,10 @@
   overflow: hidden;
   min-height: 92px;
   grid-template-columns: 50px minmax(0, 1fr) auto;
-  border: 1px solid rgb(var(--surf) / 0.12);
+  border: 1px solid var(--edge-2);
   border-radius: 18px;
   padding: 16px;
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.115), rgb(var(--surf) / 0.042)),
-    radial-gradient(circle at 12% 6%, rgb(var(--brand) / 0.14), transparent 32%),
-    rgb(var(--card-base) / 0.88);
+  background: var(--card-solid);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.22);
 }
 
@@ -972,7 +952,7 @@
 }
 
 .pizo-expense-row .expense-record-amount small {
-  color: rgb(var(--gold) / 0.68);
+  color: rgb(var(--gold-ink));
   font-size: 10px;
   letter-spacing: 0;
 }
@@ -1010,23 +990,20 @@
 
 .mini-avatar-stack em:nth-child(2) {
   color: rgb(var(--fg));
-  background: linear-gradient(135deg, #314842, #7d6a3f);
+  background: linear-gradient(135deg, var(--member-2), var(--member-3));
 }
 
 .mini-avatar-stack em:nth-child(3) {
   color: rgb(var(--fg));
-  background: linear-gradient(135deg, #26433b, #526f66);
+  background: linear-gradient(135deg, var(--member-3), var(--member-1));
 }
 
 .pizo-activity-list {
   overflow: hidden;
-  border: 1px solid rgb(var(--surf) / 0.12);
+  border: 1px solid var(--edge-2);
   border-radius: 18px;
   padding: 0 16px;
-  background:
-    linear-gradient(145deg, rgb(var(--surf) / 0.105), rgb(var(--surf) / 0.038)),
-    radial-gradient(circle at 12% 0%, rgb(var(--gold) / 0.12), transparent 36%),
-    rgb(var(--card-base) / 0.88);
+  background: var(--card-solid);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.2);
 }
 
@@ -1049,7 +1026,7 @@
 }
 
 .pizo-activity-row span {
-  color: rgb(var(--gold) / 0.74);
+  color: rgb(var(--gold-ink));
   font-size: 13px;
   font-weight: 800;
 }
@@ -1062,6 +1039,10 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* Reserved from the start (box-sizing: border-box, see app-base.css *) so
+     the light-mode .secondary-action border below is a colour change, not a
+     size change - box model is identical to .primary-action's in both themes. */
+  border: 1px solid transparent;
   border-radius: 14px;
   color: rgb(var(--ink));
   font-weight: 860;
@@ -1074,6 +1055,15 @@
 
 .secondary-action {
   background: rgb(var(--gold));
+}
+
+/* Dark mode's --gold fill is dark-card-relative bright enough to read its own
+   edge (measured 9.2:1 against --page-1) - no border needed. Light mode's
+   lavender fill on a near-white card is ~1.85:1, which is no edge at all;
+   give it one, in the saturated --gold-ink rather than --gold itself so the
+   border doesn't just repeat the pale fill it's meant to separate from. */
+:root[data-theme="light"] .secondary-action {
+  border-color: rgb(var(--gold-ink) / 0.45);
 }
 
 .primary-action:disabled,
@@ -1161,7 +1151,7 @@
   display: grid;
   place-items: center;
   color: rgb(var(--ink));
-  background: rgb(var(--gold));
+  background: var(--cta);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
   font-size: 42px;
   line-height: 1;
@@ -1178,7 +1168,6 @@
   align-items: center;
   border-top: 1px solid rgb(var(--surf) / 0.16);
   padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(145deg, rgba(20, 22, 21, 0.92), rgba(10, 12, 11, 0.94));
+  background: var(--card-solid);
   box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(24px) saturate(1.25);
 }

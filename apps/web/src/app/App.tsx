@@ -93,7 +93,6 @@ import { useIsMobileLayout } from "./useIsMobileLayout";
 import { useInviteFlow } from "./useInviteFlow";
 import { useMemberMutations } from "./useMemberMutations";
 import { useThemeMode } from "./useThemeMode";
-import { useBackgroundMotion } from "./useBackgroundMotion";
 import { useArchivedGroups } from "./useArchivedGroups";
 import { useAuthSession } from "./useAuthSession";
 import { readRouteGroupId, useGroupRoute } from "./useGroupRoute";
@@ -268,7 +267,6 @@ export function App() {
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const { theme, toggleTheme } = useThemeMode();
-  const { backgroundMotion, backgroundUnavailable, toggleBackgroundMotion } = useBackgroundMotion();
   // Mobile drawer swipe gestures: each drawer dismisses toward the edge it
   // slid in from (left drawer <- swipe left, right drawer -> swipe right).
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
@@ -680,16 +678,13 @@ export function App() {
     { open: coverToCrop !== null, close: () => setCoverToCrop(null) },
   ]);
 
-  // Mirror "something is covering the screen" onto <html> so the WebGL backdrop
-  // can pause itself. It cannot be a prop: main.tsx renders GlassBackground as a
-  // SIBLING of <App />, so this state is not on its path — and an attribute is
-  // what that component already watches (it observes data-theme on the same
-  // element). Every overlay in the app is a full-viewport layer over a scrim, so
-  // while one is open the field underneath is animating at full rate to be seen
-  // through 10px of blur at 44% black — and, worse, keeps invalidating the
-  // scrim's own backdrop-filter every frame. Frozen, that blur is cached.
-  // (It said 30fps here while phones were capped; the cap is gone, which makes
-  // this pause worth more than it was, not less.)
+  // Mirror "something is covering the screen" onto <html>. This used to let
+  // the WebGL backdrop (GlassBackground) pause itself while covered — it is
+  // unmounted now (see main.tsx; the aurora field is static CSS instead, see
+  // `body` in app-base.css), so this effect currently has no observer and is
+  // a no-op DOM write. Left in place rather than pulled: it is cheap, and a
+  // future surface (or a rolled-back GlassBackground) could read it the same
+  // way this was originally wired for.
   useEffect(() => {
     const root = document.documentElement;
     if (overlayDepth > 0) root.setAttribute("data-overlay", "1");
@@ -2147,9 +2142,6 @@ export function App() {
           onOpenInfoDialog={setInfoDialog}
           theme={theme}
           onToggleTheme={toggleTheme}
-          backgroundMotion={backgroundMotion}
-          backgroundUnavailable={backgroundUnavailable}
-          onToggleBackgroundMotion={toggleBackgroundMotion}
           onClose={closeDialog}
           onSave={saveProfile}
           onToast={showToast}

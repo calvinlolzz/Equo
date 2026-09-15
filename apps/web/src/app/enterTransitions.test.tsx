@@ -183,17 +183,12 @@ describe("the blur budget", () => {
    * multiply rather than a 49-tap convolution, and it is what the glass falls
    * back to mid-scroll (see chromeStyles.test.ts) - putting those in this
    * budget would make the cheap version look like the expensive one.
+   *
+   * Empty on purpose: the 極光 (aurora) redesign dropped every backdrop blur
+   * in the app in favour of flat --card-solid surfaces (see --card-solid in
+   * app-base.css). This test's job is now to keep it that way.
    */
-  const ALLOWED = [
-    ".composer-backdrop",
-    ".glass-panel",
-    ".mobile-tab-bar",
-    ".modal-backdrop",
-    ".offline-banner",
-    ".side-drawer-backdrop",
-    ".toast-dock",
-    ':root[data-theme="light"] .glass-panel',
-  ];
+  const ALLOWED: string[] = [];
 
   test("only the layers with something behind them still blur", () => {
     const blurring = rules(allCss)
@@ -204,8 +199,10 @@ describe("the blur budget", () => {
   });
 
   test("the home list rows in particular do not", () => {
-    // The one that scaled with the amount of data on screen.
+    // The one that scaled with the amount of data on screen. No
+    // theme-specific override exists any more for this selector - .pizo-
+    // expense-row uses --card-solid, which already flips per theme - so the
+    // base check alone covers both themes.
     expect(ruleFor(allCss, ".pizo-expense-row")["backdrop-filter"]).toBeUndefined();
-    expect(ruleFor(allCss, ':root[data-theme="light"] .pizo-expense-row')["backdrop-filter"]).toBeUndefined();
   });
 });
