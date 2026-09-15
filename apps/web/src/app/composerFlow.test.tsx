@@ -61,6 +61,12 @@ async function landAsBob() {
   ]);
   renderApp();
   await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+  // The pathname changes as soon as the group is selected - before its
+  // members have necessarily loaded. openComposer's payer default reads
+  // `members` at the moment it is called, so a composer opened too early
+  // defaults to whoever the (still-empty) member list falls back to, not
+  // Bob. Wait for his name to actually be on screen first.
+  await screen.findByText("Bob");
 }
 
 async function openComposer() {

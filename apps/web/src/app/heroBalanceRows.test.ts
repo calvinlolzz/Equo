@@ -21,12 +21,12 @@ const names = (picked: Member[]) => picked.map((member) => member.name);
 
 describe("heroBalanceMembers", () => {
   test("puts you first even when you are last in the group", () => {
-    expect(names(heroBalanceMembers(members, balances, "m_dan"))).toEqual(["Dan", "Cara"]);
+    expect(names(heroBalanceMembers(members, balances, "m_dan", 2))).toEqual(["Dan", "Cara"]);
   });
 
   test("the second row is whoever is furthest from settled, not the next in the array", () => {
     // Bob is members[1]; Cara is the one worth a row.
-    expect(names(heroBalanceMembers(members, balances, "m_alice"))).toEqual(["Alice", "Dan"]);
+    expect(names(heroBalanceMembers(members, balances, "m_alice", 2))).toEqual(["Alice", "Dan"]);
   });
 
   test("owing and being owed are equally interesting - it ranks on distance from zero", () => {
@@ -37,18 +37,18 @@ describe("heroBalanceMembers", () => {
       ["m_dan", 0],
     ]);
     // Bob is the most negative and still wins the row.
-    expect(names(heroBalanceMembers(members, owed, "m_alice"))).toEqual(["Alice", "Bob"]);
+    expect(names(heroBalanceMembers(members, owed, "m_alice", 2))).toEqual(["Alice", "Bob"]);
   });
 
   test("with no self to pin, it simply ranks everyone", () => {
-    expect(names(heroBalanceMembers(members, balances, undefined))).toEqual(["Dan", "Cara"]);
+    expect(names(heroBalanceMembers(members, balances, undefined, 2))).toEqual(["Dan", "Cara"]);
     // An id the group has never had behaves the same way, rather than throwing.
-    expect(names(heroBalanceMembers(members, balances, "m_ghost"))).toEqual(["Dan", "Cara"]);
+    expect(names(heroBalanceMembers(members, balances, "m_ghost", 2))).toEqual(["Dan", "Cara"]);
   });
 
   test("an all-settled group keeps the group's own order behind you", () => {
     const settled = new Map(members.map((member) => [member.id, 0] as const));
-    expect(names(heroBalanceMembers(members, settled, "m_cara"))).toEqual(["Cara", "Alice"]);
+    expect(names(heroBalanceMembers(members, settled, "m_cara", 2))).toEqual(["Cara", "Alice"]);
   });
 
   test("never invents a row: a one-member group returns one", () => {

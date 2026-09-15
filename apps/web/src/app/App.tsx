@@ -801,19 +801,6 @@ export function App() {
   const settleAmountTooMuch =
     Boolean(settleConfirm) && !settleAmount.valid && settleAmount.minor > settleConfirm!.amountMinor;
 
-  const extraTransferCount = Math.max(0, settlementTransfers.length - 1);
-  /**
-   * Whether the top debt's payer can be reminded from the home card: somebody
-   * other than you, with an account to deliver a notification to.
-   *
-   * Same rule as the member list's button (and the server checks all of it
-   * again). This is the placement that matters: the card already says "A 需付
-   * B $500" next to 清償, which is exactly where somebody thinking "he still
-   * hasn't paid me" is looking - the member sheet is two taps away behind a
-   * 設定 tab, and nobody goes there to chase a debt.
-   */
-  const debtNudgeable = Boolean(debt && !debt.from.virtual && debt.from.id !== currentMember?.id);
-  const debtNudged = Boolean(debt && nudgedMemberIds.includes(debt.from.id));
   const maxBalanceMinor = Math.max(1, ...members.map((member) => Math.abs(balances.get(member.id) ?? 0)));
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
   const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
@@ -1238,11 +1225,6 @@ export function App() {
     }
   }
 
-  function settleDebt() {
-    if (!debt) return;
-    settleTransfer(debt.from.id, debt.to.id, debt.amountMinor);
-  }
-
   /**
    * 清償 from a member row, for a pair the minimal-transfer suggestions never
    * named. The row worked out the direction and the amount from the balances
@@ -1314,6 +1296,72 @@ export function App() {
       } else {
         showToast(describeCloudActionError(error));
       }
+    } finally {
+      endAction();
+    }
+  }
+
+  /**
+   * "提醒 N 位成員" on the home screen — every debtor at once, in parallel.
+   *
+   * Not `targets.map(nudgeMember)`: that would fire N toasts (one per
+   * member) and, worse, `beginAction` guards a single global key, so every
+   * call after the first would be refused outright and silently do nothing.
+   * This owns one action key for the whole batch and reports one outcome.
+   *
+   * The server's cooldown is per-(group, target member), so a mix of
+   * results is the normal case, not an edge case: whoever somebody else
+   * already reminded today comes back as NUDGE_COOLDOWN, not a failure.
+   * That is folded into "reminded" here — the person doesn't need a second
+   * reminder sent on their behalf, they need the button to stop asking
+   * about them.
+   */
+  async function nudgeEveryDebtor(targets: Member[]) {
+    if (!activeGroup || targets.length === 0) return;
+    if (!beginAction("nudgeAll")) return;
+
+    try {
+      const api = createApiClient();
+      const results = await Promise.allSettled(targets.map((member) => api.nudgeMember(activeGroup.id, member.id)));
+
+      // Members who don't need offering a reminder again, whatever the
+      // reason: sent, already reminded by somebody else, or turned out not
+      // to owe anything any more.
+      const spent: string[] = [];
+      let sent = 0;
+      let cooled = 0;
+      let failed = 0;
+      results.forEach((result, index) => {
+        const memberId = targets[index].id;
+        if (result.status === "fulfilled") {
+          sent += 1;
+          spent.push(memberId);
+          return;
+        }
+        const code = (result.reason as { code?: string } | null)?.code;
+        if (code === "NUDGE_COOLDOWN") {
+          cooled += 1;
+          spent.push(memberId);
+        } else if (code === "NUDGE_NOT_NEEDED") {
+          spent.push(memberId);
+        } else {
+          failed += 1;
+        }
+      });
+
+      if (spent.length) {
+        setNudgedMemberIds((current) => [...new Set([...current, ...spent])]);
+      }
+      if (sent > 0) {
+        haptic("success");
+        showToast(text.nudgeSentToast);
+      } else if (cooled > 0) {
+        showToast(text.nudgeCooldown);
+      } else if (failed > 0) {
+        showToast(text.nudgeFailed);
+      }
+      // Every target turned out NUDGE_NOT_NEEDED and nothing else: none of
+      // the three toasts above is true, so none is shown.
     } finally {
       endAction();
     }
@@ -1640,16 +1688,16 @@ export function App() {
             group={activeGroup}
             install={install}
             showSkeleton={cloudActiveLoading && !cloudActiveDetail}
+            hasLoadedDetail={Boolean(cloudActiveDetail)}
             members={members}
             currentMember={currentMember}
             balances={balances}
             totalExpenseMinor={totalExpenseMinor}
+            expenseCount={aggregates.expenseCount}
+            groupSettled={settlementTransfers.length === 0}
             expenses={expenses}
             activities={activities}
-            debt={debt}
-            extraTransferCount={extraTransferCount}
-            debtNudgeable={debtNudgeable}
-            debtNudged={debtNudged}
+            nudgedMemberIds={nudgedMemberIds}
             pendingAction={pendingAction}
             spendTab={spendTab}
             onSelectSpendTab={setSpendTab}
@@ -1662,8 +1710,10 @@ export function App() {
             onOpenDialog={setDialog}
             onInviteMembers={openInviteMembers}
             onScanReceipt={openReceiptScan}
-            onSettleDebt={settleDebt}
+            onOpenExpenseComposer={openExpenseComposer}
+            onSettleTransfer={settleTransfer}
             onNudgeMember={nudgeMember}
+            onNudgeAll={nudgeEveryDebtor}
             onOpenExpenseDetail={openExpenseDetail}
           />
 

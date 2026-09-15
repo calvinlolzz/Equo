@@ -39,12 +39,12 @@ function fourMemberDetail() {
   });
 }
 
-/** The two-row balance list inside the home hero card. */
+/** The member list inside the home card. */
 function balanceList(): HTMLElement {
   const card = document.getElementById("group-home");
   if (!card) throw new Error("the home card is not on screen");
-  const list = card.querySelector<HTMLElement>(".hero-balance-list");
-  if (!list) throw new Error("the home card has no balance list");
+  const list = card.querySelector<HTMLElement>(".home-member-list");
+  if (!list) throw new Error("the home card has no member list");
   return list;
 }
 
@@ -67,22 +67,26 @@ describe("the home card's balance rows", () => {
     expect(within(balanceList()).getByText("Dan")).toBeTruthy();
   });
 
-  test("give the second row to whoever is furthest from settled", async () => {
+  test("ranks the second row (and beyond) by distance from settled, not array order", async () => {
     await landAs("user_dan", "Dan");
-    expect(within(balanceList()).getByText("Cara")).toBeTruthy();
-    // Bob is members[1] and would have had the row purely for being early.
-    expect(within(balanceList()).queryByText("Bob")).toBeNull();
+    // Bob is members[1] and would have won the row purely for being early;
+    // Cara is the one who is actually furthest from settled. With only 4
+    // members (≤6, see §2.4), every row is shown - so this checks the ORDER
+    // rather than who got cut, which is heroBalanceRows.test.ts's job.
+    const rows = [...balanceList().querySelectorAll(".member-row")];
+    const names = rows.map((row) => row.querySelector(".member-row-name strong")?.textContent);
+    expect(names.slice(0, 2)).toEqual(["Dan", "Cara"]);
   });
 
-  test("stay two rows - this is a summary, not the member list", async () => {
+  test("never truncates a group that fits - this IS the member list now", async () => {
     await landAs("user_alice", "Alice");
-    expect(balanceList().querySelectorAll(".hero-balance-row")).toHaveLength(2);
+    expect(balanceList().querySelectorAll(".member-row")).toHaveLength(4);
   });
 
   test("never show you twice when you are also the biggest imbalance", async () => {
     await landAs("user_cara", "Cara");
-    const rows = [...balanceList().querySelectorAll(".hero-balance-row")];
-    expect(rows).toHaveLength(2);
+    const rows = [...balanceList().querySelectorAll(".member-row")];
+    expect(rows).toHaveLength(4);
     expect(rows.filter((row) => row.textContent?.includes("Cara"))).toHaveLength(1);
   });
 });

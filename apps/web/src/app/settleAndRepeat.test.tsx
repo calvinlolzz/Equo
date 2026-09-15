@@ -97,6 +97,9 @@ function editCount(): number {
 
 async function openSettleConfirm() {
   await landOnGroup();
+  // 清償債務 is behind Bob's member row now - collapsed by default.
+  const bobName = await screen.findByText("Bob");
+  fireEvent.click(bobName.closest(".member-row-head")!);
   fireEvent.click(await screen.findByRole("button", { name: app.clearDebt }));
   return screen.findByRole("dialog", { name: app.settleConfirmTitle });
 }
@@ -248,6 +251,9 @@ describe("recording one thing after another", () => {
 
   test("an edit does not offer it — there is no 'another' edit to make", async () => {
     await landOnGroup();
+
+    // 最近記錄 is a disclosure now, collapsed by default.
+    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
 
     // Through the expense's own dialog. The records list has 編輯 too, but its
     // swipe actions are aria-hidden until the row is opened - deliberately, so

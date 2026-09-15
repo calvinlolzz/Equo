@@ -60,6 +60,8 @@ export const EN: UiDictionary = {
     memberHasBalance: "This member still has an unsettled balance. Settle up before removing them.",
     /** Joined as `${n} ${this}`. */
     people: "members",
+    /** Joined as `${n} ${this}`. */
+    owedByCount: "people owe you",
     total: "Total",
     personalSpend: "Your spending",
     groupSpend: "Group spending",

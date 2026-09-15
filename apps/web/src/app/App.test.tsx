@@ -710,6 +710,11 @@ describe("recording an expense with no connection", () => {
     // Recorded, not lost: the banner counts it and the composer closed as if
     // the save had succeeded - which, from the user's side, it did.
     expect(await screen.findByText(`1${UI_TEXT.app.offlinePendingSuffix}`)).toBeTruthy();
+    // 最近記錄 is a disclosure now, collapsed by default - open it to see the
+    // row itself. (Scoped by id, not by the 支出記錄 label - the group side
+    // nav has its own nav item with that exact text.)
+    await waitFor(() => expect(document.querySelector("#group-records .home-disclosure-toggle")).toBeTruthy());
+    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
     expect(await screen.findByText("便當")).toBeTruthy();
   });
 });
@@ -956,15 +961,18 @@ describe("提醒還款", () => {
   }
 
   /**
-   * Scoped to the member sheet: the same reminder now also exists on the home
-   * card behind it, and an unscoped query would match both.
+   * Scoped to the member sheet. Not load-bearing for the tests in this file
+   * (none of them expand a home-screen member row, which is the only other
+   * place this aria-label appears now that the always-visible 債務關係 card
+   * is gone - see groupHomeDisclosure.test.tsx for that surface) but kept as
+   * insurance against a future test that opens both at once.
    */
   function nudgeButtonFor(name: string) {
     const sheet = screen.getByRole("dialog", { name: UI_TEXT.app.groupHome });
     return within(sheet).queryByRole("button", { name: `${UI_TEXT.app.nudgeAria}: ${name}` });
   }
 
-  test("sits on the home screen's 債務關係 card, next to 清償", async () => {
+  test("sits on the member row you expanded, next to 清償", async () => {
     signIn();
     const api = fakeApi([
       { route: "GET /groups", body: { groups: [group()] } },
@@ -974,12 +982,15 @@ describe("提醒還款", () => {
     renderApp();
     await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
 
-    // No dialog, no drawer: the card that already says "Bob 需付 Alice" is
-    // where somebody chasing a debt is actually looking.
+    // Collapsed by default - tap Bob's row (he owes the most) to reveal
+    // 清償/提醒. No dialog, no drawer: this is the home screen itself.
+    const bobName = await screen.findByText("Bob");
+    fireEvent.click(bobName.closest(".member-row-head")!);
+
     const nudge = await screen.findByRole("button", { name: `${UI_TEXT.app.nudgeAria}: Bob` });
-    const card = nudge.closest(".pizo-debt-card") as HTMLElement;
-    expect(card).toBeTruthy();
-    expect(within(card).getByRole("button", { name: UI_TEXT.app.clearDebt })).toBeTruthy();
+    const row = nudge.closest(".member-row") as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(within(row).getByRole("button", { name: UI_TEXT.app.clearDebt })).toBeTruthy();
 
     fireEvent.click(nudge);
 
@@ -987,7 +998,7 @@ describe("提醒還款", () => {
     await waitFor(() => expect((nudge as HTMLButtonElement).disabled).toBe(true));
   });
 
-  test("is not offered on the card when the debtor is the logged-in user", async () => {
+  test("is not offered on the row when the debtor is the logged-in user", async () => {
     signIn();
     // Alice (this session) owes Bob - the reminder would be to herself.
     fakeApi([
@@ -1006,7 +1017,10 @@ describe("提醒還款", () => {
     renderApp();
     await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
 
-    // The card is there (it shows the debt), the reminder is not.
+    // Expand Bob's row: 清償 (settle up with Bob) is there, 提醒 towards
+    // yourself never is - on this row or any other.
+    const bobName = await screen.findByText("Bob");
+    fireEvent.click(bobName.closest(".member-row-head")!);
     await screen.findByRole("button", { name: UI_TEXT.app.clearDebt });
     expect(screen.queryByRole("button", { name: `${UI_TEXT.app.nudgeAria}: Alice` })).toBeNull();
   });

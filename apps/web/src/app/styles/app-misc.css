@@ -458,12 +458,6 @@
   z-index: 60;
 }
 
-.settlement-more-line {
-  margin-top: 8px;
-  color: rgb(var(--fg) / 0.58);
-  font-size: 12px;
-}
-
 .settlement-suggestion-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto auto;

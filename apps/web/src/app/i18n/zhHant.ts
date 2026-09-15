@@ -50,6 +50,8 @@ export const ZH_HANT = {
     memberRemoved: "成員已移除",
     memberHasBalance: "該成員仍有未結清餘額，請先清償再移除",
     people: "位成員",
+    /** Joined as `${n} ${this}`. */
+    owedByCount: "個人要付你",
     total: "總計",
     personalSpend: "個人消費",
     groupSpend: "群組消費",

@@ -93,7 +93,25 @@ async function landOnGroup({ scanConsent = true }: { scanConsent?: boolean } = {
   if (scanConsent) grantScanConsent();
   const api = fakeApi([
     { route: "GET /groups", body: { groups: [group()] } },
-    { route: "GET /groups/group_1", body: groupDetail() },
+    {
+      route: "GET /groups/group_1",
+      // A second member, not the (default) solo-Alice group: 掃描收據 lives in
+      // the 最近記錄 disclosure now, which - like the rest of the home card
+      // below the balance line - doesn't render at all for a brand-new,
+      // nobody-else-here-yet group (see groupHomeDisclosure.test.tsx's "a
+      // brand new group" case). These tests are about what scanning itself
+      // does, not about that empty state, so they need a group past it.
+      body: groupDetail({
+        members: [
+          { id: "member_alice", group_id: "group_1", user_id: "user_alice", display_name: "Alice", role: "owner", status: "active" },
+          { id: "member_bob", group_id: "group_1", user_id: "user_bob", display_name: "Bob", role: "member", status: "active" },
+        ],
+        balances: [
+          { memberId: "member_alice", balance: { amount_minor: 0, currency: "TWD" } },
+          { memberId: "member_bob", balance: { amount_minor: 0, currency: "TWD" } },
+        ],
+      }),
+    },
   ]);
   renderApp();
   await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
@@ -111,12 +129,22 @@ afterEach(() => {
 });
 
 describe("the group home action row", () => {
-  test("offers 新增成員 alongside icon-only invite and scan buttons", async () => {
+  test("新增成員／邀請成員 fold into 加人, and 掃描收據 moves to 最近記錄", async () => {
     await landOnGroup();
 
-    expect(screen.getByRole("button", { name: app.addMember })).toBeTruthy();
-    expect(screen.getByRole("button", { name: app.inviteMembers })).toBeTruthy();
-    expect(screen.getByRole("button", { name: app.scanReceipt })).toBeTruthy();
+    // 掃描收據 is a recording action now, in 最近記錄's title row. Waited for,
+    // not just queried: it only exists once the detail fetch has landed.
+    const scanButton = await screen.findByRole("button", { name: app.scanReceipt });
+    expect(scanButton.closest("#group-records")).toBeTruthy();
+
+    // The old three-slot row is gone - there is no longer a bare
+    // 邀請成員 button on the home card.
+    expect(screen.queryByRole("button", { name: app.inviteMembers })).toBeNull();
+
+    // 加人, at the end of the member list, opens the same sheet that used to
+    // hold both 新增成員 and 邀請成員.
+    fireEvent.click(screen.getByRole("button", { name: app.addMember }));
+    expect(await screen.findByText(app.addVirtualMember)).toBeTruthy();
   });
 });
 
@@ -125,7 +153,9 @@ describe("掃描收據", () => {
     const camera = stubCamera();
     await landOnGroup();
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
 
     const dialog = await screen.findByRole("dialog", { name: app.scanReceipt });
     expect(dialog).toBeTruthy();
@@ -154,7 +184,9 @@ describe("掃描收據", () => {
       items: [],
     });
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
     const shutter = await screen.findByRole("button", { name: app.scanReceiptShutter });
     await waitFor(() => expect((shutter as HTMLButtonElement).disabled).toBe(false));
 
@@ -176,7 +208,9 @@ describe("掃描收據", () => {
     // nobody standing at a till should spend them watching a spinner.
     api.set("POST /receipts/scan", new Promise(() => {}));
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
     const shutter = await screen.findByRole("button", { name: app.scanReceiptShutter });
     await waitFor(() => expect((shutter as HTMLButtonElement).disabled).toBe(false));
 
@@ -197,7 +231,9 @@ describe("掃描收據", () => {
     let resolveScan: (value: unknown) => void = () => {};
     api.set("POST /receipts/scan", new Promise((resolve) => { resolveScan = resolve; }));
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
     const shutter = await screen.findByRole("button", { name: app.scanReceiptShutter });
     await waitFor(() => expect((shutter as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(shutter);
@@ -233,7 +269,9 @@ describe("掃描收據", () => {
       503,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
     const shutter = await screen.findByRole("button", { name: app.scanReceiptShutter });
     await waitFor(() => expect((shutter as HTMLButtonElement).disabled).toBe(false));
 
@@ -254,7 +292,9 @@ describe("掃描收據", () => {
     );
     await landOnGroup();
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
 
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", app.scanCameraDenied);
   });
@@ -265,7 +305,9 @@ describe("收據辨識同意", () => {
     const camera = stubCamera();
     await landOnGroup({ scanConsent: false });
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
 
     // The ask, not the camera: no stream may be requested before consent.
     await screen.findByRole("dialog", { name: app.scanConsentTitle });
@@ -283,7 +325,9 @@ describe("收據辨識同意", () => {
     stubCamera();
     await landOnGroup({ scanConsent: false });
 
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
     fireEvent.click(await screen.findByRole("button", { name: app.scanConsentAccept }));
 
     await screen.findByRole("dialog", { name: app.scanReceipt });
@@ -293,7 +337,9 @@ describe("收據辨識同意", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: app.scanReceipt })).toBeNull());
 
     // Second time: straight to the camera, no second ask.
-    fireEvent.click(screen.getByRole("button", { name: app.scanReceipt }));
+    // Waited for, not just queried: it only exists once the detail fetch has
+    // landed (see landOnGroup's comment on emptyGroup's loading-flash guard).
+    fireEvent.click(await screen.findByRole("button", { name: app.scanReceipt }));
 
     await screen.findByRole("dialog", { name: app.scanReceipt });
     expect(screen.queryByRole("dialog", { name: app.scanConsentTitle })).toBeNull();
@@ -327,7 +373,11 @@ describe("邀請成員", () => {
     const api = await landOnGroup();
     api.set("POST /groups/group_1/invites", { invite: { token: "ONOG0SD6" } });
 
-    fireEvent.click(screen.getByRole("button", { name: app.inviteMembers }));
+    // 邀請成員 is behind 加人 now - both it and 新增虛擬成員 live in the sheet
+    // that opens. The dialog option's accessible name also carries its hint
+    // sentence, so this finds it by its own text node rather than by role.
+    fireEvent.click(await screen.findByRole("button", { name: app.addMember }));
+    fireEvent.click((await screen.findByText(app.inviteMembers)).closest("button")!);
 
     expect(await screen.findByRole("img", { name: app.inviteQrAlt }).catch(() => null)).toBeTruthy();
     await waitFor(() => expect(screen.getByText("ONOG0SD6")).toBeTruthy());

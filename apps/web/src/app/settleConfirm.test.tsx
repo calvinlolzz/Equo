@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { configure, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { configure, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
 import { UI_TEXT } from "./uiText";
@@ -53,6 +53,9 @@ async function landOnDebt() {
   ]);
   renderApp();
   await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+  // 清償債務 is behind Bob's member row now - collapsed by default.
+  const bobName = await screen.findByText("Bob");
+  fireEvent.click(bobName.closest(".member-row-head")!);
   return screen.findByRole("button", { name: app.clearDebt });
 }
 

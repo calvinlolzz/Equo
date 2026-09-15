@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { configure, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { configure, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ExpenseSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
@@ -78,10 +78,13 @@ async function land(options: { mobile?: boolean; detail?: ReturnType<typeof grou
 describe("the hero donut is gone", () => {
   test("the debt figure is stated once, by the card that explains it", async () => {
     await land();
-    await screen.findByText(app.clearDebt);
+    // The balance card's own glowing amount - Alice is owed $43.55.
+    await screen.findByText("$43.55");
 
-    // The donut printed the same amount as the 債務關係 card, with only a name
-    // for context - two numbers for one fact, and the vaguer one came first.
+    // The donut printed the same amount as the balance card, with only a
+    // name for context - two numbers for one fact, and the vaguer one came
+    // first. Bob's row prints "-$43.55" (a different string), so the only
+    // "$43.55" left on screen is the balance card's.
     expect(screen.getAllByText("$43.55")).toHaveLength(1);
     expect(document.querySelector(".hero-donut")).toBeNull();
   });
@@ -102,6 +105,8 @@ describe("the hero donut is gone", () => {
 describe("the currency code on a record row", () => {
   test("is not printed when it is the group's own", async () => {
     await land({ detail: detail({ expenses: [expenseRow()], expense_count: 1, spend_total_minor: 96_000 }) });
+    // 最近記錄 is a disclosure now - the row is inside its collapsed body.
+    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
     const row = await screen.findByText("拉麵");
     const amount = row.closest(".expense-record-row")?.querySelector(".expense-record-amount");
     expect(amount?.textContent).toContain("$960");
@@ -116,6 +121,7 @@ describe("the currency code on a record row", () => {
         spend_total_minor: 96_000,
       }),
     });
+    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
     const row = await screen.findByText("拉麵");
     const amount = row.closest(".expense-record-row")?.querySelector(".expense-record-amount");
     expect(amount?.querySelector("small")?.textContent).toBe("USD");
@@ -127,7 +133,7 @@ describe("近期活動", () => {
     await land();
     // Wait for the sections below the card, so "not there" means gone rather
     // than not rendered yet.
-    await screen.findByText(app.clearDebt);
+    await waitFor(() => expect(document.getElementById("group-records")).toBeTruthy());
 
     expect(screen.queryByRole("region", { name: app.recentActivity })).toBeNull();
     // Not merely the empty copy hidden inside a section that still has a
@@ -171,17 +177,25 @@ describe("the group's name", () => {
   });
 });
 
-describe("the card's quick actions", () => {
-  test("are three equal slots, and every one of them says what it is", async () => {
+describe("the card's people row", () => {
+  test("加人 replaces the old member-quick-actions row and opens the same menu", async () => {
     await land();
-    const buttons = [...homeCard().querySelectorAll(".member-quick-action")];
-    expect(buttons).toHaveLength(3);
+    // The three-slot quick-actions row is gone entirely.
+    expect(homeCard().querySelectorAll(".member-quick-action")).toHaveLength(0);
 
-    for (const label of [app.addMember, app.inviteMembers, app.scanReceipt]) {
-      const button = within(homeCard()).getByRole("button", { name: label });
-      expect(button.classList.contains("member-quick-action")).toBe(true);
-      // Named on screen, not only to a screen reader: these were bare glyphs.
-      expect(button.textContent).toContain(label);
-    }
+    // 新增成員／邀請成員 are folded into one "加人" row at the end of the
+    // member list, which opens the existing memberActions sheet (both
+    // options live there already - see App.tsx's onAddVirtualMember).
+    const add = within(homeCard()).getByRole("button", { name: app.addMember });
+    fireEvent.click(add);
+    expect(await screen.findByText(app.addVirtualMember)).toBeTruthy();
+  });
+
+  test("掃描收據 moved to 最近記錄's title row - it's a recording action, not member management", async () => {
+    await land();
+    expect(within(homeCard()).queryByRole("button", { name: app.scanReceipt })).toBeNull();
+
+    const scanButton = await screen.findByRole("button", { name: app.scanReceipt });
+    expect(scanButton.closest("#group-records")).toBeTruthy();
   });
 });

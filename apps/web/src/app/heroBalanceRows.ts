@@ -17,7 +17,11 @@ export function heroBalanceMembers(
   members: Member[],
   balances: Map<string, number>,
   currentMemberId: string | undefined,
-  limit = 2,
+  // No default of 2 any more - that was a magic number left over from the
+  // hero card's old two-row summary. How many rows to show is the caller's
+  // layout decision, not this function's; omit it and you get everyone,
+  // ranked.
+  limit?: number,
 ): Member[] {
   const byImbalance = (candidates: Member[]) =>
     candidates
@@ -31,7 +35,7 @@ export function heroBalanceMembers(
   const self = members.find((member) => member.id === currentMemberId);
   // No self to pin (a viewer the group has no member for): fall back to the
   // list this is otherwise ranking by, rather than to array order.
-  if (!self) return byImbalance(members).slice(0, limit);
+  if (!self) return byImbalance(members).slice(0, limit ?? members.length);
 
-  return [self, ...byImbalance(members.filter((member) => member.id !== self.id))].slice(0, limit);
+  return [self, ...byImbalance(members.filter((member) => member.id !== self.id))].slice(0, limit ?? members.length);
 }

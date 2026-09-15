@@ -105,6 +105,12 @@ describe("pressed for real", () => {
     ]);
     renderApp();
     await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    // The pathname changes as soon as the group is selected - before its
+    // detail has necessarily loaded, and with it the useAppShortcuts effect
+    // that attaches the very listener these tests fire a keydown at. Wait for
+    // the home card itself (present regardless of loading/empty state) so
+    // the keydown below is not racing that effect.
+    await waitFor(() => expect(document.getElementById("group-home")).toBeTruthy());
   }
 
   test("n opens the composer", async () => {
