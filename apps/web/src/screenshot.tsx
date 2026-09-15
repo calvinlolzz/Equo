@@ -40,12 +40,11 @@
  * Also hide the scrollbar (`html{scrollbar-width:none}`): desktop Chromium
  * draws a classic one that eats 15px of layout width and a phone has none.
  */
-import React, { Suspense } from "react";
+import React from "react";
 import { createRoot } from "react-dom/client";
 import "./app/App.css";
 import { App } from "./app/App";
 import { dismissAppSplash } from "./app/appSplash";
-import { initScrollActivity } from "./app/scrollActivity";
 import { initTheme } from "./app/themeStore";
 import { DEFAULT_CATALOG } from "./app/catalog";
 import { daysAgo } from "./screenshotDates";
@@ -289,22 +288,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 }) as typeof window.fetch;
 
 initTheme();
-// The harness mounts the real App, so it should behave like it: this is what
-// drops the glass blur mid-scroll (see scrollActivity.ts).
-initScrollActivity();
-
-const GlassBackground = React.lazy<React.ComponentType>(() =>
-  import("./app/GlassBackground").then((module) => ({ default: module.GlassBackground as React.ComponentType })),
-);
 
 const root = document.getElementById("root");
 if (!root) throw new Error("screenshot harness root is missing");
 
 createRoot(root).render(
   <React.StrictMode>
-    <Suspense fallback={null}>
-      <GlassBackground />
-    </Suspense>
     <App />
   </React.StrictMode>,
 );
