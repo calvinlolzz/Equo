@@ -32,6 +32,7 @@ import { describeCloudActionError } from "./describeCloudActionError";
 import { MemberListPanel } from "./MemberListPanel";
 import { type FeedbackType } from "./FeedbackDialog";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
+import { GroupMenu } from "./GroupMenu";
 import { PanelSkeleton } from "./PanelSkeleton";
 import { useInstallPrompt } from "./useInstallPrompt";
 import { GroupSideNav } from "./GroupSideNav";
@@ -43,6 +44,7 @@ import { useCatalog } from "./useCatalog";
 import { useNotifications } from "./useNotifications";
 import { useOverlayHistory } from "./useOverlayHistory";
 import { usePullToRefresh } from "./usePullToRefresh";
+import { useRailState } from "./useRailState";
 import { useSwipeToDismissX } from "./useSwipeToDismissX";
 import { useDragScrollX } from "./useDragScrollX";
 import { useSpendBreakdown } from "./useSpendBreakdown";
@@ -261,6 +263,7 @@ export function App() {
   const [groupDrawerOpen, setGroupDrawerOpen] = useState(false);
   const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
   const { theme, toggleTheme } = useThemeMode();
+  const { railExpanded, toggleRail } = useRailState();
   // Mobile drawer swipe gestures: each drawer dismisses toward the edge it
   // slid in from (left drawer <- swipe left, right drawer -> swipe right).
   const groupDrawerSwipe = useSwipeToDismissX("left", () => setGroupDrawerOpen(false));
@@ -1648,7 +1651,7 @@ export function App() {
           groupsSyncAttempted, and the note on it about what a returning
           visitor used to be shown while GET /groups was in flight. */}
       {!activeGroup && (!cloudState || !cloudState.groupsSyncAttempted) ? (
-        <section className="workspace-grid">
+        <section className="workspace-grid workspace-grid--solo">
           <GroupHomeSkeleton />
         </section>
       ) : !activeGroup ? (
@@ -1683,6 +1686,8 @@ export function App() {
             onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
             onSelectGroup={selectGroup}
             onShowInviteCode={() => setDialog("inviteInput")}
+            railExpanded={railExpanded}
+            onToggleRail={toggleRail}
           />
 
           {groupDrawerOpen ? (
@@ -1707,6 +1712,21 @@ export function App() {
             install={install}
             showSkeleton={cloudActiveLoading && !cloudActiveDetail}
             hasLoadedDetail={Boolean(cloudActiveDetail)}
+            headerMenu={
+              <GroupMenu
+                groupName={activeGroup.name}
+                coverImageUrl={activeGroup.coverImageUrl}
+                memberCount={members.length}
+                currency={activeGroup.currency}
+                exporting={pendingAction === "exportCsv"}
+                onExportCsv={handleExportCsv}
+                isOwner={isCurrentMemberOwner}
+                onEditGroup={openEditGroup}
+                onNavigate={handleSideNavClick}
+                onArchive={() => setDialog("archive")}
+                onDelete={() => setDialog("delete")}
+              />
+            }
             members={members}
             currentMember={currentMember}
             balances={balances}
@@ -1735,7 +1755,14 @@ export function App() {
             onOpenExpenseDetail={openExpenseDetail}
           />
 
-          <aside className="group-side-nav glass-panel" aria-label={text.groupHome} inert={isMobileLayout} aria-hidden={isMobileLayout || undefined}>
+          {/* Phase 3: the wide layout's right column is gone — its content
+              moved to the ▾ menu beside the group's name (see headerMenu
+              above). This <aside> is kept in the tree rather than deleted
+              (the mobile 設定 drawer mounts its OWN GroupSideNav
+              variant="drawer" elsewhere, not this one), but it never paints
+              at any width now, so it is permanently out of the tab order and
+              the accessibility tree. */}
+          <aside className="group-side-nav glass-panel" aria-label={text.groupHome} inert aria-hidden="true">
             {activeGroup ? (
               <GroupSideNav
                 groupName={activeGroup.name}

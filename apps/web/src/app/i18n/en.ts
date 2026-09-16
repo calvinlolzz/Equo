@@ -30,6 +30,8 @@ export const EN: UiDictionary = {
     members: "Members",
     recurring: "Recurring",
     groupList: "Groups",
+    expandGroupList: "Expand group list",
+    collapseGroupList: "Collapse group list",
     /** Joined as `${n} ${this}`. */
     unreadEntries: "new entries",
     refresh: "Refresh",

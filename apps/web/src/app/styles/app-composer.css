@@ -743,6 +743,20 @@
   .workspace-grid {
     height: auto;
     overflow: visible;
+    /* Phase 3 gave the desktop grid two tracks. The rail is display:none here,
+       which collapses its track but NOT the 16px gap between the two — the
+       content column was losing that 16px on every phone, which is enough to
+       wrap 查看全部 onto a second line. One track, no gap. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  /* Specificity: the desktop placement is `.workspace-grid > .pizo-home`
+     (0,2,0), so a bare `.pizo-home` (0,1,0) here loses even inside this media
+     query — the content would stay in column 2 and grid would invent an
+     implicit track for it. Match the desktop selector to actually win. */
+  .workspace-grid > .pizo-home {
+    grid-column: auto;
   }
 
   .pizo-home {

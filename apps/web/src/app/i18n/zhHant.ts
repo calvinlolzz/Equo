@@ -22,6 +22,8 @@ export const ZH_HANT = {
     members: "群組成員",
     recurring: "循環支出",
     groupList: "群組列表",
+    expandGroupList: "展開群組列表",
+    collapseGroupList: "收合群組列表",
     unreadEntries: "筆新記錄",
     refresh: "重新整理",
     createGroup: "建立群組",

@@ -2,74 +2,164 @@ import { describe, expect, test } from "vitest";
 import { readAppStylesheet, ruleFor } from "./cssDeclarations";
 
 /**
- * The three columns of the wide layout, and the button that floats over them.
+ * The two columns of the wide layout (phase 3: the three columns of phase 0
+ * became two — the right-hand navigation column is gone, its content moved
+ * into the ▾ menu beside the group's name), and the button that floats over
+ * them.
  *
- * Both of these were reported together from a desktop screenshot: the right
- * column started lower than the other two, and the add button sat on top of
- * 刪除群組.
+ * This file used to protect a three-column geometry: the right column
+ * started lower than the other two, and the add button sat on top of
+ * 刪除群組 at the bottom of that column. The three-column assertions are gone
+ * with the column, but the FAB-covers-something-clickable risk did not go
+ * away with it — the left rail can still open as a 260px overlay, and the
+ * button must not land on it, or on the rail's own expand/collapse arrow.
+ * That risk is what the last describe block below re-derives and protects.
  */
 const homeCss = readAppStylesheet("app-home.css");
 const baseCss = readAppStylesheet("app-base.css");
+const composerCss = readAppStylesheet("app-composer.css");
 
-describe("the right column lines up with the other two", () => {
-  const rail = ruleFor(homeCss, ".group-side-nav");
-
-  test("it is not sticky, because there is nothing here to stick to", () => {
-    // .workspace-grid is a fixed-height overflow:hidden box - the page does not
-    // scroll on this layout, each column scrolls inside itself. That made the
-    // grid this column's sticky scrollport, and a scrollport that never scrolls
-    // has nothing to stick to: `top` only pushed the column down.
-    expect(rail.position).toBeUndefined();
-    expect(rail.top).toBeUndefined();
+describe("the workspace is two columns, not three", () => {
+  test("a 64px rail strip and the content, nothing else", () => {
+    expect(ruleFor(baseCss, ".workspace-grid")["grid-template-columns"]).toBe("64px minmax(0, 1fr)");
   });
 
-  test("and the left rail, which always lined up, is not sticky either", () => {
-    // The pair that actually does the work is max-height + overflow, and both
-    // columns have always had it.
-    // The left rail lives in app-base.css, not beside this one.
-    const left = ruleFor(baseCss, ".group-rail");
-    expect(left.position).toBeUndefined();
-    expect(left["max-height"]).toBe(rail["max-height"]);
-    expect(left.overflow).toBeTruthy();
-    expect(rail.overflow).toBeTruthy();
-  });
-
-  test("nothing above the cover, so it starts where the card does", () => {
-    const padding = (rail.padding ?? "").split(/\s+/);
-    expect(padding).toHaveLength(3);
-    expect(padding[0]).toBe("0");
-  });
-
-  test("the grid still starts all three columns on the same line", () => {
+  test("still starts both columns on the same line", () => {
     expect(ruleFor(baseCss, ".workspace-grid")["align-items"]).toBe("start");
+  });
+
+  test("has no position of its own", () => {
+    // Load-bearing: a positioned grid becomes the expanded rail's containing
+    // block, and .workspace-grid's own overflow:hidden would then clip the
+    // overlay's drop shadow at the 64px track. See the next describe block.
+    expect(ruleFor(baseCss, ".workspace-grid").position).toBeUndefined();
+  });
+
+  test("the ancestor the expanded rail actually overlays against is positioned", () => {
+    expect(ruleFor(baseCss, ".app-shell").position).toBe("relative");
+  });
+
+  test("both columns are placed explicitly", () => {
+    // Auto-placement would drop the content into the 64px rail track the
+    // moment the rail goes absolute and leaves the grid flow.
+    expect(ruleFor(baseCss, ".workspace-grid > .group-rail")["grid-column"]).toBe("1");
+    expect(ruleFor(baseCss, ".workspace-grid > .pizo-home")["grid-column"]).toBe("2");
+  });
+
+  test("the right column is gone at every width, not just the mobile one", () => {
+    // Its content moved into the ▾ menu (GroupMenu.tsx / .group-menu-popover)
+    // beside the group's name. The <aside> is kept in the tree (see App.tsx)
+    // for the mobile settings drawer's own GroupSideNav instance, but this
+    // element itself never paints again.
+    expect(ruleFor(baseCss, ".workspace-grid > .group-side-nav").display).toBe("none");
+  });
+
+  test("the pre-group skeleton, the grid's only child then, is not split into a rail track", () => {
+    expect(ruleFor(baseCss, ".workspace-grid--solo")["grid-template-columns"]).toBe("minmax(0, 1fr)");
   });
 });
 
-describe("the add button floats over the ledger, not over the navigation", () => {
+describe("the rail is a strip that opens over the content, not beside it", () => {
+  const expandedRail = ruleFor(baseCss, ':root[data-rail="expanded"] .workspace-grid > .group-rail');
+
+  test("expanding it is an overlay, not a layout change", () => {
+    expect(expandedRail.position).toBe("absolute");
+    expect(expandedRail.width).toBe("260px");
+    expect(expandedRail["box-shadow"]).toBeTruthy();
+    // Opaque, not translucent glass: it now sits over the ledger, not beside it.
+    expect(expandedRail.background).toBe("var(--card-solid)");
+  });
+
+  test("it anchors to the shell's own padding, not an independent guess", () => {
+    expect(expandedRail.bottom).toBe("34px");
+    expect(ruleFor(baseCss, ".app-shell").padding).toContain(expandedRail.bottom as string);
+  });
+
+  test("the grid's own tracks do not change when the rail opens", () => {
+    // A track change here is exactly the reflow this design exists to avoid —
+    // the 64px strip stays 64px whether or not the overlay is showing. Checked
+    // in every stylesheet that touches .workspace-grid, not just app-base.css
+    // (where this file's own rules live) — a track override added to
+    // app-home.css or app-composer.css instead would reintroduce the reflow
+    // just as easily and this would otherwise never see it.
+    for (const css of [baseCss, homeCss, composerCss]) {
+      expect(ruleFor(css, ':root[data-rail="expanded"] .workspace-grid')).toEqual({});
+    }
+  });
+
+  test("collapsed is the attribute-less default, so there is no flash before JS runs", () => {
+    expect(baseCss).toContain(':root:not([data-rail="expanded"])');
+    // i.e. there is no rule gated on a "collapsed" attribute value — collapsed
+    // is what you get when <html> carries no data-rail at all.
+    expect(ruleFor(baseCss, ':root[data-rail="collapsed"] .workspace-grid > .group-rail')).toEqual({});
+  });
+
+  test("light mode gets its own shadow", () => {
+    const lightExpandedRail = ruleFor(baseCss, ':root[data-theme="light"][data-rail="expanded"] .workspace-grid > .group-rail');
+    expect(lightExpandedRail["box-shadow"]).toBeTruthy();
+    expect(lightExpandedRail["box-shadow"]).not.toBe(expandedRail["box-shadow"]);
+  });
+});
+
+describe("the centre column is a fixed measure with air on both sides", () => {
+  test("720px, not 620px — wide screens buy whitespace, not more content", () => {
+    expect(ruleFor(baseCss, ".pizo-home")["max-width"]).toBe("720px");
+  });
+
+  test("centred in the track", () => {
+    expect(ruleFor(baseCss, ".pizo-home")["justify-self"]).toBe("center");
+  });
+
+  test("the rail and the content still agree on how tall this layout is", () => {
+    expect(ruleFor(baseCss, ".group-rail")["max-height"]).toBe(ruleFor(baseCss, ".pizo-home")["max-height"]);
+  });
+});
+
+describe("the add button floats over the ledger, not over the rail", () => {
   const fab = ruleFor(homeCss, ".floating-action");
+  const expandedRail = ruleFor(baseCss, ':root[data-rail="expanded"] .workspace-grid > .group-rail');
+  const grid = ruleFor(baseCss, ".workspace-grid");
+  const shell = ruleFor(baseCss, ".app-shell");
 
-  test("it is offset by a whole column, not just inset from the shell", () => {
-    // `max(26px, (100vw - 1180px) / 2)` alone is the shell's right edge, which
-    // on this layout is the navigation column - where it covered 刪除群組.
-    const right = fab.right ?? "";
-    expect(right).toContain("100vw - 1180px");
-    // The rail's own width has to be in there, or it is still over the rail.
-    expect(right).toMatch(/\+\s*29[0-9]px/);
+  test("it no longer ducks a column that isn't there", () => {
+    // The old formula added +292px to clear the three-column layout's right
+    // rail. That rail is gone; this asserts the extra term is too, not just
+    // that the shell-edge term survived.
+    expect(fab.right).toContain("100vw - 1180px");
+    expect(fab.right).not.toMatch(/\+\s*\d+px/);
+    // And not reintroduced by a top-level rule elsewhere — app-composer.css's
+    // OWN .floating-action rules all live inside @media blocks (small-screen
+    // overrides), which readAppStylesheet's ruleFor deliberately does not
+    // see, so a stray top-level one here would otherwise go unnoticed.
+    expect(ruleFor(composerCss, ".floating-action")).toEqual({});
   });
 
-  test("that offset clears the widest the rail can be", () => {
-    // Sizing off the narrow end of minmax(220px, 260px) left 2px between the
-    // button and the rail, which is a coincidence rather than clearance.
-    const railWidth = ruleFor(baseCss, ".workspace-grid")["grid-template-columns"] ?? "";
-    expect(railWidth).toContain("260px");
+  test("it clears the rail — open or shut — at every desktop width the layout renders", () => {
+    // Parsed out of the stylesheet rather than duplicated as literals, so a
+    // future change to any of these numbers re-derives the same guarantee
+    // instead of quietly invalidating it.
+    const shellMax = Number(/min\(\s*(\d+)px/.exec(shell.width ?? "")?.[1]);
+    const shellGutters = Number(/-\s*(\d+)px/.exec(shell.width ?? "")?.[1]);
+    const fabInset = Number(/max\(\s*(\d+)px/.exec(fab.right ?? "")?.[1]);
+    const fabWidth = Number.parseFloat(fab.width ?? "");
+    const railOpenWidth = Number.parseFloat(expandedRail.width ?? "");
+    const railStripWidth = Number.parseFloat((grid["grid-template-columns"] ?? "").split(" ")[0] ?? "");
 
-    const offset = Number(/\+\s*(\d+)px/.exec(fab.right ?? "")?.[1]);
-    expect(offset).toBeGreaterThanOrEqual(260 + 16);
+    expect([shellMax, shellGutters, fabInset, fabWidth, railOpenWidth, railStripWidth]).not.toContain(Number.NaN);
+
+    const fabLeftEdge = (vw: number) => vw - Math.max(fabInset, (vw - shellMax) / 2) - fabWidth;
+    const shellLeftEdge = (vw: number) => (vw - Math.min(shellMax, vw - shellGutters)) / 2;
+
+    // 961 is the mobile breakpoint + 1px — the tightest window this layout is
+    // ever asked to render (useIsMobileLayout switches to the mobile shell at
+    // 960px and below).
+    for (const vw of [961, 1180, 1920]) {
+      expect(fabLeftEdge(vw)).toBeGreaterThan(shellLeftEdge(vw) + railOpenWidth);
+      expect(fabLeftEdge(vw)).toBeGreaterThan(shellLeftEdge(vw) + railStripWidth);
+    }
   });
 
-  test("the column it moved off keeps its full height", () => {
-    // The first attempt shortened the right column to duck underneath, which
-    // stopped the pair being covered by making it need a scroll instead.
-    expect(ruleFor(homeCss, ".group-side-nav")["max-height"]).toBe("calc(100vh - 132px)");
+  test("and if they ever did meet anyway, the rail wins — it is the thing being reached for", () => {
+    expect(Number(expandedRail["z-index"])).toBeGreaterThan(Number(fab["z-index"]));
   });
 });

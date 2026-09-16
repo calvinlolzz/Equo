@@ -1,4 +1,4 @@
-import { Archive, Plus, RefreshCw, Scan } from "lucide-react";
+import { Archive, ChevronsLeft, ChevronsRight, Plus, RefreshCw, Scan } from "lucide-react";
 import type { Group } from "./appTypes";
 import { balanceTone, describeBalance, summarizeGroupBalances } from "./groupBalanceSummary";
 import { formatAmount } from "./formatAmount";
@@ -15,18 +15,35 @@ type GroupRailProps = {
   // When the desktop rail is hidden by the responsive layout, the caller
   // marks it inert so its buttons stay out of the tab order / a11y tree.
   inert?: boolean;
+  /**
+   * Desktop only. Undefined in the mobile left drawer, which has no strip to
+   * collapse — the toggle button only renders when this is passed.
+   */
+  railExpanded?: boolean;
+  onToggleRail?: () => void;
 };
 
 const text = UI_TEXT.app;
 
-export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGroups, onRefresh, onSelectGroup, onShowInviteCode, inert }: GroupRailProps) {
+export function GroupRail({
+  activeGroup,
+  groups,
+  onCreateGroup,
+  onOpenArchivedGroups,
+  onRefresh,
+  onSelectGroup,
+  onShowInviteCode,
+  inert,
+  railExpanded,
+  onToggleRail,
+}: GroupRailProps) {
   // The question people open the app with, answered before they pick a group.
   const summary = summarizeGroupBalances(groups);
 
   return (
     <aside className="group-rail glass-panel" aria-label={text.groupList} inert={inert} aria-hidden={inert || undefined}>
       <div className="rail-heading">
-        <div>
+        <div className="rail-heading-text">
           <h1>群組</h1>
           {summary.known ? (
             <p className="rail-total">
@@ -76,7 +93,12 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
                   <img src={group.coverImageUrl} alt="" loading="lazy" decoding="async" />
                 </span>
               ) : (
-                <span className="group-item-thumb placeholder" aria-hidden="true" />
+                // The collapsed strip's only way to tell one group from
+                // another — the same first-character fallback MemberAvatar
+                // uses when there is no photo.
+                <span className="group-item-thumb placeholder" aria-hidden="true">
+                  {(group.name || "?").slice(0, 1).toUpperCase()}
+                </span>
               )}
               <span className="group-item-text">
                 <strong>{group.name}</strong>
@@ -106,6 +128,20 @@ export function GroupRail({ activeGroup, groups, onCreateGroup, onOpenArchivedGr
           <Scan aria-hidden="true" size={16} />
           {text.scanOrInputInviteCode}
         </button>
+        {/* Only the desktop instance gets this — the mobile left drawer has no
+            strip to collapse, so it is never passed onToggleRail. */}
+        {onToggleRail ? (
+          <button
+            className="rail-toggle"
+            type="button"
+            aria-expanded={railExpanded ?? false}
+            aria-label={railExpanded ? text.collapseGroupList : text.expandGroupList}
+            onClick={onToggleRail}
+          >
+            {railExpanded ? <ChevronsLeft aria-hidden="true" size={16} /> : <ChevronsRight aria-hidden="true" size={16} />}
+            <span>{railExpanded ? text.collapseGroupList : text.expandGroupList}</span>
+          </button>
+        ) : null}
       </div>
     </aside>
   );

@@ -7,7 +7,7 @@ import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
 
-function renderNav(variant?: "rail" | "drawer") {
+function renderNav(variant?: "rail" | "drawer" | "menu", isOwner = true) {
   return render(
     <GroupSideNav
       variant={variant}
@@ -15,7 +15,7 @@ function renderNav(variant?: "rail" | "drawer") {
       memberCount={4}
       currency="TWD"
       onExportCsv={() => {}}
-      isOwner
+      isOwner={isOwner}
       onEditGroup={() => {}}
       onNavigate={() => {}}
       onArchive={() => {}}
@@ -30,11 +30,15 @@ describe("the group side nav", () => {
   test("the desktop rail carries the whole navigation", () => {
     // There is no bottom bar on a wide screen: this is the only way to reach
     // any of it.
-    renderNav("rail");
+    const { container } = renderNav("rail");
 
     for (const label of [text.groupHome, text.records, text.analysis, text.members, text.recurring]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
+
+    // Guards against the new "menu" branch (see below) leaking into this one:
+    // the rail still carries its own cover/name/pencil header.
+    expect(container.querySelector(".side-group-card")).toBeTruthy();
   });
 
   test("the phone drawer does not repeat the bottom bar", () => {
@@ -98,6 +102,55 @@ describe("the group's own settings", () => {
 
     const button = screen.getByRole("button", { name: text.processing });
     expect(button.hasAttribute("disabled")).toBe(true);
+  });
+});
+
+/**
+ * Phase 3 of the desktop restyle removed the wide layout's right-hand
+ * column and moved its content into a ▾ popover beside the group's name
+ * (GroupMenu.tsx), reusing this component's list rather than a second copy
+ * of it. The popover supplies its own name/cover/count via its own <h2>, so
+ * this variant renders neither — everything below is what is left once
+ * .side-group-card is gone.
+ */
+describe("the desktop ▾ menu", () => {
+  test("carries the whole navigation, same as the rail", () => {
+    renderNav("menu");
+
+    for (const label of [text.groupHome, text.records, text.analysis, text.members, text.recurring]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
+  });
+
+  test("shows the currency and offers the export", () => {
+    renderNav("menu");
+
+    expect(screen.getByText("TWD")).toBeTruthy();
+    expect(screen.getByRole("button", { name: text.exportCsv })).toBeTruthy();
+  });
+
+  test("an owner sees archive, delete, and edit", () => {
+    renderNav("menu");
+
+    expect(screen.getByRole("button", { name: text.archiveGroup })).toBeTruthy();
+    expect(screen.getByRole("button", { name: text.deleteGroup })).toBeTruthy();
+    // The popover dropped the header pencil along with .side-group-card, so
+    // this row is the only desktop route left to 編輯群組.
+    expect(screen.getByRole("button", { name: text.editGroup })).toBeTruthy();
+  });
+
+  test("a non-owner sees none of the three", () => {
+    renderNav("menu", false);
+
+    expect(screen.queryByRole("button", { name: text.archiveGroup })).toBeNull();
+    expect(screen.queryByRole("button", { name: text.deleteGroup })).toBeNull();
+    expect(screen.queryByRole("button", { name: text.editGroup })).toBeNull();
+  });
+
+  test("does not repeat the group's name, cover, or member count", () => {
+    const { container } = renderNav("menu");
+
+    expect(container.querySelector(".side-group-card")).toBeNull();
   });
 });
 

@@ -24,6 +24,9 @@ export const ACTION_ICON_NAMES = {
   close: "X",
   openGroupDrawer: "Menu",
   openGroupSettings: "Settings",
+  expandGroupList: "ChevronsRight",
+  collapseGroupList: "ChevronsLeft",
+  openGroupMenu: "ChevronDown",
 } as const;
 
 export const PROFILE_ICON_NAMES = {

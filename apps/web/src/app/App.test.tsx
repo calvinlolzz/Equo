@@ -954,6 +954,9 @@ describe("提醒還款", () => {
     ]);
     renderApp();
     await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    // Phase 3: 群組成員 moved from the desktop rail into the ▾ menu beside the
+    // group's name — open that first.
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.groupManage }));
     fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.members }));
     // The shared bottom sheet is labelled 群組首頁 whatever it is showing.
     await screen.findByRole("dialog", { name: UI_TEXT.app.groupHome });
@@ -1058,6 +1061,9 @@ describe("提醒還款", () => {
     ]);
     renderApp();
     await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    // Phase 3: 群組成員 moved from the desktop rail into the ▾ menu beside the
+    // group's name — open that first.
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.groupManage }));
     fireEvent.click(screen.getByRole("button", { name: UI_TEXT.app.members }));
     // The shared bottom sheet is labelled 群組首頁 whatever it is showing.
     await screen.findByRole("dialog", { name: UI_TEXT.app.groupHome });

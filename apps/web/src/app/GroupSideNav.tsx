@@ -26,19 +26,25 @@ export const sideNavItems: Array<{ id: string; label: string; icon: LucideIcon }
 /**
  * What the mobile drawer shows: everything the bottom bar does not.
  *
- * This component is both the desktop rail and the phone's 設定 drawer, and the
- * same list was wrong for one of them. On a desktop the rail IS the navigation
- * — 群組首頁, 支出記錄 and 分析 have nowhere else to be. On a phone those three
- * are the first three buttons of the bar at the bottom of the screen, so the
- * drawer was offering a second copy of the navigation you had just used to
- * reach it. What is left is what the bar has no room for: the member list and
- * the recurring rules, plus the group's own settings above and below them.
+ * This filter is a "drawer" thing, not a "rail" thing — the desktop ▾ menu
+ * ("menu") carries the same full list "rail" always did. On a desktop that
+ * list IS the navigation — 群組首頁, 支出記錄 and 分析 have nowhere else to be.
+ * On a phone those three are the first three buttons of the bar at the
+ * bottom of the screen, so the drawer would otherwise offer a second copy of
+ * the navigation you had just used to reach it. What is left is what the bar
+ * has no room for: the member list and the recurring rules, plus the
+ * group's own settings above and below them.
  */
 const DRAWER_ITEMS = new Set(["members", "recurring"]);
 
 type GroupSideNavProps = {
-  /** "rail" is the desktop navigation; "drawer" is the phone's 設定 sheet. */
-  variant?: "rail" | "drawer";
+  /**
+   * "rail" is the desktop wide-layout navigation (phase 3: no longer
+   * rendered on screen, kept for reversibility); "drawer" is the phone's 設定
+   * sheet; "menu" is the desktop ▾ popover next to the group's name, which
+   * replaced "rail" as the actual desktop route to this content.
+   */
+  variant?: "rail" | "drawer" | "menu";
   groupName: string;
   /** Fixed when the group is created, so this is shown rather than edited. */
   currency: string;
@@ -47,7 +53,12 @@ type GroupSideNavProps = {
   coverImageUrl?: string | null;
   memberCount: number;
   isOwner: boolean;
-  /** Called before any navigation when rendered inside the mobile drawer, so the drawer closes first. */
+  /**
+   * Called before any navigation/edit/archive/delete/export fires, so the
+   * surrounding chrome closes first — the mobile drawer for "drawer", the ▾
+   * popover (GroupMenu.tsx) for "menu". Unused by "rail", which is no longer
+   * rendered anywhere.
+   */
   onBeforeNavigate?: () => void;
   onEditGroup: () => void;
   onNavigate: (id: string) => void;
@@ -55,7 +66,15 @@ type GroupSideNavProps = {
   onDelete: () => void;
 };
 
-/** The group side navigation (profile dot, group card, nav list, owner danger actions) - rendered in both the desktop rail and the mobile settings drawer. */
+/**
+ * The group side navigation (group card, nav list, settings, owner danger
+ * actions) — three variants of one list. "menu" (the desktop ▾ popover,
+ * GroupMenu.tsx) is the one actually reachable on a wide screen; "drawer" is
+ * the phone's 設定 sheet; "rail" — the old three-column layout's permanent
+ * right-hand column — is kept only so App.tsx's now-permanently-inert
+ * `<aside className="group-side-nav">` still has something to mount, for
+ * reversibility, and is not on any screen a user can reach.
+ */
 export function GroupSideNav({
   variant = "rail",
   groupName,
@@ -76,30 +95,32 @@ export function GroupSideNav({
 
   return (
     <>
-      <div className="side-group-card">
-        <div className="side-cover">{coverImageUrl ? <img src={coverImageUrl} alt="" loading="lazy" decoding="async" /> : null}</div>
-        <div className="side-group-name">
-          <div className="side-group-title-row">
-            <h2>{groupName}</h2>
-            {isOwner ? (
-              <button
-                className="side-edit-group"
-                type="button"
-                aria-label={text.editGroup}
-                onClick={() => {
-                  closeDrawer();
-                  onEditGroup();
-                }}
-              >
-                <Pencil aria-hidden="true" size={15} />
-              </button>
-            ) : null}
+      {variant === "menu" ? null : (
+        <div className="side-group-card">
+          <div className="side-cover">{coverImageUrl ? <img src={coverImageUrl} alt="" loading="lazy" decoding="async" /> : null}</div>
+          <div className="side-group-name">
+            <div className="side-group-title-row">
+              <h2>{groupName}</h2>
+              {isOwner ? (
+                <button
+                  className="side-edit-group"
+                  type="button"
+                  aria-label={text.editGroup}
+                  onClick={() => {
+                    closeDrawer();
+                    onEditGroup();
+                  }}
+                >
+                  <Pencil aria-hidden="true" size={15} />
+                </button>
+              ) : null}
+            </div>
+            <span>
+              {memberCount} {text.people}
+            </span>
           </div>
-          <span>
-            {memberCount} {text.people}
-          </span>
         </div>
-      </div>
+      )}
       {/* One visual list, two elements: the destinations stay inside a <nav>
           because they are navigation, and 幣別 / 匯出 CSV are not - one is a
           fact and the other an action. Wrapping them keeps that distinction in
@@ -134,6 +155,22 @@ export function GroupSideNav({
             for the same reason it sits here in the app this drawer is modelled
             on: it is something you do to the group, not part of reading it. */}
         <div className="side-settings-list">
+          {/* The popover has no cover/name/pencil header (see above), so this
+              is the only desktop route to 編輯群組 left once that header is
+              gone. Owner-gated to match the pencil's own gating. */}
+          {variant === "menu" && isOwner ? (
+            <button
+              className="side-settings-row side-settings-action"
+              type="button"
+              onClick={() => {
+                closeDrawer();
+                onEditGroup();
+              }}
+            >
+              <Pencil aria-hidden="true" size={19} />
+              <span>{text.editGroup}</span>
+            </button>
+          ) : null}
           <div className="side-settings-row">
             <CircleDollarSign aria-hidden="true" size={19} />
             <span>{text.currency}</span>

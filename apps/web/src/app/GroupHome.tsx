@@ -39,6 +39,14 @@ export type GroupHomeProps = {
    * while this is also false. This prop is the direct, un-derived signal.
    */
   hasLoadedDetail: boolean;
+  /**
+   * The desktop ▾ menu, rendered beside the group's name in place of the bare
+   * <h2>. Built in App.tsx (it needs the group mutation callbacks) and
+   * slotted in here so this file stays free of them. Undefined on mobile,
+   * where the name lives in the top bar instead (see isMobileLayout below)
+   * and the 設定 drawer carries these actions.
+   */
+  headerMenu?: ReactNode;
 
   members: Member[];
   currentMember: Member | undefined;
@@ -307,6 +315,7 @@ export function GroupHome({
   install,
   showSkeleton,
   hasLoadedDetail,
+  headerMenu,
   members,
   currentMember,
   balances,
@@ -409,7 +418,7 @@ export function GroupHome({
                 wide layout puts the brand up there instead, and this is
                 where the name belongs. (The mobile heading outline is
                 rooted by the visually-hidden <h1> above.) */}
-            {isMobileLayout ? null : <h2>{group.name}</h2>}
+            {isMobileLayout ? null : headerMenu ?? <h2>{group.name}</h2>}
             <p>
               {text.members} <strong>{members.length}</strong> {text.total} <strong>{formatAmount(totalExpenseMinor, group.currency)}</strong>
             </p>

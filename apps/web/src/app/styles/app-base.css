@@ -215,6 +215,7 @@ button:disabled {
 .feedback-type-chip,
 .group-create-item,
 .group-item,
+.group-menu-trigger,
 .install-hint-action,
 .member-row-head,
 .home-disclosure-toggle,
@@ -227,6 +228,7 @@ button:disabled {
 .profile-tab,
 .rail-icon-action,
 .rail-join-toggle,
+.rail-toggle,
 .record-dialog-row,
 .record-swipe-action,
 .recurring-chip,
@@ -251,6 +253,7 @@ button:disabled {
 .expense-record-row:active,
 .group-create-item:active,
 .group-item:active,
+.group-menu-trigger:active,
 .install-hint-action:active,
 .member-row-head:active,
 .home-disclosure-toggle:active,
@@ -261,6 +264,7 @@ button:disabled {
 .profile-dot:active,
 .rail-icon-action:active,
 .rail-join-toggle:active,
+.rail-toggle:active,
 .record-dialog-row:active,
 .record-swipe-action:active,
 .side-nav-item:active,
@@ -280,6 +284,7 @@ button:disabled {
   .feedback-type-chip,
   .group-create-item,
   .group-item,
+  .group-menu-trigger,
   .install-hint-action,
   .member-row-head,
   .home-disclosure-toggle,
@@ -292,6 +297,7 @@ button:disabled {
   .profile-tab,
   .rail-icon-action,
   .rail-join-toggle,
+  .rail-toggle,
   .record-dialog-row,
   .record-swipe-action,
   .recurring-chip,
@@ -814,19 +820,52 @@ label span {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(420px, 1fr) minmax(220px, 260px);
+  /* Two tracks (phase 3: three columns became two). The rail's EXPANDED state
+     is an overlay (see below), so this track stays 64px in both states —
+     that is what stops the content moving when the rail opens.
+     NO `position` on this rule: the expanded rail is position:absolute
+     against .app-shell precisely so THIS box's overflow:hidden cannot clip
+     its drop shadow — giving this a position would make it the containing
+     block again and cut the shadow off at the 64px track. */
+  grid-template-columns: 64px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   height: calc(100vh - 132px);
   overflow: hidden;
 }
 
-.workspace-grid > .group-rail,
-.workspace-grid > .group-side-nav {
+/* Explicit placement: with only auto-placement, the content would fall back
+   into the 64px first track the moment the rail goes absolute and leaves
+   the grid flow. */
+.workspace-grid > .group-rail {
+  grid-column: 1;
+}
+
+.workspace-grid > .pizo-home {
+  grid-column: 2;
+}
+
+/* The pre-group skeleton (no group picked yet) is this grid's only child —
+   one full-width track, or it would auto-place into the 64px rail strip. */
+.workspace-grid--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-grid > .group-rail {
   border: 0;
   border-radius: 0;
   background: rgb(var(--card-base) / 0.1);
   box-shadow: none;
+}
+
+/* The wide layout's right column is gone (phase 3): its content moved into
+   the ▾ menu beside the group's name (see GroupMenu.tsx). The <aside> stays
+   in the tree — permanently inert — rather than being deleted, because the
+   mobile 設定 drawer mounts its OWN GroupSideNav variant="drawer" elsewhere,
+   not this element. This rule does not touch the phone: the drawer instance
+   is never a child of .workspace-grid. */
+.workspace-grid > .group-side-nav {
+  display: none;
 }
 
 .group-rail {
@@ -844,6 +883,214 @@ label span {
 .group-rail::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* The desktop rail is a three-row frame: heading, the scrolling group list,
+   and the bottom actions pinned to the floor — which is where the expand /
+   collapse arrow has to live. Scoped to `.workspace-grid >` on purpose: the
+   SAME component is also the body of the mobile left drawer
+   (.side-drawer-left .group-rail), which must keep scrolling as one block. */
+.workspace-grid > .group-rail {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.workspace-grid > .group-rail .group-list {
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.workspace-grid > .group-rail .group-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* ── Collapsed rail (the default; <html> carries no data-rail) ───────────── */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail {
+  padding: 20px 8px;
+}
+
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .rail-heading {
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* 群組 (the desktop page's only <h1>) and the all-groups total stay in the
+   accessibility tree and the heading outline — they are only visually hidden,
+   not display:none, or the outline would lose its <h1> along with them. */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .rail-heading-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Actions, not text: hidden AND out of the tab order. */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .rail-heading-actions,
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .rail-join-toggle {
+  display: none;
+}
+
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-item,
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-create-item {
+  position: relative;
+  width: 48px;
+  min-height: 48px;
+  display: grid;
+  /* The column has to fill the CONTENT box, not repeat the item's own 48px
+     border-box — with the base .group-item's 1px border plus this padding
+     eating into it, a 48px column overflowed that box, landing the avatar
+     9px off the left edge and 1px past the right one instead of centred. */
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 0;
+  /* 48px border-box − 2×1px border − 2×3px padding = 40px, exactly
+     .group-item-thumb's own size — keep this in sync with that 40px if
+     either one changes, or the avatar goes back to overhanging by however
+     much they now disagree. Padding is 3px, not the item's normal 13/14px:
+     the border itself must survive (unlike its width) because .group-item
+     .active reuses it for the mint outline on the active group. */
+  padding: 3px;
+}
+
+/* Match the group avatar's own size exactly (.group-item-thumb is 40px), or
+   this icon — 42px in its expanded-rail rule below — overhangs the same 40px
+   content box the same way the column above just stopped doing. */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-create-icon {
+  width: 40px;
+  height: 40px;
+}
+
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-item-row {
+  justify-content: center;
+  gap: 0;
+}
+
+/* The name and the balance line are what give each square button its
+   accessible name — clipped, never display:none (see the note above). */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-item-text,
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-create-item strong {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 「3 筆新記錄」 has no room to be a number here, so it becomes a dot. The
+   element keeps its aria-label, so the count is still what gets announced. */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .group-item-unread {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 10px;
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+}
+
+/* ── Expanded rail: an overlay, not a column ──────────────────────────────
+ * position:absolute resolves against .app-shell (position:relative,
+ * see .app-shell below) — NOT against .workspace-grid, which declares no
+ * position. That is deliberate: .workspace-grid is overflow:hidden, and an
+ * absolutely-positioned box whose containing block is an ANCESTOR of the
+ * overflow box is not clipped by it. Anchored against .app-shell's own inset
+ * values, so it lands exactly on the grid's edges without a new magic number:
+ *   bottom = the shell's own padding-bottom (34px)
+ *   left   = the shell's own padding-left (env(safe-area-inset-left))
+ *   height = the same expression .workspace-grid uses for its own height
+ * The grid track stays 64px, so opening this moves nothing.
+ */
+:root[data-rail="expanded"] .workspace-grid > .group-rail {
+  position: absolute;
+  bottom: 34px;
+  left: env(safe-area-inset-left, 0px);
+  z-index: 25;
+  width: 260px;
+  height: calc(100vh - 132px);
+  border-radius: 18px;
+  background: var(--card-solid);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="light"][data-rail="expanded"] .workspace-grid > .group-rail {
+  box-shadow: 0 24px 80px rgba(42, 35, 80, 0.16);
+}
+
+/* The expand / collapse arrow, pinned to the floor of the rail by
+   .rail-bottom-actions sitting in the frame's last (auto) row above. */
+.rail-toggle {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgb(var(--surf) / 0.1);
+  border-radius: 12px;
+  color: rgb(var(--fg) / 0.82);
+  background: rgb(var(--surf) / 0.045);
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.rail-toggle:hover {
+  border-color: rgb(var(--gold-ink) / 0.34);
+  color: rgb(var(--gold-ink));
+  background: rgb(var(--gold) / 0.08);
+}
+
+/* Only the arrow survives in the strip; the words go with the rest of the
+   labels. */
+:root:not([data-rail="expanded"]) .workspace-grid > .group-rail .rail-toggle span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* GroupRail.tsx is shared with the mobile group drawer, so the initial-letter
+   fallback it now renders reaches both — but this phase is desktop-only.
+   Laid out everywhere (harmless: centering an invisible square does nothing)
+   but only made VISIBLE on the desktop rail below, so the phone keeps its
+   original blank grey square. */
+.group-item-thumb.placeholder {
+  display: grid;
+  place-items: center;
+  color: transparent;
+  font-size: 0;
+  font-weight: 860;
+}
+
+/* A group with no cover shows its first character, the way a member with no
+   photo does (see MemberAvatar) — the only thing the collapsed strip has to
+   tell one group from another. */
+.workspace-grid > .group-rail .group-item-thumb.placeholder {
+  color: rgb(var(--fg) / 0.72);
+  font-size: 16px;
 }
 
 .rail-heading {
@@ -1097,7 +1344,9 @@ label span {
 
 .pizo-home {
   position: relative;
-  max-width: 620px;
+  /* Phase 3: wide screens give this whitespace on both sides, not more
+     columns — 620px → 720px is the only change the freed-up width buys. */
+  max-width: 720px;
   max-height: calc(100vh - 132px);
   justify-self: center;
   width: 100%;
@@ -1169,6 +1418,10 @@ label span {
     linear-gradient(145deg, rgb(var(--surf) / 0.04), rgb(var(--surf) / 0.015)),
     #ffffff;
   box-shadow: 0 24px 80px rgba(42, 35, 80, 0.16);
+}
+
+:root[data-theme="light"] .group-menu-popover {
+  box-shadow: 0 20px 50px rgba(42, 35, 80, 0.18);
 }
 
 :root[data-theme="light"] .mobile-tab-bar {

@@ -10,6 +10,7 @@ import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { resolvePublicPage } from "./app/publicRoute";
+import { initRail } from "./app/railStore";
 import { initTheme } from "./app/themeStore";
 import { ACTIVE_LOCALE, UI_TEXT } from "./app/uiText";
 
@@ -47,9 +48,12 @@ const publicPage = isAdminPath ? null : resolvePublicPage(window.location.pathna
 const LegalPage = lazyChunk(() => import("./app/LegalPage").then((module) => ({ default: module.LegalPage })));
 
 // Apply the persisted day/night theme to <html> before first paint (no flash).
-// The admin console keeps its own dark styling, so skip theming there.
+// Same for the desktop group rail's collapsed/expanded state — a 64px strip
+// that widens to 260px one frame after mount is exactly the flash this avoids.
+// The admin console keeps its own dark styling and has no rail, so skip both.
 if (!isAdminPath) {
   initTheme();
+  initRail();
 }
 
 // Global crash telemetry -> POST /api/v1/errors (deduped, capped per page

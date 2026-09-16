@@ -165,6 +165,9 @@ describe("paying part of a debt", () => {
 describe("settling with one particular person", () => {
   async function openMembers() {
     await landOnGroup();
+    // Phase 3: 群組成員 moved from the desktop rail into the ▾ menu beside the
+    // group's name — open that first.
+    fireEvent.click(await screen.findByRole("button", { name: app.groupManage }));
     fireEvent.click(await screen.findByRole("button", { name: app.members }));
     // The shared bottom sheet is labelled 群組首頁 whatever it is showing.
     // Scoped to it from here on: the home card behind it names Bob too, and
