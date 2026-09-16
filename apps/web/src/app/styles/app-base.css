@@ -148,6 +148,12 @@ textarea,
 button {
   border: 0;
   cursor: pointer;
+  /* The UA default is `color: buttontext` — black, and this app declares no
+     color-scheme, so a button that forgets to set its own colour renders black
+     text on a near-black card. Every button class here happened to set one, so
+     the gap stayed invisible until the 極光 group-home rows shipped with black
+     names in dark mode. Inheriting is what the rest of the app assumes. */
+  color: inherit;
   /* manipulation removes the ~300ms double-tap-zoom delay so taps register
      instantly; the callout/select suppressions stop an iOS long-press from
      popping the text-selection magnifier over a button's label. */

@@ -117,3 +117,17 @@ describe("--page-1 agrees everywhere it is duplicated", () => {
     expect(manifestJson.background_color.toUpperCase()).toBe(page1Dark.toUpperCase());
   });
 });
+
+describe("buttons inherit their ink", () => {
+  /**
+   * A <button> with no `color` of its own falls back to the UA's `buttontext`
+   * — black — because this app never declares a color-scheme. Every button
+   * class happened to set its own colour, so the hole stayed invisible until
+   * the 極光 group-home rows shipped: 成員列 and the two 摘要行 toggles landed
+   * in production with black names on a #10131A card. The base rule now
+   * inherits, which is what every caller already assumed.
+   */
+  test("the base button rule sets color: inherit", () => {
+    expect(ruleFor(baseCss, "button")["color"]).toBe("inherit");
+  });
+});
