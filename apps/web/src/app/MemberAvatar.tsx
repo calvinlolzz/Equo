@@ -15,16 +15,40 @@ export function MemberAvatar({
   name,
   avatarUrl,
   className,
+  colorIndex,
 }: {
   name: string | undefined;
   avatarUrl?: string | null;
   className?: string;
+  /**
+   * Which of the three --member-N colours this avatar should pick up, via a
+   * `data-member-color` attribute a caller's own scoped CSS keys off of -
+   * see the group home's member list, where this has to agree with the same
+   * index the balance card's proportional bar uses for the same person.
+   * Undefined (the default, every other call site) renders no attribute at
+   * all, so nothing about the shared `.member-avatar` look changes anywhere
+   * else.
+   */
+  colorIndex?: 1 | 2 | 3;
 }) {
   if (avatarUrl) {
-    return <img className={className} src={upscaleGoogleAvatar(avatarUrl)} alt="" loading="lazy" decoding="async" />;
+    return (
+      <img
+        className={className}
+        data-member-color={colorIndex}
+        src={upscaleGoogleAvatar(avatarUrl)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+    );
   }
 
-  return <span className={className}>{initial(name)}</span>;
+  return (
+    <span className={className} data-member-color={colorIndex}>
+      {initial(name)}
+    </span>
+  );
 }
 
 /**

@@ -71,15 +71,35 @@
   border-radius: 999px;
 }
 
-.home-balance-bar i:nth-child(3n+1) {
+/* data-member-color, not :nth-child - GroupHome assigns the same index to a
+   debtor's bar segment and their avatar from one shared map, so the two stay
+   in sync by construction instead of by two selectors happening to agree on
+   an order. */
+.home-balance-bar i[data-member-color="1"] {
   background: var(--member-1);
 }
 
-.home-balance-bar i:nth-child(3n+2) {
+.home-balance-bar i[data-member-color="2"] {
   background: var(--member-2);
 }
 
-.home-balance-bar i:nth-child(3n) {
+.home-balance-bar i[data-member-color="3"] {
+  background: var(--member-3);
+}
+
+/* Same colours, same member, on their row's avatar - the bar is the only
+   legend it has. Scoped to .home-member-list: .member-avatar is shared with
+   AnalysisPanel, ExpenseDetailDialog and the records rows, none of which
+   should ever pick up a colour meant for this one bar. */
+.home-member-list .member-avatar[data-member-color="1"] {
+  background: var(--member-1);
+}
+
+.home-member-list .member-avatar[data-member-color="2"] {
+  background: var(--member-2);
+}
+
+.home-member-list .member-avatar[data-member-color="3"] {
   background: var(--member-3);
 }
 
@@ -131,20 +151,36 @@
   overflow: hidden;
 }
 
+/* Equal-width columns, however many buttons show up (2 for a virtual member
+   with no nudge, 3 otherwise) - grid-auto-columns sizes whichever number of
+   auto-placed children actually exist, so there is no count to branch on in
+   the JSX. flex here made every button its own intrinsic width instead:
+   查看全部's four characters had nothing to stretch into and wrapped one
+   character per line. */
 .home-member-row-actions {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
-  align-items: stretch;
   padding: 2px 4px 12px;
 }
 
+.home-member-row-actions > * {
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .home-member-row-actions .settlement-clear-action {
-  flex: 1 1 auto;
   min-height: 40px;
   border: 1px solid var(--edge-2);
   border-radius: 12px;
   color: rgb(var(--ink));
   background: var(--cta);
+}
+
+.home-member-row-actions .home-row-nudge-action,
+.home-member-row-actions .text-action {
+  justify-content: center;
 }
 
 .member-row-extra {

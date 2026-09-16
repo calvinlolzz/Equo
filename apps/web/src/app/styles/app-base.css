@@ -1166,7 +1166,11 @@ label span {
 }
 
 :root[data-theme="light"] .mobile-tab-bar {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(246, 245, 251, 0.96));
+  /* Opaque, not 0.96 - the WebGL background and all-site frosted-glass this
+     was tuned for are both gone (see the aurora restyle), and the leftover
+     4% transparency let scrolled-past content show through at the bar's own
+     bottom edge, under the safe-area padding, where nothing else covers it. */
+  background: linear-gradient(145deg, #ffffff, #f6f5fb);
   box-shadow: 0 -10px 30px rgba(42, 35, 80, 0.1);
 }
 

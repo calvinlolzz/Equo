@@ -84,11 +84,14 @@ export type GroupHomeProps = {
   onOpenExpenseDetail: (expenseId: string) => void;
 };
 
+/** A member paying into your balance, and which of the three bar colours stands for them. */
+type Debtor = { id: string; amountMinor: number; colorIndex: 1 | 2 | 3 };
+
 type BalanceCardProps = {
   currency: string;
   myBalanceMinor: number;
   /** Who is paying YOU, via the minimal-transfer routing - not everyone owing the group. */
-  debtors: { id: string; amountMinor: number }[];
+  debtors: Debtor[];
   groupSettled: boolean;
 };
 
@@ -116,7 +119,7 @@ function BalanceCard({ currency, myBalanceMinor, debtors, groupSettled }: Balanc
         {showBar ? (
           <div className="home-balance-bar" aria-hidden="true">
             {debtors.map((debtor) => (
-              <i key={debtor.id} style={{ width: `${(debtor.amountMinor / barTotal) * 100}%` }} />
+              <i key={debtor.id} data-member-color={debtor.colorIndex} style={{ width: `${(debtor.amountMinor / barTotal) * 100}%` }} />
             ))}
           </div>
         ) : null}
@@ -142,6 +145,8 @@ type MemberRowProps = {
   member: Member;
   currency: string;
   balanceMinor: number;
+  /** Set only when this member is paying into your balance - see debtorColorIndex. */
+  colorIndex: 1 | 2 | 3 | undefined;
   expanded: boolean;
   onToggle: () => void;
   /** What settling directly with this person would mean - null when there's nothing to settle. */
@@ -167,6 +172,7 @@ function MemberRow({
   member,
   currency,
   balanceMinor,
+  colorIndex,
   expanded,
   onToggle,
   settleIntent,
@@ -196,7 +202,7 @@ function MemberRow({
         aria-controls={bodyId}
         onClick={onToggle}
       >
-        <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} />
+        <MemberAvatar className="member-avatar" name={member.name} avatarUrl={member.avatarUrl} colorIndex={colorIndex} />
         <span className="member-row-name">
           <strong>{member.name}</strong>
           {expanded ? <small>{statusText}</small> : null}
@@ -352,12 +358,17 @@ export function GroupHome({
   // else entirely). See the "N 個人要付你 $X" line: X already comes from
   // `myBalanceMinor` (the server's own balance), so the debtor list has to
   // agree with that number, not merely gesture at who else is in the red.
-  const debtors = currentMember
+  const debtors: Debtor[] = currentMember
     ? settlementTransfers
         .filter((transfer) => transfer.toMemberId === currentMember.id)
         .map((transfer) => ({ id: transfer.fromMemberId, amountMinor: transfer.amount.amount_minor }))
         .sort((a, b) => b.amountMinor - a.amountMinor)
+        // Same colour, same order, in one place: the bar's segments and each
+        // debtor's own avatar both read this index off the same array, so
+        // there is exactly one thing to keep in sync, not two.
+        .map((debtor, index) => ({ ...debtor, colorIndex: ((index % 3) + 1) as 1 | 2 | 3 }))
     : [];
+  const debtorColorIndex = new Map(debtors.map((debtor) => [debtor.id, debtor.colorIndex]));
 
   // ≤6 people: everyone gets a row, ranked (you first). More than that, and
   // "everyone" stops being a useful list - drop anybody flat (except you,
@@ -440,6 +451,7 @@ export function GroupHome({
                     member={member}
                     currency={group.currency}
                     balanceMinor={balances.get(member.id) ?? 0}
+                    colorIndex={debtorColorIndex.get(member.id)}
                     expanded={expandedMemberId === member.id}
                     onToggle={() => setExpandedMemberId((current) => (current === member.id ? null : member.id))}
                     settleIntent={settleIntent}
