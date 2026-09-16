@@ -7,6 +7,7 @@ import { UI_TEXT } from "./uiText";
 const text = UI_TEXT.landing;
 const profileText = UI_TEXT.profile;
 const loginText = UI_TEXT.login;
+const appText = UI_TEXT.app;
 
 /**
  * The one icon this page draws itself, so the hero's CTA and the closing
@@ -52,18 +53,20 @@ function initial(name: string): string {
  *
  * The hero used to be a card with a logo, a six-word tagline and a Google
  * button — a lot to ask of somebody who has never heard of Equo. It now leads
- * with the argument instead: a headline, and a fabricated group chat (clearly
- * labelled as an illustration, not a testimonial) that dramatises the exact
- * problem this app exists to solve — two people arguing over who owes whom —
- * followed by Equo's own answer to it. The real product screenshot moves
- * below the fold, beside the three claims it backs up, because a screenshot
- * earns its place next to a feature list and does not earn top billing over a
- * headline nobody has read yet.
+ * with the argument instead, but the first screen only carries the eyebrow,
+ * the headline, a one-line lede and the button: the fabricated group chat
+ * that dramatises the problem this app exists to solve (clearly labelled as
+ * an illustration, not a testimonial), the three value cards and the real
+ * product screenshot all sit below the fold, reached on a wide-enough screen
+ * by a single cue at the bottom of the hero (see .landing-scroll-cue — a
+ * phone gets no cue, because the hero already fills its screen), because
+ * none of them earns top billing over a headline nobody has read yet.
  *
  * Three things this keeps from before:
  * - somebody arriving from a friend's invite link sees the invite card in
- *   place of the chat — they have already decided, and the invite card is
- *   the answer to the only question they came with;
+ *   the hero, above the button, in place of nothing — they have already
+ *   decided, and the invite card is the answer to the only question they
+ *   came with;
  * - everything below the hero answers "what is this and why would I hand
  *   over my Google account", ending at the FAQ where the awkward questions
  *   (cost, data, no-account friends) get answered plainly;
@@ -127,21 +130,16 @@ export function LandingPage({
           <img src="/icons/equo-icon.svg" width={30} height={30} alt="" aria-hidden="true" />
           Equo
         </span>
-        {/* Desktop only (see the 760px rule) — a phone has nothing above the
-            hero to spend width on, and the hero's own CTA already reaches
-            everyone else. */}
-        <nav className="landing-topbar-nav" aria-label={text.scrollCue}>
-          <a href="#landing-value">{text.scrollCue}</a>
-          <a href="#landing-faq">{text.faqTitle}</a>
-        </nav>
       </header>
 
       <section className="landing-hero">
         {/* Someone arriving from a friend's link is the one visitor who already
             knows they want in — and used to be shown the same anonymous sign-in
-            card as everybody else, with no sign that the link had worked. It
-            takes the chat card's slot below: they do not need the argument for
-            why Equo exists, only the confirmation that this link works. */}
+            card as everybody else, with no sign that the link had worked. This
+            card answers that, above the button; the fabricated chat below the
+            fold does not render for them either (see .landing-below) — they do
+            not need the argument for why Equo exists, only the confirmation
+            that this link works. */}
         {invite ? (
           <div className="landing-invite glass-panel">
             <span className="landing-invite-label">{text.inviteTitle}</span>
@@ -165,61 +163,18 @@ export function LandingPage({
           {cta}
         </div>
 
-        {invite ? null : (
-          /* The argument, above the fold: a fabricated group chat where two
-             people cannot agree who owes whom, resolved by Equo's own
-             suggestion. demoChatLabel is not decoration — without it these
-             four invented lines would read as a real customer's words. */
-          <figure className="landing-chat glass-panel">
-            <figcaption className="landing-chat-label">{text.demoChatLabel}</figcaption>
-
-            <div className="landing-chat-row">
-              <span className="landing-chat-avatar landing-chat-avatar--gold" aria-hidden="true">
-                {initial(text.demoSettleTo1)}
-              </span>
-              <span className="landing-chat-bubble">{text.chatLine1}</span>
-            </div>
-
-            <div className="landing-chat-row">
-              <span className="landing-chat-avatar landing-chat-avatar--mint" aria-hidden="true">
-                {initial(text.demoSettleFrom2)}
-              </span>
-              <span className="landing-chat-bubble">{text.chatLine2}</span>
-            </div>
-
-            <div className="landing-chat-row landing-chat-row--self">
-              <span className="landing-chat-bubble landing-chat-bubble--self">{text.chatLine3}</span>
-            </div>
-
-            <div className="landing-settle">
-              <div className="landing-settle-head">
-                <img src="/icons/equo-icon.svg" width={20} height={20} alt="" aria-hidden="true" />
-                <strong>{text.demoSettleTitle}</strong>
-              </div>
-              <div className="landing-settle-row">
-                <span className="landing-settle-names">
-                  {text.demoSettleFrom1}
-                  <ArrowRight aria-hidden="true" size={14} />
-                  {text.demoSettleTo1}
-                </span>
-                <strong className="landing-settle-amount">{text.demoSettleAmount1}</strong>
-              </div>
-              <div className="landing-settle-row">
-                <span className="landing-settle-names">
-                  {text.demoSettleFrom2}
-                  <ArrowRight aria-hidden="true" size={14} />
-                  {text.demoSettleTo2}
-                </span>
-                <strong className="landing-settle-amount">{text.demoSettleAmount2}</strong>
-              </div>
-              <p className="landing-settle-note">{text.chatSettleNote}</p>
-            </div>
-
-            <div className="landing-chat-row landing-chat-row--self">
-              <span className="landing-chat-bubble landing-chat-bubble--self">{text.chatLine4}</span>
-            </div>
-          </figure>
-        )}
+        {/* The only "there is more" signal left once the topbar's two links
+            are gone. A real anchor, not a button that scrolls: it is read out
+            of this file's own source by publicPageSeo.test.ts, which requires
+            a matching id somewhere in the same document. Hidden on a phone
+            (see .landing-scroll-cue) — the first screen there is the eyebrow,
+            the headline, the lede and the button, nothing else, and the hero
+            itself fills the screen (see .landing-hero's min-height), so a
+            cue would just be inviting a tap on something not yet visible. */}
+        <a className="landing-scroll-cue" href="#landing-value">
+          {text.scrollCue}
+          <ChevronDown aria-hidden="true" size={16} />
+        </a>
       </section>
 
       {/* Everything below the hero sits on a scrim (see .landing-below). The
@@ -228,6 +183,67 @@ export function LandingPage({
           without the scrim, a light blob drifting past takes a paragraph's
           contrast with it. */}
       <div className="landing-below">
+        {invite ? null : (
+          /* The argument, no longer above the fold: a fabricated group chat
+             where two people cannot agree who owes whom, resolved by Equo's
+             own suggestion. demoChatLabel is not decoration — without it
+             these four invented lines would read as a real customer's words.
+             Wrapped in .landing-section rather than left bare: that class is
+             what gives every block here its width and gutter, and this one
+             has no heading of its own to hang that on. */
+          <div className="landing-section landing-chat-band">
+            <figure className="landing-chat glass-panel">
+              <figcaption className="landing-chat-label">{text.demoChatLabel}</figcaption>
+
+              <div className="landing-chat-row">
+                <span className="landing-chat-avatar landing-chat-avatar--gold" aria-hidden="true">
+                  {initial(text.demoSettleTo1)}
+                </span>
+                <span className="landing-chat-bubble">{text.chatLine1}</span>
+              </div>
+
+              <div className="landing-chat-row">
+                <span className="landing-chat-avatar landing-chat-avatar--mint" aria-hidden="true">
+                  {initial(text.demoSettleFrom2)}
+                </span>
+                <span className="landing-chat-bubble">{text.chatLine2}</span>
+              </div>
+
+              <div className="landing-chat-row landing-chat-row--self">
+                <span className="landing-chat-bubble landing-chat-bubble--self">{text.chatLine3}</span>
+              </div>
+
+              <div className="landing-settle">
+                <div className="landing-settle-head">
+                  <img src="/icons/equo-icon.svg" width={20} height={20} alt="" aria-hidden="true" />
+                  <strong>{text.demoSettleTitle}</strong>
+                </div>
+                <div className="landing-settle-row">
+                  <span className="landing-settle-names">
+                    {text.demoSettleFrom1}
+                    <ArrowRight aria-hidden="true" size={14} />
+                    {text.demoSettleTo1}
+                  </span>
+                  <strong className="landing-settle-amount">{text.demoSettleAmount1}</strong>
+                </div>
+                <div className="landing-settle-row">
+                  <span className="landing-settle-names">
+                    {text.demoSettleFrom2}
+                    <ArrowRight aria-hidden="true" size={14} />
+                    {text.demoSettleTo2}
+                  </span>
+                  <strong className="landing-settle-amount">{text.demoSettleAmount2}</strong>
+                </div>
+                <p className="landing-settle-note">{text.chatSettleNote}</p>
+              </div>
+
+              <div className="landing-chat-row landing-chat-row--self">
+                <span className="landing-chat-bubble landing-chat-bubble--self">{text.chatLine4}</span>
+              </div>
+            </figure>
+          </div>
+        )}
+
         <section className="landing-section" id="landing-value">
           <h2 className="landing-section-title">{text.scrollCue}</h2>
           <div className="landing-value-grid">
@@ -271,12 +287,30 @@ export function LandingPage({
         <section className="landing-section">
           <h2 className="landing-section-title">{text.moreTitle}</h2>
           <ul className="landing-more-list">
-            {[text.more1, text.more2, text.more3, text.more4, text.more5, text.more6].map((item) => (
+            {[text.more1, text.more2, text.more3].map((item) => (
               <li className="landing-more-item glass-panel" key={item}>
                 {item}
               </li>
             ))}
           </ul>
+          {/* Three more, collapsed rather than gone: <details> keeps them in
+              the markup for a crawler or a no-JS reader, it just does not
+              spend first-screen space on them. viewAll is the app's own
+              "see the rest" label (see GroupHome's member rows) — reused
+              rather than inventing a landing-only word for the same idea. */}
+          <details className="landing-more-rest">
+            <summary>
+              {appText.viewAll}
+              <ChevronDown aria-hidden="true" size={16} />
+            </summary>
+            <ul className="landing-more-list">
+              {[text.more4, text.more5, text.more6].map((item) => (
+                <li className="landing-more-item glass-panel" key={item}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </details>
         </section>
 
         <section className="landing-section" id="landing-faq">
@@ -291,14 +325,8 @@ export function LandingPage({
               { q: text.faq3Q, a: text.faq3A },
               { q: text.faq4Q, a: text.faq4A },
               { q: text.faq5Q, a: text.faq5A },
-            ].map((entry, index) => (
-              /* The first one starts open. Five collapsed rows is five
-                 questions and no answers, and 要付費嗎 is the answer most
-                 likely to end the visit early in the right direction — a
-                 disclosure that hides the reassurance is working against the
-                 page it is on. The rest stay closed so the section is still
-                 skimmable. */
-              <details className="landing-faq-item glass-panel" key={entry.q} open={index === 0}>
+            ].map((entry) => (
+              <details className="landing-faq-item glass-panel" key={entry.q}>
                 <summary>
                   {entry.q}
                   <ChevronDown aria-hidden="true" size={16} />

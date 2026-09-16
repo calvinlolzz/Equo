@@ -46,35 +46,30 @@
   letter-spacing: -0.01em;
 }
 
-/* Hidden on a phone: there is nothing above the hero worth spending width on
-   there, and the hero's own CTA already reaches everyone who scrolled past
-   it. See the 760px rule for where it turns on. */
-.landing-topbar-nav {
-  display: none;
-  align-items: center;
-  gap: 22px;
-}
-
-.landing-topbar-nav a {
-  display: inline-flex;
-  align-items: center;
-  /* A real tap target even though this row is desktop-only pointer input —
-     matches every other link on the page rather than carving out an
-     exception for one that happens not to need it today. */
-  min-height: 44px;
-  color: rgb(var(--fg) / 0.62);
-  font-size: 15px;
-  text-decoration: none;
-}
-
-.landing-topbar-nav a:hover {
-  color: rgb(var(--fg));
-}
-
 /* ---- hero -------------------------------------------------------------- */
 
 .landing-hero {
   display: grid;
+  /* Content is short now that the chat card, the shot and the value cards
+     all moved below the fold — without a floor of its own the hero would
+     shrink to fit it, and the next section would show through on any screen
+     shorter than about 700px (measured: a 375×667 phone had ~150px of the
+     chat card visible on load). `100svh`, the SMALLEST viewport size, so
+     mobile Safari's collapsing toolbar never leaves a sliver of the next
+     section revealed — `100dvh` was tried first and rejected: it tracks the
+     toolbar live, so the hero would resize (and everything below reflow)
+     mid-scroll, on the very first gesture a visitor makes.
+     `align-content` is deliberately left at its default (packs content at
+     the TOP, extra space trails after) rather than `center`: centring here
+     measured out as centring inside a box that starts ~150px below the
+     viewport's own top (topbar + gap), which read as correct on a square
+     screenshot but on a real short window pushed the cue below the fold and,
+     with an invite card added on top, pushed the sign-in button off a phone
+     screen entirely. Packing at the top keeps every element at the same
+     position it had with no floor at all — the extra height only ever adds
+     empty space AFTER the cue, never moves anything above it. */
+  min-height: 100vh;
+  min-height: 100svh;
   gap: clamp(20px, 5vw, 28px);
   width: min(var(--landing-column), 100%);
   margin-inline: auto;
@@ -82,23 +77,32 @@
 }
 
 /* The invite card's own width formula subtracts the gutter itself, on the
-   assumption that the hero around it carries none — true before this hero
-   grew horizontal padding of its own to host a full-width chat card. Placed
-   here rather than touched on the shared rule, since nothing outside the
-   hero uses .landing-invite. */
+   assumption that the hero around it carries none — untrue here, since the
+   hero has horizontal padding of its own (above). Placed here rather than
+   touched on the shared rule, since nothing outside the hero uses
+   .landing-invite. */
 .landing-hero .landing-invite {
   width: 100%;
 }
 
-/* The copy: eyebrow, headline, lede, sign-in. Left-aligned even though
-   everything below the hero is centred — a headline reads better ragged than
-   centred past two lines, and the sign-in button under it wants a fixed edge
-   to align to, not a moving one. */
+/* The copy: eyebrow, headline, lede, sign-in. Ragged left here, the same as
+   a phone: a headline reads better ragged than centred past two lines, and
+   the sign-in button wants a fixed edge to align to, not a moving one. The
+   760px rule below centres this instead, once .landing-hero itself is capped
+   narrow enough that a ragged edge stops reading as intentional and starts
+   reading as an accident of the column being wide. */
 .landing-hero-copy {
   display: grid;
   justify-items: start;
   gap: 16px;
   text-align: start;
+  /* The hero has a 100svh floor, so this block is handed far more height than
+     its content needs. Without these two it inherits `stretch` on BOTH axes:
+     every row grows to eat the slack — measured on a 390x844 phone, the CTA's
+     row came out 184px tall and the button itself was pushed past the fold.
+     Centre the block as a unit; let each row keep its own height. */
+  align-content: center;
+  align-items: start;
 }
 
 .landing-eyebrow {
@@ -115,6 +119,12 @@
 }
 
 .landing-hero-title {
+  /* CJK has no spaces, so the browser may break between any two characters —
+     `text-wrap: balance` optimises for even line lengths and happily split
+     「不用」down the middle. keep-all forbids breaks inside a run of CJK and
+     leaves the punctuation as the only opportunity, which is where a reader
+     would break it too. Latin copy is unaffected: it still breaks at spaces. */
+  word-break: keep-all;
   margin: 0;
   font-size: clamp(32px, 7.4vw, 54px);
   line-height: 1.24;
@@ -165,6 +175,31 @@
    app-base.css, so it does not need an opt-out entry there. */
 .landing-cta:active {
   transform: scale(0.98);
+}
+
+/* ---- the one way out of the first screen -------------------------------- */
+
+/* The only "there is more" signal on a screen that used to have a topbar nav
+   with two links in it — both gone (see the 760px rule for where this turns
+   on). A real <a href="#landing-value"> rather than a button that scrolls:
+   publicPageSeo.test.ts reads every href out of this page's own source and
+   requires a matching id somewhere in the same file. */
+.landing-scroll-cue {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: rgb(var(--fg) / 0.62);
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.landing-scroll-cue:hover {
+  color: rgb(var(--fg));
+}
+
+.landing-scroll-cue svg {
+  color: rgb(var(--fg) / 0.45);
 }
 
 /* ---- the chat card ------------------------------------------------------ */
@@ -321,6 +356,21 @@
   );
 }
 
+/* The chat card used to be sized by the hero's own rules. Below the fold it
+   is just another child of .landing-below, whose column runs up to 900px —
+   wide enough to stretch a chat bubble the width of the page if this did not
+   give it a narrower width of its own. The width lives on the two-class
+   selector below (.landing-section alone has no way to size a specific
+   child) — centring lives here instead, since .landing-section itself has no
+   justify-items of its own for this to override. */
+.landing-chat-band {
+  justify-items: center;
+}
+
+.landing-chat-band .landing-chat {
+  width: min(420px, 100%);
+}
+
 /* ---- sections ---------------------------------------------------------- */
 
 .landing-section {
@@ -411,7 +461,7 @@
   font-size: 12px;
 }
 
-/* Smooth the jump for the header nav's anchors so the motion itself says
+/* Smooth the jump for .landing-scroll-cue's anchor so the motion itself says
    "you were scrolled" rather than "something appeared". Scoped with :has so
    it only applies while the landing page is what is mounted — the app's own
    routing does its own scrolling and should not inherit this. Browsers
@@ -489,6 +539,59 @@
   border-left: 2px solid rgb(var(--brand));
   border-bottom: 2px solid rgb(var(--brand));
   transform: rotate(-45deg);
+}
+
+/* Three of six, and the rest behind a disclosure — but still in the markup:
+   <details> hides its body from the layout, not from the document, so a
+   crawler and a no-JS reader still get all six.
+
+   No `justify-items: center` here, on purpose: a <details> element's non-
+   summary content sits inside an anonymous ::details-content box, which IS
+   the grid item — not the <ul> inside it. Centring that box lets it shrink to
+   its content's max-content width, and the list's own `width: 100%` (below)
+   then resolves against that already-narrowed box, not the full column. The
+   visible symptom was the three revealed items sitting ~170px narrower than
+   the three above them, misaligned, the moment the disclosure opened.
+   Centring the <summary> alone sidesteps this entirely: the default stretch
+   still applies to ::details-content, and the .landing-more-list inside it
+   ends up the same width as the one above. */
+.landing-more-rest {
+  display: grid;
+  gap: 8px;
+}
+
+.landing-more-rest > summary {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  color: rgb(var(--fg) / 0.74);
+  font-size: 14px;
+  font-weight: 700;
+  /* <summary> is not a <button>, so the base rule that stops a tap from
+     starting a selection does not reach it — same reason the FAQ needs this. */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.landing-more-rest > summary::-webkit-details-marker {
+  display: none;
+}
+
+.landing-more-rest > summary svg {
+  color: rgb(var(--fg) / 0.5);
+  transition: transform 160ms ease;
+}
+
+.landing-more-rest[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.landing-more-rest .landing-more-list {
+  width: 100%;
 }
 
 /* ---- FAQ --------------------------------------------------------------- */
@@ -625,8 +728,34 @@
     --landing-column: 900px;
   }
 
-  .landing-topbar-nav {
-    display: flex;
+  /* Phase four: the hero is one centred column at every width, not two — the
+     720px cap is .pizo-home's own number (app-base.css), which is what a wide
+     screen in this app spends on whitespace rather than on a second column
+     that, since the product shot and the chat card both moved below the
+     fold, has nothing left to put in it. Below 760px this stays the ragged-
+     left single column it always was (see the base rule's own comment). */
+  .landing-hero {
+    width: min(720px, 100%);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .landing-hero-copy {
+    justify-items: center;
+    text-align: center;
+  }
+
+  /* A phone's screen is already narrower than the invite card's own 400px
+     cap, so the base rule's `width: 100%` and this card's intended width
+     agree by accident there. They stop agreeing once the hero itself is
+     capped at 720px: without this, "100%" would stretch a card meant to be
+     a small, answerable notice out to the width of the whole column. */
+  .landing-hero .landing-invite {
+    width: min(400px, 100%);
+  }
+
+  .landing-scroll-cue {
+    display: inline-flex;
   }
 
   .landing-value-grid {
@@ -655,54 +784,6 @@
      srcset has something to be twice OF. */
   .landing-shot {
     width: 390px;
-  }
-}
-
-/* Two columns in the hero, once there is honestly room for both.
-   900px, not the 760px the sections below use: this needs the chat card at
-   its own comfortable width plus a copy column wide enough for a multi-line
-   headline plus the gutters, and squeezing that into 760 gives back the
-   cramped hero it replaces.
-
-   What the old two-column rule replaced: at 1280x900 the shot rendered
-   266x284 and the sign-in card 220px wide, the whole hero stacked in a
-   ~270px ribbon down the middle of a 1265px viewport — while the sections
-   BELOW it ran 860px wide. The one screen that decides whether a stranger
-   signs up was the narrowest thing on the page. This hero runs wider than
-   --landing-column for the same reason: at 900px total, the copy column
-   would collapse to ~460px, too narrow for a 54px headline beside a 390px
-   card. */
-@media (min-width: 900px) {
-  .landing-topbar {
-    width: min(1080px, 100%);
-  }
-
-  .landing-hero {
-    width: min(1080px, 100%);
-    grid-template-columns: minmax(0, 1fr) 390px;
-    align-items: center;
-    gap: clamp(36px, 5vw, 72px);
-    padding-block: clamp(28px, 5vw, 56px) clamp(40px, 6vw, 72px);
-  }
-
-  /* Explicit placement rather than DOM order: the invite and the chat card
-     never appear in the same render, so they can share a cell, and a phone
-     needs the invite to lead (see LandingPage.tsx) while a desktop needs it
-     on the right regardless of which element came first in the markup. */
-  .landing-hero-copy {
-    grid-column: 1;
-    grid-row: 1;
-    gap: 22px;
-  }
-
-  /* No separate width rule needed here: .landing-hero .landing-invite's own
-     100% (above) already resolves to this column's fixed 390px track, so a
-     bare `.landing-invite { width: 390px }` here would be inert — beaten by
-     the more specific rule regardless of what it said. */
-  .landing-chat,
-  .landing-hero .landing-invite {
-    grid-column: 2;
-    grid-row: 1;
   }
 }
 

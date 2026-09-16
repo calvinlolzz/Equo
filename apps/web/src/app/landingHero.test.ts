@@ -3,19 +3,20 @@ import { webpSize } from "./assetProbe";
 import { insideAtRule, readAppFile, readAppStylesheet, ruleFor } from "./cssDeclarations";
 
 /**
- * The hero: two columns once there is room, and a product shot that is sharp
- * on a phone.
+ * The hero: one centred column at every width, and a product shot that is
+ * sharp on a phone.
  *
  * The shot's sizing came out of a measurement at 1280×900: on a phone it is
  * drawn at 232 CSS px, which a 3× screen paints with 696 device pixels from a
  * 390px file — a 1.78× upscale of the only product image on the public page,
- * which is why hero-home@2x.webp exists. The two-column split used to be
- * between the sign-in card and that shot; the shot has since moved into the
- * value section (see LandingPage.test.tsx), and the hero's right column is
- * now the illustrated chat card, or the invite card when one is present.
+ * which is why hero-home@2x.webp exists. The hero used to split into two
+ * columns on a desktop, between the sign-in card and an illustrated chat
+ * card; the phase-four collapse moved the chat card (and the shot, and the
+ * value cards) below the fold, leaving the hero nothing to put in a second
+ * column, so it is capped at .pizo-home's own 720px width and centred
+ * instead — for everybody, invite or not.
  */
 const landingCss = readAppStylesheet("app-landing.css");
-const desktop = insideAtRule(landingCss, "(min-width: 900px)");
 const wide = insideAtRule(landingCss, "(min-width: 760px)");
 const page = readAppFile("LandingPage.tsx");
 
@@ -57,7 +58,7 @@ describe("the product shot is sharp on a retina phone", () => {
   });
 });
 
-describe("the hero is two columns on a desktop", () => {
+describe("the hero is one centred column at every width", () => {
   test("there is a wrapper for the copy column", () => {
     // Without it the hero's children are grid items with nothing tying the
     // eyebrow, headline, lede and button together as one column.
@@ -65,35 +66,46 @@ describe("the hero is two columns on a desktop", () => {
     expect(ruleFor(landingCss, ".landing-hero-copy").display).toBe("grid");
   });
 
-  test("the columns only appear when there is room for both at full size", () => {
-    expect(desktop).toBeTruthy();
-    expect(ruleFor(desktop, ".landing-hero")["grid-template-columns"]).toContain("390px");
-  });
-
-  test("the copy and the aside are placed explicitly, not by DOM order", () => {
-    // The invite card and the chat card never render together, so they can
-    // share a cell — but a phone needs the invite FIRST in the DOM (so it
-    // leads on mobile) while a desktop needs it on the right regardless. That
-    // is only possible with explicit placement, not grid-auto-flow.
-    expect(ruleFor(desktop, ".landing-hero-copy")["grid-column"]).toBe("1");
-    expect(ruleFor(desktop, ".landing-chat")["grid-column"]).toBe("2");
-    expect(ruleFor(desktop, ".landing-hero .landing-invite")["grid-column"]).toBe("2");
-  });
-
-  test("mobile keeps the single stacked column", () => {
-    // The hero's own base rule must not carry the desktop layout, or a phone
-    // gets it too.
+  test("it never grows a second column, at the base rule or the wide one", () => {
+    // The phase-four collapse removed what used to sit in a second column —
+    // this is a regression guard against it quietly coming back. Checked on
+    // both the unqualified rule and the one inside the 760px query: a
+    // two-column layout added to either would slip past a check of only one.
     const hero = ruleFor(landingCss, ".landing-hero");
     expect(hero["grid-template-columns"]).toBeUndefined();
     expect(hero.display).toBe("grid");
+
+    expect(wide).toBeTruthy();
+    expect(ruleFor(wide, ".landing-hero")["grid-template-columns"]).toBeUndefined();
   });
 
-  test("an invite arrives in the same column as the chat card it replaces", () => {
+  test("it caps at the app's own width once there is room to, and centres", () => {
+    // 720px is .pizo-home's number (app-base.css): on a wide screen this app
+    // spends the room on whitespace, not on a column it has nothing left to
+    // fill now that the chat card and the shot both moved below the fold.
+    expect(ruleFor(wide, ".landing-hero").width).toBe("min(720px, 100%)");
+    expect(ruleFor(wide, ".landing-hero")["justify-items"]).toBe("center");
+    expect(ruleFor(wide, ".landing-hero-copy")["justify-items"]).toBe("center");
+  });
+
+  test("mobile keeps it ragged left, the way a headline reads best", () => {
+    const copy = ruleFor(landingCss, ".landing-hero-copy");
+    expect(copy["justify-items"]).toBe("start");
+    expect(copy["text-align"]).toBe("start");
+  });
+
+  test("an invite card fills the width the hero's own padding leaves it", () => {
     // Not the bare .landing-invite selector: the width that actually cascades
-    // here comes from the more specific .landing-hero .landing-invite rule
-    // (100% of the fixed 390px track), so a rule on the bare class would be
-    // dead weight the cascade never reaches.
+    // here comes from the more specific .landing-hero .landing-invite rule,
+    // so a rule on the bare class would be dead weight the cascade never
+    // reaches.
     expect(ruleFor(landingCss, ".landing-hero .landing-invite").width).toBe("100%");
+  });
+
+  test("but is capped narrow again once the hero itself is wide enough to make 100% too wide", () => {
+    // Without this a card meant to be a small, answerable notice would
+    // stretch to the same 720px the headline gets.
+    expect(ruleFor(wide, ".landing-hero .landing-invite").width).toBe("min(400px, 100%)");
   });
 });
 

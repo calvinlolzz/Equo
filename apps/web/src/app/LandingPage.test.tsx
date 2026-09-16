@@ -130,9 +130,9 @@ describe("arriving from an invite link", () => {
     expect(copy).toBeTruthy();
 
     // DOCUMENT_POSITION_FOLLOWING (4) on the copy column means the invite
-    // card precedes it in the DOM — which is what makes it lead in the
-    // single-column mobile layout, where placement is decided by source
-    // order rather than the desktop's explicit grid-column.
+    // card precedes it in the DOM — which is what makes it lead the hero at
+    // every width now that the layout is a single stacked column everywhere,
+    // decided by source order rather than any explicit placement.
     // eslint-disable-next-line no-bitwise
     const position = invite.closest(".landing-invite")!.compareDocumentPosition(copy!);
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -142,9 +142,9 @@ describe("arriving from an invite link", () => {
 /**
  * What a stranger can see before being asked for their Google account.
  *
- * The hero leads with a headline and a fabricated group chat rather than a
- * screenshot — the product shot moved into the value section, beside the
- * three claims it backs up (see the "the real product" describe block below).
+ * The argument itself — the fabricated group chat, the product shot, the
+ * three claims it backs up — sits below the hero now (see "the first screen
+ * is four things" below for what the hero keeps).
  */
 describe("the hero dramatises the argument", () => {
   test("a group can't agree who owes whom, and Equo settles it", () => {
@@ -188,6 +188,44 @@ describe("the hero dramatises the argument", () => {
   });
 });
 
+describe("the first screen is four things and a way out of it", () => {
+  test("the conversation is below the fold, not in the hero", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const figure = screen.getByText(text.demoChatLabel).closest("figure.landing-chat");
+    expect(figure?.closest(".landing-below")).toBeTruthy();
+    expect(figure?.closest(".landing-hero")).toBeNull();
+  });
+
+  test("the only cue out of it is a real anchor at a real id", () => {
+    // Not a button with scrollIntoView: this href is also what
+    // publicPageSeo.test.ts reads out of the page's own source.
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    expect(screen.getByRole("link", { name: text.scrollCue }).getAttribute("href")).toBe("#landing-value");
+    expect(document.querySelector("#landing-value")).toBeTruthy();
+  });
+
+  test("the topbar is the wordmark and nothing else", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+    expect(document.querySelector(".landing-topbar-nav")).toBeNull();
+  });
+});
+
+describe("the feature list shows three and keeps three", () => {
+  test("the rest are one click away — and still in the markup", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const rest = document.querySelector<HTMLDetailsElement>(".landing-more-rest");
+    expect(rest).toBeTruthy();
+    expect(rest?.open).toBe(false);
+    expect(screen.getByText(UI_TEXT.app.viewAll)).toBeTruthy();
+    // Mutation guard: first three outside the disclosure, last three inside.
+    expect(screen.getByText(text.more1).closest(".landing-more-rest")).toBeNull();
+    expect(screen.getByText(text.more6).closest(".landing-more-rest")).toBeTruthy();
+  });
+});
+
 describe("the closing band offers the same sign-in a second time", () => {
   test("with a distinct label, so the page never asks the same question by the same name twice", () => {
     const onGoogleLogin = vi.fn();
@@ -195,10 +233,16 @@ describe("the closing band offers the same sign-in a second time", () => {
 
     // Regression guard: a second button with the SAME accessible name as the
     // hero's would make every getByText/getByRole(name: googleLogin) call
-    // site elsewhere in the suite throw on finding two matches.
+    // site elsewhere in the suite throw on finding two matches. Named rather
+    // than counted: a third button appearing (the "還有這些" disclosure, say,
+    // built as a <button> instead of <details>/<summary>) is a regression,
+    // and so is either of these two losing its own label.
     expect(screen.getByText(UI_TEXT.login.googleLogin)).toBeTruthy();
     const closing = screen.getByRole("button", { name: new RegExp(text.closingCta) });
-    expect(screen.getAllByRole("button")).toHaveLength(2);
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
+      UI_TEXT.login.googleLogin,
+      text.closingCta,
+    ]);
 
     fireEvent.click(closing);
     expect(onGoogleLogin).toHaveBeenCalledTimes(1);
@@ -262,18 +306,23 @@ describe("the real product, beside the claims it backs up", () => {
 describe("the FAQ", () => {
   const items = () => [...document.querySelectorAll<HTMLDetailsElement>(".landing-faq-item")];
 
-  test("answers its first question without being asked", () => {
+  test("opens nothing on arrival — the first screen owes nobody an answer yet", () => {
+    // Phase four: the whole page below the hero follows the same progressive-
+    // disclosure rule the app itself does. Exactly one question forced open
+    // (it used to be faq1) is the behaviour this replaced.
     render(<LandingPage onGoogleLogin={() => {}} />);
-    const open = items().filter((item) => item.open);
 
     expect(items().length).toBeGreaterThan(1);
-    expect(open).toHaveLength(1);
-    expect(open[0].textContent).toContain(text.faq1Q);
+    expect(items().every((item) => !item.open)).toBe(true);
   });
 
-  test("and leaves the rest closed, so the section is still skimmable", () => {
+  test("but every answer is still in the markup, behind no click", () => {
+    // Collapsed is not absent: <details> hides its body from the layout, not
+    // from the document, which is what a crawler and a no-JS reader get.
     render(<LandingPage onGoogleLogin={() => {}} />);
-    expect(items().slice(1).every((item) => !item.open)).toBe(true);
+
+    expect(screen.getByText(text.faq1A)).toBeTruthy();
+    expect(screen.getByText(text.faq5A)).toBeTruthy();
   });
 });
 
