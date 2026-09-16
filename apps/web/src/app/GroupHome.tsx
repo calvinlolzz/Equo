@@ -12,6 +12,7 @@ import { useAnimatedHeight } from "./useAnimatedHeight";
 import { ACTIVE_LOCALE, UI_TEXT } from "./uiText";
 import type { Activity, DialogMode, Expense, Group, Member } from "./appTypes";
 import type { useInstallPrompt } from "./useInstallPrompt";
+import type { SettlementTransfer } from "../domain/settlement";
 
 const text = UI_TEXT.app;
 
@@ -45,8 +46,17 @@ export type GroupHomeProps = {
   totalExpenseMinor: number;
   /** The group's true expense count (aggregates.expenseCount) - expenses may be a capped window. */
   expenseCount: number;
-  /** settlementTransfers.length === 0: nothing left to clear anywhere in the group. */
-  groupSettled: boolean;
+  /**
+   * The minimal-transfer settlement suggestions (buildSettlementTransfers(serverBalances) in
+   * App.tsx - also feeds AnalysisPanel). The balance card's debtors list is
+   * the subset of these paying INTO the current member - not "everyone with
+   * a negative balance", which is a different (and often larger, and
+   * differently-weighted) set: a negative balance means owing the group as a
+   * whole, not owing you specifically, and the minimal-transfer routing can
+   * point a debtor's payment at someone else entirely. Empty means nothing
+   * left to clear anywhere in the group.
+   */
+  settlementTransfers: SettlementTransfer[];
   expenses: Expense[];
   activities: Activity[];
   /** Members reminded this session - see App.tsx's nudgeMember/nudgeEveryDebtor. */
@@ -77,7 +87,7 @@ export type GroupHomeProps = {
 type BalanceCardProps = {
   currency: string;
   myBalanceMinor: number;
-  /** Everyone but you who currently owes the group, sorted by |balance| desc. */
+  /** Who is paying YOU, via the minimal-transfer routing - not everyone owing the group. */
   debtors: { id: string; amountMinor: number }[];
   groupSettled: boolean;
 };
@@ -196,7 +206,7 @@ function MemberRow({
       </button>
       <div className="member-row-body" id={bodyId} ref={bodyRef}>
         {expanded ? (
-          <div className="member-row-actions">
+          <div className="home-member-row-actions">
             {settleIntent ? (
               <button
                 className="settlement-clear-action"
@@ -296,7 +306,7 @@ export function GroupHome({
   balances,
   totalExpenseMinor,
   expenseCount,
-  groupSettled,
+  settlementTransfers,
   expenses,
   activities,
   nudgedMemberIds,
@@ -335,10 +345,19 @@ export function GroupHome({
   // content replaces it.
   const emptyGroup = hasLoadedDetail && expenses.length === 0 && members.length <= 1;
   const myBalanceMinor = currentMember ? balances.get(currentMember.id) ?? 0 : 0;
-  const debtors = members
-    .filter((member) => member.id !== currentMember?.id && (balances.get(member.id) ?? 0) < 0)
-    .map((member) => ({ id: member.id, amountMinor: Math.abs(balances.get(member.id) ?? 0) }))
-    .sort((a, b) => b.amountMinor - a.amountMinor);
+  const groupSettled = settlementTransfers.length === 0;
+  // Who is actually paying YOU - the minimal-transfer routing, not "everyone
+  // with a negative balance" (a negative balance is owed to the GROUP, and
+  // the minimal-transfer set can route that person's payment to someone
+  // else entirely). See the "N 個人要付你 $X" line: X already comes from
+  // `myBalanceMinor` (the server's own balance), so the debtor list has to
+  // agree with that number, not merely gesture at who else is in the red.
+  const debtors = currentMember
+    ? settlementTransfers
+        .filter((transfer) => transfer.toMemberId === currentMember.id)
+        .map((transfer) => ({ id: transfer.fromMemberId, amountMinor: transfer.amount.amount_minor }))
+        .sort((a, b) => b.amountMinor - a.amountMinor)
+    : [];
 
   // ≤6 people: everyone gets a row, ranked (you first). More than that, and
   // "everyone" stops being a useful list - drop anybody flat (except you,
@@ -480,7 +499,11 @@ export function GroupHome({
             key={`records-${group.id}`}
             id="group-records"
             label={text.records}
-            summary={expenses.length ? `${expenseCount} · ${formatAmount(expenses[0].amountMinor, expenses[0].currency)}` : text.noRecords}
+            summary={
+              expenses.length
+                ? `${UI_TEXT.records.count} ${expenseCount} · ${formatAmount(expenses[0].amountMinor, expenses[0].currency)}`
+                : text.noRecords
+            }
             headExtra={
               <>
                 {/* The disclosure's own body only ever shows the last 5 -
@@ -574,17 +597,19 @@ export function GroupHome({
               label={spendTab === "group" ? text.groupSpend : text.personalSpend}
               summary={`${dateLabel} ${formatAmount(spendDisplayAmountMinor, group.currency)}`}
             >
-              <div className="tab-pair" aria-label={text.personalSpend}>
-                <button className={spendTab === "personal" ? "soft-tab active" : "soft-tab"} type="button" onClick={() => onSelectSpendTab("personal")}>
-                  {text.personalSpend}
-                </button>
-                <button className={spendTab === "group" ? "soft-tab active" : "soft-tab"} type="button" onClick={() => onSelectSpendTab("group")}>
-                  {text.groupSpend}
+              <div className="section-title-row">
+                <div className="tab-pair" aria-label={text.personalSpend}>
+                  <button className={spendTab === "personal" ? "soft-tab active" : "soft-tab"} type="button" onClick={() => onSelectSpendTab("personal")}>
+                    {text.personalSpend}
+                  </button>
+                  <button className={spendTab === "group" ? "soft-tab active" : "soft-tab"} type="button" onClick={() => onSelectSpendTab("group")}>
+                    {text.groupSpend}
+                  </button>
+                </div>
+                <button className="text-action" type="button" onClick={() => onOpenDialog("analysisPanel")}>
+                  {text.viewAll} <ChevronRight aria-hidden="true" size={14} />
                 </button>
               </div>
-              <button className="text-action" type="button" onClick={() => onOpenDialog("analysisPanel")}>
-                {text.viewAll} <ChevronRight aria-hidden="true" size={14} />
-              </button>
               <div className="spending-date-row">
                 <div>
                   <span>{dateLabel}</span>

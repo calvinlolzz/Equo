@@ -131,14 +131,14 @@
   overflow: hidden;
 }
 
-.member-row-actions {
+.home-member-row-actions {
   display: flex;
   gap: 8px;
   align-items: stretch;
   padding: 2px 4px 12px;
 }
 
-.member-row-actions .settlement-clear-action {
+.home-member-row-actions .settlement-clear-action {
   flex: 1 1 auto;
   min-height: 40px;
   border: 1px solid var(--edge-2);
@@ -185,24 +185,23 @@
   border-radius: inherit;
 }
 
-.hero-balance-row span {
+.member-row-name {
   display: grid;
   gap: 3px;
   overflow: hidden;
   font-weight: 840;
 }
 
-.hero-balance-row small {
+.member-row-name small {
   color: rgb(var(--fg) / 0.52);
   font-size: 12px;
   font-weight: 760;
 }
 
-.hero-balance-row strong {
+.member-row-amount {
   text-align: right;
 }
 
-.spending-card,
 .home-section {
   display: grid;
   gap: 14px;
@@ -776,25 +775,25 @@
   display: none;
 }
 
-.pizo-record-section,
-.pizo-activity-section,
 .home-disclosure {
   display: grid;
   gap: 12px;
 }
 
-.pizo-record-section .section-title-row,
-.pizo-activity-section .section-title-row,
 .home-disclosure .section-title-row {
   padding: 0 4px;
 }
 
-.pizo-record-section .section-title-row h3,
-.pizo-activity-section .section-title-row h3,
-.home-disclosure-title {
+/* Specificity, not source order: `.section-title-row span` above is a class
+   + type selector (0,1,1) and would otherwise beat a bare `.home-disclosure-
+   title` (0,1,0) regardless of which comes later in the file, flattening
+   every disclosure's heading to 13px muted text. The extra ancestor class
+   pushes this past it. */
+.home-disclosure-head .home-disclosure-title {
   font-size: 19px;
   font-weight: 860;
   line-height: 1.2;
+  color: rgb(var(--fg));
 }
 
 /* The 提醒他 action inside an expanded member row. Outlined, not filled: 記錄收款
@@ -866,7 +865,15 @@
 }
 
 .home-disclosure-body {
+  display: grid;
+  gap: 14px;
   overflow: hidden;
+}
+
+/* When open, the body needs its own top spacing - the toggle above it isn't
+   part of this grid's gap chain (it lives in .home-disclosure-head). */
+.home-disclosure-body:has(> *) {
+  padding-top: 14px;
 }
 
 /* The records row's 掃描收據 button - a recording action riding along in the

@@ -1326,10 +1326,13 @@ export function App() {
 
       // Members who don't need offering a reminder again, whatever the
       // reason: sent, already reminded by somebody else, or turned out not
-      // to owe anything any more.
+      // to owe anything any more. A rate-limited or otherwise-failed target
+      // is NOT spent - nothing about their debt changed, so the button
+      // should still offer to try them again.
       const spent: string[] = [];
       let sent = 0;
       let cooled = 0;
+      let rateLimited = 0;
       let failed = 0;
       results.forEach((result, index) => {
         const memberId = targets[index].id;
@@ -1344,6 +1347,12 @@ export function App() {
           spent.push(memberId);
         } else if (code === "NUDGE_NOT_NEEDED") {
           spent.push(memberId);
+        } else if (code === "RATE_LIMITED") {
+          // The write-rate limiter's bucket is per user, not per nudge - a
+          // large group's "提醒 N 位成員" can burn through it in one tap.
+          // Distinct from a generic failure: nothing is broken, and the
+          // existing copy already says so instead of implying an outage.
+          rateLimited += 1;
         } else {
           failed += 1;
         }
@@ -1352,7 +1361,16 @@ export function App() {
       if (spent.length) {
         setNudgedMemberIds((current) => [...new Set([...current, ...spent])]);
       }
-      if (sent > 0) {
+      if (rateLimited > 0) {
+        // Told first, even over a partial success: it's the one actionable
+        // fact ("this exact tap is being throttled, not that reminders are
+        // broken"), and pairing it with 已提醒 would bury it.
+        showToast(describeCloudActionError({ code: "RATE_LIMITED" }));
+      } else if (sent > 0 && failed > 0) {
+        // "3 成功 2 失敗" has to read differently from "5 全成功" - a bare
+        // 已提醒 would claim more than happened.
+        showToast(`${text.nudgeSentToast} · ${text.nudgeFailed}`);
+      } else if (sent > 0) {
         haptic("success");
         showToast(text.nudgeSentToast);
       } else if (cooled > 0) {
@@ -1361,7 +1379,7 @@ export function App() {
         showToast(text.nudgeFailed);
       }
       // Every target turned out NUDGE_NOT_NEEDED and nothing else: none of
-      // the three toasts above is true, so none is shown.
+      // the branches above is true, so none is shown.
     } finally {
       endAction();
     }
@@ -1694,7 +1712,7 @@ export function App() {
             balances={balances}
             totalExpenseMinor={totalExpenseMinor}
             expenseCount={aggregates.expenseCount}
-            groupSettled={settlementTransfers.length === 0}
+            settlementTransfers={settlementTransfers}
             expenses={expenses}
             activities={activities}
             nudgedMemberIds={nudgedMemberIds}

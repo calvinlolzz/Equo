@@ -208,7 +208,12 @@ describe("提醒 N 位成員", () => {
       expect(api.calls).toContain("POST /groups/group_1/members/member_cara/nudge");
     });
     // One success + one cooldown = the success toast, not a failure toast.
-    await waitFor(() => expect(screen.getByText(app.nudgeSentToast)).toBeTruthy());
+    // Scoped to the toast dock (role="status"): nudgeSentToast and an
+    // expanded row's nudgeSent badge are the identical string "已提醒" in
+    // Chinese, so an unscoped query would be correct here only by chance of
+    // no row being open.
+    const toast = await screen.findByRole("status");
+    await waitFor(() => expect(within(toast).getByText(app.nudgeSentToast)).toBeTruthy());
     // Both are spent (sent, and already-reminded) - nobody left to offer.
     await waitFor(() => expect(screen.queryByRole("button", { name: new RegExp(`^${app.nudge} `) })).toBeNull());
   });
