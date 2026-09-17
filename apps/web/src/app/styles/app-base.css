@@ -28,6 +28,11 @@
   --card-base: 16 19 26;    /* opaque base under frosted cards (dark -> white in light) */
   --surface-solid: 247 251 248; /* light chip/button that carries dark --ink text (light both themes) */
   --danger: 255 107 107;    /* destructive text / soft danger fills — distinct from --member-1 */
+  /* warning/caution states — offline, pending, over budget, site-notice
+     warning, view-as. --warning is for text and borders read on a card;
+     --warning-fill is a bright fill that dark --ink text sits on top of. */
+  --warning: 255 184 77;
+  --warning-fill: 255 184 77;
   --page-1: #07080D;
   --page-2: #10121B;
   --page-3: #0B0D14;
@@ -70,6 +75,8 @@
   --card-base: 255 255 255; /* frosted cards sit on white in light mode */
   --surface-solid: 255 255 255; /* stays white so dark-ink chips read as raised cards */
   --danger: 211 47 47;      /* deeper red that reads on white */
+  --warning: 180 83 9;       /* ~5:1 on white */
+  --warning-fill: 255 184 77;
   --page-1: #F4F5F9;
   --page-2: #EEF0F6;
   --page-3: #F8F8FC;

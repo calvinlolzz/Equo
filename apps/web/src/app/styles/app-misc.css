@@ -993,21 +993,21 @@
   background: rgb(var(--brand) / 0.1);
 }
 
-/* Border in --gold-ink (the saturated variant), fill in --gold (the pale
-   one): --gold alone is a light-fill token now and reads as barely-there at
-   border strength, so the two tokens split the job - pale wash behind,
-   saturated edge in front - the way the rest of the "loud" surfaces below do. */
+/* Border in --warning (the saturated variant), fill in --warning-fill (the
+   bright one): a dedicated amber pair, not borrowed from --gold/--gold-ink —
+   those now carry the aurora lavender (the secondary-button hue), so a
+   warning styled with them read as a secondary button, not a warning. */
 .site-notice--warning {
-  border-color: rgb(var(--gold-ink) / 0.45);
-  background: rgb(var(--gold) / 0.12);
+  border-color: rgb(var(--warning) / 0.45);
+  background: rgb(var(--warning-fill) / 0.12);
 }
 
 /* Read-only view-as. The loudest bar in the app, deliberately: everything below
    it belongs to somebody else, and an admin who forgets that is the entire risk
    this feature carries. */
 .site-notice--view-as {
-  border-color: rgb(var(--gold-ink) / 0.6);
-  background: rgb(var(--gold) / 0.16);
+  border-color: rgb(var(--warning) / 0.6);
+  background: rgb(var(--warning-fill) / 0.16);
 }
 
 .site-notice-action {
@@ -1016,7 +1016,7 @@
   padding: 6px 12px;
   border-radius: 999px;
   color: rgb(var(--ink));
-  background: rgb(var(--gold));
+  background: rgb(var(--warning-fill));
   font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
@@ -1054,7 +1054,7 @@
   align-items: center;
   max-width: calc(100vw - 32px);
   padding: 8px 16px;
-  border: 1px solid rgb(var(--gold-ink) / 0.4);
+  border: 1px solid rgb(var(--warning) / 0.4);
   border-radius: 999px;
   background: var(--card-solid);
   color: rgb(var(--fg));

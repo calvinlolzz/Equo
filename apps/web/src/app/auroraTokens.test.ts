@@ -11,6 +11,8 @@ import { readAppFile, readAppStylesheet, ruleFor } from "./cssDeclarations";
  * actually does.
  */
 const baseCss = readAppStylesheet("app-base.css");
+const miscCss = readAppStylesheet("app-misc.css");
+const dialogsCss = readAppStylesheet("app-dialogs.css");
 
 /** Custom-property names (the `--x` keys) declared directly on a selector. */
 function customPropertyNames(css: string, selector: string): string[] {
@@ -130,4 +132,42 @@ describe("buttons inherit their ink", () => {
   test("the base button rule sets color: inherit", () => {
     expect(ruleFor(baseCss, "button")["color"]).toBe("inherit");
   });
+});
+
+describe("warning-semantic rules use --warning, not the lavender --gold", () => {
+  /**
+   * --gold/--gold-ink carry the aurora lavender now (the secondary-button
+   * hue), so a warning styled with them reads as a secondary button, not a
+   * warning. These are every selector that used to borrow --gold/--gold-ink
+   * for an offline/pending/over-budget/site-notice-warning/view-as state -
+   * they must all point at the dedicated --warning/--warning-fill pair
+   * instead, on every colour declaration the rule sets.
+   */
+  const cases: { css: string; selector: string; properties: string[] }[] = [
+    { css: miscCss, selector: ".site-notice--warning", properties: ["border-color", "background"] },
+    { css: miscCss, selector: ".site-notice--view-as", properties: ["border-color", "background"] },
+    { css: miscCss, selector: ".site-notice-action", properties: ["background"] },
+    { css: miscCss, selector: ".offline-banner", properties: ["border"] },
+    { css: dialogsCss, selector: ".record-pending-badge", properties: ["background"] },
+    { css: dialogsCss, selector: ".spend-period-change--up", properties: ["color"] },
+    {
+      css: dialogsCss,
+      selector: ".spend-budget--over .spend-budget-bar > span",
+      properties: ["background"],
+    },
+    { css: dialogsCss, selector: ".spend-budget--over .spend-budget-line", properties: ["color"] },
+  ];
+
+  for (const { css, selector, properties } of cases) {
+    test(`${selector} reads --warning, not --gold`, () => {
+      const declarations = ruleFor(css, selector);
+
+      for (const property of properties) {
+        const value = declarations[property];
+        expect(value).toBeTruthy();
+        expect(value).toContain("--warning");
+        expect(value).not.toContain("--gold");
+      }
+    });
+  }
 });

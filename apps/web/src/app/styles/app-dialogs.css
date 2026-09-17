@@ -1027,7 +1027,7 @@
 /* Spending more than last month is the one direction worth colouring. Not red:
    this is information, not an error - somebody may have meant to. */
 .spend-period-change--up {
-  color: rgb(var(--gold-ink));
+  color: rgb(var(--warning));
 }
 
 /* A one-line explanation under a form field. Used where an empty box has a
@@ -1072,11 +1072,11 @@
 }
 
 .spend-budget--over .spend-budget-bar > span {
-  background: rgb(var(--gold-ink));
+  background: rgb(var(--warning));
 }
 
 .spend-budget--over .spend-budget-line {
-  color: rgb(var(--gold-ink));
+  color: rgb(var(--warning));
 }
 
 .spend-budget small {
@@ -1611,7 +1611,7 @@
   padding: 1px 6px;
   border-radius: 999px;
   color: rgb(var(--ink));
-  background: rgb(var(--gold) / 0.85);
+  background: rgb(var(--warning-fill) / 0.85);
   font-size: 10px;
   font-style: normal;
   font-weight: 900;
