@@ -825,18 +825,6 @@ function ScanUsageSection({ client }: { client: EquoApiClient }) {
 }
 
 /**
- * Master data: the category list, the currency list, and manual exchange rates.
- *
- * All three used to be constants in the app bundle, so adding 醫療 or turning on
- * SGD was a deploy. Editing is inline rather than behind a modal because the
- * rows are three fields each and the common change is a single label.
- *
- * A category is never deleted, only switched off: expenses.category holds the
- * key as text, so a removed row would leave live expenses pointing at a label
- * nothing can render. The row shows how many expenses it carries so that
- * decision is made with the number in view.
- */
-/**
  * Read-only for stage 1 - see the personal ledger plan's §4g/§9: editing scope
  * from the console is deferred, so this is display only, not another input on
  * the edit row. Admin text is never translated (see the i18n plan note), so
@@ -848,6 +836,18 @@ const CATEGORY_SCOPE_LABEL: Record<"shared" | "personal" | "income", string> = {
   income: "收入",
 };
 
+/**
+ * Master data: the category list, the currency list, and manual exchange rates.
+ *
+ * All three used to be constants in the app bundle, so adding 醫療 or turning on
+ * SGD was a deploy. Editing is inline rather than behind a modal because the
+ * rows are three fields each and the common change is a single label.
+ *
+ * A category is never deleted, only switched off: expenses.category holds the
+ * key as text, so a removed row would leave live expenses pointing at a label
+ * nothing can render. The row shows how many expenses it carries so that
+ * decision is made with the number in view.
+ */
 function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
   const [catalog, setCatalog] = useState<AdminCatalogPayload | null>(null);
   const [error, setError] = useState("");

@@ -8,6 +8,7 @@ import { buildExpenseCsv, csvFileName } from "./expenseCsv";
 import { type ExpenseDraft } from "./ExpenseComposerSheet";
 import type { ReceiptPrefill } from "./receiptPrefill";
 import { expenseToDraft } from "./expenseUndo";
+import { groupDisplayName } from "./personalLedger";
 import { haptic } from "./haptics";
 import { formatAmount } from "./formatAmount";
 import type { StoredSession } from "./sessionStore";
@@ -280,7 +281,7 @@ export function useExpenseComposer({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = csvFileName(activeGroup.name, dateKey(new Date().toISOString()));
+      anchor.download = csvFileName(groupDisplayName(activeGroup), dateKey(new Date().toISOString()));
       anchor.click();
       URL.revokeObjectURL(url);
       showToast(text.exportCsvDone);

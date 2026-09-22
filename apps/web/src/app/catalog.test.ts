@@ -146,10 +146,29 @@ describe("categoryOptionsFor", () => {
     expect(keys).toEqual(["salary", "bonus", "investment", "other_income"]);
   });
 
-  test("a server catalog with no income rows falls back to the bundled income defaults", () => {
-    // Simulates an old server (pre category_scope) or a stale stored copy: the
-    // hydrated catalog has ordinary categories but nothing scoped "income" at
-    // all, so the personal-ledger income picker must not come back empty.
+  // [MV]
+  test("a server catalog with NO scope field at all falls back to the bundled income defaults", () => {
+    // Simulates an old server (pre category_scope) or a stale stored copy:
+    // every raw entry is missing `scope` outright, so this source says
+    // nothing about what an admin actually wants for income - the personal
+    // ledger's income picker must not come back empty.
+    hydrateCatalog({
+      categories: [{ key: "food", label: "餐飲", color: "#F0885A" }],
+      currencies: [{ code: "TWD", label: "新台幣" }],
+    });
+
+    const keys = categoryOptionsFor({ personal: true, mode: "income" }).map((entry) => entry.key);
+
+    expect(keys).toEqual(["salary", "bonus", "investment", "other_income"]);
+  });
+
+  // [MV]
+  test("a server catalog that DOES carry scope, with every income category disabled, does NOT resurrect the bundled ones", () => {
+    // Every entry carries a real `scope` (even "shared" ones do, on a modern
+    // server) - an empty match here means an admin genuinely disabled every
+    // income category, not that scope data is missing. Falling back to
+    // DEFAULT_CATALOG's bundled income rows would bring a disabled category
+    // back from the dead.
     hydrateCatalog({
       categories: [{ key: "food", label: "餐飲", color: "#F0885A", scope: "shared" }],
       currencies: [{ code: "TWD", label: "新台幣" }],
@@ -157,7 +176,20 @@ describe("categoryOptionsFor", () => {
 
     const keys = categoryOptionsFor({ personal: true, mode: "income" }).map((entry) => entry.key);
 
-    expect(keys).toEqual(["salary", "bonus", "investment", "other_income"]);
+    // Not empty outright - a composer draft always needs SOME category to
+    // select - but only the one bundled fallback, not the whole income list.
+    expect(keys).toEqual(["other_income"]);
+  });
+
+  // [MV]
+  test("a server catalog that DOES carry scope, with every shared+personal expense category disabled, returns an empty (not resurrected) list", () => {
+    hydrateCatalog({
+      categories: [{ key: "salary", label: "薪資", color: "#3DBE8B", scope: "income" }],
+      currencies: [{ code: "TWD", label: "新台幣" }],
+    });
+
+    expect(categoryOptionsFor({ personal: false })).toEqual([]);
+    expect(categoryOptionsFor({ personal: true, mode: "expense" })).toEqual([]);
   });
 });
 

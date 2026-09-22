@@ -51,24 +51,44 @@ export function writeGroupMemory(
 }
 
 const LAST_CATEGORY_KEY = "equo.clean.last_category";
+const LAST_INCOME_CATEGORY_KEY = "equo.clean.last_income_category";
 
 /**
- * The category this group's last expense was filed under.
+ * The category this group's last expense (or, separately, last income) was
+ * filed under.
  *
  * Every entry used to start at 一般 regardless of what the last twenty were.
  * On a trip that is 餐飲 six times a day, re-chosen six times a day — the
  * composer already knew the answer and asked anyway.
  *
+ * Expense and income are remembered under separate keys, not one shared
+ * "last category": a personal ledger's 支出 and 收入 draw from disjoint
+ * category lists (see catalog.ts's categoryOptionsFor), so logging one 薪資
+ * would otherwise overwrite the remembered expense category with an income
+ * one the next expense draft can't even offer, silently resetting it to 一般
+ * instead of whatever was actually last used for spending.
+ *
  * The caller checks the remembered value against the live catalog before using
  * it: a category can be turned off in the console, and a default pointing at
  * one that no longer exists is worse than no default.
  */
-export function readLastCategory(groupId: string, storage?: MemoryStorage | null): string {
-  return readGroupMemory(LAST_CATEGORY_KEY, groupId, storage === undefined ? browserStorage() : storage);
+export function readLastCategory(
+  groupId: string,
+  storage?: MemoryStorage | null,
+  scope: "expense" | "income" = "expense",
+): string {
+  const key = scope === "income" ? LAST_INCOME_CATEGORY_KEY : LAST_CATEGORY_KEY;
+  return readGroupMemory(key, groupId, storage === undefined ? browserStorage() : storage);
 }
 
-export function writeLastCategory(groupId: string, category: string, storage?: MemoryStorage | null): void {
-  writeGroupMemory(LAST_CATEGORY_KEY, groupId, category, storage === undefined ? browserStorage() : storage);
+export function writeLastCategory(
+  groupId: string,
+  category: string,
+  storage?: MemoryStorage | null,
+  scope: "expense" | "income" = "expense",
+): void {
+  const key = scope === "income" ? LAST_INCOME_CATEGORY_KEY : LAST_CATEGORY_KEY;
+  writeGroupMemory(key, groupId, category, storage === undefined ? browserStorage() : storage);
 }
 
 /**

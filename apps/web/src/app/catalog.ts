@@ -99,6 +99,22 @@ const STORAGE_KEY = "equo.clean.catalog";
 
 let active: Catalog = DEFAULT_CATALOG;
 
+/**
+ * Whether `active` came from a source that tagged categories with a real
+ * `scope` at all (a post-category_scope-migration server response, or a
+ * stored copy saved from one) - as opposed to one where every raw entry was
+ * missing the field outright (an old server, or an old stored copy). Set by
+ * hydrateCatalog/restoreCatalog, checked by categoryOptionsFor: see there for
+ * why the distinction matters. True at module load, matching DEFAULT_CATALOG,
+ * which carries real scope tags for everything.
+ */
+let activeHasScopeInfo = true;
+
+/** True when at least one raw category entry actually carries a `scope` key (any value, including undefined-but-present is still "present" - `in` checks the key, not the value). */
+function anyEntryHasScopeField(entries: ReadonlyArray<{ scope?: unknown }>): boolean {
+  return entries.some((entry) => "scope" in entry);
+}
+
 function isCatalog(value: unknown): value is Catalog {
   const candidate = value as Catalog | null;
   return Boolean(
@@ -123,6 +139,7 @@ function isCatalog(value: unknown): value is Catalog {
 export function hydrateCatalog(next: unknown): Catalog {
   if (!isCatalog(next)) return active;
 
+  activeHasScopeInfo = anyEntryHasScopeField(next.categories as ReadonlyArray<{ scope?: unknown }>);
   active = {
     categories: next.categories.map((entry) => ({
       key: entry.key,
@@ -130,7 +147,9 @@ export function hydrateCatalog(next: unknown): Catalog {
       color: entry.color || FALLBACK_CATEGORY_COLOR,
       // A server predating the category_scope migration sends no scope field
       // at all - normalizeScope reads that the same way it reads any other
-      // unrecognised value, as "shared".
+      // unrecognised value, as "shared". activeHasScopeInfo above is what
+      // tells categoryOptionsFor apart the two "shared" cases: really shared,
+      // vs. "this source doesn't know".
       scope: normalizeScope((entry as { scope?: unknown }).scope),
     })),
     currencies: next.currencies.map((entry) => ({ code: entry.code, label: entry.label })),
@@ -156,6 +175,7 @@ export function restoreCatalog(): Catalog {
         // per-category scope at all - same normalization as hydrateCatalog,
         // so a cold start from an old stored copy doesn't read every category
         // as personal-or-income just because "scope" happens to be undefined.
+        activeHasScopeInfo = anyEntryHasScopeField(parsed.categories as ReadonlyArray<{ scope?: unknown }>);
         active = {
           categories: parsed.categories.map((entry) => ({
             key: entry.key,
@@ -177,6 +197,7 @@ export function restoreCatalog(): Catalog {
 /** Test seam: forget everything learned from the server. */
 export function resetCatalog(): void {
   active = DEFAULT_CATALOG;
+  activeHasScopeInfo = true;
 }
 
 export function getCatalog(): Catalog {
@@ -197,9 +218,20 @@ export function categoryOptions(): CatalogCategory[] {
  *   - a personal ledger recording income offers only "income" categories.
  *
  * Falls back to the matching DEFAULT_CATALOG rows when the active catalog has
- * none for the requested scope set - an old server (pre category_scope
- * migration) or an old stored copy would otherwise hand a personal-ledger
- * income entry an empty picker instead of the bundled categories.
+ * none for the requested scope set AND the active catalog never carried real
+ * scope tags to begin with (activeHasScopeInfo false - an old server predating
+ * category_scope, or an old stored copy) - that source's "no match" says
+ * nothing about what an admin actually wants, since normalizeScope defaulted
+ * every one of its rows to "shared" regardless of what they really were.
+ *
+ * When the active catalog DOES carry real scope tags and still has no match,
+ * that means an admin genuinely disabled every category in this scope - the
+ * bundled rows must NOT be resurrected, or a disabled category would come
+ * back from the dead in the picker. The one carve-out is personal-ledger
+ * income: a composer draft always needs SOME category, so an admin disabling
+ * every income category falls back to a single bundled 其他收入 rather than
+ * leaving that picker (and defaultCategoryKey's "other_income") with nothing
+ * to select.
  */
 export function categoryOptionsFor(options: { personal: boolean; mode?: "expense" | "income" }): CatalogCategory[] {
   const scopes: CatalogScope[] = !options.personal
@@ -211,7 +243,16 @@ export function categoryOptionsFor(options: { personal: boolean; mode?: "expense
   const matches = active.categories.filter((entry) => scopes.includes(entry.scope));
   if (matches.length > 0) return matches;
 
-  return DEFAULT_CATALOG.categories.filter((entry) => scopes.includes(entry.scope));
+  if (!activeHasScopeInfo) {
+    return DEFAULT_CATALOG.categories.filter((entry) => scopes.includes(entry.scope));
+  }
+
+  if (options.personal && options.mode === "income") {
+    const otherIncome = DEFAULT_CATALOG.categories.find((entry) => entry.key === "other_income");
+    return otherIncome ? [otherIncome] : [];
+  }
+
+  return [];
 }
 
 /** The category a fresh composer draft starts with, for this ledger kind/mode. */

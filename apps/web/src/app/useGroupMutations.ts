@@ -3,6 +3,7 @@ import type { CloudGroupsStore } from "./cloudStore";
 import type { DialogMode, Group } from "./appTypes";
 import { describeCloudActionError } from "./describeCloudActionError";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { groupDisplayName } from "./personalLedger";
 import type { ToastAction } from "./useToast";
 import { UI_TEXT } from "./uiText";
 
@@ -184,7 +185,22 @@ export function useGroupMutations({
       if ((activeGroup.monthlyBudgetMinor ?? null) !== budgetMinor) {
         await cloudStore.setMonthlyBudget(activeGroup.id, name, budgetMinor);
       }
-      recordCloudActivity(activeGroup.id, `${text.editGroup}: ${name}`);
+      // groupName was seeded from activeGroup.name (openEditGroup) - a
+      // personal ledger's raw stored name is always the Chinese 「我的帳本」
+      // (see personalLedger.ts's groupDisplayName), so it must never reach
+      // this log verbatim on an English session. Shared groups keep `name`,
+      // the value that was actually just saved. The kind override matches
+      // App.tsx's activeDisplayName: activeGroup.kind can lag activeIsPersonal
+      // (which also falls back to the list entry), so activeIsPersonal - not
+      // activeGroup.kind - decides which branch groupDisplayName takes.
+      recordCloudActivity(
+        activeGroup.id,
+        `${text.editGroup}: ${
+          activeIsPersonal
+            ? groupDisplayName({ ...activeGroup, kind: "personal" })
+            : name
+        }`,
+      );
       setDialog(null);
       setGroupCoverDataUrl("");
       showToast(activeIsPersonal ? UI_TEXT.personalLedger.settingsSaved : `${text.editGroup}: ${name}`);
