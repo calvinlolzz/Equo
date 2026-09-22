@@ -211,9 +211,14 @@
 .ledger-month-stats strong {
   font-size: 18px;
   font-weight: 860;
-  /* No color here - the 結餘 figure takes the inherited default, and 收入
-     needs its .amount-income color to win, which a more specific selector
-     here would otherwise flatten. */
+}
+
+/* 結餘 has no .amount-income class, so without this it inherits the dim
+   label color from .ledger-month-stats span above and reads as another
+   caption instead of a figure. :not(.amount-income) keeps 收入's own income
+   color (see .amount-income) winning instead of being flattened here. */
+.ledger-month-stats strong:not(.amount-income) {
+  color: rgb(var(--fg));
 }
 
 .ledger-month-loading {

@@ -13,6 +13,7 @@ import { readAppFile, readAppStylesheet, ruleFor } from "./cssDeclarations";
 const baseCss = readAppStylesheet("app-base.css");
 const miscCss = readAppStylesheet("app-misc.css");
 const dialogsCss = readAppStylesheet("app-dialogs.css");
+const composerCss = readAppStylesheet("app-composer.css");
 
 /** Custom-property names (the `--x` keys) declared directly on a selector. */
 function customPropertyNames(css: string, selector: string): string[] {
@@ -170,4 +171,20 @@ describe("warning-semantic rules use --warning, not the lavender --gold", () => 
       }
     });
   }
+});
+
+describe(".amount-income reads its own --income token, not --brand", () => {
+  /**
+   * --brand's mint (99 219 175 in light mode) is ~1.7:1 on white - fine for a
+   * small mark or CTA fill, not for the 本月收入 headline text that
+   * .amount-income actually colours. --income is the dedicated, darker-in-
+   * light-mode token for that (see app-base.css); this guards the class
+   * against silently drifting back onto --brand.
+   */
+  test(".amount-income uses rgb(var(--income))", () => {
+    const declarations = ruleFor(composerCss, ".amount-income");
+    expect(declarations.color).toBeTruthy();
+    expect(declarations.color).toContain("--income");
+    expect(declarations.color).not.toContain("--brand");
+  });
 });

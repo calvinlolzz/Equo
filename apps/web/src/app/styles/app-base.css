@@ -10,6 +10,11 @@
   --fg: 238 241 246;        /* primary text / icon */
   --surf: 255 255 255;      /* translucent surface + hairline tint */
   --brand: 77 227 166;      /* aurora mint/green — brand mark, income, CTAs (both themes) */
+  /* .amount-income's own color, split out from --brand: --brand's mint reads
+     fine as a small mark/CTA fill but is ~1.7:1 on white once used as light
+     mode's 本月收入 headline text - see the light block below. Same mint hue
+     as --brand in dark mode, so this is a no-op there. */
+  --income: 77 227 166;
   --accent: 77 227 166;     /* interactive/selection accent */
   --accent-fg: 5 34 26;     /* text on --accent fills */
   /* aurora lavender — secondary highlight (formerly gold), the third hue so
@@ -63,6 +68,10 @@
   --fg: 26 30 42;           /* dark ink text */
   --surf: 42 35 80;         /* translucent surfaces become indigo tints */
   --brand: 99 219 175;      /* mint stays the brand */
+  /* Darker than --brand on purpose - ~5.5:1 on white vs. --brand's ~1.7:1,
+     needed because .amount-income uses this for the 本月收入 headline text,
+     not just a small fill/mark. */
+  --income: 4 120 87;
   --accent: 61 139 255;     /* aurora blue — light only */
   --accent-fg: 255 255 255; /* white text on blue */
   /* aurora lavender, same "light fill + dark --ink text" semantics as dark

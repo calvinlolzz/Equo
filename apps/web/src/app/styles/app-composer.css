@@ -616,7 +616,7 @@
 }
 
 .amount-income {
-  color: rgb(var(--brand));
+  color: rgb(var(--income));
 }
 
 .member-avatar.income-avatar {
