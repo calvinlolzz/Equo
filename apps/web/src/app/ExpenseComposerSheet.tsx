@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { CalendarDays, ChevronRight, Delete, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { createApiClient, type ExchangeRatesResponse } from "./apiClient";
-import { COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
+import { COMPOSER_MODES, PERSONAL_COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
 import { convertToGroupAmountMinor, readLastCurrency, writeLastCurrency } from "./expenseCurrency";
 import { readLastCategory, writeLastCategory } from "./composerMemory";
 import { canSubmitExpenseDraft, canSubmitTransferDraft } from "./expenseDraft";
@@ -30,7 +30,7 @@ import { MemberAvatar } from "./MemberAvatar";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { useAnimatedHeight } from "./useAnimatedHeight";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
-import { categoryLabel as lookupCategoryLabel, categoryOptions } from "./catalog";
+import { categoryLabel as lookupCategoryLabel, categoryOptionsFor, defaultCategoryKey } from "./catalog";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -164,6 +164,7 @@ export function ExpenseComposerSheet({
   duplicating = false,
   receiptPrefill,
   scanPending = false,
+  personal = false,
   onClose,
   onDirtyChange,
   onSubmit,
@@ -215,6 +216,14 @@ export function ExpenseComposerSheet({
    */
   scanPending?: boolean;
   /**
+   * True for the caller's own personal ledger. Restricts the mode row to
+   * 支出/收入 (no 轉帳 - a transfer to yourself moves no money), and hides the
+   * payer/split editors entirely: a one-member ledger's payer and share are
+   * always the same person, so nothing there is a choice worth showing (see
+   * defaultPayerId/composerShareIds below, which already resolve to "me").
+   */
+  personal?: boolean;
+  /**
    * Asks to close. May decline and put the discard confirm up instead — see
    * onDirtyChange — so this sheet never animates itself away on the way out.
    */
@@ -261,10 +270,13 @@ export function ExpenseComposerSheet({
   const [composerCategory, setComposerCategory] = useState<string>(() => {
     if (editPrefill) return editPrefill.category;
     const remembered = readLastCategory(groupId);
+    const initialScopeMode = composerMode === "income" ? "income" : "expense";
     // Checked against the live catalog: a category can be switched off in the
     // console, and defaulting to one that no longer exists is worse than
-    // defaulting to 一般.
-    return categoryOptions().some((option) => option.key === remembered) ? remembered : "general";
+    // defaulting to 一般 (or, for a personal-ledger income draft, 其他收入).
+    return categoryOptionsFor({ personal, mode: initialScopeMode }).some((option) => option.key === remembered)
+      ? remembered
+      : defaultCategoryKey({ personal, mode: initialScopeMode });
   });
   const [composerDateTime, setComposerDateTime] = useState<string>(() =>
     toLocalDateTimeInputValue(editPrefill?.dateTimeIso ?? new Date().toISOString()),
@@ -527,6 +539,15 @@ export function ExpenseComposerSheet({
   function selectComposerMode(mode: ComposerMode) {
     setComposerMode(mode);
     setStepIndex(0);
+    // A category picked under one mode may not exist in the other's scope
+    // (支出 offers shared+personal, 收入 offers only income categories) - see
+    // categoryOptionsFor. Switching modes without this would leave a
+    // draft's category set to something the new mode's picker cannot even
+    // display as selected.
+    const scopeMode = mode === "income" ? "income" : "expense";
+    if (!categoryOptionsFor({ personal, mode: scopeMode }).some((option) => option.key === composerCategory)) {
+      setComposerCategory(defaultCategoryKey({ personal, mode: scopeMode }));
+    }
   }
 
   function pressKeypad(key: (typeof KEYPAD_KEYS)[number]) {
@@ -1154,15 +1175,22 @@ export function ExpenseComposerSheet({
   // optional, so those steps advance freely and the final CTA uses canSubmit.
   const canAdvanceStep = stepKeys[activeStep] === "amount" ? composerTotalAmountMinor > 0 : true;
 
+  // A personal ledger has no 轉帳 - a transfer to yourself moves no money.
+  const modes = personal ? PERSONAL_COMPOSER_MODES : COMPOSER_MODES;
+
   // Field groups shared by the desktop single-form layout and the phone steps.
   const renderModeRow = () => (
-    <div className="composer-type-row segmented-control" role="tablist" aria-label={text.addExpense}>
+    <div
+      className={modes.length === 2 ? "composer-type-row composer-type-row--two segmented-control" : "composer-type-row segmented-control"}
+      role="tablist"
+      aria-label={text.addExpense}
+    >
       <span
         className="segmented-pill"
-        style={{ transform: `translateX(${COMPOSER_MODES.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
+        style={{ transform: `translateX(${modes.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
         aria-hidden="true"
       />
-      {COMPOSER_MODES.map((mode) => (
+      {modes.map((mode) => (
         <button
           key={mode.id}
           className={mode.id === composerMode ? "composer-type active" : "composer-type"}
@@ -1183,7 +1211,7 @@ export function ExpenseComposerSheet({
         <label>
           <span>{text.category}</span>
           <select value={composerCategory} onChange={(event) => setComposerCategory(event.target.value)} aria-label={text.category}>
-            {categoryOptions().map((option) => (
+            {categoryOptionsFor({ personal, mode: composerMode === "income" ? "income" : "expense" }).map((option) => (
               <option value={option.key} key={option.key}>
                 {option.label}
               </option>
@@ -1191,7 +1219,9 @@ export function ExpenseComposerSheet({
             {/* A category that has since been disabled in the console stays
                 selectable while editing an expense already filed under it,
                 rather than being silently rewritten on the next save. */}
-            {!categoryOptions().some((option) => option.key === composerCategory) ? (
+            {!categoryOptionsFor({ personal, mode: composerMode === "income" ? "income" : "expense" }).some(
+              (option) => option.key === composerCategory,
+            ) ? (
               <option value={composerCategory}>{lookupCategoryLabel(composerCategory)}</option>
             ) : null}
           </select>
@@ -1413,7 +1443,11 @@ export function ExpenseComposerSheet({
           <>
             {renderTitleField()}
             {renderMetaGrid()}
-            {renderSplitSummarySection()}
+            {/* A personal ledger has nobody to pay or split with - the
+                defaults (payer = me, share = [me]) already say the only
+                thing there is to say, so the summary line has nothing to
+                open. */}
+            {personal ? null : renderSplitSummarySection()}
             {renderPhotoNoteSection()}
           </>
         );
@@ -1503,8 +1537,8 @@ export function ExpenseComposerSheet({
             {renderAmountCard()}
             {renderExchangeRow()}
             {renderTitleField()}
-            {composerMode === "transfer" ? renderTransferSection() : renderPayerSection()}
-            {composerMode !== "transfer" ? renderShareSection() : null}
+            {personal ? null : composerMode === "transfer" ? renderTransferSection() : renderPayerSection()}
+            {personal ? null : composerMode !== "transfer" ? renderShareSection() : null}
             {composerMode !== "transfer" ? renderPhotoNoteSection() : renderNoteSection()}
             <p className="composer-hint">{composerSubmitState.hint}</p>
             <button

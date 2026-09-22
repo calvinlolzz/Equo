@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { configure, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { configure, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
+import type { Member } from "./appTypes";
 import { insideAtRule, readAppStylesheet, ruleFor } from "./cssDeclarations";
+import { ExpenseComposerSheet } from "./ExpenseComposerSheet";
 import { UI_TEXT } from "./uiText";
 
 // Lazy chunks again - see the note in App.scan.test.tsx.
@@ -174,6 +176,106 @@ describe("the phone add-expense flow", () => {
     expect(body.expense_payments[0].amount_minor).toBe(60_000);
     // The split step's default survives its deletion: everybody, evenly.
     expect(body.expense_shares.map((share) => share.member_id)).toEqual(["member_alice", "member_bob"]);
+  });
+});
+
+/**
+ * The composer in a personal ledger - a one-member "group" with `personal`
+ * passed through. Rendered directly (not through the full App harness): the
+ * `personal` prop only reaches ExpenseComposerSheet by hand today, App.tsx's
+ * own wiring lands in a later commit.
+ */
+describe("the composer in a personal ledger", () => {
+  const soloMember: Member[] = [{ id: "member_me", name: "我" }];
+
+  beforeEach(() => stubBrowser({ mobile: false }));
+
+  function renderPersonalSheet(props: Partial<Parameters<typeof ExpenseComposerSheet>[0]> = {}) {
+    const onSubmit = vi.fn();
+    render(
+      <ExpenseComposerSheet
+        members={soloMember}
+        currentMemberId="member_me"
+        groupId="ledger_1"
+        groupCurrency="TWD"
+        currencyOptions={[{ code: "TWD", label: "台幣" }]}
+        personal
+        onClose={() => {}}
+        onSubmit={onSubmit}
+        {...props}
+      />,
+    );
+    return { onSubmit };
+  }
+
+  test("offers only 支出/收入 - two tabs, no 轉帳", () => {
+    renderPersonalSheet();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      UI_TEXT.composerModes.expense,
+      UI_TEXT.composerModes.income,
+    ]);
+  });
+
+  test("hides the payer and split editors - there is nobody else in the ledger", () => {
+    renderPersonalSheet();
+    expect(screen.queryByLabelText(app.payer)).toBeNull();
+    expect(screen.queryByText(app.whoPays)).toBeNull();
+  });
+
+  test("expense category options are the 6 shared plus the 5 personal-ledger ones", () => {
+    renderPersonalSheet();
+    const select = screen.getByLabelText(app.category) as HTMLSelectElement;
+    expect(select.options.length).toBe(11);
+  });
+
+  test("income mode offers only the 4 income categories", () => {
+    renderPersonalSheet();
+    fireEvent.click(screen.getByRole("tab", { name: UI_TEXT.composerModes.income }));
+    const select = screen.getByLabelText(app.category) as HTMLSelectElement;
+    expect(select.options.length).toBe(4);
+  });
+
+  test("switching to income resets the remembered category to 其他收入", () => {
+    renderPersonalSheet();
+    fireEvent.click(screen.getByRole("tab", { name: UI_TEXT.composerModes.income }));
+    const select = screen.getByLabelText(app.category) as HTMLSelectElement;
+    expect(select.value).toBe("other_income");
+  });
+
+  // [MV]
+  test("a saved entry has the ledger's one member as both payer and share", () => {
+    const { onSubmit } = renderPersonalSheet();
+    fireEvent.change(screen.getByLabelText(app.amount), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.composerSubmit.addExpense }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ payerId: "member_me", shareMemberIds: ["member_me"] }),
+    );
+  });
+
+  // [MV]
+  test("a shared-group render (personal omitted) still shows only the 6 original categories", () => {
+    const sharedMembers: Member[] = [
+      { id: "member_a", name: "Alice" },
+      { id: "member_b", name: "Bob" },
+    ];
+    render(
+      <ExpenseComposerSheet
+        members={sharedMembers}
+        groupId="group_1"
+        groupCurrency="TWD"
+        currencyOptions={[{ code: "TWD", label: "台幣" }]}
+        onClose={() => {}}
+        onSubmit={vi.fn()}
+      />,
+    );
+    const select = screen.getByLabelText(app.category) as HTMLSelectElement;
+    expect(select.options.length).toBe(6);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      UI_TEXT.composerModes.expense,
+      UI_TEXT.composerModes.income,
+      UI_TEXT.composerModes.transfer,
+    ]);
   });
 });
 

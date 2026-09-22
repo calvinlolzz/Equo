@@ -1273,6 +1273,17 @@
   gap: 8px;
 }
 
+/* A personal ledger's mode row has only 支出/收入 - two pills, not three, so
+   the pill grid and the sliding highlight both have to divide the row in
+   half instead (see ExpenseComposerSheet's PERSONAL_COMPOSER_MODES). */
+.composer-type-row--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.composer-type-row--two .segmented-pill {
+  width: calc((100% - 8px) / 2);
+}
+
 .segmented-control {
   position: relative;
   gap: 0;

@@ -8,6 +8,13 @@ export const COMPOSER_MODES = [
 
 export type ComposerMode = (typeof COMPOSER_MODES)[number]["id"];
 
+/**
+ * The modes a personal ledger offers: 支出/收入 only. No 轉帳 - a transfer to
+ * yourself moves no money, and there is nobody else in the ledger to send it
+ * to (see the plan's §9, deferred-out list).
+ */
+export const PERSONAL_COMPOSER_MODES = COMPOSER_MODES.filter((mode) => mode.id !== "transfer");
+
 const SUBMIT_LABELS: Record<ComposerMode, string> = {
   expense: UI_TEXT.composerSubmit.addExpense,
   income: UI_TEXT.composerSubmit.addIncome,
