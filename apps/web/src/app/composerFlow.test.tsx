@@ -235,11 +235,37 @@ describe("the composer in a personal ledger", () => {
     expect(select.options.length).toBe(4);
   });
 
-  test("switching to income resets the remembered category to 其他收入", () => {
+  test("switching to income resets the remembered category to 其他收入 when nothing is remembered yet", () => {
     renderPersonalSheet();
     fireEvent.click(screen.getByRole("tab", { name: UI_TEXT.composerModes.income }));
     const select = screen.getByLabelText(app.category) as HTMLSelectElement;
     expect(select.value).toBe("other_income");
+  });
+
+  // [MV]
+  test("switching to income preselects the last-used income category, without disturbing the remembered expense one", () => {
+    // Log one income entry filed under 薪資 (salary) - writeLastCategory
+    // fires from submitComposer before onSubmit, so this lands in
+    // composerMemory even though onSubmit here is just a spy.
+    renderPersonalSheet();
+    fireEvent.click(screen.getByRole("tab", { name: UI_TEXT.composerModes.income }));
+    fireEvent.change(screen.getByLabelText(app.category), { target: { value: "salary" } });
+    fireEvent.change(screen.getByLabelText(app.amount), { target: { value: "50000" } });
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.composerSubmit.addIncome }));
+
+    // A brand-new composer instance - not the same one, so this only passes
+    // if the remembered category is read from storage on mode switch, not
+    // carried over in React state from the sheet that just submitted.
+    cleanup();
+    renderPersonalSheet();
+
+    // Expense is the default landing mode; its own remembered category (none
+    // written here) must still be the ordinary default, not clobbered by the
+    // income write above (see composerMemory.ts's separate scope keys).
+    expect((screen.getByLabelText(app.category) as HTMLSelectElement).value).toBe("general");
+
+    fireEvent.click(screen.getByRole("tab", { name: UI_TEXT.composerModes.income }));
+    expect((screen.getByLabelText(app.category) as HTMLSelectElement).value).toBe("salary");
   });
 
   // [MV]

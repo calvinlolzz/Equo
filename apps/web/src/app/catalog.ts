@@ -265,11 +265,24 @@ export function defaultCategoryKey(options: { personal: boolean; mode?: "expense
  * Its own key is a better answer than a blank, so unknown keys pass through.
  */
 export function categoryLabel(key: string): string {
-  return active.categories.find((entry) => entry.key === key)?.label ?? key;
+  return (
+    active.categories.find((entry) => entry.key === key)?.label ??
+    // categoryOptionsFor's personal-income fallback hands out the bundled
+    // "other_income" row when an admin has disabled every real income
+    // category - that key is deliberately NOT added to `active`, so without
+    // this a fresh income entry saved under it would render its own key
+    // ("other_income") as the label instead of 其他收入.
+    DEFAULT_CATALOG.categories.find((entry) => entry.key === key)?.label ??
+    key
+  );
 }
 
 export function categoryColor(key: string): string {
-  return active.categories.find((entry) => entry.key === key)?.color ?? FALLBACK_CATEGORY_COLOR;
+  return (
+    active.categories.find((entry) => entry.key === key)?.color ??
+    DEFAULT_CATALOG.categories.find((entry) => entry.key === key)?.color ??
+    FALLBACK_CATEGORY_COLOR
+  );
 }
 
 export function currencyOptions(): CatalogCurrency[] {

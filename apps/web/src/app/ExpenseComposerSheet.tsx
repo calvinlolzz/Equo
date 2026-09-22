@@ -545,8 +545,21 @@ export function ExpenseComposerSheet({
     // draft's category set to something the new mode's picker cannot even
     // display as selected.
     const scopeMode = mode === "income" ? "income" : "expense";
-    if (!categoryOptionsFor({ personal, mode: scopeMode }).some((option) => option.key === composerCategory)) {
-      setComposerCategory(defaultCategoryKey({ personal, mode: scopeMode }));
+    const scopeOptions = categoryOptionsFor({ personal, mode: scopeMode });
+    if (!scopeOptions.some((option) => option.key === composerCategory)) {
+      // Prefers this mode's own remembered category (composerMemory.ts keeps
+      // expense and income separate) over the hard-coded default - the same
+      // preference the composer's OWN initial category state already gives
+      // it (see composerCategory's useState initializer above). Without
+      // this, switching to 收入 always landed on 其他收入 even moments
+      // after logging a 薪資 entry: the memory was written on submit, it
+      // was just never read back here.
+      const remembered = readLastCategory(groupId, undefined, scopeMode);
+      setComposerCategory(
+        scopeOptions.some((option) => option.key === remembered)
+          ? remembered
+          : defaultCategoryKey({ personal, mode: scopeMode }),
+      );
     }
   }
 
@@ -1197,9 +1210,14 @@ export function ExpenseComposerSheet({
   // "transfer" (e.g. a legacy entry from before the ledger disallowed them):
   // PERSONAL_COMPOSER_MODES has no "transfer" entry, so findIndex below would
   // return -1 and no tab would render as selected. Falling back to the full
-  // COMPOSER_MODES for that one case keeps the pill/index valid; the mode row
-  // itself is display-only here since selectComposerMode never offers a way
-  // back INTO transfer from a personal composer.
+  // COMPOSER_MODES for that one case keeps the pill/index valid. The row is
+  // NOT display-only, though: 支出/收入 are real, tappable tabs here, same as
+  // any other personal composer - the one-way part is that tapping either of
+  // them switches composerMode away from "transfer", which drops this branch
+  // back to PERSONAL_COMPOSER_MODES on the very next render and hides the
+  // 轉帳 tab again. There is no way back into it from a personal composer
+  // (selectComposerMode never sets mode to "transfer" for one), so leaving
+  // is a one-time, irreversible move for this sheet instance.
   const modes = personal && composerMode !== "transfer" ? PERSONAL_COMPOSER_MODES : COMPOSER_MODES;
 
   // Field groups shared by the desktop single-form layout and the phone steps.

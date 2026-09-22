@@ -19,6 +19,14 @@ const text = UI_TEXT.app;
 
 type UseExpenseComposerDeps = {
   activeGroup: Group | null;
+  /**
+   * True when `activeGroup` is the caller's own personal ledger. Passed
+   * through rather than read off activeGroup.kind directly, for the same
+   * reason useGroupMutations takes it: App.tsx's own activeIsPersonal also
+   * falls back to the list entry's kind when the detail hasn't loaded it yet
+   * (see App.tsx's activeDisplayName), so it is the more reliable source.
+   */
+  activeIsPersonal?: boolean;
   cloudStore: CloudGroupsStore | null;
   members: Member[];
   session: StoredSession | null;
@@ -45,6 +53,7 @@ type UseExpenseComposerDeps = {
  */
 export function useExpenseComposer({
   activeGroup,
+  activeIsPersonal,
   cloudStore,
   members,
   session,
@@ -281,7 +290,13 @@ export function useExpenseComposer({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = csvFileName(groupDisplayName(activeGroup), dateKey(new Date().toISOString()));
+      // Same kind override App.tsx's own activeDisplayName and
+      // useGroupMutations' activity-log fix use: activeGroup.kind can lag
+      // activeIsPersonal (which also falls back to the list entry when the
+      // detail hasn't loaded kind yet), so activeIsPersonal - not
+      // activeGroup.kind - decides which branch groupDisplayName takes.
+      const displayName = groupDisplayName({ ...activeGroup, kind: activeIsPersonal ? "personal" : activeGroup.kind });
+      anchor.download = csvFileName(displayName, dateKey(new Date().toISOString()));
       anchor.click();
       URL.revokeObjectURL(url);
       showToast(text.exportCsvDone);

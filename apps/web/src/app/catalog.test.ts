@@ -41,13 +41,30 @@ describe("the catalog", () => {
     expect(currencyOptions()).toEqual([{ code: "SGD", label: "新加坡幣" }]);
   });
 
-  test("an expense filed under a category that no longer exists still renders", () => {
+  test("an expense filed under a category truly gone from both the active AND bundled catalogs still renders", () => {
     hydrateCatalog({ categories: [{ key: "food", label: "餐飲", color: "#F0885A" }], currencies: [{ code: "TWD", label: "新台幣" }] });
 
     // Its own key beats a blank, and the donut gets a colour rather than
-    // undefined.
-    expect(categoryLabel("lodging")).toBe("lodging");
-    expect(categoryColor("lodging")).toBe(FALLBACK_CATEGORY_COLOR);
+    // undefined. "retired_category_xyz" is neither in the hydrated catalog
+    // above nor in DEFAULT_CATALOG - see the categoryLabel/categoryColor
+    // tests below for the case where a key IS still in the bundle.
+    expect(categoryLabel("retired_category_xyz")).toBe("retired_category_xyz");
+    expect(categoryColor("retired_category_xyz")).toBe(FALLBACK_CATEGORY_COLOR);
+  });
+
+  // [MV]
+  test("categoryLabel/categoryColor fall back to the bundled catalog before the raw key", () => {
+    // "lodging" is dropped from the active catalog (an admin turned it off,
+    // say) but is still a real DEFAULT_CATALOG row - an expense filed under
+    // it (or, concretely, categoryOptionsFor's personal-income fallback
+    // handing out the bundled "other_income" when every real income
+    // category is disabled) must still show its real label/colour, not the
+    // raw key.
+    hydrateCatalog({ categories: [{ key: "food", label: "餐飲", color: "#F0885A" }], currencies: [{ code: "TWD", label: "新台幣" }] });
+
+    expect(categoryLabel("lodging")).toBe("住宿");
+    expect(categoryColor("lodging")).toBe("#8E7CF0");
+    expect(categoryLabel("other_income")).toBe("其他收入");
   });
 
   test("a malformed or empty payload is ignored rather than emptying the picker", () => {

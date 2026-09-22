@@ -436,6 +436,7 @@ export function App() {
     handleExportCsv,
   } = useExpenseComposer({
     activeGroup,
+    activeIsPersonal,
     cloudStore,
     members,
     session,
@@ -849,35 +850,53 @@ export function App() {
   // handleLoadMoreExpenses: that wrapper takes the app-wide action lock (so a
   // background page-in would block a real user action, and would itself be
   // blocked by one) and surfaces failures as a toast, which is the wrong UX
-  // for something the user never asked for. Its own in-flight ref (not the
-  // store's shared loadingMoreExpenseIds flag) tracks whether a call is still
-  // outstanding, and a failure permanently stops auto-paging for this group
-  // (no retry loop) until the group changes.
+  // for something the user never asked for. A failure permanently stops
+  // auto-paging for this group (no retry loop) until the group changes.
+  //
+  // "In flight" is STATE, not a ref, and is why: cloudStore.loadMoreExpenses
+  // publishes its result by mutating the store and notifying subscribers
+  // BEFORE the promise it returns settles (the mutation happens mid-function,
+  // the `finally` below only runs once the whole async function returns).
+  // That notify is what feeds `expenses`/`aggregates.expenseCount` below via
+  // useSyncExternalStore, and React can re-render and re-run this effect off
+  // the back of it before the `finally` below has had a chance to run - a
+  // ref cleared in that `finally` would still read true at that point, so
+  // the effect would bail on page 2 forever (nothing ever prompts another
+  // look once the ref does eventually flip, since a ref write alone triggers
+  // no re-render). Clearing IN-FLIGHT via setState instead guarantees a
+  // render - and therefore another look at this effect - happens once the
+  // request truly completes, however the two race.
+  //
+  // The in-flight/failed markers carry the group id they belong to, and are
+  // only cleared/set for that id: a page 2 request for group A that settles
+  // after the user has already moved on to group B must not touch B's own
+  // in-flight/failed state.
   const autoPageRef = useRef(0);
-  const autoPageInFlightRef = useRef(false);
-  const autoPageFailedRef = useRef(false);
+  const autoPageFailedGroupRef = useRef<string | null>(null);
+  const [autoPageInFlightGroupId, setAutoPageInFlightGroupId] = useState<string | null>(null);
   useEffect(() => {
     autoPageRef.current = 0;
-    autoPageInFlightRef.current = false;
-    autoPageFailedRef.current = false;
+    autoPageFailedGroupRef.current = null;
+    setAutoPageInFlightGroupId(null);
   }, [activeGroupId]);
   useEffect(() => {
     if (!activeIsPersonal || !cloudActiveDetail || !cloudStore || !activeGroupId) return;
-    if (autoPageInFlightRef.current || autoPageFailedRef.current) return;
+    if (autoPageInFlightGroupId === activeGroupId || autoPageFailedGroupRef.current === activeGroupId) return;
     if (autoPageRef.current >= 5) return;
     if (ledgerMonthCoverage(expenses, aggregates.expenseCount, currentMonthKey()) !== "partial") return;
     autoPageRef.current += 1;
-    autoPageInFlightRef.current = true;
+    const groupId = activeGroupId;
+    setAutoPageInFlightGroupId(groupId);
     cloudStore
-      .loadMoreExpenses(activeGroupId)
+      .loadMoreExpenses(groupId)
       .catch(() => {
-        autoPageFailedRef.current = true;
+        autoPageFailedGroupRef.current = groupId;
       })
       .finally(() => {
-        autoPageInFlightRef.current = false;
+        setAutoPageInFlightGroupId((current) => (current === groupId ? null : current));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIsPersonal, cloudActiveDetail, expenses, aggregates.expenseCount, cloudStore]);
+  }, [activeIsPersonal, cloudActiveDetail, expenses, aggregates.expenseCount, cloudStore, activeGroupId, autoPageInFlightGroupId]);
 
   async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
     if (!session) return;

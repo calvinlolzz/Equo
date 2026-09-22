@@ -3,6 +3,7 @@ import { cleanup, configure, fireEvent, screen, waitFor, within } from "@testing
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ExpenseSummary, GroupSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
+import { formatAmount } from "./formatAmount";
 import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
 
@@ -1024,17 +1025,93 @@ describe("a personal ledger", () => {
     const expensesCalls = () => api.calls.filter((call) => call === "GET /groups/group_ledger/expenses").length;
     await waitFor(() => expect(expensesCalls()).toBeGreaterThan(0));
 
+    const callsAfterFailure = expensesCalls();
+    // Give any further render/effect cycle room to fire before asserting
+    // "no retry, no toast" - checked AFTER this wait rather than before it,
+    // so a toast (or a retry) that shows up on a later tick than the
+    // failure itself is not missed by a check that ran too early.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(expensesCalls()).toBe(callsAfterFailure);
     // No toast: the old effect called handleLoadMoreExpenses, which surfaces
     // a failure via describeCloudActionError - the direct
     // cloudStore.loadMoreExpenses call this effect uses now must swallow it
-    // instead (see the fix's own in-flight/failed refs).
+    // instead (see the fix's own in-flight/failed state).
     expect(document.querySelector(".toast-dock")).toBeNull();
+  });
 
-    const callsAfterFailure = expensesCalls();
-    // Give any further render/effect cycle room to fire before asserting it
-    // did not retry.
+  // [MV]
+  test("auto-paging keeps loading pages automatically until the month total is complete (3+ pages)", async () => {
+    signIn();
+    // Four rows, newest first, one loaded up front - three more pages are
+    // needed before ledgerMonthCoverage reports "complete" (expenses.length
+    // reaches expense_count). All dated in the current real month so
+    // coverage can only flip to "complete" by length, never by an oldest-row
+    // month check - see personalLedger.ts's ledgerMonthCoverage.
+    const rows = [
+      ledgerExpense({ id: "expense_1", amount_minor: 1000, expense_date: "2026-09-10", created_at: "2026-09-10T03:00:00.000Z" }),
+      ledgerExpense({ id: "expense_2", amount_minor: 2000, expense_date: "2026-09-09", created_at: "2026-09-09T03:00:00.000Z" }),
+      ledgerExpense({ id: "expense_3", amount_minor: 3000, expense_date: "2026-09-08", created_at: "2026-09-08T03:00:00.000Z" }),
+      ledgerExpense({ id: "expense_4", amount_minor: 4000, expense_date: "2026-09-07", created_at: "2026-09-07T03:00:00.000Z" }),
+    ];
+    const expensesRoute = "GET /groups/group_ledger/expenses";
+    const api = fakeApi([
+      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+      {
+        route: "GET /groups/group_ledger",
+        body: ledgerDetail({ expenses: [rows[0]], expense_count: rows.length, spend_total_minor: rows[0].amount_minor }),
+      },
+      // Placeholder - overridden by the wrapper below, which serves pages by
+      // CALL ORDER rather than by cursor (the route table strips the cursor
+      // query string before matching, so it cannot tell one page apart from
+      // another). Needed here only so fakeApi's own initial table has an
+      // entry for it; never actually reached.
+      { route: expensesRoute, body: { expenses: [] } },
+    ]);
+    // Serves rows[1], then rows[2], then rows[3] by call order, regardless of
+    // how fast the app re-requests relative to this test's own assertions -
+    // a scheme keyed on "swap the mocked body once the previous page has
+    // landed" raced the production effect's own immediate follow-up request
+    // (which can fire before this test's next line runs) and intermittently
+    // starved it of rows[3] within the auto-page attempt cap.
+    const pages = [[rows[1]], [rows[2]], [rows[3]]];
+    let expensesCallIndex = 0;
+    const baseFetch = globalThis.fetch as ReturnType<typeof vi.fn>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const path = String(url).replace(/^\/api\/v1/, "").split("?")[0];
+        if (method === "GET" && path === "/groups/group_ledger/expenses") {
+          api.calls.push(expensesRoute);
+          const page = pages[Math.min(expensesCallIndex, pages.length - 1)];
+          expensesCallIndex += 1;
+          return { ok: true, status: 200, json: async () => ({ expenses: page }) } as Response;
+        }
+        return baseFetch(url, init);
+      }),
+    );
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    fireEvent.click(within(rail).getByText(UI_TEXT.personalLedger.name).closest("button") as HTMLElement);
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_ledger"));
+
+    const homeAmount = () => document.querySelector(".home-balance-amount")?.textContent ?? "";
+    const sumThrough = (n: number) => rows.slice(0, n).reduce((total, row) => total + row.amount_minor, 0);
+
+    // All three pages load unprompted, one after another, with no manual
+    // stepping from this test - exactly what the ref-only version could not
+    // do (it stalled after page 1; see the fix's own comment on why).
+    await waitFor(() => expect(homeAmount()).toBe(formatAmount(sumThrough(4), "TWD")));
+
+    // expenses.length (4) now equals expense_count (4): ledgerMonthCoverage
+    // flips to "complete" and auto-paging must stop permanently on its own.
+    const callsWhenComplete = api.calls.filter((call) => call === expensesRoute).length;
+    expect(callsWhenComplete).toBeGreaterThanOrEqual(3);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(expensesCalls()).toBe(callsAfterFailure);
+    expect(api.calls.filter((call) => call === expensesRoute).length).toBe(callsWhenComplete);
   });
 
   test("root landing picks the shared group over the ledger", async () => {
