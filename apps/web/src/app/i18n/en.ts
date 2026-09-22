@@ -648,6 +648,7 @@ export const EN: UiDictionary = {
   },
   personalLedger: {
     name: "My ledger",
+    homeLabel: "Ledger home",
     railSubtitle: "Personal",
     monthExpense: "Spent this month",
     monthIncome: "Income this month",

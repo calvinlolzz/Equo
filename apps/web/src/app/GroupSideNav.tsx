@@ -145,6 +145,9 @@ export function GroupSideNav({
         <nav className="side-nav-list" aria-label={text.groupHome}>
           {items.map((item) => {
             const Icon = item.icon;
+            // Personal ledgers have no "group" to be the home of, so the
+            // first row reads 帳本首頁 instead of 群組首頁.
+            const label = item.id === "home" && personal ? UI_TEXT.personalLedger.homeLabel : item.label;
             return (
               <button
                 className={item.id === "home" ? "side-nav-item active" : "side-nav-item"}
@@ -156,7 +159,7 @@ export function GroupSideNav({
                 }}
               >
                 <Icon aria-hidden="true" size={19} />
-                {item.label}
+                {label}
               </button>
             );
           })}

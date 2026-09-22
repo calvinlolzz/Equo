@@ -74,6 +74,26 @@ describe("a page in motion", () => {
   });
 });
 
+describe("the ▾ menu / 設定 drawer rows share one type size", () => {
+  /**
+   * .side-nav-item (群組首頁/支出記錄/分析/循環支出) and .side-settings-row
+   * (帳本設定/幣別/匯出 CSV) render in the same list — GroupSideNav.tsx's
+   * "menu" and "drawer" variants — and used to disagree: the nav rows
+   * inherited ~16px at weight 860 while the settings rows were pinned to
+   * 14px/800, so the second half of the list read smaller and lighter than
+   * the first for no reason a viewer could name.
+   */
+  test(".side-nav-item and .side-settings-row declare the same font-size and font-weight", () => {
+    const navItem = ruleFor(homeCss, ".side-nav-item");
+    const settingsRow = ruleFor(homeCss, ".side-settings-row");
+
+    expect(navItem["font-size"]).toBeTruthy();
+    expect(navItem["font-size"]).toBe(settingsRow["font-size"]);
+    expect(navItem["font-weight"]).toBeTruthy();
+    expect(navItem["font-weight"]).toBe(settingsRow["font-weight"]);
+  });
+});
+
 describe("every surface that shows a group cover", () => {
   /**
    * A cover box must set its own height. Twice now one has not, and both times

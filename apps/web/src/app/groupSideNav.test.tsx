@@ -251,6 +251,16 @@ describe("the group side nav for a personal ledger", () => {
     expect(screen.getByRole("button", { name: text.archiveGroup })).toBeTruthy();
     expect(screen.getByRole("button", { name: text.editGroup })).toBeTruthy();
   });
+
+  // [MV]
+  test("the first row reads 帳本首頁, not 群組首頁", () => {
+    // There is no group here, so a label that says "group" for a ledger with
+    // exactly one member (its owner) is just wrong.
+    renderNav("menu", true, true);
+
+    expect(screen.getByRole("button", { name: ledgerText.homeLabel })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: text.groupHome })).toBeNull();
+  });
 });
 
 describe("the date field is aligned like the fields around it", () => {

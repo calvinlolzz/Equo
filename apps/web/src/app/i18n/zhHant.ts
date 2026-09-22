@@ -689,6 +689,7 @@ export const ZH_HANT = {
   },
   personalLedger: {
     name: "我的帳本",
+    homeLabel: "帳本首頁",
     railSubtitle: "個人記帳",
     monthExpense: "本月支出",
     monthIncome: "本月收入",
