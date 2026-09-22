@@ -269,8 +269,8 @@ export function ExpenseComposerSheet({
   // confirm on the way out.
   const [composerCategory, setComposerCategory] = useState<string>(() => {
     if (editPrefill) return editPrefill.category;
-    const remembered = readLastCategory(groupId);
     const initialScopeMode = composerMode === "income" ? "income" : "expense";
+    const remembered = readLastCategory(groupId, undefined, initialScopeMode);
     // Checked against the live catalog: a category can be switched off in the
     // console, and defaulting to one that no longer exists is worse than
     // defaulting to 一般 (or, for a personal-ledger income draft, 其他收入).
@@ -659,6 +659,22 @@ export function ExpenseComposerSheet({
   });
   const composerPercentRemainder = getPercentSplitRemainder(composerShareIds, composerSharePercentValues);
 
+  /**
+   * Personal-ledger payer/share, resolved fresh from the latest
+   * members/currentMemberId props on every render rather than from
+   * composerPayerId/composerShareIds. Those two are seeded once by a
+   * useState initializer from whatever `members` looked like on the
+   * composer's FIRST render - if it opened before the member list had
+   * loaded (members=[]), defaultPayerId/composerShareIds's own fallback to
+   * "me" never runs again, so they would stay blank forever even once
+   * membership arrives. Recomputing this on every render instead means
+   * canSubmit and buildDraft both see "me" as soon as members is non-empty,
+   * with no remount required.
+   */
+  const personalMemberId = personal
+    ? members.find((member) => member.id === currentMemberId)?.id ?? members[0]?.id
+    : undefined;
+
   const canSubmit =
     composerMode === "transfer"
       ? canSubmitTransferDraft({
@@ -668,7 +684,7 @@ export function ExpenseComposerSheet({
         })
       : canSubmitExpenseDraft({
           amount: composerAmount,
-          selectedShareMemberCount: composerShareIds.length,
+          selectedShareMemberCount: personal ? (personalMemberId ? 1 : 0) : composerShareIds.length,
           totalAmountMinor: composerTotalAmountMinor,
           shareAmountsMinor: composerCustomShareAmountsMinor,
           splitMode: composerSplitMode,
@@ -680,6 +696,7 @@ export function ExpenseComposerSheet({
     mode: composerMode,
     canSubmit,
     isEditing,
+    personal,
   });
   const composerPayer = members.find((member) => member.id === composerPayerId) ?? members[0];
   const composerTransferTo = members.find((member) => member.id === composerTransferToId) ?? null;
@@ -804,8 +821,8 @@ export function ExpenseComposerSheet({
         title: composerTitle.trim() || categoryLabel,
         amountMinor: composerTotalAmountMinor,
         createdAt,
-        payerId: composerPayerId || members[0].id,
-        shareMemberIds: composerShareIds,
+        payerId: personal ? personalMemberId ?? members[0].id : composerPayerId || members[0].id,
+        shareMemberIds: personal ? (personalMemberId ? [personalMemberId] : []) : composerShareIds,
         category: composerCategory,
         kind: composerMode,
         note: composerNote.trim() || undefined,
@@ -850,7 +867,7 @@ export function ExpenseComposerSheet({
       // says nothing about what the next new one should default to.
       if (!isEditing) {
         writeLastCurrency(groupId, composerCurrency);
-        writeLastCategory(groupId, composerCategory);
+        writeLastCategory(groupId, composerCategory, undefined, composerMode === "income" ? "income" : "expense");
       }
       await onSubmit(draft);
     } finally {
@@ -1176,7 +1193,14 @@ export function ExpenseComposerSheet({
   const canAdvanceStep = stepKeys[activeStep] === "amount" ? composerTotalAmountMinor > 0 : true;
 
   // A personal ledger has no 轉帳 - a transfer to yourself moves no money.
-  const modes = personal ? PERSONAL_COMPOSER_MODES : COMPOSER_MODES;
+  // Except when editing a pre-existing row whose prefilled mode already IS
+  // "transfer" (e.g. a legacy entry from before the ledger disallowed them):
+  // PERSONAL_COMPOSER_MODES has no "transfer" entry, so findIndex below would
+  // return -1 and no tab would render as selected. Falling back to the full
+  // COMPOSER_MODES for that one case keeps the pill/index valid; the mode row
+  // itself is display-only here since selectComposerMode never offers a way
+  // back INTO transfer from a personal composer.
+  const modes = personal && composerMode !== "transfer" ? PERSONAL_COMPOSER_MODES : COMPOSER_MODES;
 
   // Field groups shared by the desktop single-form layout and the phone steps.
   const renderModeRow = () => (
@@ -1187,7 +1211,12 @@ export function ExpenseComposerSheet({
     >
       <span
         className="segmented-pill"
-        style={{ transform: `translateX(${modes.findIndex((mode) => mode.id === composerMode) * 100}%)` }}
+        style={{
+          // Belt-and-braces: findIndex should never miss now that transfer
+          // pulls in the full mode list above, but clamp to 0 rather than
+          // let a -1 (mode id not found) translate the pill off-screen.
+          transform: `translateX(${Math.max(0, modes.findIndex((mode) => mode.id === composerMode)) * 100}%)`,
+        }}
         aria-hidden="true"
       />
       {modes.map((mode) => (

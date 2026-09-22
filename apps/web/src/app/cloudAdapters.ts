@@ -79,6 +79,47 @@ export function inheritListGroupFields(detailGroup: Group, listGroup: Group | un
 }
 
 /**
+ * `expense_date desc, created_at desc` - the same ordering
+ * get_group_detail/listExpensesPage use server-side (see
+ * supabaseGroupRepository's EXPENSE_WINDOW_LIMIT comment). expenseDate is
+ * absent on an optimistic row that hasn't round-tripped yet, so it falls
+ * back to createdAt's own date, same as personalLedger.ts's ledgerMonthKey.
+ */
+function isStrictlyOlder(a: Expense, b: Expense): boolean {
+  const aDate = a.expenseDate ?? a.createdAt.slice(0, 10);
+  const bDate = b.expenseDate ?? b.createdAt.slice(0, 10);
+  if (aDate !== bDate) return aDate < bDate;
+  return a.createdAt < b.createdAt;
+}
+
+/**
+ * Merge a personal ledger's previously loaded expenses back into a fresh
+ * detail read.
+ *
+ * get_group_detail always caps `expenses` to its newest EXPENSE_WINDOW_LIMIT
+ * rows. A shared group's screen never asks for more than that window, so
+ * replacing it wholesale on every background poll is correct there. A
+ * personal ledger's App.tsx auto-pages PAST that window (loadMoreExpenses)
+ * so the this-month summary can see the whole month - a poll that just
+ * replaced `expenses` with the fresh window would silently discard
+ * everything auto-paging had fetched, making a heavy ledger's month totals
+ * flicker down and undercount roughly every 20s.
+ *
+ * Keeps every previously loaded row strictly older than the new window's
+ * oldest row, appended after the fresh window, deduped by id. Both segments
+ * are already in the server's own order, so the concatenation stays sorted.
+ */
+export function mergePersonalLedgerExpenses(previous: Expense[], next: Expense[]): Expense[] {
+  if (previous.length === 0 || next.length === 0) return next;
+  const oldestNext = next[next.length - 1];
+  const nextIds = new Set(next.map((expense) => expense.id));
+  const olderRows = previous.filter(
+    (expense) => !nextIds.has(expense.id) && isStrictlyOlder(expense, oldestNext),
+  );
+  return olderRows.length === 0 ? next : [...next, ...olderRows];
+}
+
+/**
  * Map cloud members to the local Member shape. Only active members are
  * shown - removed members are dropped entirely, matching how local groups
  * never carry removed members either.

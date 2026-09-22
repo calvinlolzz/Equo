@@ -957,9 +957,15 @@ describe("a personal ledger", () => {
   }
 
   test("the rail pins the ledger first, even when the server lists it after the shared group", async () => {
+    // The ledger fixture's stored name ("我的帳本") happens to equal
+    // UI_TEXT.personalLedger.name itself, so asserting against that constant
+    // would pass even if the rail regressed to showing group.name raw
+    // instead of calling groupDisplayName. A name that visibly differs from
+    // the translated label makes that regression actually fail.
+    const namedLedger = { ...ledger, name: "我的帳本（測試）" };
     signIn();
     fakeApi([
-      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups", body: { groups: [shared, namedLedger] } },
       { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
     ]);
     renderApp();
@@ -969,6 +975,7 @@ describe("a personal ledger", () => {
     const rows = rail.querySelectorAll(".group-item");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]?.textContent).toContain(UI_TEXT.personalLedger.name);
+    expect(rows[0]?.textContent).not.toContain(namedLedger.name);
   });
 
   test("opening the ledger shows 本月支出 and no 新增成員 or 邀請成員", async () => {
@@ -988,6 +995,46 @@ describe("a personal ledger", () => {
     expect(await screen.findByText(UI_TEXT.personalLedger.monthExpense)).toBeTruthy();
     expect(screen.queryByText(UI_TEXT.app.addMember)).toBeNull();
     expect(screen.queryByText(UI_TEXT.app.inviteMembers)).toBeNull();
+  });
+
+  // [MV]
+  test("a failed background auto-page (pulling more history for the month total) shows no toast and does not retry", async () => {
+    signIn();
+    // expense_count (5) > the 1 loaded row, and that row's month is the
+    // current one - ledgerMonthCoverage reports "partial", which is what
+    // makes App.tsx's auto-paging effect fire on mount.
+    const api = fakeApi([
+      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+      { route: "GET /groups/group_ledger", body: ledgerDetail({ expense_count: 5 }) },
+      {
+        route: "GET /groups/group_ledger/expenses",
+        status: 500,
+        body: { error: { code: "INTERNAL", message: "boom", request_id: "req_x" } },
+      },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    fireEvent.click(within(rail).getByText(UI_TEXT.personalLedger.name).closest("button") as HTMLElement);
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_ledger"));
+    await screen.findByText(UI_TEXT.personalLedger.monthExpense);
+
+    const expensesCalls = () => api.calls.filter((call) => call === "GET /groups/group_ledger/expenses").length;
+    await waitFor(() => expect(expensesCalls()).toBeGreaterThan(0));
+
+    // No toast: the old effect called handleLoadMoreExpenses, which surfaces
+    // a failure via describeCloudActionError - the direct
+    // cloudStore.loadMoreExpenses call this effect uses now must swallow it
+    // instead (see the fix's own in-flight/failed refs).
+    expect(document.querySelector(".toast-dock")).toBeNull();
+
+    const callsAfterFailure = expensesCalls();
+    // Give any further render/effect cycle room to fire before asserting it
+    // did not retry.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(expensesCalls()).toBe(callsAfterFailure);
   });
 
   test("root landing picks the shared group over the ledger", async () => {
@@ -1016,8 +1063,13 @@ describe("a personal ledger", () => {
     // StartFlow never renders the group rail - its presence here means the
     // ledger view is what actually mounted, not the create-first-group flow.
     expect(await screen.findByRole("complementary", { name: UI_TEXT.app.groupList })).toBeTruthy();
-    expect(await screen.findByText(UI_TEXT.personalLedger.emptyTitle)).toBeTruthy();
-    expect(screen.getAllByText(UI_TEXT.app.createGroup).length).toBeGreaterThan(0);
+    // Scoped to the home region, not the whole page: the rail ALSO has its
+    // own 建立群組 button (GroupRail's group-create-item), so an unscoped
+    // getAllByText would pass even if PersonalLedgerHome's own empty-state
+    // button were missing or broken.
+    const home = await screen.findByRole("region", { name: UI_TEXT.app.groupHome });
+    expect(within(home).getByText(UI_TEXT.personalLedger.emptyTitle)).toBeTruthy();
+    expect(within(home).getByText(UI_TEXT.app.createGroup)).toBeTruthy();
   });
 });
 

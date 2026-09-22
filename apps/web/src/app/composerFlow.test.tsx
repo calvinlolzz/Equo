@@ -253,6 +253,66 @@ describe("the composer in a personal ledger", () => {
     );
   });
 
+  /**
+   * The composer can open before the group detail (and its member list) has
+   * loaded - App.tsx never waits for `members` before letting 記一筆 be
+   * tapped. defaultPayerId/composerShareIds are seeded from `members` in a
+   * useState initializer, which only runs on the FIRST render, so if that
+   * first render saw members=[], those two would stay blank forever even
+   * once membership actually arrived on a later render of the SAME mounted
+   * sheet - unless payer/shares are re-derived at submit time instead (see
+   * buildDraft's personalMemberId). Rendering directly with members=[] then
+   * always with the real member (as renderPersonalSheet's own tests do)
+   * would never have caught that: this is the one test in the file that
+   * actually exercises the empty-then-populated sequence.
+   */
+  describe("opens before the member list has loaded", () => {
+    function renderThenPopulate(mobile: boolean) {
+      stubBrowser({ mobile });
+      const onSubmit = vi.fn();
+      const baseProps = {
+        currentMemberId: "member_me",
+        groupId: "ledger_1",
+        groupCurrency: "TWD",
+        currencyOptions: [{ code: "TWD", label: "台幣" }],
+        personal: true as const,
+        onClose: () => {},
+        onSubmit,
+      };
+      const { rerender } = render(<ExpenseComposerSheet members={[]} {...baseProps} />);
+      rerender(<ExpenseComposerSheet members={soloMember} {...baseProps} />);
+      return { onSubmit };
+    }
+
+    // [MV]
+    test("desktop: submit still resolves payer=shares=[me] once membership arrives", () => {
+      const { onSubmit } = renderThenPopulate(false);
+
+      fireEvent.change(screen.getByLabelText(app.amount), { target: { value: "600" } });
+      fireEvent.click(screen.getByRole("button", { name: UI_TEXT.composerSubmit.addExpense }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ payerId: "member_me", shareMemberIds: ["member_me"] }),
+      );
+    });
+
+    // [MV]
+    test("phone (stepped): submit still resolves payer=shares=[me] once membership arrives", async () => {
+      const { onSubmit } = renderThenPopulate(true);
+      const composer = await screen.findByRole("dialog", { name: app.addExpense });
+
+      await tapKeypad(composer, "600");
+      within(composer).getByRole("button", { name: app.stepNext }).click();
+      await waitFor(() => expect(within(composer).getByText(`${app.stepWord} 2/2`)).toBeTruthy());
+      within(composer).getByRole("button", { name: UI_TEXT.composerSubmit.addExpense }).click();
+
+      await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ payerId: "member_me", shareMemberIds: ["member_me"] }),
+      );
+    });
+  });
+
   // [MV]
   test("a shared-group render (personal omitted) still shows only the 6 original categories", () => {
     const sharedMembers: Member[] = [

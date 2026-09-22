@@ -33,7 +33,7 @@ const member1 = {
 
 /** Fills in the get_group_detail v3 aggregate fields (expense_count/spend_total_minor/spend_by_day/member_day_shares) so fixtures only need to spell out what they actually vary. */
 function makeGroupDetail(overrides: {
-  group?: typeof group1;
+  group?: typeof group1 & { kind?: "shared" | "personal" };
   members?: GroupMemberSummary[];
   expenses?: ExpenseSummary[];
   balances?: BalanceSummary[];
@@ -136,6 +136,86 @@ describe("createCloudGroupsStore", () => {
 
     expect(data.group.kind).toBe("personal");
     expect(data.group.monthlyBudgetMinor).toBe(500000);
+  });
+
+  describe("refreshGroupDetail's background-poll window vs. auto-paged history", () => {
+    /**
+     * `count` rows, one day apart, newest first (index 0 = most recent) -
+     * matching the server's own expense_date desc ordering, so a `.slice`
+     * of this array is exactly what a capped server window would return.
+     */
+    function makeRows(count: number): ExpenseSummary[] {
+      const base = new Date("2026-06-01T00:00:00.000Z").getTime();
+      const day = 24 * 60 * 60 * 1000;
+      return Array.from({ length: count }, (_, i) => {
+        const iso = new Date(base - i * day).toISOString();
+        return {
+          id: `expense_${i}`,
+          group_id: "group_1",
+          title: `Row ${i}`,
+          kind: "expense" as const,
+          amount_minor: 100,
+          currency: "TWD",
+          expense_date: iso.slice(0, 10),
+          created_at: iso,
+          version: 1,
+          client_request_id: `req_${i}`,
+        };
+      });
+    }
+
+    // [MV]
+    test("personal ledger: 150 auto-paged rows survive a poll whose fresh window is only the newest 100", async () => {
+      const rows = makeRows(150);
+      const apiClient = makeFakeApiClient({
+        getGroupDetail: vi.fn(async () =>
+          makeGroupDetail({
+            group: { ...group1, kind: "personal" as const },
+            expenses: rows.slice(0, 100),
+            expense_count: 150,
+          }),
+        ),
+        listExpensesPage: vi.fn(async () => ({ expenses: rows.slice(100, 150) })),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      await store.refreshGroupDetail("group_1");
+      // App.tsx's auto-paging effect pulls the rest of the ledger's history
+      // in past the server's own EXPENSE_WINDOW_LIMIT.
+      await store.loadMoreExpenses("group_1");
+      expect(store.getState().groupDetails.group_1.expenses).toHaveLength(150);
+
+      // A ~20s background poll re-reads get_group_detail, which is capped
+      // back down to the newest 100 - it knows nothing about the 50 older
+      // rows auto-paging fetched.
+      await store.refreshGroupDetail("group_1", { background: true });
+
+      const expenses = store.getState().groupDetails.group_1.expenses;
+      expect(expenses).toHaveLength(150);
+      expect(expenses.map((expense) => expense.id)).toEqual(rows.map((row) => row.id));
+    });
+
+    // [MV]
+    test("shared group: the same poll replaces the loaded window outright, dropping the auto-paged rows", async () => {
+      const rows = makeRows(150);
+      const apiClient = makeFakeApiClient({
+        getGroupDetail: vi.fn(async () =>
+          makeGroupDetail({
+            group: group1,
+            expenses: rows.slice(0, 100),
+            expense_count: 150,
+          }),
+        ),
+        listExpensesPage: vi.fn(async () => ({ expenses: rows.slice(100, 150) })),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      await store.refreshGroupDetail("group_1");
+      await store.loadMoreExpenses("group_1");
+      expect(store.getState().groupDetails.group_1.expenses).toHaveLength(150);
+
+      await store.refreshGroupDetail("group_1", { background: true });
+
+      expect(store.getState().groupDetails.group_1.expenses).toHaveLength(100);
+    });
   });
 
   test("createGroup applies the response locally with no follow-up fetch", async () => {

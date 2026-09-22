@@ -696,11 +696,12 @@ export const ZH_HANT = {
     monthLoading: "正在載入本月記錄…",
     categoryTitle: "本月支出分類",
     emptyTitle: "開始記下自己的收支",
-    emptyBody: "這個帳本只有你看得到。要和朋友分帳，建立或加入一個群組。",
+    emptyBody: "這本帳只記你自己的收支。要和朋友分帳，建立或加入一個群組。",
     settingsTitle: "帳本設定",
     settingsHint: "設定每月預算，首頁會顯示本月進度。",
     settingsSaved: "已更新帳本設定",
     actionUnavailable: "個人帳本不能邀請成員、封存或刪除。",
+    composerHint: "填寫金額並選擇分類。",
   },
   misc: {
     pullRefreshing: "重新整理中…",

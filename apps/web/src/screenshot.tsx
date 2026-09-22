@@ -245,9 +245,74 @@ function spendBreakdown() {
  */
 const previewInvite = new URLSearchParams(window.location.search).get("invite");
 
+/**
+ * `?ledger=1` adds the personal ledger (個人帳本) next to the trip group, and
+ * `?ledger=empty` renders a brand-new user who has ONLY an empty ledger. Opt-in
+ * so the store screenshots above stay exactly what they were.
+ */
+const previewLedger = new URLSearchParams(window.location.search).get("ledger");
+const LEDGER_ID = "ledger_demo";
+
+function ledgerEntry(
+  id: string,
+  title: string,
+  kind: "expense" | "income",
+  category: string,
+  amount: number,
+  days: number,
+): GroupDetail["expenses"][number] {
+  const total = nt(amount);
+  return {
+    ...expense(id, title, category, amount, "m_self", days, ["m_self"]),
+    group_id: LEDGER_ID,
+    kind,
+    expense_payments: [{ payer_member_id: "m_self", amount_minor: total, currency: CURRENCY }],
+    expense_shares: [{ member_id: "m_self", share_type: "even", amount_minor: total }],
+  };
+}
+
+const LEDGER_EXPENSES =
+  previewLedger === "empty"
+    ? []
+    : [
+        ledgerEntry("l1", "早餐", "expense", "food", 85, 0),
+        ledgerEntry("l2", "捷運", "expense", "transport", 40, 0),
+        ledgerEntry("l3", "電影", "expense", "entertainment", 320, 1),
+        ledgerEntry("l4", "電費", "expense", "bills", 1280, 2),
+        ledgerEntry("l5", "薪水", "income", "salary", 52000, 3),
+        ledgerEntry("l6", "衛生紙", "expense", "home", 260, 4),
+      ];
+
+const LEDGER: GroupSummary = {
+  id: LEDGER_ID,
+  name: "我的帳本",
+  currency: CURRENCY,
+  owner_member_id: "m_self",
+  monthly_budget_minor: nt(15000),
+  kind: "personal",
+};
+
+const LEDGER_DETAIL: GroupDetail = {
+  group: LEDGER,
+  members: [{ id: "m_self", group_id: LEDGER_ID, user_id: "u_me", display_name: "我", role: "owner", status: "active" }],
+  expenses: LEDGER_EXPENSES,
+  balances: [{ memberId: "m_self", balance: { amount_minor: 0, currency: CURRENCY } }],
+  expense_count: LEDGER_EXPENSES.length,
+  spend_total_minor: 0,
+  spend_by_day: [],
+  spend_by_category: [],
+  member_day_shares: [],
+};
+
 const ROUTES: Record<string, unknown> = {
   "GET /site-notice": { notice: { banner: { message: "", level: "info", ends_at: null, active: false }, maintenance: { enabled: false, message: "" } }, view_as: null },
-  "GET /groups": { groups: [GROUP] },
+  "GET /groups": { groups: previewLedger === "empty" ? [LEDGER] : previewLedger ? [GROUP, LEDGER] : [GROUP] },
+  ...(previewLedger
+    ? {
+        [`GET /groups/${LEDGER_ID}`]: LEDGER_DETAIL,
+        [`GET /groups/${LEDGER_ID}/expenses/search`]: { expenses: LEDGER_EXPENSES, total: LEDGER_EXPENSES.length },
+      }
+    : {}),
   [`GET /groups/${GROUP_ID}`]: DETAIL,
   "GET /notifications": { notifications: [], unread_count: 0 },
   "GET /me": { user: { id: "u_me", email: "demo@example.com", display_name: "我" } },

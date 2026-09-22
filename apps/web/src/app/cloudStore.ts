@@ -15,6 +15,7 @@ import {
   draftToExpense,
   expenseKindToApiKind,
   inheritListGroupFields,
+  mergePersonalLedgerExpenses,
   settlementTransferToDraft,
   toCreateExpenseRequest,
   toExpense,
@@ -22,6 +23,7 @@ import {
   toGroupUiData,
   toMembers,
 } from "./cloudAdapters";
+import { isPersonalGroup } from "./personalLedger";
 import type { Expense, Group, Member } from "./appTypes";
 import {
   applyExpenseToAggregates,
@@ -656,10 +658,20 @@ export function createCloudGroupsStore({
       // letting them vanish the moment a detail load replaces the group
       // object every other screen reads. See inheritListGroupFields.
       data.group = inheritListGroupFields(data.group, state.groups.find((group) => group.id === groupId));
+      const current = state.groupDetails[groupId];
+      // Every ~20s background poll's server window is capped to the newest
+      // EXPENSE_WINDOW_LIMIT rows. A personal ledger's App.tsx auto-pages
+      // past that window so its this-month summary can see the whole
+      // month (see mergePersonalLedgerExpenses) - without this, that poll
+      // would silently discard everything auto-paging had fetched. Shared
+      // groups never auto-page past the window today, so their behaviour
+      // here is untouched.
+      if (current && (isPersonalGroup(data.group) || isPersonalGroup(state.groups.find((group) => group.id === groupId)))) {
+        data.expenses = mergePersonalLedgerExpenses(current.expenses, data.expenses);
+      }
       // The detail is revalidated more often than the list (see autoSync's
       // groupsListEveryNTicks), so this is usually the fresher number.
       const nextGroups = groupsWithDetailBalance(state.groups, groupId, data);
-      const current = state.groupDetails[groupId];
 
       if (current && sameJson(current, data)) {
         // Nothing moved server-side. Keep the existing reference so React sees

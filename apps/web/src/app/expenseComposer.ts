@@ -38,14 +38,23 @@ export function getComposerSubmitState({
   mode,
   canSubmit,
   isEditing = false,
+  personal = false,
 }: {
   mode: ComposerMode;
   canSubmit: boolean;
   isEditing?: boolean;
+  /**
+   * True for the personal ledger. The default expense hint ("填寫金額並選擇
+   * 分攤成員" - fill in the amount and choose who to split it with) names a
+   * choice a one-member ledger never offers; personalLedger.composerHint
+   * replaces it with wording that matches what the personal composer
+   * actually shows (amount + category, no payer/split section).
+   */
+  personal?: boolean;
 }) {
   return {
     disabled: !canSubmit,
     label: isEditing ? UI_TEXT.app.saveChanges : SUBMIT_LABELS[mode],
-    hint: SUBMIT_HINTS[mode],
+    hint: personal && mode === "expense" ? UI_TEXT.personalLedger.composerHint : SUBMIT_HINTS[mode],
   };
 }

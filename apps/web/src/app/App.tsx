@@ -78,7 +78,6 @@ import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { clearPendingRoute, readPendingRoute } from "./pendingRoute";
 import { currentMonthKey, groupDisplayName, isPersonalGroup, ledgerMonthCoverage } from "./personalLedger";
-import { PersonalLedgerHome } from "./PersonalLedgerHome";
 import { resolveRootLanding } from "./resolveRootLanding";
 import type { DialogMode, InfoDialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount } from "./formatAmount";
@@ -139,6 +138,12 @@ const NotificationsPanel = lazyChunk(() =>
 );
 const ProfileDialog = lazyChunk(() => import("./ProfileDialog").then((m) => ({ default: m.ProfileDialog })));
 const RecordsPanel = lazyChunk(() => import("./RecordsPanel").then((m) => ({ default: m.RecordsPanel })));
+// PersonalLedgerHome pulls in CategoryDonut and BudgetBar, neither of which
+// any shared-group screen needs - splitting it out keeps them off the main
+// chunk for the majority of sessions that never open a personal ledger.
+const PersonalLedgerHome = lazyChunk(() =>
+  import("./PersonalLedgerHome").then((m) => ({ default: m.PersonalLedgerHome })),
+);
 // The QR encoder and the camera/decoder are each behind a tap and are dead
 // weight for everyone who never opens them - the decoder alone outweighs the
 // rest of this list.
@@ -839,18 +844,40 @@ export function App() {
   // This pages in more history automatically until ledgerMonthCoverage says
   // "complete", capped at 5 pages so a very old, heavy ledger can't turn
   // into an unbounded fetch loop on every visit.
+  //
+  // Calls cloudStore.loadMoreExpenses directly rather than
+  // handleLoadMoreExpenses: that wrapper takes the app-wide action lock (so a
+  // background page-in would block a real user action, and would itself be
+  // blocked by one) and surfaces failures as a toast, which is the wrong UX
+  // for something the user never asked for. Its own in-flight ref (not the
+  // store's shared loadingMoreExpenseIds flag) tracks whether a call is still
+  // outstanding, and a failure permanently stops auto-paging for this group
+  // (no retry loop) until the group changes.
   const autoPageRef = useRef(0);
+  const autoPageInFlightRef = useRef(false);
+  const autoPageFailedRef = useRef(false);
   useEffect(() => {
     autoPageRef.current = 0;
+    autoPageInFlightRef.current = false;
+    autoPageFailedRef.current = false;
   }, [activeGroupId]);
   useEffect(() => {
-    if (!activeIsPersonal || !cloudActiveDetail || loadingMoreExpenses) return;
+    if (!activeIsPersonal || !cloudActiveDetail || !cloudStore || !activeGroupId) return;
+    if (autoPageInFlightRef.current || autoPageFailedRef.current) return;
     if (autoPageRef.current >= 5) return;
     if (ledgerMonthCoverage(expenses, aggregates.expenseCount, currentMonthKey()) !== "partial") return;
     autoPageRef.current += 1;
-    handleLoadMoreExpenses();
+    autoPageInFlightRef.current = true;
+    cloudStore
+      .loadMoreExpenses(activeGroupId)
+      .catch(() => {
+        autoPageFailedRef.current = true;
+      })
+      .finally(() => {
+        autoPageInFlightRef.current = false;
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIsPersonal, cloudActiveDetail, expenses, aggregates.expenseCount, loadingMoreExpenses]);
+  }, [activeIsPersonal, cloudActiveDetail, expenses, aggregates.expenseCount, cloudStore]);
 
   async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
     if (!session) return;
@@ -1754,6 +1781,7 @@ export function App() {
           ) : null}
 
           {activeIsPersonal ? (
+            <Suspense fallback={<GroupHomeSkeleton />}>
             <PersonalLedgerHome
               isMobileLayout={isMobileLayout}
               group={activeGroup}
@@ -1788,6 +1816,7 @@ export function App() {
               onCreateGroup={openCreateGroupDialog}
               onJoinGroup={() => setDialog("inviteInput")}
             />
+            </Suspense>
           ) : (
             <GroupHome
               isMobileLayout={isMobileLayout}
