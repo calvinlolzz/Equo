@@ -218,7 +218,7 @@ DO $patch$
 declare
   v_anchor constant text := $anchor$update group_members
   set user_id = p_target_user_id$anchor$;
-  v_replacement constant text := $repl$update groups set kind = 'shared', name = '我的帳本（' || v_source.email || '）', updated_at = now()
+  v_replacement constant text := $repl$update groups set kind = 'shared', name = '我的帳本（' || coalesce(v_source.email, p_source_user_id::text) || '）', updated_at = now()
    where owner_id = p_source_user_id and kind = 'personal';
 
   update group_members
