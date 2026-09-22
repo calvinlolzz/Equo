@@ -216,6 +216,34 @@ describe("createCloudGroupsStore", () => {
 
       expect(store.getState().groupDetails.group_1.expenses).toHaveLength(100);
     });
+
+    // [MV] A poll that returns the WHOLE ledger is the truth: an older row it
+    // no longer contains was deleted elsewhere and must not be kept as history.
+    test("personal ledger: a complete (untruncated) poll drops a row deleted elsewhere", async () => {
+      const rows = makeRows(3);
+      let current = rows;
+      const apiClient = makeFakeApiClient({
+        getGroupDetail: vi.fn(async () =>
+          makeGroupDetail({
+            group: { ...group1, kind: "personal" as const },
+            expenses: current,
+            expense_count: current.length,
+          }),
+        ),
+      });
+      const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+      await store.refreshGroupDetail("group_1");
+      expect(store.getState().groupDetails.group_1.expenses).toHaveLength(3);
+
+      // The oldest entry was deleted on another device.
+      current = rows.slice(0, 2);
+      await store.refreshGroupDetail("group_1", { background: true });
+
+      expect(store.getState().groupDetails.group_1.expenses.map((expense) => expense.id)).toEqual([
+        "expense_0",
+        "expense_1",
+      ]);
+    });
   });
 
   test("createGroup applies the response locally with no follow-up fetch", async () => {

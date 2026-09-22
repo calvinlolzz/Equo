@@ -666,7 +666,14 @@ export function createCloudGroupsStore({
       // would silently discard everything auto-paging had fetched. Shared
       // groups never auto-page past the window today, so their behaviour
       // here is untouched.
-      if (current && (isPersonalGroup(data.group) || isPersonalGroup(state.groups.find((group) => group.id === groupId)))) {
+      // Only when the server actually truncated its window: if it returned
+      // the whole ledger, a previously loaded row missing from it was deleted
+      // (e.g. on another device) and must not be resurrected as older history.
+      if (
+        current &&
+        data.expenses.length < data.aggregates.expenseCount &&
+        (isPersonalGroup(data.group) || isPersonalGroup(state.groups.find((group) => group.id === groupId)))
+      ) {
         data.expenses = mergePersonalLedgerExpenses(current.expenses, data.expenses);
       }
       // The detail is revalidated more often than the list (see autoSync's
