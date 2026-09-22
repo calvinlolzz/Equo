@@ -907,6 +907,120 @@ describe("balances on the group list", () => {
   });
 });
 
+describe("a personal ledger", () => {
+  const shared = group({ id: "group_1", name: "東京旅行" });
+  const ledger = group({
+    id: "group_ledger",
+    name: "我的帳本",
+    kind: "personal",
+    owner_member_id: "member_alice",
+  });
+
+  function ledgerExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
+    return {
+      id: "expense_1",
+      group_id: "group_ledger",
+      title: "午餐",
+      kind: "expense",
+      category: "food",
+      amount_minor: 12000,
+      currency: "TWD",
+      expense_date: "2026-09-10",
+      created_at: "2026-09-10T03:00:00.000Z",
+      version: 1,
+      client_request_id: "seed_ledger_1",
+      expense_payments: [{ payer_member_id: "member_alice", amount_minor: 12000, currency: "TWD" }],
+      expense_shares: [{ member_id: "member_alice", share_type: "fixed", amount_minor: 12000 }],
+      ...overrides,
+    };
+  }
+
+  function ledgerDetail(overrides: Partial<ReturnType<typeof groupDetail>> = {}) {
+    return groupDetail({
+      group: ledger,
+      members: [
+        {
+          id: "member_alice",
+          group_id: "group_ledger",
+          user_id: "user_alice",
+          display_name: "Alice",
+          role: "owner",
+          status: "active",
+        },
+      ],
+      balances: [{ memberId: "member_alice", balance: { amount_minor: 0, currency: "TWD" } }],
+      expenses: [ledgerExpense()],
+      expense_count: 1,
+      spend_total_minor: 12000,
+      ...overrides,
+    });
+  }
+
+  test("the rail pins the ledger first, even when the server lists it after the shared group", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    const rows = rail.querySelectorAll(".group-item");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]?.textContent).toContain(UI_TEXT.personalLedger.name);
+  });
+
+  test("opening the ledger shows 本月支出 and no 新增成員 or 邀請成員", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+      { route: "GET /groups/group_ledger", body: ledgerDetail() },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    fireEvent.click(within(rail).getByText(UI_TEXT.personalLedger.name).closest("button") as HTMLElement);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_ledger"));
+    expect(await screen.findByText(UI_TEXT.personalLedger.monthExpense)).toBeTruthy();
+    expect(screen.queryByText(UI_TEXT.app.addMember)).toBeNull();
+    expect(screen.queryByText(UI_TEXT.app.inviteMembers)).toBeNull();
+  });
+
+  test("root landing picks the shared group over the ledger", async () => {
+    signIn();
+    fakeApi([
+      // Server order: ledger first. resolveRootLanding still has to skip it.
+      { route: "GET /groups", body: { groups: [ledger, shared] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+    ]);
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    expect(await screen.findAllByText("東京旅行")).not.toHaveLength(0);
+  });
+
+  // [MV]
+  test("a ledger-only account skips StartFlow, and the empty state offers 建立群組", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [ledger] } },
+      { route: "GET /groups/group_ledger", body: ledgerDetail({ expenses: [], expense_count: 0, spend_total_minor: 0 }) },
+    ]);
+    renderApp();
+
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_ledger"));
+    // StartFlow never renders the group rail - its presence here means the
+    // ledger view is what actually mounted, not the create-first-group flow.
+    expect(await screen.findByRole("complementary", { name: UI_TEXT.app.groupList })).toBeTruthy();
+    expect(await screen.findByText(UI_TEXT.personalLedger.emptyTitle)).toBeTruthy();
+    expect(screen.getAllByText(UI_TEXT.app.createGroup).length).toBeGreaterThan(0);
+  });
+});
+
 describe("提醒還款", () => {
   const bob = {
     id: "member_bob",

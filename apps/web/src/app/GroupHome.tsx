@@ -270,7 +270,7 @@ type HomeDisclosureProps = {
  * see GroupHome's `key={group.id}` on each instance for why switching groups
  * doesn't leave one of these pinned open on stale content.
  */
-function HomeDisclosure({ id, label, summary, headExtra, children }: HomeDisclosureProps) {
+export function HomeDisclosure({ id, label, summary, headExtra, children }: HomeDisclosureProps) {
   const [open, setOpen] = useState(false);
   const bodyRef = useAnimatedHeight<HTMLDivElement>();
   const bodyId = useId();

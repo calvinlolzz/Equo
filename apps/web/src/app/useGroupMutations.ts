@@ -10,6 +10,13 @@ const text = UI_TEXT.app;
 
 type UseGroupMutationsDeps = {
   activeGroup: Group | null;
+  /**
+   * True when `activeGroup` is the caller's own personal ledger. Its name is
+   * fixed server-side (handleUpdateGroup silently ignores whatever name is
+   * sent), so updateActiveGroup skips the rename/cover branch entirely and
+   * touches only the budget - see the plan's §4c.
+   */
+  activeIsPersonal?: boolean;
   cloudStore: CloudGroupsStore | null;
   showToast: (message: string, action?: ToastAction) => void;
   recordCloudActivity: (groupId: string, activityText: string) => void;
@@ -39,6 +46,7 @@ type UseGroupMutationsDeps = {
  */
 export function useGroupMutations({
   activeGroup,
+  activeIsPersonal = false,
   cloudStore,
   showToast,
   recordCloudActivity,
@@ -158,11 +166,16 @@ export function useGroupMutations({
 
     setBusy(true);
     try {
-      if (groupCoverDataUrl) {
-        const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "cover", groupCoverDataUrl);
-        await cloudStore.updateGroupCover(activeGroup.id, name, uploadedUrl);
-      } else {
-        await cloudStore.renameGroup(activeGroup.id, name);
+      // A personal ledger's name is fixed server-side (handleUpdateGroup
+      // silently ignores whatever name a request sends) - nothing to rename
+      // or re-cover, only the budget below.
+      if (!activeIsPersonal) {
+        if (groupCoverDataUrl) {
+          const uploadedUrl = await cloudStore.uploadGroupImage(activeGroup.id, "cover", groupCoverDataUrl);
+          await cloudStore.updateGroupCover(activeGroup.id, name, uploadedUrl);
+        } else {
+          await cloudStore.renameGroup(activeGroup.id, name);
+        }
       }
 
       // Separate call rather than folding it into the rename: the cover path
@@ -174,7 +187,7 @@ export function useGroupMutations({
       recordCloudActivity(activeGroup.id, `${text.editGroup}: ${name}`);
       setDialog(null);
       setGroupCoverDataUrl("");
-      showToast(`${text.editGroup}: ${name}`);
+      showToast(activeIsPersonal ? UI_TEXT.personalLedger.settingsSaved : `${text.editGroup}: ${name}`);
     } catch (error) {
       showToast(describeCloudActionError(error));
     } finally {

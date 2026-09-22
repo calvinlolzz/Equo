@@ -77,7 +77,8 @@ import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { clearPendingRoute, readPendingRoute } from "./pendingRoute";
-import { isPersonalGroup } from "./personalLedger";
+import { currentMonthKey, groupDisplayName, isPersonalGroup, ledgerMonthCoverage } from "./personalLedger";
+import { PersonalLedgerHome } from "./PersonalLedgerHome";
 import { resolveRootLanding } from "./resolveRootLanding";
 import type { DialogMode, InfoDialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount } from "./formatAmount";
@@ -391,6 +392,25 @@ export function App() {
   const activities = cloudActivities[activeGroupId] ?? [];
   const loadingMoreExpenses = activeGroupId ? Boolean(cloudState?.loadingMoreExpenseIds[activeGroupId]) : false;
 
+  // The list entry for the active group, kept alongside activeGroup itself:
+  // get_group_detail carries neither `kind` nor `monthlyBudgetMinor` (see the
+  // plan's §0), and while cloudStore's inheritListGroupFields already backs
+  // those into the cached detail, a detail that hasn't loaded YET (the very
+  // first render after opening a group) has nothing to inherit from until
+  // this component re-renders - reading the list entry directly here covers
+  // that gap without waiting on it.
+  const activeListGroup = useMemo(
+    () => cloudGroups.find((group) => group.id === activeGroupId),
+    [cloudGroups, activeGroupId],
+  );
+  const activeIsPersonal = isPersonalGroup(activeGroup) || isPersonalGroup(activeListGroup);
+  // Never activeGroup itself - rebuilding that object on every render would
+  // break the effects keyed on it (see the plan's §0 on activeGroup's stable
+  // identity). This is a derived display-only value.
+  const activeDisplayName = activeGroup
+    ? groupDisplayName({ ...activeGroup, kind: activeIsPersonal ? "personal" : activeGroup.kind })
+    : "";
+
   const {
     expenseComposerOpen,
     editingExpense,
@@ -440,6 +460,7 @@ export function App() {
     deleteActiveGroup,
   } = useGroupMutations({
     activeGroup,
+    activeIsPersonal,
     cloudStore,
     onCropRequested: setCoverToCrop,
     showToast,
@@ -762,7 +783,8 @@ export function App() {
   // 清償紀錄 over the whole history, fetched when the 分析 panel opens.
   const settlementHistory = useSettlementHistory({
     searchExpenses: searchExpensesInGroup,
-    enabled: dialog === "analysisPanel",
+    // A personal ledger has nobody to settle with - see the plan's §4c.
+    enabled: dialog === "analysisPanel" && !activeIsPersonal,
     localRecords: localSettlementRecords,
   });
 
@@ -809,6 +831,26 @@ export function App() {
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
   const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
   const canLoadMoreExpenses = expenses.length < aggregates.expenseCount;
+
+  // The personal ledger's this-month summary is a client-side sum over
+  // whatever window of expenses has loaded (see personalLedger.ts's
+  // summarizeLedgerMonth) - for a ledger with more than one page of history,
+  // that window may not yet reach back far enough to cover the whole month.
+  // This pages in more history automatically until ledgerMonthCoverage says
+  // "complete", capped at 5 pages so a very old, heavy ledger can't turn
+  // into an unbounded fetch loop on every visit.
+  const autoPageRef = useRef(0);
+  useEffect(() => {
+    autoPageRef.current = 0;
+  }, [activeGroupId]);
+  useEffect(() => {
+    if (!activeIsPersonal || !cloudActiveDetail || loadingMoreExpenses) return;
+    if (autoPageRef.current >= 5) return;
+    if (ledgerMonthCoverage(expenses, aggregates.expenseCount, currentMonthKey()) !== "partial") return;
+    autoPageRef.current += 1;
+    handleLoadMoreExpenses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIsPersonal, cloudActiveDetail, expenses, aggregates.expenseCount, loadingMoreExpenses]);
 
   async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
     if (!session) return;
@@ -1577,7 +1619,7 @@ export function App() {
           type="button"
           onClick={openHome}
         >
-          {isMobileLayout && activeGroup ? activeGroup.name : "Equo"}
+          {isMobileLayout && activeGroup ? activeDisplayName : "Equo"}
         </button>
         <div className="top-actions">
           {/* The inbox. A count rather than a dot, unlike the group drawer's
@@ -1711,54 +1753,90 @@ export function App() {
             </div>
           ) : null}
 
-          <GroupHome
-            isMobileLayout={isMobileLayout}
-            group={activeGroup}
-            install={install}
-            showSkeleton={cloudActiveLoading && !cloudActiveDetail}
-            hasLoadedDetail={Boolean(cloudActiveDetail)}
-            headerMenu={
-              <GroupMenu
-                groupName={activeGroup.name}
-                coverImageUrl={activeGroup.coverImageUrl}
-                memberCount={members.length}
-                currency={activeGroup.currency}
-                exporting={pendingAction === "exportCsv"}
-                onExportCsv={handleExportCsv}
-                isOwner={isCurrentMemberOwner}
-                onEditGroup={openEditGroup}
-                onNavigate={handleSideNavClick}
-                onArchive={() => setDialog("archive")}
-                onDelete={() => setDialog("delete")}
-              />
-            }
-            members={members}
-            currentMember={currentMember}
-            balances={balances}
-            totalExpenseMinor={totalExpenseMinor}
-            expenseCount={aggregates.expenseCount}
-            settlementTransfers={settlementTransfers}
-            expenses={expenses}
-            activities={activities}
-            nudgedMemberIds={nudgedMemberIds}
-            pendingAction={pendingAction}
-            spendTab={spendTab}
-            onSelectSpendTab={setSpendTab}
-            spendDisplayAmountMinor={spendDisplayAmountMinor}
-            dateChips={dateChips}
-            selectedDateKey={selectedDateKey}
-            selectedDateChip={selectedDateChip}
-            onSelectDateKey={setSelectedDateKey}
-            dateStripRef={dateStripRef}
-            onOpenDialog={setDialog}
-            onInviteMembers={openInviteMembers}
-            onScanReceipt={openReceiptScan}
-            onOpenExpenseComposer={openExpenseComposer}
-            onSettleTransfer={settleTransfer}
-            onNudgeMember={nudgeMember}
-            onNudgeAll={nudgeEveryDebtor}
-            onOpenExpenseDetail={openExpenseDetail}
-          />
+          {activeIsPersonal ? (
+            <PersonalLedgerHome
+              isMobileLayout={isMobileLayout}
+              group={activeGroup}
+              displayName={activeDisplayName}
+              install={install}
+              showSkeleton={cloudActiveLoading && !cloudActiveDetail}
+              hasLoadedDetail={Boolean(cloudActiveDetail)}
+              headerMenu={
+                <GroupMenu
+                  groupName={activeDisplayName}
+                  coverImageUrl={activeGroup.coverImageUrl}
+                  memberCount={members.length}
+                  currency={activeGroup.currency}
+                  exporting={pendingAction === "exportCsv"}
+                  onExportCsv={handleExportCsv}
+                  isOwner={isCurrentMemberOwner}
+                  onEditGroup={openEditGroup}
+                  onNavigate={handleSideNavClick}
+                  onArchive={() => setDialog("archive")}
+                  onDelete={() => setDialog("delete")}
+                />
+              }
+              expenses={expenses}
+              expenseCount={aggregates.expenseCount}
+              monthlyBudgetMinor={activeGroup.monthlyBudgetMinor ?? activeListGroup?.monthlyBudgetMinor}
+              coverage={ledgerMonthCoverage(expenses, aggregates.expenseCount, currentMonthKey())}
+              onOpenDialog={setDialog}
+              onScanReceipt={openReceiptScan}
+              onOpenExpenseComposer={openExpenseComposer}
+              onOpenExpenseDetail={openExpenseDetail}
+              onCreateGroup={openCreateGroupDialog}
+              onJoinGroup={() => setDialog("inviteInput")}
+            />
+          ) : (
+            <GroupHome
+              isMobileLayout={isMobileLayout}
+              group={activeGroup}
+              install={install}
+              showSkeleton={cloudActiveLoading && !cloudActiveDetail}
+              hasLoadedDetail={Boolean(cloudActiveDetail)}
+              headerMenu={
+                <GroupMenu
+                  groupName={activeDisplayName}
+                  coverImageUrl={activeGroup.coverImageUrl}
+                  memberCount={members.length}
+                  currency={activeGroup.currency}
+                  exporting={pendingAction === "exportCsv"}
+                  onExportCsv={handleExportCsv}
+                  isOwner={isCurrentMemberOwner}
+                  onEditGroup={openEditGroup}
+                  onNavigate={handleSideNavClick}
+                  onArchive={() => setDialog("archive")}
+                  onDelete={() => setDialog("delete")}
+                />
+              }
+              members={members}
+              currentMember={currentMember}
+              balances={balances}
+              totalExpenseMinor={totalExpenseMinor}
+              expenseCount={aggregates.expenseCount}
+              settlementTransfers={settlementTransfers}
+              expenses={expenses}
+              activities={activities}
+              nudgedMemberIds={nudgedMemberIds}
+              pendingAction={pendingAction}
+              spendTab={spendTab}
+              onSelectSpendTab={setSpendTab}
+              spendDisplayAmountMinor={spendDisplayAmountMinor}
+              dateChips={dateChips}
+              selectedDateKey={selectedDateKey}
+              selectedDateChip={selectedDateChip}
+              onSelectDateKey={setSelectedDateKey}
+              dateStripRef={dateStripRef}
+              onOpenDialog={setDialog}
+              onInviteMembers={openInviteMembers}
+              onScanReceipt={openReceiptScan}
+              onOpenExpenseComposer={openExpenseComposer}
+              onSettleTransfer={settleTransfer}
+              onNudgeMember={nudgeMember}
+              onNudgeAll={nudgeEveryDebtor}
+              onOpenExpenseDetail={openExpenseDetail}
+            />
+          )}
 
           {/* Phase 3: the wide layout's right column is gone — its content
               moved to the ▾ menu beside the group's name (see headerMenu
@@ -1770,7 +1848,7 @@ export function App() {
           <aside className="group-side-nav glass-panel" aria-label={text.groupHome} inert aria-hidden="true">
             {activeGroup ? (
               <GroupSideNav
-                groupName={activeGroup.name}
+                groupName={activeDisplayName}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
                 currency={activeGroup.currency}
@@ -1791,7 +1869,7 @@ export function App() {
                 {activeGroup ? (
               <GroupSideNav
                 variant="drawer"
-                groupName={activeGroup.name}
+                groupName={activeDisplayName}
                 coverImageUrl={activeGroup.coverImageUrl}
                 memberCount={members.length}
                 currency={activeGroup.currency}
@@ -1914,6 +1992,7 @@ export function App() {
           duplicating={Boolean(duplicatingExpense)}
           receiptPrefill={receiptPrefill ?? undefined}
           scanPending={scanBusy}
+          personal={activeIsPersonal}
           onClose={requestCloseComposer}
           onDirtyChange={setComposerDirty}
           onSubmit={handleExpenseDraftSubmit}
@@ -2064,7 +2143,8 @@ export function App() {
               ? () => setSelectedExpenseId(expenses[selectedExpenseIndex + 1].id)
               : undefined
           }
-          comments={cloudStore ? expenseComments : undefined}
+          // A personal ledger has nobody else to comment - see the plan's §4c.
+          comments={cloudStore && !activeIsPersonal ? expenseComments : undefined}
           currentMemberId={currentMember?.id}
           isGroupOwner={isCurrentMemberOwner}
         />
@@ -2144,27 +2224,38 @@ export function App() {
               {dialog === "editGroup" ? (
                 <>
                   <div className="dialog-header">
-                    <h3>{text.editGroup}</h3>
-                    <p>{"\u66f4\u65b0\u7fa4\u7d44\u540d\u7a31\uff0c\u53f3\u5074\u8207\u5de6\u5074\u5217\u8868\u6703\u540c\u6b65\u986f\u793a\u3002"}</p>
+                    <h3>{activeIsPersonal ? UI_TEXT.personalLedger.settingsTitle : text.editGroup}</h3>
+                    <p>
+                      {activeIsPersonal
+                        ? UI_TEXT.personalLedger.settingsHint
+                        : "\u66f4\u65b0\u7fa4\u7d44\u540d\u7a31\uff0c\u53f3\u5074\u8207\u5de6\u5074\u5217\u8868\u6703\u540c\u6b65\u986f\u793a\u3002"}
+                    </p>
                   </div>
-                  <label className="group-edit-cover" aria-label={text.coverImage}>
-                    {groupCoverDataUrl || groupCoverUrl ? (
-                      <img src={groupCoverDataUrl || groupCoverUrl} alt="" loading="lazy" decoding="async" />
-                    ) : (
-                      <span>
-                        <Pencil aria-hidden="true" size={22} />
-                      </span>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
-                    />
-                  </label>
-                  <label>
-                    <span>{text.name}</span>
-                    <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
-                  </label>
+                  {/* A personal ledger's name and cover are fixed (the server
+                      silently ignores any rename - see handleUpdateGroup), so
+                      only the budget field below applies to it. */}
+                  {activeIsPersonal ? null : (
+                    <>
+                      <label className="group-edit-cover" aria-label={text.coverImage}>
+                        {groupCoverDataUrl || groupCoverUrl ? (
+                          <img src={groupCoverDataUrl || groupCoverUrl} alt="" loading="lazy" decoding="async" />
+                        ) : (
+                          <span>
+                            <Pencil aria-hidden="true" size={22} />
+                          </span>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => handleGroupCoverPick(event.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      <label>
+                        <span>{text.name}</span>
+                        <input value={groupName} onChange={(event) => setGroupName(event.target.value)} aria-label={text.groupName} />
+                      </label>
+                    </>
+                  )}
                   <label>
                     <span>{UI_TEXT.budget.label}</span>
                     <input
@@ -2227,6 +2318,7 @@ export function App() {
                     onSave={recurring.save}
                     onDelete={recurring.remove}
                     onRetry={recurring.retry}
+                    personal={activeIsPersonal}
                   />
                 </Suspense>
               ) : null}
@@ -2236,7 +2328,7 @@ export function App() {
                 <AnalysisPanel
                   totalExpenseMinor={totalExpenseMinor}
                   currency={activeGroup?.currency ?? "TWD"}
-                  monthlyBudgetMinor={activeGroup?.monthlyBudgetMinor}
+                  monthlyBudgetMinor={activeGroup?.monthlyBudgetMinor ?? activeListGroup?.monthlyBudgetMinor}
                   members={members}
                   balances={balances}
                   maxBalanceMinor={maxBalanceMinor}

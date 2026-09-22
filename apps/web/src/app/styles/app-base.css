@@ -1516,6 +1516,8 @@ label span {
 :root[data-theme="light"] .pizo-expense-row .expense-record-amount small,
 :root[data-theme="light"] .pizo-activity-row span,
 :root[data-theme="light"] .archived-dialog-row b,
-:root[data-theme="light"] .composer-section-head small {
+:root[data-theme="light"] .composer-section-head small,
+:root[data-theme="light"] .ledger-month-stats span,
+:root[data-theme="light"] .ledger-month-loading {
   color: rgb(var(--fg) / 0.72);
 }

@@ -182,6 +182,49 @@
   color: rgb(var(--fg) / 0.72);
 }
 
+/* PersonalLedgerHome's month card: the same lead+glow-amount pattern as
+   .home-balance-card (home-balance-lead/home-balance-amount are reused as-is
+   - see the plan's design constraint against a second glowing number), plus
+   a two-column 收入/結餘 row underneath. */
+.ledger-month-card {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.ledger-month-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.ledger-month-stats span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 800;
+  color: rgb(var(--fg) / 0.62);
+}
+
+.ledger-month-stats strong {
+  font-size: 18px;
+  font-weight: 860;
+  /* No color here - the 結餘 figure takes the inherited default, and 收入
+     needs its .amount-income color to win, which a more specific selector
+     here would otherwise flatten. */
+}
+
+.ledger-month-loading {
+  color: rgb(var(--fg) / 0.62);
+}
+
+.ledger-empty-title {
+  font-weight: 860;
+  font-size: 17px;
+}
+
 /* The member list: one collapsed row per person (avatar/name/amount/caret),
    expanding in place to record-收款/提醒/看明細. See MemberRow in
    GroupHome.tsx. */

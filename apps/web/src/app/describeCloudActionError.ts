@@ -48,5 +48,12 @@ export function describeCloudActionError(error: unknown): string {
   if (code === "ACCOUNT_DELETE_BLOCKED") {
     return text.accountDeleteBlocked;
   }
+  // A personal ledger rejected an invite/member/archive/delete attempt (409
+  // from the server's guard - see handlers/groups.ts). The UI already hides
+  // these triggers for a ledger; this only covers a stale render reaching
+  // one anyway.
+  if (code === "PERSONAL_LEDGER") {
+    return UI_TEXT.personalLedger.actionUnavailable;
+  }
   return `${text.cloudSyncFailedPrefix}${(error as Error).message}`;
 }
