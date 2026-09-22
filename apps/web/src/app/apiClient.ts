@@ -927,10 +927,10 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     },
     /** The category and currency lists the app renders itself from. */
     getCatalog() {
-      return request<{ categories: Array<{ key: string; label: string; color: string }>; currencies: Array<{ code: string; label: string }> }>(
-        "/catalog",
-        { method: "GET" },
-      );
+      return request<{
+        categories: Array<{ key: string; label: string; color: string; scope?: "shared" | "personal" | "income" }>;
+        currencies: Array<{ code: string; label: string }>;
+      }>("/catalog", { method: "GET" });
     },
     /** Master data as the console sees it: disabled rows and rate overrides included (support+). */
     adminGetCatalog() {
@@ -1018,6 +1018,8 @@ export type AdminCatalogCategoryRow = {
   updated_by_email?: string | null;
   /** Live expenses filed under this key - what makes disabling it consequential. */
   expense_count?: number;
+  /** "shared" | "personal" | "income" — read-only in the console for stage 1. */
+  scope?: "shared" | "personal" | "income";
 };
 
 export type AdminCatalogCurrencyRow = {

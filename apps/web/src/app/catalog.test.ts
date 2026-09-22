@@ -6,8 +6,11 @@ import {
   categoryColor,
   categoryLabel,
   categoryOptions,
+  categoryOptionsFor,
   currencyOptions,
+  defaultCategoryKey,
   hydrateCatalog,
+  normalizeScope,
   resetCatalog,
   restoreCatalog,
 } from "./catalog";
@@ -76,5 +79,95 @@ describe("the catalog", () => {
     });
 
     expect(categoryColor("medical")).toBe(FALLBACK_CATEGORY_COLOR);
+  });
+});
+
+describe("normalizeScope", () => {
+  test("passes through the two non-default scopes", () => {
+    expect(normalizeScope("personal")).toBe("personal");
+    expect(normalizeScope("income")).toBe("income");
+  });
+
+  test("anything else - missing, unrecognised, or the wrong type - becomes shared", () => {
+    expect(normalizeScope("shared")).toBe("shared");
+    expect(normalizeScope(undefined)).toBe("shared");
+    expect(normalizeScope(null)).toBe("shared");
+    expect(normalizeScope("")).toBe("shared");
+    expect(normalizeScope("PERSONAL")).toBe("shared");
+    expect(normalizeScope(42)).toBe("shared");
+  });
+});
+
+describe("scope normalization on the way in", () => {
+  test("a server response with no scope field hydrates every category as shared", () => {
+    hydrateCatalog({
+      categories: [{ key: "medical", label: "醫療", color: "#AA1122" }],
+      currencies: [{ code: "TWD", label: "新台幣" }],
+    });
+
+    expect(categoryOptions()).toEqual([{ key: "medical", label: "醫療", color: "#AA1122", scope: "shared" }]);
+  });
+
+  test("a stored copy from before this client shipped is normalized on restore, not just on hydrate", () => {
+    window.localStorage.setItem(
+      "equo.clean.catalog",
+      JSON.stringify({
+        categories: [{ key: "medical", label: "醫療", color: "#AA1122" }],
+        currencies: [{ code: "TWD", label: "新台幣" }],
+      }),
+    );
+
+    resetCatalog();
+    const restored = restoreCatalog();
+
+    expect(restored.categories).toEqual([{ key: "medical", label: "醫療", color: "#AA1122", scope: "shared" }]);
+  });
+});
+
+describe("categoryOptionsFor", () => {
+  test("a shared group only ever offers shared categories", () => {
+    const keys = categoryOptionsFor({ personal: false }).map((entry) => entry.key);
+
+    expect(keys).toEqual(["food", "transport", "lodging", "shopping", "general", "other"]);
+  });
+
+  test("a personal ledger recording an expense offers shared AND personal categories, never income", () => {
+    const keys = categoryOptionsFor({ personal: true, mode: "expense" }).map((entry) => entry.key);
+
+    expect(keys).toEqual(
+      expect.arrayContaining(["food", "general", "entertainment", "home", "bills", "health", "education"]),
+    );
+    expect(keys).not.toEqual(expect.arrayContaining(["salary"]));
+  });
+
+  test("a personal ledger recording income offers only income categories", () => {
+    const keys = categoryOptionsFor({ personal: true, mode: "income" }).map((entry) => entry.key);
+
+    expect(keys).toEqual(["salary", "bonus", "investment", "other_income"]);
+  });
+
+  test("a server catalog with no income rows falls back to the bundled income defaults", () => {
+    // Simulates an old server (pre category_scope) or a stale stored copy: the
+    // hydrated catalog has ordinary categories but nothing scoped "income" at
+    // all, so the personal-ledger income picker must not come back empty.
+    hydrateCatalog({
+      categories: [{ key: "food", label: "餐飲", color: "#F0885A", scope: "shared" }],
+      currencies: [{ code: "TWD", label: "新台幣" }],
+    });
+
+    const keys = categoryOptionsFor({ personal: true, mode: "income" }).map((entry) => entry.key);
+
+    expect(keys).toEqual(["salary", "bonus", "investment", "other_income"]);
+  });
+});
+
+describe("defaultCategoryKey", () => {
+  test("personal-ledger income starts on other_income", () => {
+    expect(defaultCategoryKey({ personal: true, mode: "income" })).toBe("other_income");
+  });
+
+  test("every other context starts on general", () => {
+    expect(defaultCategoryKey({ personal: false })).toBe("general");
+    expect(defaultCategoryKey({ personal: true, mode: "expense" })).toBe("general");
   });
 });

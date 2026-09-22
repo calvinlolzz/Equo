@@ -836,6 +836,18 @@ function ScanUsageSection({ client }: { client: EquoApiClient }) {
  * nothing can render. The row shows how many expenses it carries so that
  * decision is made with the number in view.
  */
+/**
+ * Read-only for stage 1 - see the personal ledger plan's §4g/§9: editing scope
+ * from the console is deferred, so this is display only, not another input on
+ * the edit row. Admin text is never translated (see the i18n plan note), so
+ * these three labels are plain 中文 rather than UI_TEXT keys.
+ */
+const CATEGORY_SCOPE_LABEL: Record<"shared" | "personal" | "income", string> = {
+  shared: "群組",
+  personal: "個人",
+  income: "收入",
+};
+
 function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: boolean }) {
   const [catalog, setCatalog] = useState<AdminCatalogPayload | null>(null);
   const [error, setError] = useState("");
@@ -912,6 +924,7 @@ function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: b
               <th>鍵值</th>
               <th>名稱</th>
               <th>顏色</th>
+              <th>適用</th>
               <th className="admin-table__num">排序</th>
               <th className="admin-table__num">使用中帳目</th>
               <th>狀態</th>
@@ -928,6 +941,7 @@ function CatalogSection({ client, canEdit }: { client: EquoApiClient; canEdit: b
                   <span className="admin-swatch" style={{ background: row.color }} aria-hidden="true" />
                   <code>{row.color}</code>
                 </td>
+                <td>{CATEGORY_SCOPE_LABEL[row.scope ?? "shared"]}</td>
                 <td className="admin-table__num">{row.sort_order}</td>
                 <td className="admin-table__num">{(row.expense_count ?? 0).toLocaleString("zh-TW")}</td>
                 <td>{row.enabled ? "使用中" : <span className="admin-badge">已停用</span>}</td>
