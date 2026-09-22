@@ -1,5 +1,6 @@
 import type { Group } from "./appTypes";
 import { formatAmount } from "./formatAmount";
+import { isPersonalGroup } from "./personalLedger";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -36,6 +37,11 @@ export function summarizeGroupBalances(groups: Group[]): GroupBalanceSummary {
   let known = false;
 
   groups.forEach((group) => {
+    // A personal ledger has nobody else to owe or be owed by - it always
+    // nets to zero, and folding that zero in here would read as "you have
+    // settled up everywhere" the moment the only group left is the ledger,
+    // which is not what "known" is meant to promise.
+    if (isPersonalGroup(group)) return;
     if (group.balanceMinor === undefined) return;
     known = true;
     netByCurrency.set(group.currency, (netByCurrency.get(group.currency) ?? 0) + group.balanceMinor);

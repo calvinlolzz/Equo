@@ -14,6 +14,7 @@ import { loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache"
 import {
   draftToExpense,
   expenseKindToApiKind,
+  inheritListGroupFields,
   settlementTransferToDraft,
   toCreateExpenseRequest,
   toExpense,
@@ -367,6 +368,13 @@ export function createCloudGroupsStore({
       ...(group.balanceMinor === undefined && previous.balanceMinor !== undefined
         ? { balanceMinor: previous.balanceMinor }
         : {}),
+      // accept_invite's group_json has no kind at all (baseline) - without
+      // this, accepting an invite into a group already in the list would
+      // blank out a kind the list already knew (unlikely for kind
+      // specifically today, since invites are rejected for a personal
+      // ledger, but this keeps the same "never regress a known field" rule
+      // unread/balance already follow).
+      ...(group.kind === undefined && previous.kind !== undefined ? { kind: previous.kind } : {}),
     };
     const groups = [...state.groups];
     groups[index] = group;
@@ -643,6 +651,11 @@ export function createCloudGroupsStore({
       // replay them on top - otherwise a background refresh makes every offline
       // entry blink out of existence until the flush lands.
       const data = applyQueuedWrites(toGroupUiData(detail), state.pendingWrites);
+      // get_group_detail carries neither kind nor monthly_budget_minor (see
+      // the plan's §0) - recover both from the list entry rather than
+      // letting them vanish the moment a detail load replaces the group
+      // object every other screen reads. See inheritListGroupFields.
+      data.group = inheritListGroupFields(data.group, state.groups.find((group) => group.id === groupId));
       // The detail is revalidated more often than the list (see autoSync's
       // groupsListEveryNTicks), so this is usually the fresher number.
       const nextGroups = groupsWithDetailBalance(state.groups, groupId, data);

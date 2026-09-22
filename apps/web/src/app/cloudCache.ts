@@ -2,7 +2,11 @@ import type { CloudGroupData } from "./cloudStore";
 import type { Group } from "./appTypes";
 
 const CLOUD_CACHE_KEY = "equo.clean.cloud_cache";
-const CLOUD_CACHE_VERSION = 1;
+// Bumped for the personal-ledger client (2026-09-22): a group cached by an
+// older client carries no `kind` at all, and the rail/StartFlow logic must
+// never read that absence as "shared" for what might actually be a ledger -
+// discarding the old cache on load forces a fresh GET /groups instead.
+const CLOUD_CACHE_VERSION = 2;
 
 export type CloudCacheSnapshot = {
   userId: string;

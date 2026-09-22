@@ -3,6 +3,13 @@ export type Group = {
   name: string;
   currency: string;
   coverImageUrl?: string;
+  /**
+   * "shared" (an ordinary group) or "personal" (the caller's own ledger).
+   * Absent means "this payload does not say" (see cloudAdapters.toGroup and
+   * inheritListGroupFields), never "shared" - a merged object must never
+   * assert a kind it was not told.
+   */
+  kind?: "shared" | "personal";
   /** 每月預算 in the group's currency; undefined when nobody set one. */
   monthlyBudgetMinor?: number | null;
   /**

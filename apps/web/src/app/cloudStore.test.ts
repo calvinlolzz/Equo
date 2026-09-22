@@ -121,6 +121,23 @@ describe("createCloudGroupsStore", () => {
     expect(store.getState().loadingGroupIds.group_1).toBeUndefined();
   });
 
+  // [MV]
+  test("refreshGroupDetail inherits kind and monthlyBudgetMinor from the list entry when the detail omits both", async () => {
+    // get_group_detail carries neither field (see the plan's §0) - the fake
+    // getGroupDetail below returns the bare group1 fixture, same as every
+    // other test here, so this only passes if refreshGroupDetail itself
+    // reaches into state.groups for what the detail didn't say.
+    const listGroup = { ...group1, kind: "personal" as const, monthly_budget_minor: 500000 };
+    const apiClient = makeFakeApiClient({ listGroups: vi.fn(async () => ({ groups: [listGroup] })) });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+
+    const data = await store.refreshGroupDetail("group_1");
+
+    expect(data.group.kind).toBe("personal");
+    expect(data.group.monthlyBudgetMinor).toBe(500000);
+  });
+
   test("createGroup applies the response locally with no follow-up fetch", async () => {
     const apiClient = makeFakeApiClient();
     const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
@@ -170,6 +187,20 @@ describe("createCloudGroupsStore", () => {
     expect(apiClient.getGroupDetail).toHaveBeenCalledTimes(1);
     expect(store.getState().groups[0].name).toBe("Osaka Trip");
     expect(store.getState().groupDetails.group_1.group.name).toBe("Osaka Trip");
+  });
+
+  // [MV]
+  test("renameGroup keeps the list entry's kind when the write response doesn't carry it", async () => {
+    // updateGroup's fake response here is the bare group1 fixture (no kind) -
+    // same shape as a real rename response, which never echoes kind back.
+    const listGroup = { ...group1, kind: "personal" as const };
+    const apiClient = makeFakeApiClient({ listGroups: vi.fn(async () => ({ groups: [listGroup] })) });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshGroups();
+
+    await store.renameGroup("group_1", "我的帳本");
+
+    expect(store.getState().groups[0].kind).toBe("personal");
   });
 
   test("addVirtualMember appends the mapped member to the cached detail, no refetch", async () => {

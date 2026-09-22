@@ -4,6 +4,7 @@ import type { GroupDetail } from "./apiClient";
 import {
   draftToExpense,
   expenseKindToApiKind,
+  inheritListGroupFields,
   settlementTransferToDraft,
   toCreateExpenseRequest,
   toExpense,
@@ -48,6 +49,53 @@ describe("toGroup", () => {
         cover_image_url: null,
       }).coverImageUrl,
     ).toBeUndefined();
+  });
+
+  // [MV]
+  test("spreads kind only when the summary carries it", () => {
+    expect(
+      toGroup({ id: "g1", name: "我的帳本", currency: "TWD", owner_member_id: "m1", kind: "personal" }).kind,
+    ).toBe("personal");
+    // The key itself must be absent, not merely `undefined` - a plain
+    // `.kind` read can't tell those apart, so this checks the key directly.
+    expect(Object.hasOwn(toGroup({ id: "g1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "m1" }), "kind")).toBe(
+      false,
+    );
+  });
+});
+
+describe("inheritListGroupFields", () => {
+  // [MV]
+  test("fills kind and monthlyBudgetMinor from the list entry when the detail omits them", () => {
+    const detailGroup = { id: "g1", name: "我的帳本", currency: "TWD" };
+    const listGroup = { id: "g1", name: "我的帳本", currency: "TWD", kind: "personal" as const, monthlyBudgetMinor: 500000 };
+
+    expect(inheritListGroupFields(detailGroup, listGroup)).toEqual({
+      id: "g1",
+      name: "我的帳本",
+      currency: "TWD",
+      kind: "personal",
+      monthlyBudgetMinor: 500000,
+    });
+  });
+
+  test("never overrides a value the detail already carries", () => {
+    const detailGroup = { id: "g1", name: "Tokyo Trip", currency: "TWD", kind: "shared" as const, monthlyBudgetMinor: 100000 };
+    const listGroup = { id: "g1", name: "Tokyo Trip", currency: "TWD", kind: "personal" as const, monthlyBudgetMinor: 200000 };
+
+    expect(inheritListGroupFields(detailGroup, listGroup)).toEqual(detailGroup);
+  });
+
+  test("a missing list entry (e.g. the group fell outside the 50-membership cap) leaves the detail alone", () => {
+    const detailGroup = { id: "g1", name: "Tokyo Trip", currency: "TWD" };
+    expect(inheritListGroupFields(detailGroup, undefined)).toEqual(detailGroup);
+  });
+
+  test("a null monthlyBudgetMinor on the detail (explicitly cleared) is not overridden by the list", () => {
+    const detailGroup = { id: "g1", name: "Tokyo Trip", currency: "TWD", monthlyBudgetMinor: null };
+    const listGroup = { id: "g1", name: "Tokyo Trip", currency: "TWD", monthlyBudgetMinor: 200000 };
+
+    expect(inheritListGroupFields(detailGroup, listGroup).monthlyBudgetMinor).toBeNull();
   });
 });
 

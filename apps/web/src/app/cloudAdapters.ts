@@ -31,6 +31,12 @@ export function toGroup(summary: GroupSummary): Group {
     currency: summary.currency,
     coverImageUrl: summary.cover_image_url ?? undefined,
 
+    // Absent is not the same as shared-by-assertion - a payload that omits
+    // kind (an old cached list, a write response) says nothing about it, and
+    // writing a default here would turn every one of those into a false
+    // "shared". See inheritListGroupFields for how the detail/write paths
+    // recover the real value from the list instead.
+    ...(summary.kind === undefined ? {} : { kind: summary.kind }),
     // Same rule as unreadCount below: only spread when the payload carries it.
     // Absent means "this response does not say", null means "no budget" - and
     // writing null for absent would clear a budget on every read that omits it.
@@ -46,6 +52,29 @@ export function toGroup(summary: GroupSummary): Group {
     // nothing about the caller's balance, and writing zero for it would turn
     // every group into 已結清 the moment one of those payloads lands.
     ...(summary.balance_minor === undefined ? {} : { balanceMinor: summary.balance_minor }),
+  };
+}
+
+/**
+ * Fill `kind` and `monthlyBudgetMinor` on a detail-read group from the
+ * matching list entry, when the detail itself does not carry them.
+ *
+ * get_group_detail's group object has neither field (see the plan's §0), so
+ * without this, opening a group's detail after its list entry already had
+ * `kind`/`monthlyBudgetMinor` would make both vanish the moment the detail
+ * loads - the ledger would stop looking like a ledger, and a budget set from
+ * the list would stop showing progress. Never overrides a value the detail
+ * DOES carry: `undefined` is the only trigger, so a real budget change (or a
+ * server that starts sending kind on detail reads) still wins.
+ */
+export function inheritListGroupFields(detailGroup: Group, listGroup: Group | undefined): Group {
+  if (!listGroup) return detailGroup;
+  return {
+    ...detailGroup,
+    ...(detailGroup.kind === undefined && listGroup.kind !== undefined ? { kind: listGroup.kind } : {}),
+    ...(detailGroup.monthlyBudgetMinor === undefined && listGroup.monthlyBudgetMinor !== undefined
+      ? { monthlyBudgetMinor: listGroup.monthlyBudgetMinor }
+      : {}),
   };
 }
 

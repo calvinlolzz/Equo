@@ -50,6 +50,22 @@ describe("summarizeGroupBalances", () => {
     const partial = summarizeGroupBalances([group({ balanceMinor: -800 }), group({ id: "group_2" })]);
     expect(partial).toEqual({ known: true, totals: [{ currency: "TWD", netMinor: -800 }] });
   });
+
+  // [MV]
+  test("a personal ledger is skipped even when it carries a balance", () => {
+    // A ledger always nets to zero (nobody else to owe), but the point here
+    // is that it must not even be COUNTED - a user with only the ledger
+    // should see nothing in the rail header, not 已結清.
+    expect(
+      summarizeGroupBalances([group({ id: "ledger", kind: "personal", balanceMinor: 0 })]),
+    ).toEqual({ known: false, totals: [] });
+
+    const mixed = summarizeGroupBalances([
+      group({ id: "ledger", kind: "personal", balanceMinor: 0 }),
+      group({ id: "group_2", balanceMinor: -800 }),
+    ]);
+    expect(mixed).toEqual({ known: true, totals: [{ currency: "TWD", netMinor: -800 }] });
+  });
 });
 
 describe("describeBalance", () => {

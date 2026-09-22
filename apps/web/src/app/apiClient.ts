@@ -23,6 +23,14 @@ export type GroupSummary = {
   name: string;
   currency: string;
   owner_member_id: string;
+  /**
+   * "shared" (an ordinary group) or "personal" (the caller's own ledger -
+   * see ensure_personal_ledger). Absent on any payload from before the
+   * personal-ledger migration - a cached list, a write response that never
+   * carried it - which must read as "not known", never as shared-by-default
+   * (see cloudAdapters.toGroup).
+   */
+  kind?: "shared" | "personal";
   cover_image_url?: string | null;
   /** 每月預算 in the group's currency, or null/absent when nobody set one. */
   monthly_budget_minor?: number | null;

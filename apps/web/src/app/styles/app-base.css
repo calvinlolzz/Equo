@@ -1204,6 +1204,16 @@ label span {
   object-fit: cover;
 }
 
+/* The personal ledger's rail icon - never `.placeholder` (that class hides
+   its content on phones, see above), so this is its own modifier on the
+   base thumb rather than a reuse of the initial-letter fallback. */
+.group-item-thumb--personal {
+  display: grid;
+  place-items: center;
+  color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.16);
+}
+
 .group-item-text {
   display: grid;
   gap: 4px;

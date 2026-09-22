@@ -77,6 +77,7 @@ import { resolveCurrentMember } from "./resolveCurrentMember";
 import { StartFlow } from "./StartFlowPanel";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { clearPendingRoute, readPendingRoute } from "./pendingRoute";
+import { isPersonalGroup } from "./personalLedger";
 import { resolveRootLanding } from "./resolveRootLanding";
 import type { DialogMode, InfoDialogMode, Group, Member, StartMode } from "./appTypes";
 import { formatAmount } from "./formatAmount";
@@ -1656,7 +1657,11 @@ export function App() {
         </section>
       ) : !activeGroup ? (
         <StartFlow
-          groups={displayGroups}
+          // The ledger is not a destination StartFlow offers to "continue" -
+          // it is created lazily and silently on first list fetch, so it
+          // must stay invisible to the create-first-group flow's own count
+          // and list (see resolveRootLanding for where it lands instead).
+          groups={displayGroups.filter((group) => !isPersonalGroup(group))}
           groupName={groupName}
           groupNamePlaceholder={selectedTemplateName}
           isCreatingGroup={pendingAction === "createGroup"}

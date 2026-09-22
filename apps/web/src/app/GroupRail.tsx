@@ -1,7 +1,8 @@
-import { Archive, ChevronsLeft, ChevronsRight, Plus, RefreshCw, Scan } from "lucide-react";
+import { Archive, ChevronsLeft, ChevronsRight, Plus, RefreshCw, Scan, Wallet } from "lucide-react";
 import type { Group } from "./appTypes";
 import { balanceTone, describeBalance, summarizeGroupBalances } from "./groupBalanceSummary";
 import { formatAmount } from "./formatAmount";
+import { groupDisplayName, isPersonalGroup, orderGroupsForRail } from "./personalLedger";
 import { UI_TEXT } from "./uiText";
 
 type GroupRailProps = {
@@ -79,16 +80,25 @@ export function GroupRail({
       </div>
 
       <div className="group-list">
-        {groups.map((group) => {
+        {orderGroupsForRail(groups).map((group) => {
+          const personal = isPersonalGroup(group);
           // Falls back to the currency code when the balance is unknown - an
-          // older deployment, or a row patched from a write response.
-          const balance = describeBalance(group.balanceMinor, group.currency);
-          const tone = balanceTone(group.balanceMinor);
+          // older deployment, or a row patched from a write response. Never
+          // computed for the ledger, which has no balance to speak of.
+          const balance = personal ? null : describeBalance(group.balanceMinor, group.currency);
+          const tone = personal ? null : balanceTone(group.balanceMinor);
 
           return (
           <button className={activeGroup.id === group.id ? "group-item active" : "group-item"} type="button" key={group.id} onClick={() => onSelectGroup(group)}>
             <span className="group-item-row">
-              {group.coverImageUrl ? (
+              {personal ? (
+                // Never `.placeholder` - that class hides its content on
+                // phones (see app-base.css), which would leave the ledger's
+                // row with no icon at all on mobile.
+                <span className="group-item-thumb group-item-thumb--personal" aria-hidden="true">
+                  <Wallet size={20} />
+                </span>
+              ) : group.coverImageUrl ? (
                 <span className="group-item-thumb">
                   <img src={group.coverImageUrl} alt="" loading="lazy" decoding="async" />
                 </span>
@@ -101,10 +111,14 @@ export function GroupRail({
                 </span>
               )}
               <span className="group-item-text">
-                <strong>{group.name}</strong>
-                <span className={tone ? `balance-line ${tone}` : undefined}>{balance ?? group.currency}</span>
+                <strong>{groupDisplayName(group)}</strong>
+                {personal ? (
+                  <span>{UI_TEXT.personalLedger.railSubtitle}</span>
+                ) : (
+                  <span className={tone ? `balance-line ${tone}` : undefined}>{balance ?? group.currency}</span>
+                )}
               </span>
-              {group.unreadCount ? (
+              {!personal && group.unreadCount ? (
                 // Counted, not just dotted: "3 筆新的" is a different decision
                 // from "1 筆新的" when you are deciding whether to look now.
                 <span className="group-item-unread" aria-label={`${group.unreadCount} ${text.unreadEntries}`}>
