@@ -46,6 +46,15 @@ type AnalysisPanelProps = {
     selectPeriodKey: (key: string) => void;
     retry: () => void;
   };
+  /**
+   * True for the caller's own personal ledger. Hides everything that only
+   * means something with more than one member: the 個人／群組 tabs (a
+   * ledger's spend IS the personal figure, so SpendPeriodSection is forced
+   * to "group" scope instead), the members/debt stat tiles, the per-member
+   * balance bars, and both settlement sections - there is nobody else to
+   * settle with.
+   */
+  personal?: boolean;
 };
 
 /** The 分析 bottom-sheet content (stats, spend chart, balances, settlement suggestions + history). */
@@ -70,6 +79,7 @@ export function AnalysisPanel({
   spendTab,
   onSelectSpendTab,
   spendBreakdown,
+  personal = false,
 }: AnalysisPanelProps) {
   // The 近 8 日支出 chart looks empty with only a day or two of data, so only
   // show it once there's enough spread to be worth a chart.
@@ -84,33 +94,37 @@ export function AnalysisPanel({
       </div>
       {/* The indicator is one element that slides between the two halves, so
           the underline travels rather than blinking from tab to tab. Its
-          position is driven by data-active, not an inline transform. */}
-      <div className="slide-tabs" data-active={spendTab} role="tablist" aria-label={text.analysis}>
-        <button
-          className={spendTab === "personal" ? "slide-tab active" : "slide-tab"}
-          type="button"
-          role="tab"
-          aria-selected={spendTab === "personal"}
-          onClick={() => onSelectSpendTab("personal")}
-        >
-          {text.personalSpend}
-        </button>
-        <button
-          className={spendTab === "group" ? "slide-tab active" : "slide-tab"}
-          type="button"
-          role="tab"
-          aria-selected={spendTab === "group"}
-          onClick={() => onSelectSpendTab("group")}
-        >
-          {text.groupSpend}
-        </button>
-        <i className="slide-tabs-indicator" aria-hidden="true" />
-      </div>
+          position is driven by data-active, not an inline transform.
+          A personal ledger has no 個人／群組 distinction - it's all the
+          same person - so the tabs don't exist there at all. */}
+      {personal ? null : (
+        <div className="slide-tabs" data-active={spendTab} role="tablist" aria-label={text.analysis}>
+          <button
+            className={spendTab === "personal" ? "slide-tab active" : "slide-tab"}
+            type="button"
+            role="tab"
+            aria-selected={spendTab === "personal"}
+            onClick={() => onSelectSpendTab("personal")}
+          >
+            {text.personalSpend}
+          </button>
+          <button
+            className={spendTab === "group" ? "slide-tab active" : "slide-tab"}
+            type="button"
+            role="tab"
+            aria-selected={spendTab === "group"}
+            onClick={() => onSelectSpendTab("group")}
+          >
+            {text.groupSpend}
+          </button>
+          <i className="slide-tabs-indicator" aria-hidden="true" />
+        </div>
+      )}
       <SpendPeriodSection
         breakdown={spendBreakdown.breakdown}
         periodKind={spendBreakdown.periodKind}
         periodKey={spendBreakdown.periodKey}
-        scope={spendTab}
+        scope={personal ? "group" : spendTab}
         loading={spendBreakdown.loading}
         error={spendBreakdown.error}
         currency={currency}
@@ -124,14 +138,18 @@ export function AnalysisPanel({
           <span>{UI_TEXT.analysis.totalAmount}</span>
           <strong>{formatAmount(totalExpenseMinor, currency)}</strong>
         </div>
-        <div>
-          <span>{text.members}</span>
-          <strong>{members.length}</strong>
-        </div>
-        <div>
-          <span>{text.debt}</span>
-          <strong>{formatAmount(debtAmountMinor, currency)}</strong>
-        </div>
+        {personal ? null : (
+          <>
+            <div>
+              <span>{text.members}</span>
+              <strong>{members.length}</strong>
+            </div>
+            <div>
+              <span>{text.debt}</span>
+              <strong>{formatAmount(debtAmountMinor, currency)}</strong>
+            </div>
+          </>
+        )}
       </div>
       {daysWithSpend >= 2 && (
         <div className="dialog-section-list">
@@ -146,6 +164,7 @@ export function AnalysisPanel({
           />
         </div>
       )}
+      {personal ? null : (
       <div className="dialog-section-list">
         <span className="dialog-list-title">{UI_TEXT.analysis.memberBalances}</span>
         {members.map((member) => {
@@ -162,6 +181,8 @@ export function AnalysisPanel({
           );
         })}
       </div>
+      )}
+      {personal ? null : (
       <div className="dialog-section-list">
         <span className="dialog-list-title">{UI_TEXT.settlement.suggestionSectionTitle}</span>
         {settlementTransfers.length ? (
@@ -224,6 +245,8 @@ export function AnalysisPanel({
           <p className="dialog-empty">{UI_TEXT.settlement.settled}</p>
         )}
       </div>
+      )}
+      {personal ? null : (
       <div className="dialog-section-list">
         <span className="dialog-list-title">{text.settlementHistoryTitle}</span>
         {settlementHistory.records.length ? (
@@ -261,6 +284,7 @@ export function AnalysisPanel({
           <p className="dialog-empty">{UI_TEXT.settlement.historyDegraded}</p>
         )}
       </div>
+      )}
     </>
   );
 }

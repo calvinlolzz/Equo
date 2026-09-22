@@ -7,7 +7,7 @@ import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
 
-function renderNav(variant?: "rail" | "drawer" | "menu", isOwner = true) {
+function renderNav(variant?: "rail" | "drawer" | "menu", isOwner = true, personal = false) {
   return render(
     <GroupSideNav
       variant={variant}
@@ -20,6 +20,7 @@ function renderNav(variant?: "rail" | "drawer" | "menu", isOwner = true) {
       onNavigate={() => {}}
       onArchive={() => {}}
       onDelete={() => {}}
+      personal={personal}
     />,
   );
 }
@@ -212,6 +213,46 @@ describe("the settings drawer's rows are evenly spaced", () => {
  * which is why this only ever showed on a phone — and why it is asserted
  * against the stylesheet rather than a rendered box.
  */
+describe("the group side nav for a personal ledger", () => {
+  const ledgerText = UI_TEXT.personalLedger;
+
+  // [MV]
+  test("the drawer drops 群組成員, keeping only 循環支出", () => {
+    renderNav("drawer", true, true);
+
+    expect(screen.queryByRole("button", { name: text.members })).toBeNull();
+    expect(screen.getByRole("button", { name: text.recurring })).toBeTruthy();
+  });
+
+  // [MV]
+  test("the menu hides archive/delete even for the owner", () => {
+    renderNav("menu", true, true);
+
+    expect(screen.queryByRole("button", { name: text.archiveGroup })).toBeNull();
+    expect(screen.queryByRole("button", { name: text.deleteGroup })).toBeNull();
+  });
+
+  test("the edit row reads 帳本設定, not 編輯群組", () => {
+    renderNav("menu", true, true);
+
+    expect(screen.getByRole("button", { name: ledgerText.settingsTitle })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: text.editGroup })).toBeNull();
+  });
+
+  test("the rail card header shows the name without a member count", () => {
+    const { container } = renderNav("rail", true, true);
+
+    expect(container.querySelector(".side-group-name")?.textContent).not.toContain(text.people);
+  });
+
+  test("a shared group (personal omitted) keeps every one of the above", () => {
+    renderNav("menu", true, false);
+
+    expect(screen.getByRole("button", { name: text.archiveGroup })).toBeTruthy();
+    expect(screen.getByRole("button", { name: text.editGroup })).toBeTruthy();
+  });
+});
+
 describe("the date field is aligned like the fields around it", () => {
   const baseCss = readAppStylesheet("app-base.css");
 

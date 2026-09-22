@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Expense } from "./appTypes";
 import { RecordsPanel } from "./RecordsPanel";
@@ -269,5 +269,37 @@ describe("swipe-row actions", () => {
     swipeLeft(rows[1]);
     expect(rows[1].style.transform).toBe("translateX(-144px)");
     expect(rows[0].style.transform).toBe("");
+  });
+});
+
+describe("RecordsPanel in a personal ledger", () => {
+  function openAdvancedFilters() {
+    fireEvent.click(screen.getByRole("button", { name: UI_TEXT.records.moreFilters }));
+  }
+
+  // [MV]
+  test("drops 結算 from the kind filter - a ledger has nobody to settle with", () => {
+    renderPanel(dailyExpenses(3), { personal: true });
+    const kindFilter = screen.getByRole("group", { name: UI_TEXT.records.kindFilter });
+
+    expect(within(kindFilter).queryByText(UI_TEXT.records.filterSettlement)).toBeNull();
+    expect(within(kindFilter).getByText(UI_TEXT.records.filterExpense)).toBeTruthy();
+    expect(within(kindFilter).getByText(UI_TEXT.records.filterIncome)).toBeTruthy();
+  });
+
+  // [MV]
+  test("hides the member filter - a ledger has only one member", () => {
+    renderPanel(dailyExpenses(3), { personal: true });
+    openAdvancedFilters();
+
+    expect(screen.queryByText(UI_TEXT.records.member)).toBeNull();
+  });
+
+  test("a shared-group render (personal omitted) still offers both", () => {
+    renderPanel(dailyExpenses(3));
+    openAdvancedFilters();
+
+    expect(screen.getByText(UI_TEXT.records.filterSettlement)).toBeTruthy();
+    expect(screen.getByText(UI_TEXT.records.member)).toBeTruthy();
   });
 });

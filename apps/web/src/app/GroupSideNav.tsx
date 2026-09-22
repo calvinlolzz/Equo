@@ -64,6 +64,12 @@ type GroupSideNavProps = {
   onNavigate: (id: string) => void;
   onArchive: () => void;
   onDelete: () => void;
+  /**
+   * True for the caller's own personal ledger: no members to list or invite,
+   * no archive/delete (the server rejects both - see handlers/groups.ts),
+   * and the edit row is 帳本設定 rather than 編輯群組.
+   */
+  personal?: boolean;
 };
 
 /**
@@ -89,9 +95,13 @@ export function GroupSideNav({
   onNavigate,
   onArchive,
   onDelete,
+  personal = false,
 }: GroupSideNavProps) {
   const closeDrawer = () => onBeforeNavigate?.();
-  const items = variant === "drawer" ? sideNavItems.filter((item) => DRAWER_ITEMS.has(item.id)) : sideNavItems;
+  const items = (variant === "drawer" ? sideNavItems.filter((item) => DRAWER_ITEMS.has(item.id)) : sideNavItems).filter(
+    (item) => !personal || item.id !== "members",
+  );
+  const editLabel = personal ? UI_TEXT.personalLedger.settingsTitle : text.editGroup;
 
   return (
     <>
@@ -105,7 +115,7 @@ export function GroupSideNav({
                 <button
                   className="side-edit-group"
                   type="button"
-                  aria-label={text.editGroup}
+                  aria-label={editLabel}
                   onClick={() => {
                     closeDrawer();
                     onEditGroup();
@@ -115,9 +125,14 @@ export function GroupSideNav({
                 </button>
               ) : null}
             </div>
-            <span>
-              {memberCount} {text.people}
-            </span>
+            {/* The ledger has exactly one member (its owner) - a count that
+                never varies is not information, so the header just doesn't
+                say it. */}
+            {personal ? null : (
+              <span>
+                {memberCount} {text.people}
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -168,7 +183,7 @@ export function GroupSideNav({
               }}
             >
               <Pencil aria-hidden="true" size={19} />
-              <span>{text.editGroup}</span>
+              <span>{editLabel}</span>
             </button>
           ) : null}
           <div className="side-settings-row">
@@ -182,7 +197,7 @@ export function GroupSideNav({
           </button>
         </div>
       </div>
-      {isOwner ? (
+      {isOwner && !personal ? (
         <div className="side-danger-actions">
           <button
             className="side-archive-action"

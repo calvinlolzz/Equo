@@ -206,3 +206,38 @@ describe("comments", () => {
     expect(screen.getByRole("alert").textContent).toContain("網路連線失敗");
   });
 });
+
+describe("ExpenseDetailDialog in a personal ledger", () => {
+  const app = UI_TEXT.app;
+
+  // [MV]
+  test("hides the payer and share-breakdown blocks for an expense", () => {
+    renderDialog({ personal: true });
+
+    expect(screen.queryByText(app.payerLabel)).toBeNull();
+    expect(screen.queryByText(app.shareBreakdown)).toBeNull();
+  });
+
+  // [MV]
+  test("hides the collector and beneficiary blocks for income", () => {
+    renderDialog({
+      personal: true,
+      expense: expense({
+        kind: "income",
+        payerId: "member_a",
+        shareMemberIds: ["member_a"],
+        payments: [{ payerId: "member_a", amountMinor: 100000 }],
+      }),
+    });
+
+    expect(screen.queryByText(app.incomeCollector)).toBeNull();
+    expect(screen.queryByText(app.incomeBeneficiaries)).toBeNull();
+  });
+
+  test("a shared-group render (personal omitted) still shows the payer and share blocks", () => {
+    renderDialog();
+
+    expect(screen.getByText(app.payerLabel)).toBeTruthy();
+    expect(screen.getByText(app.shareBreakdown)).toBeTruthy();
+  });
+});

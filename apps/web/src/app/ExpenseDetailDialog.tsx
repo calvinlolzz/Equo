@@ -41,6 +41,7 @@ export function ExpenseDetailDialog({
   comments,
   currentMemberId,
   isGroupOwner = false,
+  personal = false,
 }: {
   expense: Expense;
   members: Member[];
@@ -67,6 +68,13 @@ export function ExpenseDetailDialog({
   currentMemberId?: string;
   /** Group owners can withdraw anybody's comment; the server enforces the same rule. */
   isGroupOwner?: boolean;
+  /**
+   * True for the caller's own personal ledger. Hides the collector/
+   * beneficiary blocks (income) and the payer/share blocks (expense) - a
+   * one-member ledger's payer and share are always the same person, so
+   * neither is a fact worth a section of its own.
+   */
+  personal?: boolean;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [viewingImage, setViewingImage] = useState(false);
@@ -246,7 +254,7 @@ export function ExpenseDetailDialog({
           </p>
         ) : null}
 
-        {isIncome ? (
+        {isIncome && !personal ? (
           <>
             <div className="dialog-section-list">
               <span className="dialog-list-title">{text.incomeCollector}</span>
@@ -275,7 +283,7 @@ export function ExpenseDetailDialog({
           </>
         ) : null}
 
-        {!isSettlement && !isIncome ? (
+        {!isSettlement && !isIncome && !personal ? (
           <div className="dialog-section-list">
             <span className="dialog-list-title">{text.payerLabel}</span>
             {payments.length > 1 ? (
@@ -302,7 +310,7 @@ export function ExpenseDetailDialog({
           </div>
         ) : null}
 
-        {!isSettlement && !isIncome ? (
+        {!isSettlement && !isIncome && !personal ? (
           <div className="dialog-section-list">
             <span className="dialog-list-title">{text.shareBreakdown}</span>
             {shareMembers.map((member) => (

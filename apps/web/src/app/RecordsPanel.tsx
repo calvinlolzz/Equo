@@ -68,6 +68,12 @@ type RecordsPanelProps = {
    * has to work too, and a flag that is already true is not an event.
    */
   focusSearchSignal?: number;
+  /**
+   * True for the caller's own personal ledger. There is no settlement kind
+   * to filter by (a ledger has nobody to settle with) and no other member to
+   * filter by either, so both drop out of the advanced filters.
+   */
+  personal?: boolean;
 };
 
 /** The 支出記錄 bottom-sheet content (stats, search/filter, CSV export, expense rows, recent activity). */
@@ -89,8 +95,10 @@ export function RecordsPanel({
   searchExpenses,
   describeError,
   focusSearchSignal = 0,
+  personal = false,
 }: RecordsPanelProps) {
   const [filter, setFilter] = useState<ExpenseFilter>(EMPTY_EXPENSE_FILTER);
+  const kindOptions = personal ? KIND_OPTIONS.filter((option) => option.value !== "settlement") : KIND_OPTIONS;
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [rowLimit, setRowLimit] = useState(RENDER_WINDOW_STEP);
@@ -247,7 +255,7 @@ export function RecordsPanel({
         </div>
 
         <div className="records-chip-row" role="group" aria-label={UI_TEXT.records.kindFilter}>
-          {KIND_OPTIONS.map((option) => (
+          {kindOptions.map((option) => (
             <button
               key={option.value || "all"}
               type="button"
@@ -262,17 +270,19 @@ export function RecordsPanel({
 
         {advancedOpen ? (
           <div className="records-filter__advanced">
-            <label>
-              <span>{UI_TEXT.records.member}</span>
-              <select value={filter.memberId} onChange={(event) => patchFilter({ memberId: event.target.value })}>
-                <option value="">{UI_TEXT.records.allMembers}</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {personal ? null : (
+              <label>
+                <span>{UI_TEXT.records.member}</span>
+                <select value={filter.memberId} onChange={(event) => patchFilter({ memberId: event.target.value })}>
+                  <option value="">{UI_TEXT.records.allMembers}</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
               <span>{UI_TEXT.records.category}</span>
               <select value={filter.category} onChange={(event) => patchFilter({ category: event.target.value })}>

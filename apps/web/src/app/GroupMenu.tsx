@@ -48,6 +48,8 @@ type GroupMenuProps = {
   onNavigate: (id: string) => void;
   onArchive: () => void;
   onDelete: () => void;
+  /** True for the caller's own personal ledger - passed straight through to GroupSideNav. */
+  personal?: boolean;
 };
 
 /**
@@ -74,6 +76,7 @@ export function GroupMenu({
   onNavigate,
   onArchive,
   onDelete,
+  personal = false,
 }: GroupMenuProps) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
@@ -181,6 +184,7 @@ export function GroupMenu({
             currency={currency}
             exporting={exporting}
             isOwner={isOwner}
+            personal={personal}
             onBeforeNavigate={() => setOpen(false)}
             onEditGroup={onEditGroup}
             onNavigate={onNavigate}

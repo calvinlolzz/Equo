@@ -1774,6 +1774,7 @@ export function App() {
                   onNavigate={handleSideNavClick}
                   onArchive={() => setDialog("archive")}
                   onDelete={() => setDialog("delete")}
+                  personal={activeIsPersonal}
                 />
               }
               expenses={expenses}
@@ -1807,6 +1808,7 @@ export function App() {
                   onNavigate={handleSideNavClick}
                   onArchive={() => setDialog("archive")}
                   onDelete={() => setDialog("delete")}
+                  personal={activeIsPersonal}
                 />
               }
               members={members}
@@ -1859,6 +1861,7 @@ export function App() {
                 onNavigate={handleSideNavClick}
                 onArchive={() => setDialog("archive")}
                 onDelete={() => setDialog("delete")}
+                personal={activeIsPersonal}
               />
             ) : null}
           </aside>
@@ -1881,6 +1884,7 @@ export function App() {
                 onArchive={() => setDialog("archive")}
                 onDelete={() => setDialog("delete")}
                 onBeforeNavigate={() => setSettingsDrawerOpen(false)}
+                personal={activeIsPersonal}
               />
             ) : null}
               </div>
@@ -2147,6 +2151,7 @@ export function App() {
           comments={cloudStore && !activeIsPersonal ? expenseComments : undefined}
           currentMemberId={currentMember?.id}
           isGroupOwner={isCurrentMemberOwner}
+          personal={activeIsPersonal}
         />
         </Suspense>
       ) : null}
@@ -2301,6 +2306,7 @@ export function App() {
                   searchExpenses={searchExpensesInGroup}
                   describeError={describeCloudActionError}
                   focusSearchSignal={focusSearchSignal}
+                  personal={activeIsPersonal}
                 />
                 </Suspense>
               ) : null}
@@ -2346,6 +2352,7 @@ export function App() {
                   spendTab={spendTab}
                   onSelectSpendTab={setSpendTab}
                   spendBreakdown={spendBreakdown}
+                  personal={activeIsPersonal}
                 />
                 </Suspense>
               ) : null}
