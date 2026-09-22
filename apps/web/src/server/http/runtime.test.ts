@@ -1314,6 +1314,44 @@ describe("read-only view-as", () => {
     expect(response.status).toBe(200);
   });
 
+  test("GET /api/v1/groups under view-as makes no ensure_personal_ledger rpc call", async () => {
+    // The gate is the cookie's mere presence, matching blocksWrite's
+    // fail-closed stance - so this must hold even though the cookie here is a
+    // perfectly valid one and the read otherwise succeeds.
+    const token = await viewAsCookie();
+    const rpcCalls: string[] = [];
+    const client = makeClient();
+    const trackingClient: PostgrestClient = {
+      ...client,
+      async rpc(fn, args) {
+        rpcCalls.push(fn);
+        return client.rpc(fn, args);
+      },
+    };
+    const runtime = createHttpRuntime({
+      client: trackingClient,
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: idToken,
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+      sessionSecret: "session-secret",
+      now: 1_000,
+    });
+
+    const response = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/groups",
+      headers: { cookie: `equo_view_as=${token}` },
+      json: undefined,
+    });
+
+    expect(response.status).toBe(200);
+    expect(rpcCalls).not.toContain("ensure_personal_ledger");
+  });
+
   test("leaving the view is reachable from inside it, and clears the cookie", async () => {
     // If this 403s, the mode has no exit and the admin is stuck as somebody
     // else until the token lapses.

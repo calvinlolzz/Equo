@@ -31,6 +31,42 @@ function forbidden(request_id = "req_unknown"): HandlerResult<never> {
   };
 }
 
+/**
+ * A well-formed request a personal ledger cannot take: invites, virtual
+ * members, archive, delete. Archive and delete are refused rather than
+ * allowed because a deleted ledger would just be re-created empty on the next
+ * list fetch, and an archived one would vanish for good (listGroups filters
+ * archived_at) with no UI path back.
+ */
+function personalLedgerConflict(request_id: string): HandlerResult<never> {
+  return {
+    ok: false,
+    status: 409,
+    body: {
+      error: {
+        code: "PERSONAL_LEDGER",
+        message: "Your personal ledger can't have members, or be archived or deleted.",
+        request_id,
+      },
+    },
+  };
+}
+
+/**
+ * Called AFTER the membership/owner check on each guarded write, so a
+ * non-member of a personal ledger still gets the ordinary 403 and learns
+ * nothing about the group's kind - only an active member (or owner) can ever
+ * see the 409.
+ */
+async function rejectIfPersonal(
+  repository: GroupRepository,
+  groupId: string,
+  request_id: string,
+): Promise<HandlerResult<never> | null> {
+  const meta = await repository.findGroupMeta(groupId);
+  return meta?.kind === "personal" ? personalLedgerConflict(request_id) : null;
+}
+
 function memberNotFound(request_id: string): HandlerResult<never> {
   return {
     ok: false,
@@ -155,8 +191,30 @@ export async function handleCreateGroup(
   } satisfies HandlerResult<unknown>;
 }
 
-export async function handleListGroups(repository: GroupRepository, context: AuthenticatedContext) {
+export async function handleListGroups(
+  repository: GroupRepository,
+  context: AuthenticatedContext,
+  options: { ensurePersonalLedger?: boolean } = {},
+) {
   const groups = await repository.listGroups(context);
+
+  // Default false so every existing caller (view-as reads, in particular -
+  // see listGroupsRoute/runtime.ts) and every existing test is unchanged.
+  // When on and the list has no personal row - including users whose ledger
+  // fell outside the 50-membership cap - get-or-create one and append it.
+  // Fail-open, same as the balance decoration in supabaseGroupRepository.ts:
+  // a maintenance window or a read-only database must not turn a normal group
+  // list into a 500.
+  if (options.ensurePersonalLedger && !groups.some((group) => group.kind === "personal")) {
+    try {
+      const ledger = await repository.ensurePersonalLedger(context);
+      if (ledger) {
+        groups.push({ ...ledger, unread_count: 0 });
+      }
+    } catch (error) {
+      console.warn("[groups] ensure_personal_ledger unavailable:", error);
+    }
+  }
 
   return {
     ok: true,
@@ -220,7 +278,14 @@ export async function handleUpdateGroup(
     return invalidMember("monthly_budget_minor must be a positive whole number, or null to clear it.", request.client_request_id);
   }
 
-  const { group, previousCoverImageUrl } = await repository.updateGroup(groupId, request);
+  // A personal ledger's name isn't renameable (the UI always shows the
+  // translated label, and old PWA clients would otherwise be able to rename
+  // the raw stored name out from under it) - budget changes still go through,
+  // so this replaces the request's name rather than rejecting the write.
+  const meta = await repository.findGroupMeta(groupId);
+  const effectiveRequest = meta?.kind === "personal" ? { ...request, name: meta.name } : request;
+
+  const { group, previousCoverImageUrl } = await repository.updateGroup(groupId, effectiveRequest);
   await repository.recordClientRequest(groupId, request.client_request_id, group.id);
 
   // Clean up the previous cover once it's actually been replaced by a
@@ -255,6 +320,12 @@ export async function handleArchiveGroup(
 
   if (owner.ok === false) {
     return owner.error;
+  }
+
+  const conflict = await rejectIfPersonal(repository, groupId, clientRequestId);
+
+  if (conflict) {
+    return conflict;
   }
 
   const group = await repository.archiveGroup(groupId);
@@ -301,6 +372,12 @@ export async function handleDeleteGroup(
     return owner.error;
   }
 
+  const conflict = await rejectIfPersonal(repository, groupId, clientRequestId);
+
+  if (conflict) {
+    return conflict;
+  }
+
   const group = await repository.deleteGroup(groupId);
   await repository.recordClientRequest(groupId, clientRequestId, group.id);
 
@@ -342,6 +419,12 @@ export async function handleCreateVirtualMember(
 
   if (!member) {
     return forbidden(request.client_request_id);
+  }
+
+  const conflict = await rejectIfPersonal(repository, groupId, request.client_request_id);
+
+  if (conflict) {
+    return conflict;
   }
 
   const virtualMember = await repository.createVirtualMember(groupId, request.display_name.trim());
@@ -487,6 +570,12 @@ export async function handleCreateInvite(
 
   if (!member) {
     return forbidden(request.client_request_id);
+  }
+
+  const conflict = await rejectIfPersonal(repository, groupId, request.client_request_id);
+
+  if (conflict) {
+    return conflict;
   }
 
   const invite = await repository.createInvite(context, groupId, request);

@@ -25,6 +25,16 @@ const groupRow = {
   cover_image_url: null,
 };
 
+const personalLedgerRow = {
+  id: "group_ledger",
+  name: "我的帳本",
+  currency: "TWD",
+  owner_member_id: "member_owner",
+  cover_image_url: null,
+  monthly_budget_minor: null,
+  kind: "personal",
+};
+
 const memberRow = {
   id: "member_owner",
   group_id: "group_1",
@@ -154,6 +164,9 @@ describe("createSupabaseGroupRepository", () => {
     // Without this the list comes back in PostgREST's unspecified order and
     // silently stops being sorted by recent activity.
     expect(groupsRead.query).toContain("order=updated_at.desc,created_at.desc");
+    // kind must be selected, or the personal-ledger row in the list is
+    // indistinguishable from an ordinary shared group.
+    expect(groupsRead.query).toContain("kind");
   });
 
   test("decorates each listed group with its unread count, defaulting to zero", async () => {
@@ -204,6 +217,35 @@ describe("createSupabaseGroupRepository", () => {
 
     expect(groups).toEqual([{ ...groupRow, unread_count: 0 }]);
     expect("balance_minor" in groups[0]).toBe(false);
+  });
+
+  test("ensurePersonalLedger calls the get-or-create RPC with the caller's own id", async () => {
+    const client = makeClient({ rpc: () => personalLedgerRow });
+
+    await expect(createSupabaseGroupRepository(client).ensurePersonalLedger(context)).resolves.toEqual(
+      personalLedgerRow,
+    );
+    expect(client.rpcCall("ensure_personal_ledger")?.args).toEqual({ p_user: "user_alice" });
+  });
+
+  test("findGroupMeta selects kind and name for a non-deleted group by id", async () => {
+    const client = makeClient({
+      select: (table) => (table === "groups" ? [{ kind: "personal", name: "我的帳本" }] : []),
+    });
+
+    await expect(createSupabaseGroupRepository(client).findGroupMeta("group_ledger")).resolves.toEqual({
+      kind: "personal",
+      name: "我的帳本",
+    });
+
+    const call = client.calls[0] as { query: string };
+    expect(call.query).toBe("select=kind,name&id=eq.group_ledger&deleted_at=is.null&limit=1");
+  });
+
+  test("findGroupMeta returns null for a missing or deleted group", async () => {
+    const client = makeClient({ select: () => [] });
+
+    await expect(createSupabaseGroupRepository(client).findGroupMeta("group_ghost")).resolves.toBeNull();
   });
 
   test("marking a group read is scoped to the caller's own membership", async () => {

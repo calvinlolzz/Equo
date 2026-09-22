@@ -10,6 +10,16 @@ import type { MemberBalance } from "../../domain/settlement.js";
 
 export type GroupMemberRole = "owner" | "member";
 
+/**
+ * "shared" is an ordinary multi-member group. "personal" is the one-member
+ * 個人帳本 (personal ledger) every user gets lazily via ensurePersonalLedger -
+ * same tables, same RPCs, just with invites/members/archive/delete refused.
+ * Optional on GroupRecord because most read paths (get_group_detail in
+ * particular) don't return it yet - see cloudAdapters.ts's
+ * inheritListGroupFields for how the client fills the gap from the list.
+ */
+export type GroupKind = "shared" | "personal";
+
 export type GroupRecord = {
   id: string;
   name: string;
@@ -18,6 +28,7 @@ export type GroupRecord = {
   cover_image_url?: string | null;
   /** 每月預算 in the group's currency; null when nobody set one. */
   monthly_budget_minor?: number | null;
+  kind?: GroupKind;
   /**
    * Entries recorded by somebody else since the caller last opened this group.
    * Only listGroups fills it in - every other read leaves it undefined, since
@@ -131,6 +142,20 @@ export type InvitePreview = {
 
 export type GroupRepository = {
   listGroups(context: AuthenticatedContext): Promise<GroupRecord[]>;
+  /**
+   * Get-or-create the caller's personal ledger (RPC ensure_personal_ledger).
+   * Null when the user has no profiles row to satisfy groups.owner_id's
+   * foreign key - see the migration - which handleListGroups treats as
+   * "skip decorating this list", not as an error.
+   */
+  ensurePersonalLedger(context: AuthenticatedContext): Promise<GroupRecord | null>;
+  /**
+   * The bare minimum needed to guard and rename-override a write against a
+   * group without paying for a full getGroupDetail: is it a personal ledger,
+   * and what's its stored name. Null when the group doesn't exist or is
+   * deleted.
+   */
+  findGroupMeta(groupId: string): Promise<{ kind: GroupKind; name: string } | null>;
   /**
    * Stamp "the caller has now seen this group", clearing its unread count.
    * Returns null when they are not an active member of it.

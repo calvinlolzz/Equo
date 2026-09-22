@@ -25,14 +25,20 @@ import {
   INVITE_EXPIRED,
   type ArchivedGroupRecord,
   type GroupDetailRecord,
+  type GroupKind,
   type GroupMemberRecord,
   type GroupRecord,
   type GroupRepository,
   type InviteRecord,
 } from "./groupRepository.js";
 
-/** The column list every GroupRecord-shaped read/write returns. */
-const GROUP_COLUMNS = "id,name,currency,owner_member_id,cover_image_url,monthly_budget_minor";
+/**
+ * The column list every GroupRecord-shaped read/write returns. `kind` must
+ * not be selected before the personal-ledger migration has been applied -
+ * PostgREST 400s on an unknown column, which is why that migration has to
+ * ship before this server code does (see the plan's deploy-order risk).
+ */
+const GROUP_COLUMNS = "id,name,currency,owner_member_id,cover_image_url,monthly_budget_minor,kind";
 /** The column list every GroupMemberRecord-shaped read/write returns. */
 const MEMBER_COLUMNS = "id,group_id,user_id,display_name,role,status,payment_note";
 
@@ -273,6 +279,19 @@ export function createSupabaseGroupRepository(client: PostgrestClient): GroupRep
           ...(balanceMinor === undefined ? {} : { balance_minor: balanceMinor }),
         };
       });
+    },
+
+    async ensurePersonalLedger(context: AuthenticatedContext) {
+      return client.rpc<GroupRecord | null>("ensure_personal_ledger", { p_user: context.user.id });
+    },
+
+    async findGroupMeta(groupId: string) {
+      return optionalRow(
+        await client.select<{ kind: GroupKind; name: string }>(
+          "groups",
+          query(columns("kind,name"), eq("id", groupId), isNull("deleted_at"), limit(1)),
+        ),
+      );
     },
 
     async markGroupRead(context: AuthenticatedContext, groupId: string) {

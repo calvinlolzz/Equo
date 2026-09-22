@@ -33,6 +33,12 @@ function makeRepository(overrides: Partial<GroupRepository> = {}): GroupReposito
     async listGroups() {
       return [{ id: "group_1", name: "Tokyo Trip", currency: "TWD", owner_member_id: "member_owner" }];
     },
+    async findGroupMeta() {
+      return { kind: "shared", name: "Tokyo Trip" };
+    },
+    async ensurePersonalLedger() {
+      return null;
+    },
     async previewInvite() {
       return { group_name: "Tokyo Trip", member_count: 4 };
     },
@@ -797,6 +803,207 @@ describe("group handlers", () => {
     expect(!positive.ok && positive.body.error.code).toBe("MEMBER_HAS_BALANCE");
     expect(negative.status).toBe(409);
     expect(!negative.ok && negative.body.error.code).toBe("MEMBER_HAS_BALANCE");
+  });
+});
+
+describe("handleListGroups: ensure-on-list", () => {
+  test("ensures a personal ledger when the option is on and the list has none, and appends it", async () => {
+    let calls = 0;
+    const repository = makeRepository({
+      async ensurePersonalLedger() {
+        calls += 1;
+        return {
+          id: "group_ledger",
+          name: "我的帳本",
+          currency: "TWD",
+          owner_member_id: "member_owner",
+          kind: "personal",
+        };
+      },
+    });
+
+    const result = await handleListGroups(repository, context, { ensurePersonalLedger: true });
+
+    expect(calls).toBe(1);
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({
+      groups: [{ id: "group_1" }, { id: "group_ledger", kind: "personal", unread_count: 0 }],
+    });
+  });
+
+  test("does not call ensurePersonalLedger when the list already has a personal ledger", async () => {
+    let calls = 0;
+    const repository = makeRepository({
+      async listGroups() {
+        return [
+          { id: "group_ledger", name: "我的帳本", currency: "TWD", owner_member_id: "member_owner", kind: "personal" as const },
+        ];
+      },
+      async ensurePersonalLedger() {
+        calls += 1;
+        return null;
+      },
+    });
+
+    const result = await handleListGroups(repository, context, { ensurePersonalLedger: true });
+
+    expect(calls).toBe(0);
+    expect(result.ok && result.body).toMatchObject({ groups: [{ id: "group_ledger" }] });
+  });
+
+  test("does not call ensurePersonalLedger when the option is absent (view-as)", async () => {
+    let calls = 0;
+    const repository = makeRepository({
+      async ensurePersonalLedger() {
+        calls += 1;
+        return null;
+      },
+    });
+
+    const result = await handleListGroups(repository, context);
+
+    expect(calls).toBe(0);
+    expect(result.ok && result.body).toMatchObject({ groups: [{ id: "group_1" }] });
+  });
+
+  test("a failing ensurePersonalLedger does not break the list (fail-open)", async () => {
+    const repository = makeRepository({
+      async ensurePersonalLedger() {
+        throw new Error("db unavailable");
+      },
+    });
+
+    const result = await handleListGroups(repository, context, { ensurePersonalLedger: true });
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toMatchObject({ groups: [{ id: "group_1" }] });
+  });
+});
+
+describe("personal ledger write guards", () => {
+  function personalRepository(overrides: Partial<GroupRepository> = {}): GroupRepository {
+    return makeRepository({
+      async findGroupMeta() {
+        return { kind: "personal", name: "我的帳本" };
+      },
+      ...overrides,
+    });
+  }
+
+  test("rejects invite creation on a personal ledger with 409 PERSONAL_LEDGER, never reaching the repository", async () => {
+    let called = false;
+    const repository = personalRepository({
+      async createInvite(): Promise<never> {
+        called = true;
+        throw new Error("should not be called");
+      },
+    });
+
+    const result = await handleCreateInvite(repository, context, "group_ledger", {
+      client_request_id: "req_invite",
+      max_uses: 5,
+    });
+
+    expect(result.status).toBe(409);
+    expect(!result.ok && result.body.error.code).toBe("PERSONAL_LEDGER");
+    expect(called).toBe(false);
+  });
+
+  test("rejects virtual member creation on a personal ledger with 409 PERSONAL_LEDGER, never reaching the repository", async () => {
+    let called = false;
+    const repository = personalRepository({
+      async createVirtualMember(): Promise<never> {
+        called = true;
+        throw new Error("should not be called");
+      },
+    });
+
+    const result = await handleCreateVirtualMember(repository, context, "group_ledger", {
+      client_request_id: "req_virtual_member",
+      display_name: "Bob",
+    });
+
+    expect(result.status).toBe(409);
+    expect(!result.ok && result.body.error.code).toBe("PERSONAL_LEDGER");
+    expect(called).toBe(false);
+  });
+
+  test("rejects archiving a personal ledger with 409 PERSONAL_LEDGER, never reaching the repository", async () => {
+    let called = false;
+    const repository = personalRepository({
+      async archiveGroup(): Promise<never> {
+        called = true;
+        throw new Error("should not be called");
+      },
+    });
+
+    const result = await handleArchiveGroup(repository, context, "group_ledger", "req_archive");
+
+    expect(result.status).toBe(409);
+    expect(!result.ok && result.body.error.code).toBe("PERSONAL_LEDGER");
+    expect(called).toBe(false);
+  });
+
+  test("rejects deleting a personal ledger with 409 PERSONAL_LEDGER, never reaching the repository", async () => {
+    let called = false;
+    const repository = personalRepository({
+      async deleteGroup(): Promise<never> {
+        called = true;
+        throw new Error("should not be called");
+      },
+    });
+
+    const result = await handleDeleteGroup(repository, context, "group_ledger", "req_delete");
+
+    expect(result.status).toBe(409);
+    expect(!result.ok && result.body.error.code).toBe("PERSONAL_LEDGER");
+    expect(called).toBe(false);
+  });
+
+  test("a non-member of a personal ledger gets the ordinary 403, not 409 - learns nothing about its kind", async () => {
+    const repository = personalRepository({
+      findActiveMember: async () => null,
+    });
+
+    const result = await handleCreateInvite(repository, context, "group_ledger", {
+      client_request_id: "req_invite",
+      max_uses: 5,
+    });
+
+    expect(result.status).toBe(403);
+    expect(!result.ok && result.body.error.code).toBe("FORBIDDEN");
+  });
+
+  test("updating a personal ledger keeps its stored name while the budget still passes through", async () => {
+    let received: { name: string; monthly_budget_minor?: number | null } | undefined;
+    const repository = personalRepository({
+      async updateGroup(groupId, request) {
+        received = request;
+        return {
+          group: {
+            id: groupId,
+            name: request.name,
+            currency: "TWD",
+            owner_member_id: "member_owner",
+            kind: "personal",
+            monthly_budget_minor: request.monthly_budget_minor ?? null,
+          },
+          previousCoverImageUrl: null,
+        };
+      },
+    });
+
+    const result = await handleUpdateGroup(repository, context, "group_ledger", {
+      client_request_id: "req_update_ledger",
+      name: "改個名字",
+      monthly_budget_minor: 500000,
+    });
+
+    expect(result.status).toBe(200);
+    expect(received).toMatchObject({ name: "我的帳本", monthly_budget_minor: 500000 });
+    expect(result.ok && result.body).toMatchObject({
+      group: { name: "我的帳本", monthly_budget_minor: 500000 },
+    });
   });
 });
 

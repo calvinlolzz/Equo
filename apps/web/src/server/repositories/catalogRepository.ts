@@ -13,6 +13,14 @@ export type CatalogCategoryRecord = {
   label: string;
   /** Hex, used by the analysis donut. */
   color: string;
+  /**
+   * "shared" | "personal" | "income" — which ledger kind and composer mode
+   * offers this category. Optional because a server running before the
+   * category_scope migration returns rows with no such field at all; the RPC
+   * result passes straight through, so the client's normalizeScope is what
+   * turns an absent value into "shared".
+   */
+  scope?: "shared" | "personal" | "income";
 };
 
 export type CatalogCurrencyRecord = {

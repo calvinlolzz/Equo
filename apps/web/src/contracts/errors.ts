@@ -77,6 +77,11 @@ export const errorCodes = [
    * waiting to be written to somebody else's ledger.
    */
   "VIEW_AS_READONLY",
+  /**
+   * A well-formed request that a personal ledger cannot take: invites,
+   * members, archive, delete.
+   */
+  "PERSONAL_LEDGER",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

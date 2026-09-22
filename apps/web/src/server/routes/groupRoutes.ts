@@ -57,14 +57,19 @@ export async function createGroupRoute(options: RouteOptions, request: CreateGro
   return handleCreateGroup(createSupabaseGroupRepository(options.client), auth.context, request);
 }
 
-export async function listGroupsRoute(options: RouteOptions) {
+export async function listGroupsRoute(
+  options: RouteOptions,
+  flags: { ensurePersonalLedger: boolean },
+) {
   const auth = await buildAuthContext(options);
 
   if (auth.ok === false) {
     return { ok: false, status: 401, body: auth.error };
   }
 
-  return handleListGroups(createSupabaseGroupRepository(options.client), auth.context);
+  return handleListGroups(createSupabaseGroupRepository(options.client), auth.context, {
+    ensurePersonalLedger: flags.ensurePersonalLedger,
+  });
 }
 
 export async function markGroupReadRoute(options: RouteOptions, groupId: string) {

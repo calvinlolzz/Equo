@@ -132,7 +132,7 @@ import { getAuthToken, type HttpRuntimeRequest, type HttpRuntimeResponse } from 
 import { errorResponse, jsonResponse } from "./jsonResponse.js";
 import { enforceRateLimit } from "./rateLimit.js";
 import { blocksRequest, loadSiteNotice } from "./maintenance.js";
-import { blocksWrite, viewingAs } from "./viewAs.js";
+import { blocksWrite, viewAsToken, viewingAs } from "./viewAs.js";
 
 type RuntimeOptions = {
   client: PostgrestClient;
@@ -314,7 +314,13 @@ export function createHttpRuntime(options: RuntimeOptions) {
       pattern: /^\/api\/v1\/groups$/,
       label: "GET /api/v1/groups",
       async handle(request) {
-        const result = await listGroupsRoute(routeOptions(options, request));
+        // A view-as read must never write, even a get-or-create - the cookie's
+        // mere PRESENCE is checked here (not its validity), matching
+        // blocksWrite's fail-closed stance: anything that isn't provably an
+        // ordinary session skips the ensure-on-list side effect.
+        const result = await listGroupsRoute(routeOptions(options, request), {
+          ensurePersonalLedger: !viewAsToken(request),
+        });
         return jsonResponse(result.status, result.body);
       },
     },
