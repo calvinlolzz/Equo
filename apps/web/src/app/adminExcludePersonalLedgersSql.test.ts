@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 
 /**
  * Static guard on the admin-console patch migration, mirroring
- * personalMonthSharesSql.test.ts's approach: this repo has no integration
+ * catalogSeed.test.ts's approach: this repo has no integration
  * test against a live database, so the invariants the migration's own
  * guards rely on are pinned as source text too.
  */

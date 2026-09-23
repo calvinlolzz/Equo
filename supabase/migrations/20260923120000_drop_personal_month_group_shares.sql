@@ -1,0 +1,19 @@
+-- Drops personal_month_group_shares, the RPC behind GET /api/v1/me/group-shares.
+--
+-- Why: the personal ledger's home screen no longer folds group shares into
+-- its 本月支出 headline - the owner's call was that My Ledger (我的帳本)
+-- should count only what is recorded in it, and the group-shares list under
+-- it is gone entirely. The callers were removed across five commits on
+-- feat/aurora-restyle: 3113199 (ledger home), 2454965 (分析), 5db885b
+-- (client store/cache/adapter/API client), e3b1fb7 (server route/handler/
+-- repository) and 0afb729 (copy). This migration is the last step, dropping
+-- the now-unused function and its grants (grants go with the function - a
+-- REVOKE on a dropped function is a no-op, nothing to clean up separately).
+--
+-- APPLY ONLY AFTER DEPLOY: apply this migration only after the client and
+-- server that stop calling personal_month_group_shares are live in
+-- production. Applying it earlier would make the OLD server's route 500 at
+-- the RPC (rather than the quiet 404 an already-removed route gives an old
+-- client - see e3b1fb7's commit message), for however long the old and new
+-- deploys overlap.
+DROP FUNCTION IF EXISTS public.personal_month_group_shares(uuid, text);

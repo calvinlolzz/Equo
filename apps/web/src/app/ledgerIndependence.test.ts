@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
  * its home screen, its 分析, or any client/server plumbing. This repo has no
  * integration test against a live database, so the "it's really gone"
  * invariant is pinned as source text too, mirroring
- * personalMonthSharesSql.test.ts's approach.
+ * catalogSeed.test.ts's approach.
  */
 const APP_DIR = __dirname;
 const SERVER_DIR = join(__dirname, "..", "server");
