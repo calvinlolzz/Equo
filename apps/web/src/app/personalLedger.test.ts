@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Expense } from "./appTypes";
 import {
-  combineLedgerMonth,
   currentMonthKey,
   groupDisplayName,
   isPersonalGroup,
@@ -9,9 +8,6 @@ import {
   ledgerMonthKey,
   orderGroupsForRail,
   summarizeLedgerMonth,
-  type GroupShareMonth,
-  type LedgerMonthSummary,
-  type PersonalShares,
 } from "./personalLedger";
 import { UI_TEXT } from "./uiText";
 
@@ -166,101 +162,6 @@ describe("summarizeLedgerMonth", () => {
     expect(summarizeLedgerMonth(expenses, "2026-09", "TWD").byCategory).toEqual([
       { category: " ", totalMinor: 10000 },
     ]);
-  });
-});
-
-function ownMonth(overrides: Partial<LedgerMonthSummary> = {}): LedgerMonthSummary {
-  return { expenseMinor: 10000, incomeMinor: 0, netMinor: -10000, byCategory: [{ category: "food", totalMinor: 10000 }], ...overrides };
-}
-
-function groupShare(overrides: Partial<GroupShareMonth> = {}): GroupShareMonth {
-  return {
-    groupId: "group_1",
-    name: "Tokyo Trip",
-    currency: "TWD",
-    archived: false,
-    shareMinor: 3000,
-    expenseCount: 1,
-    byCategory: [{ category: "food", totalMinor: 3000 }],
-    ...overrides,
-  };
-}
-
-describe("combineLedgerMonth", () => {
-  // [MV]
-  test("a same-currency share adds to both expenseMinor and netMinor", () => {
-    const own = ownMonth();
-    const shares: PersonalShares = { month: "2026-09", groups: [groupShare({ currency: "TWD", shareMinor: 3000 })] };
-
-    const view = combineLedgerMonth(own, shares, "2026-09", "TWD");
-
-    expect(view.expenseMinor).toBe(13000);
-    expect(view.ownExpenseMinor).toBe(10000);
-    expect(view.groupShareMinor).toBe(3000);
-    expect(view.netMinor).toBe(0 - 13000);
-    expect(view.countedGroups.map((g) => g.groupId)).toEqual(["group_1"]);
-    expect(view.uncountedGroups).toEqual([]);
-    expect(view.sharesKnown).toBe(true);
-  });
-
-  // [MV]
-  test("a JPY group goes to uncountedGroups and is not summed", () => {
-    const own = ownMonth();
-    const shares: PersonalShares = { month: "2026-09", groups: [groupShare({ currency: "JPY", shareMinor: 99999 })] };
-
-    const view = combineLedgerMonth(own, shares, "2026-09", "TWD");
-
-    expect(view.expenseMinor).toBe(own.expenseMinor);
-    expect(view.groupShareMinor).toBe(0);
-    expect(view.countedGroups).toEqual([]);
-    expect(view.uncountedGroups.map((g) => g.groupId)).toEqual(["group_1"]);
-  });
-
-  // [MV]
-  test("a month mismatch gives sharesKnown:false and own-only figures", () => {
-    const own = ownMonth();
-    const shares: PersonalShares = { month: "2026-08", groups: [groupShare()] };
-
-    const view = combineLedgerMonth(own, shares, "2026-09", "TWD");
-
-    expect(view.sharesKnown).toBe(false);
-    expect(view.groupShareMinor).toBe(0);
-    expect(view.expenseMinor).toBe(own.expenseMinor);
-    expect(view.countedGroups).toEqual([]);
-    expect(view.uncountedGroups).toEqual([]);
-  });
-
-  test("categories merge across own and counted groups, sorted descending", () => {
-    const own = ownMonth({
-      expenseMinor: 10000,
-      byCategory: [
-        { category: "food", totalMinor: 6000 },
-        { category: "transport", totalMinor: 4000 },
-      ],
-    });
-    const shares: PersonalShares = {
-      month: "2026-09",
-      groups: [groupShare({ shareMinor: 5000, byCategory: [{ category: "food", totalMinor: 5000 }] })],
-    };
-
-    const view = combineLedgerMonth(own, shares, "2026-09", "TWD");
-
-    expect(view.byCategory).toEqual([
-      { category: "food", totalMinor: 11000 },
-      { category: "transport", totalMinor: 4000 },
-    ]);
-  });
-
-  test("null shares equal own", () => {
-    const own = ownMonth();
-
-    const view = combineLedgerMonth(own, null, "2026-09", "TWD");
-
-    expect(view.expenseMinor).toBe(own.expenseMinor);
-    expect(view.incomeMinor).toBe(own.incomeMinor);
-    expect(view.netMinor).toBe(own.netMinor);
-    expect(view.byCategory).toEqual(own.byCategory);
-    expect(view.sharesKnown).toBe(false);
   });
 });
 

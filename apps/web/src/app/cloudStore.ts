@@ -22,9 +22,8 @@ import {
   toGroup,
   toGroupUiData,
   toMembers,
-  toPersonalShares,
 } from "./cloudAdapters";
-import { currentMonthKey, isPersonalGroup, type PersonalShares } from "./personalLedger";
+import { isPersonalGroup } from "./personalLedger";
 import type { Expense, Group, Member } from "./appTypes";
 import {
   applyExpenseToAggregates,
@@ -110,16 +109,6 @@ export type CloudGroupsState = {
   pendingWrites: QueuedWrite[];
   /** True while flushPendingWrites is draining the queue. */
   flushingWrites: boolean;
-  /** Last-known GET /me/group-shares result - stale-but-shown across a cold/offline start (see cloudCache). */
-  personalShares: PersonalShares | null;
-  /**
-   * The month refreshPersonalShares last finished asking about, whether or
-   * not it succeeded - distinct from personalShares.month (which only moves
-   * on success). Lets the UI tell "still loading this month" apart from
-   * "asked, and got nothing back" without a separate loading flag - see
-   * PersonalLedgerHome's groupSharesStatus derivation in App.tsx.
-   */
-  personalSharesAttemptedMonth: string | null;
 };
 
 export type ApiClientLike = Pick<
@@ -148,7 +137,6 @@ export type ApiClientLike = Pick<
   | "listExpensesPage"
   | "markGroupRead"
   | "getSpendBreakdown"
-  | "getPersonalGroupShares"
   | "searchExpenses"
   | "listRecurring"
   | "upsertRecurring"
@@ -223,8 +211,6 @@ function initialState(userId?: string, cacheStorage?: CacheStorage): CloudGroups
     loadingMoreExpenseIds: {},
     pendingWrites: userId ? loadQueue(userId, cacheStorage) : [],
     flushingWrites: false,
-    personalShares: cached?.personalShares ?? null,
-    personalSharesAttemptedMonth: null,
   };
 }
 
@@ -292,17 +278,14 @@ export function createCloudGroupsStore({
     if (persistTimeout) clearTimeout(persistTimeout);
     persistTimeout = setTimeout(() => {
       persistTimeout = null;
-      saveCloudCache(
-        { userId, groups: state.groups, groupDetails: state.groupDetails, personalShares: state.personalShares },
-        cacheStorage,
-      );
+      saveCloudCache({ userId, groups: state.groups, groupDetails: state.groupDetails }, cacheStorage);
     }, 300);
   }
 
   function setState(patch: Partial<CloudGroupsState>) {
     state = { ...state, ...patch };
     listeners.forEach((listener) => listener());
-    if (patch.groups !== undefined || patch.groupDetails !== undefined || patch.personalShares !== undefined) {
+    if (patch.groups !== undefined || patch.groupDetails !== undefined) {
       schedulePersist();
     }
   }
@@ -630,51 +613,6 @@ export function createCloudGroupsStore({
       // what the empty state is waiting to hear. Guarded so the background
       // revalidates autoSync runs every minute do not notify for nothing.
       if (!state.groupsSyncAttempted) setState({ groupsSyncAttempted: true });
-    }
-  }
-
-  /**
-   * The personal ledger home's 本月群組分攤 - refreshed on ledger open, on
-   * every autoSync tick while the ledger is active, and on pull-to-refresh
-   * (see App.tsx). Unlike refreshGroups/refreshGroupDetail this never
-   * throws: a group-shares hiccup must not surface as a toast over a ledger
-   * screen the user did not ask to reload, and PersonalLedgerHome already has
-   * a quiet "couldn't load" state (sharesUnavailable) driven off
-   * personalSharesAttemptedMonth below.
-   *
-   * onSessionExpired still fires on an auth failure - that one is not a
-   * "this feature had a hiccup", it means the session itself is gone and
-   * every other read is about to fail the same way.
-   */
-  async function refreshPersonalShares(month: string): Promise<void> {
-    try {
-      const response = await apiClient.getPersonalGroupShares(month);
-      const next = toPersonalShares(response, month);
-      // Re-checked against the clock now, not the `month` this call was made
-      // with: a request for last month can settle after the calendar has
-      // already rolled into this one (e.g. it was in flight right at
-      // midnight). Applying it at that point would overwrite whatever this
-      // month's own read already landed - or hasn't landed yet - with stale
-      // data nothing would ever replace, since nothing re-fetches a month
-      // just because the clock moved on its own.
-      if (month === currentMonthKey() && !sameJson(state.personalShares, next)) {
-        setState({ personalShares: next });
-      }
-    } catch (error) {
-      if (isUnauthenticatedError(error)) {
-        onSessionExpired();
-      }
-      // Otherwise silent by design - see the doc comment above. Earlier data
-      // (if any) stays in state exactly as it was.
-    } finally {
-      // Same settle-time check as above, and for the same reason: a late
-      // previous-month attempt must not mark itself as "the current month
-      // has been asked about" when it hasn't been, which would make
-      // groupSharesStatus report unavailable/ready for a month nobody
-      // actually asked the server about yet.
-      if (month === currentMonthKey() && state.personalSharesAttemptedMonth !== month) {
-        setState({ personalSharesAttemptedMonth: month });
-      }
     }
   }
 
@@ -1285,7 +1223,6 @@ export function createCloudGroupsStore({
     subscribe,
     refreshGroups,
     refreshGroupDetail,
-    refreshPersonalShares,
     fetchSpendBreakdown,
     searchExpenses,
     listRecurring,

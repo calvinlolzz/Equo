@@ -1,10 +1,9 @@
 import type { CreateExpenseRequest, ExpensePaymentInput, ExpenseShareInput } from "../contracts/schemas";
-import type { BalanceSummary, GroupDetail, GroupMemberSummary, GroupSummary, ExpenseSummary, PersonalGroupSharesResponse } from "./apiClient";
+import type { BalanceSummary, GroupDetail, GroupMemberSummary, GroupSummary, ExpenseSummary } from "./apiClient";
 import type { Expense, Group, Member } from "./appTypes";
 import type { GroupDetailAggregates } from "./detailAggregates";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
 import { buildEqualShareAmountsMinor, buildPercentShareAmounts } from "./expenseShareSplit";
-import type { PersonalShares } from "./personalLedger";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -599,42 +598,5 @@ export function settlementTransferToDraft(
     kind: "transfer",
     transferToMemberId: toId,
     shareAmountsMinor: { [toId]: amountMinor },
-  };
-}
-
-/**
- * Map GET /me/group-shares's response to the client shape, tolerating both
- * failure modes a caller might hand it: a thrown error becomes `undefined`/
- * `null` by the time it reaches here (the caller already caught it), and the
- * screenshot harness answers unlisted routes with a bare `{}` rather than
- * throwing (see screenshot.tsx) - both must come back as "no group shares
- * for the requested month" rather than a crash reading `.groups.map`.
- *
- * `requestedMonth` is the fallback for `month` specifically so a `{}` body
- * still produces a PersonalShares whose `month` matches what was asked for -
- * combineLedgerMonth keys its "is this usable" check on that match, and a
- * response with no month at all must not accidentally look current.
- */
-export function toPersonalShares(
-  response: Partial<PersonalGroupSharesResponse> | null | undefined,
-  requestedMonth: string,
-): PersonalShares {
-  const month = typeof response?.month === "string" ? response.month : requestedMonth;
-  const groups = Array.isArray(response?.groups) ? response.groups : [];
-
-  return {
-    month,
-    groups: groups.map((group) => ({
-      groupId: group.group_id,
-      name: group.name,
-      currency: group.currency,
-      archived: group.archived,
-      shareMinor: group.share_minor,
-      expenseCount: group.expense_count,
-      byCategory: (group.by_category ?? []).map((entry) => ({
-        category: entry.category,
-        totalMinor: entry.share_minor,
-      })),
-    })),
   };
 }
