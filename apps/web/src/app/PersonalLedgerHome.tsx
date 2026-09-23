@@ -93,8 +93,17 @@ export function PersonalLedgerHome({
 
   // The empty state now depends on both halves of the picture: an own-empty
   // ledger with a real group share to show is not "start recording" - there
-  // is already something on screen (D4).
-  const empty = hasLoadedDetail && expenses.length === 0 && !(groupSharesStatus === "ready" && shareRows.length > 0);
+  // is already something on screen (D4). While groupSharesStatus is still
+  // "loading" neither answer is known yet, so the card renders (with its own
+  // sharesLoading split line) rather than flashing the empty state and then
+  // replacing it once the read lands - the empty state is only reachable once
+  // shares are settled one way or the other (ready-with-nothing, or
+  // unavailable).
+  const empty =
+    hasLoadedDetail &&
+    expenses.length === 0 &&
+    groupSharesStatus !== "loading" &&
+    !(groupSharesStatus === "ready" && shareRows.length > 0);
 
   const splitLine =
     groupSharesStatus === "loading"
@@ -104,6 +113,25 @@ export function PersonalLedgerHome({
         : view.countedGroups.length > 0
           ? `${ledgerText.ownPart} ${formatAmount(view.ownExpenseMinor, group.currency)} · ${ledgerText.groupPart} ${formatAmount(view.groupShareMinor, group.currency)}`
           : null;
+
+  /**
+   * The disclosure's collapsed summary: how many SAME-CURRENCY groups counted
+   * (never shareRows.length, which also holds the uncounted foreign-currency
+   * ones - counting those would claim a group that isn't in the total), the
+   * total itself (omitted at $0 so a JPY-only ledger never shows "NT$0"),
+   * and - when there are foreign-currency groups too - how many, so they are
+   * not simply invisible from the collapsed row.
+   */
+  const groupCountLabel = view.countedGroups.length === 1 ? ledgerText.sharesGroupCountOne : ledgerText.sharesGroupCount;
+  const disclosureSummary = [
+    `${view.countedGroups.length} ${groupCountLabel}`,
+    view.groupShareMinor > 0 ? formatAmount(view.groupShareMinor, group.currency) : null,
+    view.uncountedGroups.length > 0
+      ? `${ledgerText.sharesOtherCurrencyCountPrefix}${view.uncountedGroups.length}${ledgerText.sharesOtherCurrencyCountSuffix}`
+      : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 
   return (
     <section className="group-room pizo-home enter-content" aria-label={ledgerText.homeLabel}>
@@ -172,7 +200,7 @@ export function PersonalLedgerHome({
           key={`shares-${group.id}`}
           id="ledger-group-shares"
           label={ledgerText.sharesTitle}
-          summary={`${shareRows.length} ${ledgerText.sharesGroupCount} · ${formatAmount(view.groupShareMinor, group.currency)}`}
+          summary={disclosureSummary}
         >
           <div className="ledger-share-list">
             {shareRows.map((row) => {
@@ -181,8 +209,8 @@ export function PersonalLedgerHome({
                 <>
                   <span className="expense-record-main">
                     <strong>{row.name}</strong>
-                    <small>
-                      {row.expenseCount} {ledgerText.sharesEntryCount}
+                    <small className="ledger-share-meta">
+                      {row.expenseCount} {row.expenseCount === 1 ? ledgerText.sharesEntryCountOne : ledgerText.sharesEntryCount}
                       {row.archived ? ` · ${ledgerText.sharesArchived}` : ""}
                       {row.currency !== group.currency ? ` · ${ledgerText.sharesOtherCurrency}` : ""}
                     </small>

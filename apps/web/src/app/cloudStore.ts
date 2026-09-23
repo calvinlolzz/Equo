@@ -24,7 +24,7 @@ import {
   toMembers,
   toPersonalShares,
 } from "./cloudAdapters";
-import { isPersonalGroup, type PersonalShares } from "./personalLedger";
+import { currentMonthKey, isPersonalGroup, type PersonalShares } from "./personalLedger";
 import type { Expense, Group, Member } from "./appTypes";
 import {
   applyExpenseToAggregates,
@@ -650,7 +650,14 @@ export function createCloudGroupsStore({
     try {
       const response = await apiClient.getPersonalGroupShares(month);
       const next = toPersonalShares(response, month);
-      if (!sameJson(state.personalShares, next)) {
+      // Re-checked against the clock now, not the `month` this call was made
+      // with: a request for last month can settle after the calendar has
+      // already rolled into this one (e.g. it was in flight right at
+      // midnight). Applying it at that point would overwrite whatever this
+      // month's own read already landed - or hasn't landed yet - with stale
+      // data nothing would ever replace, since nothing re-fetches a month
+      // just because the clock moved on its own.
+      if (month === currentMonthKey() && !sameJson(state.personalShares, next)) {
         setState({ personalShares: next });
       }
     } catch (error) {
@@ -660,7 +667,12 @@ export function createCloudGroupsStore({
       // Otherwise silent by design - see the doc comment above. Earlier data
       // (if any) stays in state exactly as it was.
     } finally {
-      if (state.personalSharesAttemptedMonth !== month) {
+      // Same settle-time check as above, and for the same reason: a late
+      // previous-month attempt must not mark itself as "the current month
+      // has been asked about" when it hasn't been, which would make
+      // groupSharesStatus report unavailable/ready for a month nobody
+      // actually asked the server about yet.
+      if (month === currentMonthKey() && state.personalSharesAttemptedMonth !== month) {
         setState({ personalSharesAttemptedMonth: month });
       }
     }

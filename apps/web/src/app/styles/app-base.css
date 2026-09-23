@@ -1529,7 +1529,7 @@ label span {
 :root[data-theme="light"] .ledger-month-stats span,
 :root[data-theme="light"] .ledger-month-loading,
 :root[data-theme="light"] .ledger-month-split,
-:root[data-theme="light"] .ledger-share-row small,
+:root[data-theme="light"] .ledger-share-row .ledger-share-meta,
 :root[data-theme="light"] .spend-period-note {
   color: rgb(var(--fg) / 0.72);
 }

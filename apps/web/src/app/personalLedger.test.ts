@@ -150,6 +150,23 @@ describe("summarizeLedgerMonth", () => {
       { category: "general", totalMinor: 10000 },
     ]);
   });
+
+  test("an empty-string category falls back to general, matching the server's coalesce(nullif(category, ''), 'general')", () => {
+    const expenses = [expense({ id: "e1", category: "", amountMinor: 10000 })];
+    expect(summarizeLedgerMonth(expenses, "2026-09", "TWD").byCategory).toEqual([
+      { category: "general", totalMinor: 10000 },
+    ]);
+  });
+
+  // The server's nullif only matches an exact empty string, never a trimmed
+  // one - a whitespace-only category must stay its own bucket on the client
+  // too, or the two sides would split one category into two totals.
+  test("a whitespace-only category is NOT folded into general - the server doesn't trim either", () => {
+    const expenses = [expense({ id: "e1", category: " ", amountMinor: 10000 })];
+    expect(summarizeLedgerMonth(expenses, "2026-09", "TWD").byCategory).toEqual([
+      { category: " ", totalMinor: 10000 },
+    ]);
+  });
 });
 
 function ownMonth(overrides: Partial<LedgerMonthSummary> = {}): LedgerMonthSummary {

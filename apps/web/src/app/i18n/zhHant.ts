@@ -718,8 +718,14 @@ export const ZH_HANT = {
     groupPart: "群組分攤",
     sharesTitle: "本月群組分攤",
     sharesGroupCount: "個群組",
+    /** 中文數量詞不分單複數，跟 sharesGroupCount 同一個字——留著只是為了跟 en.ts 的單複數形式配對。 */
+    sharesGroupCountOne: "個群組",
     sharesEntryCount: "筆",
+    sharesEntryCountOne: "筆",
     sharesOtherCurrency: "不同幣別，未計入",
+    /** 群組分攤摘要列的「另有 N 個不同幣別」——`${prefix}${n}${suffix}`。 */
+    sharesOtherCurrencyCountPrefix: "另有 ",
+    sharesOtherCurrencyCountSuffix: " 個不同幣別",
     sharesArchived: "已封存",
     sharesLoading: "正在載入群組分攤…",
     sharesUnavailable: "群組分攤暫時載入不了，先只算自己記的。",

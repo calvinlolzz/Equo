@@ -675,8 +675,13 @@ export const EN: UiDictionary = {
     groupPart: "Group shares",
     sharesTitle: "Group shares this month",
     sharesGroupCount: "groups",
+    sharesGroupCountOne: "group",
     sharesEntryCount: "entries",
+    sharesEntryCountOne: "entry",
     sharesOtherCurrency: "Other currency, not included",
+    /** The shares-summary "+N in other currencies" - `${prefix}${n}${suffix}`. */
+    sharesOtherCurrencyCountPrefix: "+",
+    sharesOtherCurrencyCountSuffix: " in other currencies",
     sharesArchived: "Archived",
     sharesLoading: "Loading group shares…",
     sharesUnavailable: "Couldn't load group shares, so only your own entries are counted.",

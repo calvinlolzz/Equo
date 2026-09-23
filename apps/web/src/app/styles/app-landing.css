@@ -393,6 +393,13 @@
   text-align: center;
 }
 
+/* .landing-chat-label's own rule left-aligns it (justify-self: start) for the
+   wide conversation card it was written for - this card is centred and
+   narrow, so the disclaimer above the figure needs to be too. */
+.landing-ledger .landing-chat-label {
+  justify-self: center;
+}
+
 .landing-ledger-total {
   font-size: 28px;
   font-weight: 800;

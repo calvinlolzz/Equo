@@ -187,7 +187,13 @@ export function summarizeLedgerMonth(expenses: Expense[], monthKey: string, curr
 
     // "expense" or missing kind (older data defaults to expense).
     expenseMinor += expense.amountMinor;
-    const category = expense.category?.trim() ? expense.category : "general";
+    // Matches the server's bucketing exactly - coalesce(nullif(category, ''),
+    // 'general') in personal_month_group_shares/get_spend_breakdown falls
+    // back on an empty string only, never on whitespace. A `.trim()` here
+    // would put a " " category in "general" on the client while the server
+    // keeps it as its own (whitespace) bucket, splitting one category into
+    // two totals depending on which side computed them.
+    const category = expense.category ? expense.category : "general";
     byCategoryTotals.set(category, (byCategoryTotals.get(category) ?? 0) + expense.amountMinor);
   }
 

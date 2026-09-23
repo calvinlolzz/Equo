@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { BalanceSummary, ExpenseSummary, GroupDetail, GroupMemberSummary, PersonalGroupSharesResponse } from "./apiClient";
 import type { ApiClientLike } from "./cloudStore";
 import { createCloudGroupsStore } from "./cloudStore";
@@ -1461,6 +1461,19 @@ describe("refreshPersonalShares", () => {
     ],
   };
 
+  // Every test below depends on "the current month" (the settle-time guard
+  // compares the requested month against currentMonthKey()), so the clock is
+  // pinned here rather than left to whatever day this suite happens to run
+  // on - September 23, 2026 is deliberately mid-month, away from either
+  // rollover edge, for the ordinary (non-rollover) tests.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 23));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // [MV]
   test("stores the mapped data and records the attempted month", async () => {
     const apiClient = makeFakeApiClient({ getPersonalGroupShares: vi.fn(async () => sharesResponse) });
@@ -1486,7 +1499,7 @@ describe("refreshPersonalShares", () => {
     expect(store.getState().personalSharesAttemptedMonth).toBe("2026-09");
   });
 
-  test("a failure keeps earlier data, sets the attempted month, and does not throw", async () => {
+  test("an ordinary failure (same month, no rollover) keeps earlier data, sets the attempted month, and does not throw", async () => {
     let shouldFail = false;
     const apiClient = makeFakeApiClient({
       getPersonalGroupShares: vi.fn(async () => {
@@ -1499,10 +1512,33 @@ describe("refreshPersonalShares", () => {
     const beforeShares = store.getState().personalShares;
     shouldFail = true;
 
-    await expect(store.refreshPersonalShares("2026-10")).resolves.toBeUndefined();
+    await expect(store.refreshPersonalShares("2026-09")).resolves.toBeUndefined();
 
     expect(store.getState().personalShares).toEqual(beforeShares);
-    expect(store.getState().personalSharesAttemptedMonth).toBe("2026-10");
+    expect(store.getState().personalSharesAttemptedMonth).toBe("2026-09");
+  });
+
+  // [MV]
+  test("a response that settles after the month has rolled over is dropped entirely - no data write, no attempted-month mark", async () => {
+    let resolveFetch!: (value: PersonalGroupSharesResponse) => void;
+    const pending = new Promise<PersonalGroupSharesResponse>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const apiClient = makeFakeApiClient({ getPersonalGroupShares: vi.fn(() => pending) });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+    // Still September when the request goes out...
+    const call = store.refreshPersonalShares("2026-09");
+    // ...but October by the time it settles (in flight right at midnight).
+    vi.setSystemTime(new Date(2026, 9, 1));
+    resolveFetch(sharesResponse); // sharesResponse.month is still "2026-09".
+    await call;
+
+    // Neither half of the settle applied - not the data (which would have
+    // been wrong for the now-current month), and not the attempted-month
+    // mark (which would have falsely claimed October had been asked about).
+    expect(store.getState().personalShares).toBeNull();
+    expect(store.getState().personalSharesAttemptedMonth).toBeNull();
   });
 
   test("an unchanged payload keeps the same object reference", async () => {

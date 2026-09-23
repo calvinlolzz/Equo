@@ -5,6 +5,8 @@ import { PersonalLedgerHome, type PersonalLedgerHomeProps } from "./PersonalLedg
 import { currentMonthKey, type GroupShareMonth, type PersonalShares } from "./personalLedger";
 import type { Expense, Group } from "./appTypes";
 import { UI_TEXT } from "./uiText";
+import { EN } from "./i18n/en";
+import { ZH_HANT } from "./i18n/zhHant";
 
 const ledgerText = UI_TEXT.personalLedger;
 
@@ -155,5 +157,47 @@ describe("PersonalLedgerHome's group-shares fold", () => {
     renderHome({ groupShares: null, groupSharesStatus: "loading" });
 
     expect(screen.getByText(ledgerText.sharesLoading)).toBeTruthy();
+  });
+
+  // [MV: drop the uncountedGroups branch from the summary composition]
+  test("a TWD ledger with only a JPY share: the disclosure summary shows no $0 and mentions the other currency", () => {
+    const shares: PersonalShares = {
+      month: currentMonthKey(),
+      groups: [groupShare({ groupId: "group_jp", currency: "JPY", shareMinor: 99999 })],
+    };
+    renderHome({ groupShares: shares, groupSharesStatus: "ready", openableGroupIds: ["group_jp"] });
+
+    const summary = document.querySelector(".home-disclosure-summary")?.textContent ?? "";
+    expect(summary).not.toContain("$0");
+    expect(summary).toContain(ledgerText.sharesOtherCurrencyCountPrefix.trim());
+    expect(summary).toContain("1");
+  });
+
+  // [MV: drop the groupSharesStatus !== "loading" guard from `empty`]
+  test("while groupSharesStatus is still loading and there are no own rows, the card renders instead of the empty state", () => {
+    renderHome({ expenses: [], groupShares: null, groupSharesStatus: "loading" });
+
+    expect(screen.queryByText(ledgerText.emptyTitle)).toBeNull();
+    expect(document.querySelector(".ledger-month-card")).toBeTruthy();
+    expect(screen.getByText(ledgerText.sharesLoading)).toBeTruthy();
+  });
+
+  test("the empty state still shows once shares are ready with nothing, or unavailable", () => {
+    renderHome({ expenses: [], groupShares: null, groupSharesStatus: "unavailable" });
+    expect(screen.getByText(ledgerText.emptyTitle)).toBeTruthy();
+
+    cleanup();
+    const readyEmpty: PersonalShares = { month: currentMonthKey(), groups: [] };
+    renderHome({ expenses: [], groupShares: readyEmpty, groupSharesStatus: "ready" });
+    expect(screen.getByText(ledgerText.emptyTitle)).toBeTruthy();
+  });
+
+  test("EN has distinct singular forms for the shares counts; ZH's singular equals its plural (no such distinction in Chinese)", () => {
+    expect(EN.personalLedger.sharesGroupCountOne).toBe("group");
+    expect(EN.personalLedger.sharesGroupCount).toBe("groups");
+    expect(EN.personalLedger.sharesEntryCountOne).toBe("entry");
+    expect(EN.personalLedger.sharesEntryCount).toBe("entries");
+    expect(ZH_HANT.personalLedger.sharesGroupCountOne).toBe(ZH_HANT.personalLedger.sharesGroupCount);
+    expect(ZH_HANT.personalLedger.sharesEntryCountOne).toBe(ZH_HANT.personalLedger.sharesEntryCount);
   });
 });
