@@ -1,12 +1,6 @@
 import type { ApiError } from "../../contracts/errors.js";
 import type { AuthenticatedContext } from "../auth/session.js";
-import type {
-  PersonalGroupSharesRecord,
-  PersonalSharesRepository,
-  SpendBreakdownRecord,
-  SpendPeriodKind,
-  SpendRepository,
-} from "../repositories/spendRepository.js";
+import type { SpendBreakdownRecord, SpendPeriodKind, SpendRepository } from "../repositories/spendRepository.js";
 
 type HandlerResult<T> = { ok: true; status: number; body: T } | { ok: false; status: number; body: ApiError };
 
@@ -48,39 +42,4 @@ export async function handleGetSpendBreakdown(
   }
 
   return { ok: true, status: 200, body: breakdown };
-}
-
-/**
- * GET /api/v1/me/group-shares - the personal ledger home's "本月群組分攤".
- *
- * A missing or malformed month is a 400: unlike the spend-breakdown period
- * key (which degrades to "the newest period" because there is always a
- * sensible default), there is no fallback month that wouldn't just be wrong,
- * and the repository is never called for one - see personalLedger.ts's
- * combineLedgerMonth on the client, which treats "no data for this exact
- * month" as sharesKnown:false rather than zero.
- */
-export async function handleGetPersonalGroupShares(
-  repository: PersonalSharesRepository,
-  context: AuthenticatedContext,
-  query: { month?: string },
-  request_id = "req_personal_group_shares",
-): Promise<HandlerResult<PersonalGroupSharesRecord>> {
-  const month = query.month;
-
-  if (!month || !MONTH_KEY.test(month)) {
-    return {
-      ok: false,
-      status: 400,
-      body: { error: { code: "MALFORMED_REQUEST", message: "month must be YYYY-MM.", request_id } },
-    };
-  }
-
-  const result = await repository.getMonthGroupShares(context.user.id, month);
-
-  if (!result) {
-    return { ok: true, status: 200, body: { month, groups: [] } };
-  }
-
-  return { ok: true, status: 200, body: { month, groups: Array.isArray(result.groups) ? result.groups : [] } };
 }

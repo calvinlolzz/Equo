@@ -1418,18 +1418,11 @@ describe("read-only view-as", () => {
 });
 
 describe("GET /api/v1/me/group-shares", () => {
-  test("a valid month makes an RPC call to personal_month_group_shares", async () => {
-    const rpcCalls: string[] = [];
+  // [MV]
+  test("is gone: 404 with a non-auth code, so old clients stay signed in", async () => {
     const client = makeClient();
-    const trackingClient: PostgrestClient = {
-      ...client,
-      async rpc(fn, args) {
-        rpcCalls.push(fn);
-        return client.rpc(fn, args);
-      },
-    };
     const runtime = createHttpRuntime({
-      client: trackingClient,
+      client,
       storage: makeStorage(),
       verifier: async (idToken) => ({
         auth_user_id: idToken,
@@ -1456,43 +1449,7 @@ describe("GET /api/v1/me/group-shares", () => {
       json: undefined,
     });
 
-    expect(response.status).toBe(200);
-    expect(rpcCalls).toContain("personal_month_group_shares");
-  });
-
-  test("still returns 200 under a view-as cookie - read-only", async () => {
-    const { createViewAsToken } = await import("../auth/sessionToken.js");
-    const token = await createViewAsToken(
-      {
-        auth_user_id: "user_alice",
-        google_sub: "google_alice",
-        email: "alice@example.com",
-        display_name: "Alice",
-      },
-      "user_admin",
-      "session-secret",
-      1_000,
-    );
-
-    const response = await createHttpRuntime({
-      client: makeClient(),
-      storage: makeStorage(),
-      verifier: async (idToken) => ({
-        auth_user_id: idToken,
-        google_sub: idToken,
-        email: "alice@example.com",
-        display_name: "Alice",
-      }),
-      sessionSecret: "session-secret",
-      now: 1_000,
-    }).handle({
-      method: "GET",
-      path: "/api/v1/me/group-shares",
-      query: { month: "2026-09" },
-      headers: { cookie: `equo_view_as=${token}` },
-      json: undefined,
-    });
-
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(404);
+    expect((response.body as { error: { code: string } }).error.code).not.toBe("UNAUTHENTICATED");
   });
 });
