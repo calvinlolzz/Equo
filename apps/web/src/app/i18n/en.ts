@@ -668,7 +668,7 @@ export const EN: UiDictionary = {
     emptyTitle: "Start tracking your own money",
     emptyBody: "This ledger is just for your own spending and income. To split costs, create or join a group.",
     settingsTitle: "Ledger settings",
-    settingsHint: "Set a monthly budget to see this month's progress on the home screen.",
+    settingsHint: "Set a monthly budget to see this month's progress on the home screen and in Analysis.",
     settingsSaved: "Ledger settings saved",
     actionUnavailable: "Your personal ledger can't have other members and can't be archived or deleted.",
     composerHint: "Enter an amount and pick a category.",

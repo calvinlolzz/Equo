@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ExpenseSummary, GroupSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { formatAmount } from "./formatAmount";
+import { currentMonthKey } from "./personalLedger";
 import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
 
@@ -1161,7 +1162,7 @@ describe("a personal ledger", () => {
       {
         route: "GET /me/group-shares",
         body: {
-          month: "2026-09",
+          month: currentMonthKey(),
           groups: [
             {
               group_id: "group_1",
@@ -1189,6 +1190,12 @@ describe("a personal ledger", () => {
     );
 
     await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Re-asserted after the wait, not just on first render: the first check
+    // above would pass even if a fold-in landed late, since it only proves
+    // the headline was RIGHT AT SOME POINT, not that it stayed right once a
+    // stray group-shares response had time to arrive and get folded in.
+    expect(document.querySelector(".home-balance-amount")?.textContent).toBe(formatAmount(12000, "TWD"));
 
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/me/group-shares"))).toBe(false);

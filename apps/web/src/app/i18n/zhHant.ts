@@ -711,7 +711,7 @@ export const ZH_HANT = {
     emptyTitle: "開始記下自己的收支",
     emptyBody: "這本帳只記你自己的收支。要和朋友分帳，建立或加入一個群組。",
     settingsTitle: "帳本設定",
-    settingsHint: "設定每月預算，首頁會顯示本月進度。",
+    settingsHint: "設定每月預算，首頁和分析都會顯示本月進度。",
     settingsSaved: "已更新帳本設定",
     actionUnavailable: "個人帳本不能邀請成員、封存或刪除。",
     composerHint: "填寫金額並選擇分類。",

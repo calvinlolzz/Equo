@@ -86,7 +86,9 @@ export function loadCloudCache(
 
   // Explicit field pick, never a spread of `parsed`: a cache written by the
   // 2026-09-23 stage-2 client can still carry a `personalShares` key. It is
-  // deliberately ignored, and the next save drops it.
+  // deliberately ignored here, and disappears once the next save that
+  // actually changes groups/groupDetails writes a fresh snapshot without it
+  // (schedulePersist only fires on those two fields - see setState).
   return { userId: parsed.userId, groups: parsed.groups, groupDetails: parsed.groupDetails };
 }
 
