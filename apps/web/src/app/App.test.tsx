@@ -627,7 +627,7 @@ describe("searching the records panel", () => {
     // $1,200 is stored as 120000 minor - the user types what they can see.
     fireEvent.change(search, { target: { value: "1200" } });
 
-    expect(screen.getByText("符合 1 筆・$1,200")).toBeTruthy();
+    expect(screen.getByText("符合 1 筆・支出 $1,200")).toBeTruthy();
   });
 
   test("a search with no matches says so and can be cleared back to the full list", async () => {
@@ -668,7 +668,7 @@ describe("searching the records panel", () => {
 
     expect(await screen.findByText("去年的拉麵")).toBeTruthy();
     // The summary counts the server's matches, not the loaded window's.
-    expect(screen.getByText("符合 1 筆・$880")).toBeTruthy();
+    expect(screen.getByText("符合 1 筆・支出 $880")).toBeTruthy();
   });
 
   test("a failed search degrades to filtering what is loaded rather than showing nothing", async () => {

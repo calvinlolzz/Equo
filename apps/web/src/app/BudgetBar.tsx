@@ -35,7 +35,11 @@ export function BudgetBar({ budget, currency }: { budget: BudgetProgress; curren
             the thing worth seeing. */}
         <span style={{ width: `${Math.min(budget.pct, 100)}%` }} />
       </div>
-      <small>{`${budget.pct}%・${formatAmount(budget.budgetMinor, currency)}`}</small>
+      <small>
+        {UI_TEXT.spend.budgetUsage
+          .replace("{pct}", String(budget.pct))
+          .replace("{amount}", formatAmount(budget.budgetMinor, currency))}
+      </small>
     </div>
   );
 }

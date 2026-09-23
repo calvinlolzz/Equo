@@ -25,15 +25,15 @@ describe("groupExpensesByDay", () => {
     expect(groups[1].expenses.map((e) => e.id)).toEqual(["c"]);
   });
 
-  it("sums the day subtotal from outflow only (income excluded)", () => {
+  it("outflow = expense kind only", () => {
     const groups = groupExpensesByDay([
       expense({ id: "a", createdAt: "2026-07-13T20:00:00+08:00", amountMinor: 96000 }),
       expense({ id: "b", createdAt: "2026-07-13T09:00:00+08:00", amountMinor: 5000, kind: "income" }),
       expense({ id: "c", createdAt: "2026-07-13T08:00:00+08:00", amountMinor: 4000, kind: "settlement" }),
     ]);
     expect(groups).toHaveLength(1);
-    // 96000 (expense) + 4000 (settlement), income 5000 not counted
-    expect(groups[0].subtotalMinor).toBe(100000);
+    // Only the 96000 expense - income (5000) and settlement (4000) excluded.
+    expect(groups[0].subtotalMinor).toBe(96000);
     expect(groups[0].expenses).toHaveLength(3);
   });
 

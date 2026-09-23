@@ -1503,6 +1503,7 @@ label span {
 :root[data-theme="light"] .pizo-expense-row .expense-record-main small,
 :root[data-theme="light"] .panel-title-row span,
 :root[data-theme="light"] .panel-stat-grid span,
+:root[data-theme="light"] .panel-stat-grid small,
 :root[data-theme="light"] .dialog-list-title,
 :root[data-theme="light"] .dialog-option small,
 :root[data-theme="light"] .archived-dialog-row small,

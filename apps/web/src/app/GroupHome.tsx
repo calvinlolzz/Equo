@@ -4,8 +4,9 @@ import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
 import { InstallHint } from "./InstallHint";
 import { MemberAvatar } from "./MemberAvatar";
 import { heroBalanceMembers } from "./heroBalanceRows";
-import { formatAmount, formatSigned } from "./formatAmount";
+import { formatAmount } from "./formatAmount";
 import { formatActivityTime, formatRecordStamp } from "./appDates";
+import { describeMemberBalance } from "./groupBalanceSummary";
 import { monthDayLabel } from "./i18n/format";
 import { settlementBetween, type SettlementIntent } from "./settlementActions";
 import { useAnimatedHeight } from "./useAnimatedHeight";
@@ -153,6 +154,8 @@ type MemberRowProps = {
   member: Member;
   currency: string;
   balanceMinor: number;
+  /** Whether this row is the reader's own - switches describeMemberBalance to the you-variants. */
+  isSelf: boolean;
   /** Set only when this member is paying into your balance - see debtorColorIndex. */
   colorIndex: 1 | 2 | 3 | undefined;
   expanded: boolean;
@@ -180,6 +183,7 @@ function MemberRow({
   member,
   currency,
   balanceMinor,
+  isSelf,
   colorIndex,
   expanded,
   onToggle,
@@ -215,7 +219,7 @@ function MemberRow({
           <strong>{member.name}</strong>
           {expanded ? <small>{statusText}</small> : null}
         </span>
-        <strong className="member-row-amount">{formatSigned(balanceMinor, currency)}</strong>
+        <strong className="member-row-amount">{describeMemberBalance(balanceMinor, currency, isSelf)}</strong>
         <ChevronRight className="member-row-caret" aria-hidden="true" size={16} />
       </button>
       <div className="member-row-body" id={bodyId} ref={bodyRef}>
@@ -420,7 +424,7 @@ export function GroupHome({
                 rooted by the visually-hidden <h1> above.) */}
             {isMobileLayout ? null : headerMenu ?? <h2>{group.name}</h2>}
             <p>
-              {text.members} <strong>{members.length}</strong> {text.total} <strong>{formatAmount(totalExpenseMinor, group.currency)}</strong>
+              {text.members} <strong>{members.length}</strong> · {UI_TEXT.records.totalSpend} <strong>{formatAmount(totalExpenseMinor, group.currency)}</strong>
             </p>
           </div>
         </div>
@@ -460,6 +464,7 @@ export function GroupHome({
                     member={member}
                     currency={group.currency}
                     balanceMinor={balances.get(member.id) ?? 0}
+                    isSelf={isSelf}
                     colorIndex={debtorColorIndex.get(member.id)}
                     expanded={expandedMemberId === member.id}
                     onToggle={() => setExpandedMemberId((current) => (current === member.id ? null : member.id))}
@@ -522,7 +527,7 @@ export function GroupHome({
             label={text.records}
             summary={
               expenses.length
-                ? `${UI_TEXT.records.count} ${expenseCount} · ${formatAmount(expenses[0].amountMinor, expenses[0].currency)}`
+                ? `${UI_TEXT.records.entryCount.replace("{n}", String(expenseCount))} · ${UI_TEXT.records.latestAmount.replace("{amount}", (expenses[0].kind === "income" ? "+" : "") + formatAmount(expenses[0].amountMinor, expenses[0].currency))}`
                 : text.noRecords
             }
             headExtra={
@@ -616,7 +621,7 @@ export function GroupHome({
               key={`analysis-${group.id}`}
               id="group-analysis"
               label={spendTab === "group" ? text.groupSpend : text.personalSpend}
-              summary={`${dateLabel} ${formatAmount(spendDisplayAmountMinor, group.currency)}`}
+              summary={`${dateLabel} · ${spendTab === "group" ? text.spendDayGroupTotal : text.spendDayYourShare} ${formatAmount(spendDisplayAmountMinor, group.currency)}`}
             >
               <div className="section-title-row">
                 <div className="tab-pair" aria-label={text.personalSpend}>
@@ -633,7 +638,7 @@ export function GroupHome({
               </div>
               <div className="spending-date-row">
                 <div>
-                  <span>{dateLabel}</span>
+                  <span>{`${dateLabel} · ${spendTab === "group" ? text.spendDayGroupTotal : text.spendDayYourShare}`}</span>
                   <strong>{formatAmount(spendDisplayAmountMinor, group.currency)}</strong>
                 </div>
                 <div className="date-chip-row" aria-label={UI_TEXT.misc.dateLabel} ref={dateStripRef}>

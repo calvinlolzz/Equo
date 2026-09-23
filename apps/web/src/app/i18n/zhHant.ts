@@ -54,10 +54,8 @@ export const ZH_HANT = {
     people: "位成員",
     /** Joined as `${n} ${this}`. */
     owedByCount: "個人要付你",
-    total: "總計",
     personalSpend: "個人消費",
     groupSpend: "群組消費",
-    debt: "債務關係",
     needPay: "需要支付",
     settled: "所有債務都已結清",
     clearDebt: "清償債務",
@@ -159,6 +157,11 @@ export const ZH_HANT = {
     balanceSettled: "已結清",
     balanceOwedToYou: "應收",
     balanceYouOwe: "應付",
+    outstandingTotal: "待結清總額",
+    memberGetsBack: "應收",
+    memberOwes: "應付",
+    spendDayYourShare: "你分攤",
+    spendDayGroupTotal: "群組共花",
     balanceTotalTitle: "全部群組",
     balanceMoreCurrencies: "等幣別",
     // Payment reminders.
@@ -547,8 +550,15 @@ export const ZH_HANT = {
     filterExpense: "支出",
     filterIncome: "收入",
     filterSettlement: "結算",
-    count: "筆數",
-    totalSpend: "總支出",
+    count: "全部筆數",
+    totalSpend: "累計支出",
+    totalSpendHint: "不含收入與清償",
+    totalSpendHintPersonal: "不含收入",
+    /** Joined as `${n} ${this}`. */
+    entryCount: "{n} 筆",
+    /** Joined with `${amount}`. */
+    latestAmount: "最新 {amount}",
+    daySpend: "支出",
     searchPlaceholder: "搜尋品項、備註或金額",
     searchLabel: "搜尋支出",
     clearSearch: "清除搜尋",
@@ -562,7 +572,7 @@ export const ZH_HANT = {
     toDate: "結束日",
     /** Joined as `${prefix}${n}${middle}${amount}`. */
     matchPrefix: "符合 ",
-    matchMiddle: " 筆・",
+    matchMiddle: " 筆・支出 ",
     localOnly: "（僅搜尋已載入的紀錄）",
     clearFilters: "清除篩選",
     noMatches: "沒有符合的紀錄",
@@ -617,13 +627,14 @@ export const ZH_HANT = {
     budgetOver: "超出",
     budgetLeft: "還剩",
     budgetProgress: "每月預算使用進度",
+    /** Joined by replacing {pct} and {amount}. */
+    budgetUsage: "已用 {pct}%・預算 {amount}",
     categoryShare: "分類佔比",
     emptyPersonal: "這段期間你沒有分攤到支出。",
     emptyGroup: "這段期間還沒有支出。",
   },
   analysis: {
     description: "以目前資料統計群組消費與成員餘額。",
-    totalAmount: "總金額",
     memberBalances: "成員餘額",
     /** Joined as `${n} ${this}`. */
     categoryCount: "類",

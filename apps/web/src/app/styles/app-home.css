@@ -355,6 +355,7 @@
 
 .member-row-amount {
   text-align: right;
+  white-space: nowrap;
 }
 
 .home-section {

@@ -282,6 +282,58 @@ describe("the summary rows hide themselves when they have nothing", () => {
   });
 });
 
+describe("labelled amounts on the home disclosures", () => {
+  const soloAlice: Person[] = [{ id: "member_alice", user_id: "user_alice", display_name: "Alice", role: "owner", balance: 0 }];
+
+  // [MV]
+  test("最近記錄's summary reads as a count and a latest amount, not a repeated total", async () => {
+    await land(
+      personDetail(soloAlice, {
+        expenses: [expenseRow(), expenseRow({ id: "expense_2" }), expenseRow({ id: "expense_3" })],
+        expense_count: 3,
+      }),
+    );
+    const section = await waitFor(() => {
+      const node = document.getElementById("group-records");
+      if (!node) throw new Error("no #group-records");
+      return node;
+    });
+    const summary = within(section).getByText(
+      `${UI_TEXT.records.entryCount.replace("{n}", "3")} · ${UI_TEXT.records.latestAmount.replace("{amount}", "$960")}`,
+    );
+    expect(summary.className).toContain("home-disclosure-summary");
+  });
+
+  // [MV]
+  test("這個月's summary says whose spend it is", async () => {
+    await land(
+      personDetail(soloAlice, {
+        expenses: [expenseRow(), expenseRow({ id: "expense_2" }), expenseRow({ id: "expense_3" })],
+        expense_count: 3,
+      }),
+    );
+    const section = await waitFor(() => {
+      const node = document.getElementById("group-analysis");
+      if (!node) throw new Error("no #group-analysis");
+      return node;
+    });
+    const summary = section.querySelector(".home-disclosure-summary");
+    expect(summary?.textContent).toContain(app.spendDayYourShare);
+  });
+
+  test("the title row's total is labelled 累計支出, not 總計", async () => {
+    await land(personDetail(soloAlice, { expenses: [expenseRow()], expense_count: 1, spend_total_minor: 96_000 }));
+    const card = document.getElementById("group-home");
+    if (!card) throw new Error("no home card");
+    const p = await waitFor(() => {
+      const node = card.querySelector(".home-title-row p");
+      if (!node) throw new Error("no title row");
+      return node;
+    });
+    expect(p.textContent).toContain(UI_TEXT.records.totalSpend);
+  });
+});
+
 describe("a brand new group", () => {
   test("offers two things and nothing else", async () => {
     // groupDetail()'s default is exactly this: one member (you), no expenses.

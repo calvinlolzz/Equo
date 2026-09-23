@@ -1,6 +1,6 @@
 import { BellRing, Check, Inbox, Pencil, UserMinus, UserRound, Wallet, X } from "lucide-react";
 import type { Member } from "./appTypes";
-import { formatSigned } from "./formatAmount";
+import { describeMemberBalance } from "./groupBalanceSummary";
 import { settlementBetween, type SettlementIntent } from "./settlementActions";
 import { MemberAvatar } from "./MemberAvatar";
 import { UI_TEXT } from "./uiText";
@@ -225,7 +225,7 @@ export function MemberListPanel({
                       </button>
                     </span>
                   ) : null}
-                  <b>{formatSigned(balances.get(member.id) ?? 0, currency)}</b>
+                  <b>{describeMemberBalance(balances.get(member.id) ?? 0, currency, member.id === currentMemberId)}</b>
                 </>
               )}
             </div>

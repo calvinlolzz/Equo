@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AnalysisPanel } from "./AnalysisPanel";
 import type { Member } from "./appTypes";
@@ -16,7 +16,6 @@ function renderPanel(overrides: Partial<Parameters<typeof AnalysisPanel>[0]> = {
     members,
     balances: new Map<string, number>([["me", 0]]),
     maxBalanceMinor: 1,
-    debtAmountMinor: 0,
     settlementTransfers: [],
     settlementHistory: { records: [{ id: "s1", fromMemberId: "me", toMemberId: "me", amountMinor: 100, currency: "TWD", createdAt: "2026-09-01T00:00:00.000Z" }], loading: false, matchCount: 1, degraded: false },
     dateChips: [],
@@ -55,9 +54,9 @@ describe("AnalysisPanel in a personal ledger", () => {
 
   test("keeps the total-spend tile but drops members and debt", () => {
     renderPanel({ personal: true });
-    expect(screen.getByText(UI_TEXT.analysis.totalAmount)).toBeTruthy();
+    expect(screen.getByText(UI_TEXT.records.totalSpend)).toBeTruthy();
     expect(screen.queryByText(text.members)).toBeNull();
-    expect(screen.queryByText(text.debt)).toBeNull();
+    expect(screen.queryByText(text.outstandingTotal)).toBeNull();
   });
 
   // [MV]
@@ -73,7 +72,7 @@ describe("AnalysisPanel in a personal ledger", () => {
     renderPanel();
     expect(screen.getByRole("tablist", { name: text.analysis })).toBeTruthy();
     expect(screen.getByText(text.members)).toBeTruthy();
-    expect(screen.getByText(text.debt)).toBeTruthy();
+    expect(screen.getByText(text.outstandingTotal)).toBeTruthy();
     expect(screen.getByText(UI_TEXT.analysis.memberBalances)).toBeTruthy();
     expect(screen.getByText(UI_TEXT.settlement.suggestionSectionTitle)).toBeTruthy();
     expect(screen.getByText(text.settlementHistoryTitle)).toBeTruthy();
@@ -93,5 +92,18 @@ describe("AnalysisPanel in a personal ledger", () => {
   test("the shared render keeps the budget bar when a budget is set", () => {
     renderPanel({ monthlyBudgetMinor: 500_000 });
     expect(screen.getByRole("progressbar")).toBeTruthy();
+  });
+
+  // [MV]
+  test("待結清總額 sums every outstanding transfer, not just the first", () => {
+    renderPanel({
+      settlementTransfers: [
+        { fromMemberId: "me", toMemberId: "bob", amount: { amount_minor: 30_000, currency: "TWD" } },
+        { fromMemberId: "carol", toMemberId: "bob", amount: { amount_minor: 20_000, currency: "TWD" } },
+      ],
+    });
+    const tile = screen.getByText(text.outstandingTotal).closest("div");
+    if (!tile) throw new Error("no outstanding-total tile");
+    expect(within(tile).getByText("$500")).toBeTruthy();
   });
 });

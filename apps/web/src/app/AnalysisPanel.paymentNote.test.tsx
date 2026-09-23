@@ -26,7 +26,6 @@ function renderPanel(overrides: Partial<Parameters<typeof AnalysisPanel>[0]> = {
     members,
     balances: new Map<string, number>([["me", -50_000], ["bob", 50_000]]),
     maxBalanceMinor: 50_000,
-    debtAmountMinor: 50_000,
     settlementTransfers: [{ fromMemberId: "me", toMemberId: "bob", amount: twd }],
     settlementHistory: { records: [], loading: false, matchCount: 0, degraded: false },
     dateChips: [],

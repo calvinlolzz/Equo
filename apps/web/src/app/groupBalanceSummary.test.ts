@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Group } from "./appTypes";
-import { balanceTone, describeBalance, summarizeGroupBalances } from "./groupBalanceSummary";
+import { balanceTone, describeBalance, describeMemberBalance, summarizeGroupBalances } from "./groupBalanceSummary";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.app;
@@ -88,5 +88,25 @@ describe("describeBalance", () => {
     expect(balanceTone(1)).toBe("positive");
     expect(balanceTone(-1)).toBe("negative");
     expect(balanceTone(0)).toBe("settled");
+  });
+});
+
+describe("describeMemberBalance", () => {
+  // [MV]
+  test("a member other than yourself uses the 應收/應付 vocabulary", () => {
+    expect(describeMemberBalance(4355, "TWD", false)).toBe(`${text.memberGetsBack} $43.55`);
+    expect(describeMemberBalance(-4355, "TWD", false)).toBe(`${text.memberOwes} $43.55`);
+  });
+
+  // [MV]
+  test("your own row uses the you-variants instead", () => {
+    expect(describeMemberBalance(4355, "TWD", true)).toBe(`${text.balanceOwedToYou} $43.55`);
+    expect(describeMemberBalance(-4355, "TWD", true)).toBe(`${text.balanceYouOwe} $43.55`);
+  });
+
+  // [MV]
+  test("a settled balance is 已結清 regardless of isSelf", () => {
+    expect(describeMemberBalance(0, "TWD", false)).toBe(text.balanceSettled);
+    expect(describeMemberBalance(0, "TWD", true)).toBe(text.balanceSettled);
   });
 });

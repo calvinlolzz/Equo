@@ -5,7 +5,7 @@ export type ExpenseDayGroup = {
   /** Local YYYY-MM-DD key for the day. */
   key: string;
   expenses: Expense[];
-  /** Sum of the day's outflow (income excluded), for the day-header subtotal. */
+  /** Sum of the day's expense-kind outflow (income and settlements excluded), for the day-header subtotal. */
   subtotalMinor: number;
 };
 
@@ -14,7 +14,9 @@ export type ExpenseDayGroup = {
  * records view: a date header + per-day subtotal above that day's rows).
  * Input order is preserved — the server returns newest-first, so groups come
  * out newest-day-first and rows stay in their original order within a day.
- * Income rows are shown in their day but not summed into the spend subtotal.
+ * Income and settlement rows are shown in their day but not summed into the
+ * spend subtotal - this matches summariseFilteredExpenses, the only other
+ * place that sums a list of expenses into a single spend figure.
  */
 export function groupExpensesByDay(expenses: Expense[]): ExpenseDayGroup[] {
   const groups = new Map<string, ExpenseDayGroup>();
@@ -28,7 +30,7 @@ export function groupExpensesByDay(expenses: Expense[]): ExpenseDayGroup[] {
       order.push(key);
     }
     group.expenses.push(expense);
-    if (expense.kind !== "income") {
+    if ((expense.kind ?? "expense") === "expense") {
       group.subtotalMinor += expense.amountMinor;
     }
   }

@@ -2,7 +2,8 @@ import type { SettlementTransfer } from "../domain/settlement";
 import type { SpendBreakdown, SpendPeriodKind } from "./apiClient";
 import { formatActivityTime } from "./appDates";
 import type { Member } from "./appTypes";
-import { formatAmount, formatSigned } from "./formatAmount";
+import { formatAmount } from "./formatAmount";
+import { describeMemberBalance } from "./groupBalanceSummary";
 import { MemberAvatar } from "./MemberAvatar";
 import type { SettlementHistory } from "./useSettlementHistory";
 import { SpendBarChart } from "./SpendBarChart";
@@ -20,7 +21,6 @@ type AnalysisPanelProps = {
   members: Member[];
   balances: Map<string, number>;
   maxBalanceMinor: number;
-  debtAmountMinor: number;
   settlementTransfers: SettlementTransfer[];
   /** 清償紀錄 over the group's whole history — see useSettlementHistory. */
   settlementHistory: SettlementHistory;
@@ -65,7 +65,6 @@ export function AnalysisPanel({
   members,
   balances,
   maxBalanceMinor,
-  debtAmountMinor,
   settlementTransfers,
   settlementHistory,
   dateChips,
@@ -85,6 +84,10 @@ export function AnalysisPanel({
   // show it once there's enough spread to be worth a chart.
   const spendTotalsByDay = new Map(spendByDay.map((entry) => [entry.day, entry.totalMinor]));
   const daysWithSpend = dateChips.filter((day) => (spendTotalsByDay.get(day.key) ?? 0) > 0).length;
+  // The minimal-transfer routing can leave several transfers outstanding at
+  // once (buildSettlementTransfers), so the tile is their sum - not the
+  // first one, which is neither a total nor even the largest.
+  const outstandingMinor = settlementTransfers.reduce((sum, transfer) => sum + transfer.amount.amount_minor, 0);
 
   return (
     <>
@@ -135,7 +138,7 @@ export function AnalysisPanel({
       />
       <div className="panel-stat-grid">
         <div>
-          <span>{UI_TEXT.analysis.totalAmount}</span>
+          <span>{UI_TEXT.records.totalSpend}</span>
           <strong>{formatAmount(totalExpenseMinor, currency)}</strong>
         </div>
         {personal ? null : (
@@ -145,8 +148,8 @@ export function AnalysisPanel({
               <strong>{members.length}</strong>
             </div>
             <div>
-              <span>{text.debt}</span>
-              <strong>{formatAmount(debtAmountMinor, currency)}</strong>
+              <span>{text.outstandingTotal}</span>
+              <strong>{formatAmount(outstandingMinor, currency)}</strong>
             </div>
           </>
         )}
@@ -176,7 +179,7 @@ export function AnalysisPanel({
               <div className="analysis-bar-track">
                 <i style={{ width }} />
               </div>
-              <strong>{formatSigned(balance, currency)}</strong>
+              <strong>{describeMemberBalance(balance, currency, member.id === currentMemberId)}</strong>
             </div>
           );
         })}

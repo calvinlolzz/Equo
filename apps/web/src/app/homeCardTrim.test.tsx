@@ -83,7 +83,7 @@ describe("the hero donut is gone", () => {
 
     // The donut printed the same amount as the balance card, with only a
     // name for context - two numbers for one fact, and the vaguer one came
-    // first. Bob's row prints "-$43.55" (a different string), so the only
+    // first. Bob's row prints "應付 $43.55" (a different string), so the only
     // "$43.55" left on screen is the balance card's.
     expect(screen.getAllByText("$43.55")).toHaveLength(1);
     expect(document.querySelector(".hero-donut")).toBeNull();

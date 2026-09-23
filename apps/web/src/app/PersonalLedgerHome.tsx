@@ -148,7 +148,7 @@ export function PersonalLedgerHome({
           label={text.records}
           summary={
             expenses.length
-              ? `${UI_TEXT.records.count} ${expenseCount} · ${expenses[0].kind === "income" ? "+" : ""}${formatAmount(expenses[0].amountMinor, expenses[0].currency)}`
+              ? `${UI_TEXT.records.entryCount.replace("{n}", String(expenseCount))} · ${UI_TEXT.records.latestAmount.replace("{amount}", (expenses[0].kind === "income" ? "+" : "") + formatAmount(expenses[0].amountMinor, expenses[0].currency))}`
               : text.noRecords
           }
           headExtra={

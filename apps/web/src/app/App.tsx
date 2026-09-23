@@ -814,14 +814,6 @@ export function App() {
   const spendDisplayAmountMinor = spendTab === "group" ? groupSpendMinor : personalSpendMinor;
 
   const settlementTransfers = useMemo(() => buildSettlementTransfers(serverBalances), [serverBalances]);
-  const firstTransfer = settlementTransfers[0] ?? null;
-  const debt = useMemo(() => {
-    if (!firstTransfer) return null;
-    const from = members.find((member) => member.id === firstTransfer.fromMemberId);
-    const to = members.find((member) => member.id === firstTransfer.toMemberId);
-    if (!from || !to) return null;
-    return { from, to, amountMinor: firstTransfer.amount.amount_minor };
-  }, [firstTransfer, members]);
   const settleAmount = parseSettleAmountMinor(settleAmountInput, settleConfirm?.amountMinor ?? 0);
   /**
    * Typed a real number, and it is over the balance.
@@ -2386,7 +2378,6 @@ export function App() {
                   members={members}
                   balances={balances}
                   maxBalanceMinor={maxBalanceMinor}
-                  debtAmountMinor={debt?.amountMinor ?? 0}
                   settlementTransfers={settlementTransfers}
                   settlementHistory={settlementHistory}
                   dateChips={dateChips}

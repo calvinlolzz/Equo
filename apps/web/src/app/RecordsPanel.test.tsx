@@ -194,7 +194,23 @@ describe("records list render window", () => {
     expect(mountedRowCount()).toBe(60);
     // ...so its header subtotal is the real 60 x $100 day total, and the
     // second day has not been mounted.
-    expect(screen.getByText("$6,000")).toBeTruthy();
+    expect(screen.getByText(`${UI_TEXT.records.daySpend} $6,000`)).toBeTruthy();
+  });
+});
+
+describe("the total-spend tile's hint", () => {
+  // [MV]
+  test("a group render explains what the total excludes", () => {
+    renderPanel(dailyExpenses(3));
+    expect(screen.getByText(UI_TEXT.records.totalSpendHint)).toBeTruthy();
+    expect(screen.queryByText(UI_TEXT.records.totalSpendHintPersonal)).toBeNull();
+  });
+
+  // [MV]
+  test("a personal-ledger render uses the shorter hint", () => {
+    renderPanel(dailyExpenses(3), { personal: true });
+    expect(screen.getByText(UI_TEXT.records.totalSpendHintPersonal)).toBeTruthy();
+    expect(screen.queryByText(UI_TEXT.records.totalSpendHint)).toBeNull();
   });
 });
 

@@ -71,6 +71,27 @@ export function describeBalance(balanceMinor: number | undefined, currency: stri
   return balanceMinor > 0 ? `${text.balanceOwedToYou} ${amount}` : `${text.balanceYouOwe} ${amount}`;
 }
 
+/**
+ * One member's balance as a phrase, for a row that is not the reader's own:
+ * 「應收 $300」/「應付 $300」/「已結清」.
+ *
+ * `isSelf` switches to the you-variants (應收/應付 read the same in zh, but
+ * the English strings differ - "Gets back"/"Owes" is about a third person,
+ * "Owed to you"/"You owe" is about the reader). A signed number alone does
+ * not say which way it points, which is exactly what describeBalance above
+ * exists to fix for the reader's own balance - this is the same fix for
+ * everyone else's row.
+ */
+export function describeMemberBalance(balanceMinor: number, currency: string, isSelf: boolean): string {
+  if (balanceMinor === 0) return text.balanceSettled;
+
+  const amount = formatAmount(Math.abs(balanceMinor), currency);
+  if (isSelf) {
+    return balanceMinor > 0 ? `${text.balanceOwedToYou} ${amount}` : `${text.balanceYouOwe} ${amount}`;
+  }
+  return balanceMinor > 0 ? `${text.memberGetsBack} ${amount}` : `${text.memberOwes} ${amount}`;
+}
+
 /** "positive" | "negative" | "settled" | null - drives the row's colour. */
 export function balanceTone(balanceMinor: number | undefined): "positive" | "negative" | "settled" | null {
   if (balanceMinor === undefined) return null;

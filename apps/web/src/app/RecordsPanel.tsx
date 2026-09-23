@@ -223,6 +223,7 @@ export function RecordsPanel({
         <div>
           <span>{UI_TEXT.records.totalSpend}</span>
           <strong>{formatAmount(totalExpenseMinor, currency)}</strong>
+          <small>{personal ? UI_TEXT.records.totalSpendHintPersonal : UI_TEXT.records.totalSpendHint}</small>
         </div>
       </div>
 
@@ -326,7 +327,7 @@ export function RecordsPanel({
               <div className="record-day-group" key={group.key}>
                 <div className="record-day-header">
                   <span>{formatDayLabel(group.expenses[0].createdAt)}</span>
-                  <b>{formatAmount(group.subtotalMinor, currency)}</b>
+                  {group.subtotalMinor > 0 ? <b>{`${UI_TEXT.records.daySpend} ${formatAmount(group.subtotalMinor, currency)}`}</b> : null}
                 </div>
                 {group.expenses.map((expense) => (
                   <ExpenseRow

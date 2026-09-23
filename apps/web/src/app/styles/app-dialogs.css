@@ -668,6 +668,10 @@
   text-align: right;
 }
 
+.member-dialog-row b {
+  white-space: nowrap;
+}
+
 /* A row with actions has a VARIABLE number of them: 清償 alone, 清償 plus
    提醒, or 清償 plus rename plus remove on a virtual member — and at 390px
    that last one plus a name plus a four-figure balance does not fit on one
@@ -1134,9 +1138,15 @@
   font-size: 20px;
 }
 
+.panel-stat-grid small {
+  color: rgb(var(--fg) / 0.55);
+  font-size: 11px;
+  font-weight: 760;
+}
+
 .analysis-balance-row {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 74px;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   border-radius: 14px;
@@ -1153,6 +1163,7 @@
 
 .analysis-balance-row strong {
   text-align: right;
+  white-space: nowrap;
 }
 
 .analysis-bar-track {

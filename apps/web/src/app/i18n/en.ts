@@ -64,10 +64,8 @@ export const EN: UiDictionary = {
     people: "members",
     /** Joined as `${n} ${this}`. */
     owedByCount: "people owe you",
-    total: "Total",
     personalSpend: "Your spending",
     groupSpend: "Group spending",
-    debt: "Who owes what",
     needPay: "To pay",
     settled: "Everyone is settled up",
     clearDebt: "Settle up",
@@ -156,6 +154,11 @@ export const EN: UiDictionary = {
     balanceSettled: "Settled",
     balanceOwedToYou: "Owed to you",
     balanceYouOwe: "You owe",
+    outstandingTotal: "Left to settle",
+    memberGetsBack: "Gets back",
+    memberOwes: "Owes",
+    spendDayYourShare: "your share",
+    spendDayGroupTotal: "group spent",
     balanceTotalTitle: "All groups",
     /** Joined as `+${n} ${this}`. */
     balanceMoreCurrencies: "more currencies",
@@ -509,8 +512,15 @@ export const EN: UiDictionary = {
     filterExpense: "Expenses",
     filterIncome: "Income",
     filterSettlement: "Settlements",
-    count: "Entries",
-    totalSpend: "Total spent",
+    count: "All entries",
+    totalSpend: "Spent so far",
+    totalSpendHint: "Excludes income and settlements",
+    totalSpendHintPersonal: "Excludes income",
+    /** Joined as `${n} ${this}`. */
+    entryCount: "{n} total",
+    /** Joined with `${amount}`. */
+    latestAmount: "latest {amount}",
+    daySpend: "Spent",
     searchPlaceholder: "Search items, notes, or amounts",
     searchLabel: "Search expenses",
     clearSearch: "Clear search",
@@ -524,7 +534,7 @@ export const EN: UiDictionary = {
     toDate: "To",
     /** Joined as `${prefix}${n}${middle}${amount}`, hence the empty prefix. */
     matchPrefix: "",
-    matchMiddle: " matches - ",
+    matchMiddle: " matches - spent ",
     localOnly: "(searching only what is loaded)",
     clearFilters: "Clear filters",
     noMatches: "Nothing matches",
@@ -579,13 +589,14 @@ export const EN: UiDictionary = {
     budgetOver: "Over by",
     budgetLeft: "Left",
     budgetProgress: "Monthly budget used",
+    /** Joined by replacing {pct} and {amount}. */
+    budgetUsage: "{pct}% of {amount} used",
     categoryShare: "By category",
     emptyPersonal: "You did not share any expenses in this period.",
     emptyGroup: "No spending in this period.",
   },
   analysis: {
     description: "Group spending and member balances, from the data so far.",
-    totalAmount: "Total",
     memberBalances: "Member balances",
     /** Joined as `${n} ${this}`. */
     categoryCount: "categories",
