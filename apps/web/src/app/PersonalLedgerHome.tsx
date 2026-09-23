@@ -7,7 +7,7 @@ import { HomeDisclosure } from "./GroupHome";
 import { InstallHint } from "./InstallHint";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { formatRecordStamp } from "./appDates";
-import { currentMonthKey, summarizeLedgerMonth } from "./personalLedger";
+import { combineLedgerMonth, currentMonthKey, summarizeLedgerMonth, type PersonalShares } from "./personalLedger";
 import { budgetProgress } from "./spendBudget";
 import { UI_TEXT } from "./uiText";
 import type { DialogMode, Expense, Group } from "./appTypes";
@@ -36,6 +36,13 @@ export type PersonalLedgerHomeProps = {
   monthlyBudgetMinor?: number | null;
   /** Whether the loaded `expenses` window is enough to trust this month's totals - see ledgerMonthCoverage. */
   coverage: "complete" | "partial";
+  /** The current month's group-shares read, or null when it isn't for this exact month (loading, or never fetched) - see App.tsx's derivation. */
+  groupShares: PersonalShares | null;
+  /** "ready" (groupShares is usable), "loading" (never attempted for this month yet), or "unavailable" (attempted and failed/empty for this month). */
+  groupSharesStatus: "ready" | "loading" | "unavailable";
+  /** Group ids that can be opened from the disclosure - only groups in the caller's own list (D1: archived/beyond-cap groups render as plain text instead). */
+  openableGroupIds: string[];
+  onOpenGroup: (groupId: string) => void;
   onOpenDialog: (mode: DialogMode) => void;
   onScanReceipt: () => void;
   onOpenExpenseComposer: () => void;
@@ -62,6 +69,10 @@ export function PersonalLedgerHome({
   expenseCount,
   monthlyBudgetMinor,
   coverage,
+  groupShares,
+  groupSharesStatus,
+  openableGroupIds,
+  onOpenGroup,
   onOpenDialog,
   onScanReceipt,
   onOpenExpenseComposer,
@@ -71,17 +82,31 @@ export function PersonalLedgerHome({
 }: PersonalLedgerHomeProps) {
   const monthKey = currentMonthKey();
   const summary = summarizeLedgerMonth(expenses, monthKey, group.currency);
+  const view = combineLedgerMonth(summary, groupShares, monthKey, group.currency);
   const budget = budgetProgress({
     budgetMinor: monthlyBudgetMinor,
-    spentMinor: summary.expenseMinor,
+    spentMinor: view.expenseMinor,
     periodKind: "month",
     scope: "group",
   });
+  const shareRows = [...view.countedGroups, ...view.uncountedGroups];
 
-  const empty = hasLoadedDetail && expenses.length === 0;
+  // The empty state now depends on both halves of the picture: an own-empty
+  // ledger with a real group share to show is not "start recording" - there
+  // is already something on screen (D4).
+  const empty = hasLoadedDetail && expenses.length === 0 && !(groupSharesStatus === "ready" && shareRows.length > 0);
+
+  const splitLine =
+    groupSharesStatus === "loading"
+      ? ledgerText.sharesLoading
+      : groupSharesStatus === "unavailable"
+        ? ledgerText.sharesUnavailable
+        : view.countedGroups.length > 0
+          ? `${ledgerText.ownPart} ${formatAmount(view.ownExpenseMinor, group.currency)} · ${ledgerText.groupPart} ${formatAmount(view.groupShareMinor, group.currency)}`
+          : null;
 
   return (
-    <section className="group-room pizo-home enter-content" aria-label={text.groupHome}>
+    <section className="group-room pizo-home enter-content" aria-label={ledgerText.homeLabel}>
       {isMobileLayout ? <h1 className="visually-hidden">{displayName}</h1> : null}
       {isMobileLayout ? (
         <InstallHint state={install.state} onInstall={install.promptInstall} onDismiss={install.dismiss} />
@@ -115,15 +140,16 @@ export function PersonalLedgerHome({
           <>
             <div className="ledger-month-card">
               <span className="home-balance-lead">{ledgerText.monthExpense}</span>
-              <strong className="home-balance-amount">{formatAmount(summary.expenseMinor, group.currency)}</strong>
+              <strong className="home-balance-amount">{formatAmount(view.expenseMinor, group.currency)}</strong>
+              {splitLine ? <p className="ledger-month-split">{splitLine}</p> : null}
               <div className="ledger-month-stats">
                 <span>
                   {ledgerText.monthIncome}
-                  <strong className="amount-income">{formatAmount(summary.incomeMinor, group.currency)}</strong>
+                  <strong className="amount-income">{formatAmount(view.incomeMinor, group.currency)}</strong>
                 </span>
                 <span>
                   {ledgerText.monthNet}
-                  <strong>{formatSigned(summary.netMinor, group.currency)}</strong>
+                  <strong>{formatSigned(view.netMinor, group.currency)}</strong>
                 </span>
               </div>
               {coverage === "partial" ? <small className="ledger-month-loading">{ledgerText.monthLoading}</small> : null}
@@ -131,15 +157,58 @@ export function PersonalLedgerHome({
 
             {budget ? <BudgetBar budget={budget} currency={group.currency} /> : null}
 
-            {summary.expenseMinor > 0 ? (
+            {view.expenseMinor > 0 ? (
               <div className="dialog-section-list">
                 <span className="dialog-list-title">{ledgerText.categoryTitle}</span>
-                <CategoryDonut entries={summary.byCategory} currency={group.currency} />
+                <CategoryDonut entries={view.byCategory} currency={group.currency} />
               </div>
             ) : null}
           </>
         )}
       </article>
+
+      {!empty && groupSharesStatus === "ready" && shareRows.length > 0 ? (
+        <HomeDisclosure
+          key={`shares-${group.id}`}
+          id="ledger-group-shares"
+          label={ledgerText.sharesTitle}
+          summary={`${shareRows.length} ${ledgerText.sharesGroupCount} · ${formatAmount(view.groupShareMinor, group.currency)}`}
+        >
+          <div className="ledger-share-list">
+            {shareRows.map((row) => {
+              const openable = openableGroupIds.includes(row.groupId);
+              const content = (
+                <>
+                  <span className="expense-record-main">
+                    <strong>{row.name}</strong>
+                    <small>
+                      {row.expenseCount} {ledgerText.sharesEntryCount}
+                      {row.archived ? ` · ${ledgerText.sharesArchived}` : ""}
+                      {row.currency !== group.currency ? ` · ${ledgerText.sharesOtherCurrency}` : ""}
+                    </small>
+                  </span>
+                  <span className="expense-record-amount">{formatAmount(row.shareMinor, row.currency)}</span>
+                </>
+              );
+              return openable ? (
+                <button
+                  key={row.groupId}
+                  className="ledger-share-row"
+                  type="button"
+                  onClick={() => onOpenGroup(row.groupId)}
+                >
+                  {content}
+                </button>
+              ) : (
+                <div key={row.groupId} className="ledger-share-row">
+                  {content}
+                </div>
+              );
+            })}
+          </div>
+          <p className="empty-copy ledger-share-hint">{ledgerText.sharesHint}</p>
+        </HomeDisclosure>
+      ) : null}
 
       {empty ? null : (
         <HomeDisclosure

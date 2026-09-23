@@ -78,4 +78,25 @@ describe("AnalysisPanel in a personal ledger", () => {
     expect(screen.getByText(UI_TEXT.settlement.suggestionSectionTitle)).toBeTruthy();
     expect(screen.getByText(text.settlementHistoryTitle)).toBeTruthy();
   });
+
+  test("shows the own-only note", () => {
+    renderPanel({ personal: true });
+    expect(screen.getByText(UI_TEXT.personalLedger.analysisOwnOnly)).toBeTruthy();
+  });
+
+  test("the shared render has no own-only note", () => {
+    renderPanel();
+    expect(screen.queryByText(UI_TEXT.personalLedger.analysisOwnOnly)).toBeNull();
+  });
+
+  // [MV]
+  test("forces the budget bar off even when a budget is passed in", () => {
+    renderPanel({ personal: true, monthlyBudgetMinor: 500_000 });
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  test("the shared render keeps the budget bar when a budget is set", () => {
+    renderPanel({ monthlyBudgetMinor: 500_000 });
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+  });
 });

@@ -416,6 +416,31 @@ export function App() {
     ? groupDisplayName({ ...activeGroup, kind: activeIsPersonal ? "personal" : activeGroup.kind })
     : "";
 
+  /**
+   * The ledger home's group-shares read, gated on the month actually
+   * matching (`combineLedgerMonth` does the same check again itself, but the
+   * status derivation below needs to know it too - see personalLedger.ts).
+   * `groupSharesStatus` is what tells PersonalLedgerHome apart "still
+   * loading" (nothing attempted for this month yet) from "asked, and it
+   * failed or is empty" (attempted, still no match) - personalShares only
+   * ever moves on success, so a failure alone would otherwise look
+   * indistinguishable from "never asked".
+   */
+  const ledgerMonthKeyNow = currentMonthKey();
+  const ledgerShares = cloudState?.personalShares?.month === ledgerMonthKeyNow ? cloudState.personalShares : null;
+  const groupSharesStatus: "ready" | "loading" | "unavailable" = ledgerShares
+    ? "ready"
+    : cloudState?.personalSharesAttemptedMonth === ledgerMonthKeyNow
+      ? "unavailable"
+      : "loading";
+  // Only a group in the caller's own list can be opened from the disclosure -
+  // an archived group or one past the list's 50-membership cap renders as
+  // plain text instead (D1), which avoids the groupNotFound toast.
+  const openableGroupIds = useMemo(
+    () => cloudGroups.filter((group) => !isPersonalGroup(group)).map((group) => group.id),
+    [cloudGroups],
+  );
+
   const {
     expenseComposerOpen,
     editingExpense,
@@ -585,7 +610,11 @@ export function App() {
     !settingsDrawerOpen;
   const pullStatus = usePullToRefresh(pullEnabled, async () => {
     if (!cloudStore || !activeGroup) return;
-    await Promise.all([cloudStore.refreshGroups(), cloudStore.refreshGroupDetail(activeGroup.id)]);
+    await Promise.all([
+      cloudStore.refreshGroups(),
+      cloudStore.refreshGroupDetail(activeGroup.id),
+      ...(activeIsPersonal ? [cloudStore.refreshPersonalShares(currentMonthKey())] : []),
+    ]);
   });
 
   // Freeze the page behind any open overlay (sheet / drawer / dialog) so it
@@ -1102,6 +1131,16 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGroupId, session, cloudStore]);
 
+  // The ledger's 本月群組分攤: fetched whenever the active group becomes the
+  // personal ledger (D5) - not gated on it having loaded yet, unlike the
+  // group-detail effect above, since this is a per-month read independent of
+  // any one group's detail cache.
+  useEffect(() => {
+    if (!session || !cloudStore || !activeGroupId || !activeIsPersonal) return;
+    void cloudStore.refreshPersonalShares(currentMonthKey());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroupId, activeIsPersonal, session, cloudStore]);
+
   // Opening a group counts as reading it. Keyed on the group's unread count as
   // well as its id, so a refresh that brings in something new while the user
   // is sitting on the group clears the badge again rather than leaving it lit
@@ -1151,6 +1190,10 @@ export function App() {
   // the next tick.
   const activeGroupIdRef = useRef(activeGroupId);
   activeGroupIdRef.current = activeGroupId;
+  // Mirrors activeGroupIdRef - read inside the same interval-driven callback,
+  // so it has to be a ref for the same reason (see the comment above).
+  const activeIsPersonalRef = useRef(activeIsPersonal);
+  activeIsPersonalRef.current = activeIsPersonal;
 
   useEffect(() => {
     if (!cloudStore) return;
@@ -1163,7 +1206,13 @@ export function App() {
           if (actionGuardRef.current.current) return Promise.resolve();
           const groupId = activeGroupIdRef.current;
           if (!groupId) return Promise.resolve();
-          return cloudStore.refreshGroupDetail(groupId, { background: true });
+          const detail = cloudStore.refreshGroupDetail(groupId, { background: true });
+          // While the ledger is the active group, every tick also polls
+          // group shares (D5) - a write in another group must show up the
+          // next time this fires, since the ledger stays on screen for it.
+          return activeIsPersonalRef.current
+            ? Promise.all([detail, cloudStore.refreshPersonalShares(currentMonthKey())])
+            : detail;
         },
         refreshGroups: () => {
           if (actionGuardRef.current.current) return Promise.resolve();
@@ -1828,6 +1877,10 @@ export function App() {
               expenseCount={aggregates.expenseCount}
               monthlyBudgetMinor={activeGroup.monthlyBudgetMinor ?? activeListGroup?.monthlyBudgetMinor}
               coverage={ledgerMonthCoverage(expenses, aggregates.expenseCount, currentMonthKey())}
+              groupShares={ledgerShares}
+              groupSharesStatus={groupSharesStatus}
+              openableGroupIds={openableGroupIds}
+              onOpenGroup={(id) => openGroup(id)}
               onOpenDialog={setDialog}
               onScanReceipt={openReceiptScan}
               onOpenExpenseComposer={openExpenseComposer}

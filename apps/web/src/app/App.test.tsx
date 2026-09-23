@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ExpenseSummary, GroupSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import { formatAmount } from "./formatAmount";
+import { currentMonthKey } from "./personalLedger";
 import { stashPendingRoute } from "./pendingRoute";
 import { UI_TEXT } from "./uiText";
 
@@ -1144,9 +1145,70 @@ describe("a personal ledger", () => {
     // own 建立群組 button (GroupRail's group-create-item), so an unscoped
     // getAllByText would pass even if PersonalLedgerHome's own empty-state
     // button were missing or broken.
-    const home = await screen.findByRole("region", { name: UI_TEXT.app.groupHome });
+    // The personal ledger's own section is labelled 帳本首頁 (personalLedger.homeLabel),
+    // not 群組首頁 - see PersonalLedgerHome.tsx's aria-label fix.
+    const home = await screen.findByRole("region", { name: UI_TEXT.personalLedger.homeLabel });
     expect(within(home).getByText(UI_TEXT.personalLedger.emptyTitle)).toBeTruthy();
     expect(within(home).getByText(UI_TEXT.app.createGroup)).toBeTruthy();
+  });
+
+  test("opening the ledger fetches this month's group shares and folds them into the headline", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+      { route: "GET /groups/group_ledger", body: ledgerDetail() },
+      {
+        route: "GET /me/group-shares",
+        body: {
+          month: currentMonthKey(),
+          groups: [
+            {
+              group_id: "group_1",
+              name: shared.name,
+              currency: "TWD",
+              archived: false,
+              share_minor: 5000,
+              expense_count: 1,
+              by_category: [{ category: "food", share_minor: 5000 }],
+            },
+          ],
+        },
+      },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+
+    const rail = await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    fireEvent.click(within(rail).getByText(UI_TEXT.personalLedger.name).closest("button") as HTMLElement);
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_ledger"));
+
+    // own 12000 (ledgerDetail's seeded expense) + group share 5000 = 17000.
+    await waitFor(() =>
+      expect(document.querySelector(".home-balance-amount")?.textContent).toBe(formatAmount(17000, "TWD")),
+    );
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const groupSharesCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/me/group-shares"));
+    expect(groupSharesCall).toBeTruthy();
+    expect(String(groupSharesCall![0])).toContain(`month=${currentMonthKey()}`);
+  });
+
+  // [MV]
+  test("opening a shared group records no GET /me/group-shares call", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [shared, ledger] } },
+      { route: "GET /groups/group_1", body: groupDetail({ group: shared }) },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_1"));
+    await screen.findByRole("complementary", { name: UI_TEXT.app.groupList });
+    // Give any stray effect a tick to fire before asserting its absence.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/me/group-shares"))).toBe(false);
   });
 });
 

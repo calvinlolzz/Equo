@@ -128,7 +128,8 @@ export function AnalysisPanel({
         loading={spendBreakdown.loading}
         error={spendBreakdown.error}
         currency={currency}
-        monthlyBudgetMinor={monthlyBudgetMinor}
+        monthlyBudgetMinor={personal ? null : monthlyBudgetMinor}
+        note={personal ? UI_TEXT.personalLedger.analysisOwnOnly : undefined}
         onSelectKind={spendBreakdown.selectPeriodKind}
         onSelectKey={spendBreakdown.selectPeriodKey}
         onRetry={spendBreakdown.retry}
