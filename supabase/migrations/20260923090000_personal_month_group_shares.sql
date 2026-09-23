@@ -70,7 +70,11 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' A
                'group_id', mi.group_id, 'name', mi.name, 'currency', mi.currency, 'archived', mi.archived,
                'share_minor', t.share_minor, 'expense_count', t.expense_count, 'by_category', t.by_category)
              order by t.share_minor desc, mi.name)
-        from mine mi join per_group t on t.group_id = mi.group_id), '[]'::jsonb));
+        -- distinct: nothing in the schema stops one user holding two active
+        -- member rows in the same group; per_group already sums both, and this
+        -- keeps that group from being listed twice.
+        from (select distinct group_id, name, currency, archived from mine) mi
+        join per_group t on t.group_id = mi.group_id), '[]'::jsonb));
 $$;
 ALTER FUNCTION public.personal_month_group_shares(uuid, text) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.personal_month_group_shares(uuid, text) FROM PUBLIC;
