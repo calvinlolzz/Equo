@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, configure, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ExpenseSummary } from "./apiClient";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
@@ -179,6 +179,28 @@ describe("the detail stacks over the records sheet instead of replacing it", () 
     expect(
       screen.queryAllByRole("button").some((node) => node.className.includes("record-dialog-row") && node.textContent?.includes("拉麵")),
     ).toBe(false);
+  });
+
+  // [MV] (Fix 3's × close button is what lets this test close the composer.)
+  test("編輯 from a detail opened over records opens the composer without losing the records sheet", async () => {
+    await land();
+    const search = await openRecordsSearchAndDetail();
+
+    fireEvent.click(screen.getByRole("button", { name: app.editExpenseAction }));
+    // The composer's dialog role is always named by text.addExpense, even
+    // while editing (ExpenseComposerSheet.tsx:1529) - text.editExpense only
+    // labels its heading. A generous timeout: this is the file's only
+    // dynamic import of the (lazy-chunked) composer, and that first import
+    // can run past the file's default 4s asyncUtilTimeout.
+    const composer = await screen.findByRole("dialog", { name: app.addExpense }, { timeout: 8000 });
+    // The records sheet is still mounted underneath the composer.
+    expect(search).toBeTruthy();
+    expect(screen.getByLabelText(UI_TEXT.records.searchLabel)).toBeTruthy();
+
+    fireEvent.click(within(composer).getByRole("button", { name: app.close }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.addExpense })).toBeNull());
+    expect(screen.getByLabelText(UI_TEXT.records.searchLabel)).toBeTruthy();
   });
 
   test("a detail opened from a home row leaves no records sheet behind when closed", async () => {

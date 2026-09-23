@@ -1288,6 +1288,22 @@
   font-size: 30px;
 }
 
+.composer-close {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  margin: -6px -8px 0 0;
+  border-radius: 50%;
+  color: rgb(var(--fg) / 0.78);
+  background: rgb(var(--surf) / 0.09);
+}
+
+.composer-close:active {
+  transform: scale(0.92);
+}
+
 .composer-type-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

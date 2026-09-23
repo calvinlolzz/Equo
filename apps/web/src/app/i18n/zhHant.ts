@@ -30,6 +30,8 @@ export const ZH_HANT = {
     joinGroup: "加入群組",
     continueGroup: "繼續使用",
     cancel: "取消",
+    close: "關閉",
+    editAmount: "修改金額",
     confirm: "確認",
     save: "儲存",
     name: "名稱",

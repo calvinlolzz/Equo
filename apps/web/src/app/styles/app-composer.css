@@ -270,6 +270,34 @@
   font-weight: 900;
 }
 
+/* Shown on every step after the amount one, so a mis-typed total doesn't
+   need a swipe/tap all the way back to step 1 to fix - see
+   ExpenseComposerSheet's composer-step-heading block. Purely presentational
+   (jumps to step 0), so it plays no part in the dirty-state comparison. */
+.composer-amount-chip {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--surf) / 0.16);
+  border-radius: 999px;
+  background: rgb(var(--surf) / 0.07);
+  color: rgb(var(--fg));
+  font-weight: 820;
+}
+
+.composer-amount-chip span {
+  color: rgb(var(--fg) / 0.64);
+  font-size: 13px;
+}
+
+.composer-amount-chip strong {
+  font-size: 17px;
+  font-weight: 900;
+}
+
 .composer-step-nav {
   display: flex;
   align-items: center;
@@ -1124,6 +1152,61 @@
   .composer-photo-preview {
     width: 76px;
     height: 76px;
+  }
+}
+
+/* Above 620px the composer used to still be a bottom sheet pinned to the
+   viewport's bottom edge, with the drag handle showing even though nothing
+   here can be dragged with a mouse. Centre it as an ordinary dialog instead -
+   matching .flow-dialog/.panel-dialog's own desktop treatment. */
+@media (min-width: 621px) {
+  .composer-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .expense-composer.expense-sheet {
+    width: min(600px, 100%);
+    max-height: min(860px, calc(100dvh - 48px));
+    border-radius: var(--r-card-lg);
+    /* Not sheet-rise (a slide-up-from-the-bottom-edge animation) - a centred
+       dialog rising in place reads as a bottom sheet that forgot where the
+       bottom of the screen is. Reduced motion still wins: see the shared
+       `.expense-sheet { animation: none !important }` rule above. */
+    animation: dialog-rise 180ms ease-out;
+  }
+
+  .expense-composer .sheet-drag-handle {
+    display: none;
+  }
+
+  /* Only .composer-form-body/-footer's parent (the desktop, non-stepped
+     branch) gets this treatment - the phone stepped flow keeps its own
+     column layout regardless of viewport width, since isPhone gates it in
+     JS, not this media query. */
+  .expense-composer:has(.composer-form-body) {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+  }
+
+  .composer-form-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    overflow: hidden auto;
+    overscroll-behavior: none;
+  }
+
+  .composer-form-footer {
+    flex: 0 0 auto;
+    display: grid;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid rgb(var(--surf) / 0.12);
   }
 }
 

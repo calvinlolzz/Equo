@@ -157,6 +157,45 @@ describe("the phone add-expense flow", () => {
     expect(within(composer).getByRole("button", { name: app.splitByPercent })).toBeTruthy();
   });
 
+  // [MV]
+  test("the amount chip on a later step shows the total and jumps back to step 1", async () => {
+    await landAsBob();
+    const composer = await openComposer();
+    await toDetailsStep(composer);
+
+    const chip = within(composer).getByRole("button", {
+      name: `${app.editAmount}: ${UI_TEXT.composerModes.expense} TWD 600`,
+    });
+    expect(chip).toBeTruthy();
+
+    chip.click();
+
+    await waitFor(() => expect(within(composer).getByText(`${app.stepWord} 1/2`)).toBeTruthy());
+  });
+
+  // [MV]
+  test("closing a clean composer with ×  just removes it - no discard confirm", async () => {
+    await landAsBob();
+    const composer = await openComposer();
+
+    within(composer).getByRole("button", { name: app.close }).click();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: app.addExpense })).toBeNull());
+    expect(screen.queryByText(app.discardExpenseTitle)).toBeNull();
+  });
+
+  // [MV]
+  test("closing a dirty composer with × raises the discard confirm instead", async () => {
+    await landAsBob();
+    const composer = await openComposer();
+    await tapKeypad(composer, "6");
+
+    within(composer).getByRole("button", { name: app.close }).click();
+
+    expect(await screen.findByText(app.discardExpenseTitle)).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: app.addExpense })).toBeTruthy();
+  });
+
   test("a saved entry carries the recorder as payer, all the way to the request", async () => {
     await landAsBob();
     const composer = await openComposer();

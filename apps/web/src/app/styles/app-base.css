@@ -1516,6 +1516,7 @@ label span {
 :root[data-theme="light"] .mobile-tab-item:not(.active),
 :root[data-theme="light"] .empty-copy,
 :root[data-theme="light"] .composer-step-count,
+:root[data-theme="light"] .composer-amount-chip span,
 /* Secondary text that is gold in dark mode. Gold reads on the dark cards and
    is a ~2:1 smudge on the light ones (day-mode home cards are near-white — see
    the frosted-glass block above), so day mode takes the same muted body colour

@@ -39,6 +39,8 @@ export const EN: UiDictionary = {
     joinGroup: "Join group",
     continueGroup: "Continue",
     cancel: "Cancel",
+    close: "Close",
+    editAmount: "Edit amount",
     confirm: "Confirm",
     save: "Save",
     name: "Name",

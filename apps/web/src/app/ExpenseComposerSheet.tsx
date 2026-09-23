@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { CalendarDays, ChevronRight, Delete, Plus, X } from "lucide-react";
+import { CalendarDays, ChevronRight, Delete, Pencil, Plus, X } from "lucide-react";
 import type { Expense, Member } from "./appTypes";
 import { createApiClient, type ExchangeRatesResponse } from "./apiClient";
 import { COMPOSER_MODES, PERSONAL_COMPOSER_MODES, getComposerSubmitState, type ComposerMode } from "./expenseComposer";
@@ -1534,6 +1534,9 @@ export function ExpenseComposerSheet({
         <div className="sheet-drag-handle" aria-hidden="true" />
         <div className="composer-header">
           <h2>{initialExpense ? text.editExpense : text.addExpense}</h2>
+          <button className="composer-close" type="button" aria-label={text.close} onClick={requestClose}>
+            <X aria-hidden="true" size={20} />
+          </button>
         </div>
 
         {isPhone ? (
@@ -1550,6 +1553,18 @@ export function ExpenseComposerSheet({
                 </span>
                 <h3 className="composer-step-title">{stepTitle(stepKeys[activeStep])}</h3>
               </div>
+              {stepKeys[activeStep] !== "amount" ? (
+                <button
+                  className="composer-amount-chip"
+                  type="button"
+                  aria-label={`${text.editAmount}: ${UI_TEXT.composerModes[composerMode]} ${composerCurrency} ${formatAmountInputDisplay(composerAmount) || "0"}`}
+                  onClick={() => setStepIndex(0)}
+                >
+                  <span>{UI_TEXT.composerModes[composerMode]}</span>
+                  <strong>{`${composerCurrency} ${formatAmountInputDisplay(composerAmount) || "0"}`}</strong>
+                  <Pencil aria-hidden="true" size={14} />
+                </button>
+              ) : null}
               {stepKeys[activeStep] === "amount" ? renderModeRow() : null}
               {renderStepBody(stepKeys[activeStep])}
             </div>
@@ -1579,23 +1594,27 @@ export function ExpenseComposerSheet({
           </>
         ) : (
           <>
-            {renderModeRow()}
-            {renderMetaGrid()}
-            {renderAmountCard()}
-            {renderExchangeRow()}
-            {renderTitleField()}
-            {personal ? null : composerMode === "transfer" ? renderTransferSection() : renderPayerSection()}
-            {personal ? null : composerMode !== "transfer" ? renderShareSection() : null}
-            {composerMode !== "transfer" ? renderPhotoNoteSection() : renderNoteSection()}
-            <p className="composer-hint">{composerSubmitState.hint}</p>
-            <button
-              className="composer-submit-full"
-              type="button"
-              disabled={composerSubmitState.disabled || composerSubmitting}
-              onClick={submitComposer}
-            >
-              {composerSubmitting ? text.savingChanges : composerSubmitState.label}
-            </button>
+            <div className="composer-form-body">
+              {renderModeRow()}
+              {renderMetaGrid()}
+              {renderAmountCard()}
+              {renderExchangeRow()}
+              {renderTitleField()}
+              {personal ? null : composerMode === "transfer" ? renderTransferSection() : renderPayerSection()}
+              {personal ? null : composerMode !== "transfer" ? renderShareSection() : null}
+              {composerMode !== "transfer" ? renderPhotoNoteSection() : renderNoteSection()}
+            </div>
+            <div className="composer-form-footer">
+              <p className="composer-hint">{composerSubmitState.hint}</p>
+              <button
+                className="composer-submit-full"
+                type="button"
+                disabled={composerSubmitState.disabled || composerSubmitting}
+                onClick={submitComposer}
+              >
+                {composerSubmitting ? text.savingChanges : composerSubmitState.label}
+              </button>
+            </div>
           </>
         )}
       </section>
