@@ -59,6 +59,8 @@ export function webpSize(publicPath: string): ImageFacts {
 
 /** The parsed site.webmanifest, so tests can hold it against the files it names. */
 export function readManifest(): {
+  name: string;
+  description: string;
   screenshots: Array<{ src: string; sizes: string; type: string; form_factor: string; label: string }>;
   icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
 } {

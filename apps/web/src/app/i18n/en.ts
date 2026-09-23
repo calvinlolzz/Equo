@@ -270,7 +270,7 @@ export const EN: UiDictionary = {
     ownerOnlyAction: "Only the group owner can do this",
   },
   login: {
-    tagline: "Split the bill, settle up easily",
+    tagline: "Track spending, split the bill, settle up",
     googleLogin: "Sign in with Google",
     loggingIn: "Signing in…",
     missingSupabaseUrl: "Sign-in is not configured",
@@ -280,20 +280,29 @@ export const EN: UiDictionary = {
     heroShotAlt: "Equo's group home: member balances, the day's spending, and who owes whom.",
     heroPitch: "Free · nothing to install · works in your browser",
     heroLede:
-      "Add the expense and Equo does the rest — evenly, by amount, by percentage or by shares, across currencies, settled in the fewest transfers.",
+      "Everyday spending goes in your own ledger. Trips, dinners and shared flats get a group that splits every bill and settles up in the fewest transfers. Your share counts toward your monthly total automatically.",
     inviteTitle: "You have been invited to join",
     /** Joined as `${n} ${this}`. */
     inviteMemberSuffix: "members",
     inviteHint: "After you sign in, Equo asks what name you want to join with.",
     scrollCue: "What Equo does",
 
-    valueTitle: "Shared money, settled without the awkward conversation",
+    valueTitle: "Your own money, kept straight. Shared costs, split fairly.",
     value1Title: "Add the expense, Equo does the rest",
     value1Body: "Split evenly, by amount, by percentage or by shares. Multiple currencies convert automatically, and balances stay separate per currency.",
     value2Title: "Settle up in as few transfers as possible",
     value2Body: "When three people owe each other in circles, Equo reduces it to the fewest transfers. The payee's bank or LINE Pay details sit right there, one tap to copy.",
     value3Title: "Photograph the receipt, the amount fills itself in",
     value3Body: "Snap a receipt and the amount and merchant land in the form. Up to five per expense, and you can talk it over in the comments underneath.",
+
+    ledgerTitle: "Your group shares land in your own ledger",
+    ledgerBody:
+      "Breakfast, the power bill, your salary: they go in a ledger no other user can see. Your share of dinner on the Okinawa trip counts toward this month too, labelled with the group it came from, so nothing gets entered twice.",
+    demoLedgerLabel: "Illustration",
+    demoLedgerTotal: "NT$8,450",
+    demoLedgerOwn: "NT$7,100",
+    demoLedgerShare: "NT$1,350",
+    demoLedgerGroupName: "Okinawa trip",
 
     demoChatLabel: "Illustrative conversation",
     chatLine1: "I covered the izakaya — 2,400",
@@ -328,12 +337,12 @@ export const EN: UiDictionary = {
     faq4A: "No, it runs in your browser. Add it to your home screen and it behaves like an installed app.",
     faq5Q: "Who can see my data?",
     faq5A:
-      "Only the members of a group can see that group's expenses. We do not sell data and we do not run ads, and you can delete your whole account from the profile page at any time. When you use the receipt scanner, that photo is sent to Google Gemini to be read — Google may use it to improve their products and their staff may see it. If you would rather not, use the photo field in the expense form instead: the picture is still attached to the expense, but it is never sent out. See section 3 of the privacy policy.",
+      "Your personal ledger isn't visible to any other user, and a group's expenses are visible only to that group's members, who can't see your ledger either. We do not sell data and we do not run ads, and you can delete your whole account from the profile page at any time. When you use the receipt scanner, that photo is sent to Google Gemini to be read — Google may use it to improve their products and their staff may see it. If you would rather not, use the photo field in the expense form instead: the picture is still attached to the expense, but it is never sent out. See section 3 of the privacy policy.",
 
     closingTitle: "Next time the bill comes, put the calculator away",
     closingCta: "Start with Google",
 
-    footerTagline: "Split expenses with friends, flatmates and travel companions.",
+    footerTagline: "Track your own spending, and split costs with friends, flatmates and travel companions.",
     footerContact: "Contact us",
     backToHome: "Back to Equo",
   },
@@ -692,6 +701,6 @@ export const EN: UiDictionary = {
     delete: "Delete",
     defaultProfileName: "Me",
     accountDisabledServer: "This account has been disabled.",
-    documentTitle: "Equo — split the bill easily",
+    documentTitle: "Equo — track spending, split the bill",
   },
 } as const;

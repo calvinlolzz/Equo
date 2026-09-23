@@ -97,7 +97,7 @@ export const FAQ = [
   },
   {
     q: "我的資料誰看得到？",
-    a: "只有同一個群組的成員看得到那個群組的帳。我們不賣資料、不放廣告，你也可以隨時在個人資料頁刪掉整個帳號。用掃描收據時，那張照片會送給 Google Gemini 辨識，Google 可能拿它改善產品、也可能有人員讀到——不想這樣就用表單裡的照片功能，照片一樣附在支出上但不會送出去。詳見隱私權政策第 3 節。",
+    a: "你的個人帳本，其他使用者都看不到；群組的帳只有同一個群組的成員看得到，他們也看不到你的個人帳本。我們不賣資料、不放廣告，你也可以隨時在個人資料頁刪掉整個帳號。用掃描收據時，那張照片會送給 Google Gemini 辨識，Google 可能拿它改善產品、也可能有人員讀到——不想這樣就用表單裡的照片功能，照片一樣附在支出上但不會送出去。詳見隱私權政策第 3 節。",
   },
 ];
 
@@ -112,7 +112,7 @@ export function buildJsonLd() {
       applicationCategory: "FinanceApplication",
       operatingSystem: "Web",
       inLanguage: "zh-Hant",
-      description: "和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。",
+      description: "記下自己的收支，也和朋友、室友、旅伴輕鬆分帳：自動算出誰欠誰、一鍵結清，你在群組分到的那份也會算進個人帳本。",
       // Free is the single most load-bearing fact on the page and the first
       // thing the FAQ answers, so it is said here in the form that can be read
       // without parsing prose.

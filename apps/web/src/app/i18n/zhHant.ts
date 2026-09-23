@@ -293,20 +293,31 @@ export const ZH_HANT = {
     heroShotAlt: "Equo 的群組首頁：成員餘額、當日花費，還有誰該付誰多少。",
     heroPitch: "免費・免下載・開瀏覽器就能用",
     /** hero 標題下面那句，取代了原本的 login.tagline 出現在這個位置。 */
-    heroLede: "記一筆，剩下的它算。均分、指定金額、比例、份數都可以，多幣別自動換算，結清的時候只轉最少次。",
+    heroLede: "平常的收支記在自己的帳本；出遊、聚餐、合租就開群組分帳，結清只轉最少次。你在群組分到的那份，會自動算進本月支出。",
     /** 帶著 ?invite= 進來的人才看得到的那張卡。只說得出群組名與人數。 */
     inviteTitle: "你被邀請加入",
     inviteMemberSuffix: "位成員",
     inviteHint: "登入後會問你要用什麼名字加入。",
     scrollCue: "Equo 能做什麼",
 
-    valueTitle: "一起花的錢，不用再算到傷感情",
+    valueTitle: "自己的錢記清楚，一起花的分清楚",
     value1Title: "記一筆，剩下的它算",
     value1Body: "均分、指定金額、比例、份數都可以。多幣別自動換算，餘額依幣別分開算。",
     value2Title: "結清只轉最少次",
     value2Body: "三個人欠來欠去，Equo 會算成最少的轉帳筆數。對方的收款資訊就在旁邊，點一下複製。",
     value3Title: "拍收據，金額自動填",
     value3Body: "拍一張收據，金額和店名自動帶進表單。一筆最多五張，還能在底下留言討論這筆是誰付的。",
+
+    /** 「群組分到的，自動算進個人帳本」那個示意區塊——landing-value 之後、還有這些之前。 */
+    ledgerTitle: "群組分到的，自動算進個人帳本",
+    ledgerBody:
+      "早餐、電費、薪水記在自己的帳本，其他使用者看不到。沖繩旅行裡你分到的晚餐，也會算進本月支出，並標出來自哪個群組，不用再記兩次。",
+    /** 示意畫面卡片的免責聲明，理由同 demoChatLabel。 */
+    demoLedgerLabel: "示意畫面",
+    demoLedgerTotal: "NT$8,450",
+    demoLedgerOwn: "NT$7,100",
+    demoLedgerShare: "NT$1,350",
+    demoLedgerGroupName: "沖繩旅行",
 
     /**
      * hero 裡那段示意對話：兩個人在群組裡對不清楚誰欠誰，Equo 的清償建議卡片
@@ -347,7 +358,7 @@ export const ZH_HANT = {
     faq4A: "不用，瀏覽器打開就能用。想要的話可以「加到主畫面」，用起來跟 App 一樣。",
     faq5Q: "我的資料誰看得到？",
     faq5A:
-      "只有同一個群組的成員看得到那個群組的帳。我們不賣資料、不放廣告，你也可以隨時在個人資料頁刪掉整個帳號。用掃描收據時，那張照片會送給 Google Gemini 辨識，Google 可能拿它改善產品、也可能有人員讀到——不想這樣就用表單裡的照片功能，照片一樣附在支出上但不會送出去。詳見隱私權政策第 3 節。",
+      "你的個人帳本，其他使用者都看不到；群組的帳只有同一個群組的成員看得到，他們也看不到你的個人帳本。我們不賣資料、不放廣告，你也可以隨時在個人資料頁刪掉整個帳號。用掃描收據時，那張照片會送給 Google Gemini 辨識，Google 可能拿它改善產品、也可能有人員讀到——不想這樣就用表單裡的照片功能，照片一樣附在支出上但不會送出去。詳見隱私權政策第 3 節。",
 
     /** 頁面結尾那條 CTA 帶狀區塊，跟 hero 那顆按鈕文字刻意不同——兩顆都叫「使用
      *  Google 登入」的話，Testing Library 的 getByText 系列在同一頁找到兩個相
@@ -355,7 +366,7 @@ export const ZH_HANT = {
     closingTitle: "下次吃完飯，別再翻計算機",
     closingCta: "用 Google 開始",
 
-    footerTagline: "和朋友、室友、旅伴輕鬆記帳分帳。",
+    footerTagline: "記下自己的收支，也和朋友、室友、旅伴輕鬆分帳。",
     footerContact: "聯絡我們",
     /** 法律頁的頁首返回鍵；也是登入頁 footer 回首頁的字。 */
     backToHome: "回到 Equo",
@@ -733,6 +744,6 @@ export const ZH_HANT = {
     delete: "刪除",
     defaultProfileName: "我",
     accountDisabledServer: "此帳號已被停用。",
-    documentTitle: "Equo — 輕鬆分帳",
+    documentTitle: "Equo — 記帳與分帳",
   },
 } as const;

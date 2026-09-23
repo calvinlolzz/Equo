@@ -37,6 +37,8 @@ const head = (html: string, pattern: RegExp) => pattern.exec(html)?.[1] ?? "";
 const titleOf = (html: string) => head(html, /<title>([^<]*)<\/title>/);
 const canonicalOf = (html: string) => head(html, /<link rel="canonical" href="([^"]*)"/);
 const descriptionOf = (html: string) => head(html, /<meta name="description" content="([^"]*)"/);
+const ogDescriptionOf = (html: string) => head(html, /<meta property="og:description" content="([^"]*)"/);
+const twitterDescriptionOf = (html: string) => head(html, /<meta name="twitter:description" content="([^"]*)"/);
 
 describe("the legal pages stop claiming to be the home page", () => {
   const rendered = Object.fromEntries(PUBLIC_PAGES.map((page) => [page.path, renderPublicPage(indexHtml, page)] as const));
@@ -141,6 +143,17 @@ describe("the landing page says what it is, in a form a machine reads", () => {
     expect(app.url).toBe(`${SITE_ORIGIN}/`);
   });
 
+  // [MV: change one of the four to disagree]
+  test("og/twitter/manifest/JSON-LD descriptions all say the same thing, and the meta description just prefixes it", () => {
+    const app = blocks.find((block) => block["@type"] === "WebApplication") as { description: string };
+    const manifest = readManifest();
+
+    expect(ogDescriptionOf(indexHtml)).toBe(app.description);
+    expect(twitterDescriptionOf(indexHtml)).toBe(app.description);
+    expect(manifest.description).toBe(app.description);
+    expect(descriptionOf(indexHtml)).toBe(`Equo 讓你${app.description}`);
+  });
+
   test("the marked-up FAQ is the FAQ that is on the page", () => {
     // Google's requirement, and the reason this is pinned: markup that does not
     // match the visible text is worse than no markup.
@@ -181,7 +194,7 @@ describe("the page's heading says what the page is", () => {
 
   test("the h1 is the proposition, not the brand", () => {
     expect(landing).toContain('<h1 className="landing-hero-title">{text.valueTitle}</h1>');
-    // 「一起花的錢，不用再算到傷感情」 rather than 「Equo」.
+    // 「自己的錢記清楚，一起花的分清楚」 rather than 「Equo」.
     expect(ZH_HANT.landing.valueTitle.length).toBeGreaterThan(6);
   });
 

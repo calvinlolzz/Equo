@@ -371,6 +371,49 @@
   width: min(420px, 100%);
 }
 
+/* ---- the group-shares demo (stage 2) ------------------------------------ */
+
+.landing-ledger-body {
+  margin: 0;
+  max-width: 560px;
+  text-align: center;
+  color: rgb(var(--fg) / 0.72);
+}
+
+/* Same glass-panel material as .landing-chat, but a plain figure rather than
+   a wide conversation card - centred and narrower, since it is one number
+   and a two-line breakdown rather than a multi-turn exchange. */
+.landing-ledger {
+  margin: 0 auto;
+  width: min(400px, 100%);
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 18px;
+  text-align: center;
+}
+
+.landing-ledger-total {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.landing-ledger-split {
+  margin: 0;
+  font-size: 13px;
+  color: rgb(var(--fg) / 0.62);
+}
+
+.landing-ledger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(var(--fg) / 0.12);
+}
+
 /* ---- sections ---------------------------------------------------------- */
 
 .landing-section {
@@ -387,6 +430,9 @@
   line-height: 1.35;
   letter-spacing: -0.01em;
   text-align: center;
+  /* Same reasoning as the hero h1 above: a run of CJK must not break
+     mid-word at the viewport edge, only at the punctuation. */
+  word-break: keep-all;
 }
 
 /* ---- the real product screenshot --------------------------------------- */

@@ -1,7 +1,7 @@
 {
-  "name": "Equo — 輕鬆分帳",
+  "name": "Equo — 記帳與分帳",
   "short_name": "Equo",
-  "description": "和朋友、室友、旅伴輕鬆記帳分帳，自動算出誰欠誰、一鍵結清。",
+  "description": "記下自己的收支，也和朋友、室友、旅伴輕鬆分帳：自動算出誰欠誰、一鍵結清，你在群組分到的那份也會算進個人帳本。",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

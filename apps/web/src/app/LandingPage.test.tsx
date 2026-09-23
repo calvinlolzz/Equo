@@ -212,6 +212,40 @@ describe("the first screen is four things and a way out of it", () => {
   });
 });
 
+describe("the group-shares demo (stage 2)", () => {
+  test("#landing-ledger exists, sits below the fold, and is not in the hero", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const section = document.querySelector("#landing-ledger");
+    expect(section).toBeTruthy();
+    expect(section?.closest(".landing-below")).toBeTruthy();
+    expect(section?.closest(".landing-hero")).toBeNull();
+  });
+
+  test("the demo's caption is a real figcaption inside figure.landing-ledger", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const label = screen.getByText(text.demoLedgerLabel);
+    expect(label.tagName).toBe("FIGCAPTION");
+    expect(label.closest("figure.landing-ledger")).toBeTruthy();
+  });
+
+  // [MV: change demoLedgerOwn]
+  test("the demo's own + share amounts sum to the displayed total", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const parseNt = (value: string) => Number(value.replace(/[^\d.]/g, ""));
+    expect(parseNt(text.demoLedgerOwn) + parseNt(text.demoLedgerShare)).toBe(parseNt(text.demoLedgerTotal));
+  });
+
+  test("the two-button page is unaffected - no button anywhere in the new section", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const section = document.querySelector("#landing-ledger");
+    expect(section?.querySelector("button")).toBeNull();
+  });
+});
+
 describe("the feature list shows three and keeps three", () => {
   test("the rest are one click away — and still in the markup", () => {
     render(<LandingPage onGoogleLogin={() => {}} />);
