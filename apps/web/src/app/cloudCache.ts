@@ -1,5 +1,6 @@
 import type { CloudGroupData } from "./cloudStore";
 import type { Group } from "./appTypes";
+import type { PersonalShares } from "./personalLedger";
 
 const CLOUD_CACHE_KEY = "equo.clean.cloud_cache";
 // Bumped for the personal-ledger client (2026-09-22): a group cached by an
@@ -12,6 +13,8 @@ export type CloudCacheSnapshot = {
   userId: string;
   groups: Group[];
   groupDetails: Record<string, CloudGroupData>;
+  /** Last-known 本月群組分攤, keyed by month - absent in a cache from before this field existed. */
+  personalShares?: PersonalShares | null;
 };
 
 type StoredCloudCache = CloudCacheSnapshot & {
@@ -45,6 +48,43 @@ function isCloudGroupData(value: unknown): value is CloudGroupData {
     Array.isArray(candidate.balances) &&
     Boolean(candidate.aggregates) &&
     typeof candidate.aggregates === "object"
+  );
+}
+
+function isGroupShareMonth(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.groupId === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.currency === "string" &&
+    typeof candidate.archived === "boolean" &&
+    typeof candidate.shareMinor === "number" &&
+    typeof candidate.expenseCount === "number" &&
+    Array.isArray(candidate.byCategory) &&
+    candidate.byCategory.every(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        typeof (entry as Record<string, unknown>).category === "string" &&
+        typeof (entry as Record<string, unknown>).totalMinor === "number",
+    )
+  );
+}
+
+/**
+ * Guards `personalShares` on its own, separately from isStoredCloudCache -
+ * see loadCloudCache's comment on why a malformed value here drops only this
+ * field rather than the entire cached snapshot.
+ */
+function isPersonalShares(value: unknown): value is PersonalShares {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.month === "string" &&
+    /^\d{4}-\d{2}$/.test(candidate.month) &&
+    Array.isArray(candidate.groups) &&
+    candidate.groups.every(isGroupShareMonth)
   );
 }
 
@@ -84,7 +124,20 @@ export function loadCloudCache(
   if (!isStoredCloudCache(parsed)) return null;
   if (parsed.userId !== userId) return null;
 
-  return { userId: parsed.userId, groups: parsed.groups, groupDetails: parsed.groupDetails };
+  const snapshot: CloudCacheSnapshot = { userId: parsed.userId, groups: parsed.groups, groupDetails: parsed.groupDetails };
+
+  // personalShares is validated on its own, deliberately outside
+  // isStoredCloudCache: it was added after CLOUD_CACHE_VERSION was last
+  // bumped (see that constant's comment), so a value here that fails the
+  // shape check drops just this field - the snapshot simply lacks it, the
+  // same as a cache written before the field existed - rather than
+  // discarding groups and groupDetails too, which loaded fine.
+  const rawShares = (parsed as { personalShares?: unknown }).personalShares;
+  if (rawShares === null || isPersonalShares(rawShares)) {
+    snapshot.personalShares = rawShares as PersonalShares | null;
+  }
+
+  return snapshot;
 }
 
 export function saveCloudCache(snapshot: CloudCacheSnapshot, storage: CacheStorage | null = browserStorage()) {

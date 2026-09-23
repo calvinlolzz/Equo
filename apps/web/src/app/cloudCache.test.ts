@@ -87,4 +87,64 @@ describe("cloudCache", () => {
 
     expect(loadCloudCache("user_1", storage)).toBeNull();
   });
+
+  describe("personalShares", () => {
+    const personalShares = {
+      month: "2026-09",
+      groups: [
+        {
+          groupId: "group_1",
+          name: "Tokyo Trip",
+          currency: "TWD",
+          archived: false,
+          shareMinor: 135000,
+          expenseCount: 3,
+          byCategory: [{ category: "food", totalMinor: 135000 }],
+        },
+      ],
+    };
+
+    test("round-trips", () => {
+      const storage = memoryStorage();
+      const snapshot = makeSnapshot({ personalShares });
+
+      saveCloudCache(snapshot, storage);
+
+      expect(loadCloudCache("user_1", storage)?.personalShares).toEqual(personalShares);
+    });
+
+    test("null round-trips as null", () => {
+      const storage = memoryStorage();
+      saveCloudCache(makeSnapshot({ personalShares: null }), storage);
+
+      expect(loadCloudCache("user_1", storage)?.personalShares).toBeNull();
+    });
+
+    // [MV]
+    test("a malformed personalShares is dropped while groups/groupDetails survive", () => {
+      const storage = memoryStorage();
+      const snapshot = makeSnapshot();
+      storage.setItem(
+        "equo.clean.cloud_cache",
+        JSON.stringify({ ...snapshot, version: 2, personalShares: { month: "not-a-month", groups: "nope" } }),
+      );
+
+      const loaded = loadCloudCache("user_1", storage);
+
+      expect(loaded?.personalShares).toBeUndefined();
+      expect(loaded?.groups).toEqual(snapshot.groups);
+      expect(loaded?.groupDetails).toEqual(snapshot.groupDetails);
+    });
+
+    test("an old cache with no personalShares key at all still loads", () => {
+      const storage = memoryStorage();
+      const snapshot = makeSnapshot();
+      storage.setItem("equo.clean.cloud_cache", JSON.stringify({ ...snapshot, version: 2 }));
+
+      const loaded = loadCloudCache("user_1", storage);
+
+      expect(loaded?.personalShares).toBeUndefined();
+      expect(loaded?.groups).toEqual(snapshot.groups);
+    });
+  });
 });

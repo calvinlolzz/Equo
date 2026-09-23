@@ -261,6 +261,20 @@ export type SpendBreakdown = {
   by_category: SpendCategoryBreakdown[];
 };
 
+/** GET /me/group-shares's wire shape (snake_case) - see personal_month_group_shares. */
+export type PersonalGroupSharesResponse = {
+  month: string;
+  groups: Array<{
+    group_id: string;
+    name: string;
+    currency: string;
+    archived: boolean;
+    share_minor: number;
+    expense_count: number;
+    by_category: Array<{ category: string; share_minor: number }>;
+  }>;
+};
+
 export type ExchangeRatesResponse = {
   base: string;
   /** The upstream's publication date (YYYY-MM-DD). */
@@ -673,6 +687,12 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
       if (options.key) params.set("key", options.key);
       const query = params.toString();
       return request<SpendBreakdown>(`/groups/${groupId}/spend-breakdown${query ? `?${query}` : ""}`, {
+        method: "GET",
+      });
+    },
+    /** The personal ledger home's 本月群組分攤 - see PersonalGroupSharesResponse. */
+    getPersonalGroupShares(month: string) {
+      return request<PersonalGroupSharesResponse>(`/me/group-shares?month=${encodeURIComponent(month)}`, {
         method: "GET",
       });
     },

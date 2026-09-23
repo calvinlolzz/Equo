@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { validateCreateExpenseRequest } from "../contracts/validation";
-import type { GroupDetail } from "./apiClient";
+import type { GroupDetail, PersonalGroupSharesResponse } from "./apiClient";
 import {
   draftToExpense,
   expenseKindToApiKind,
@@ -11,6 +11,7 @@ import {
   toGroup,
   toGroupUiData,
   toMembers,
+  toPersonalShares,
   toSettlementTransferRequest,
 } from "./cloudAdapters";
 import type { ExpenseDraft } from "./ExpenseComposerSheet";
@@ -862,5 +863,48 @@ describe("expenseKindToApiKind", () => {
     });
 
     expect(mapped.kind).toBe("settlement");
+  });
+});
+
+describe("toPersonalShares", () => {
+  test("maps snake_case to camelCase", () => {
+    const response: PersonalGroupSharesResponse = {
+      month: "2026-09",
+      groups: [
+        {
+          group_id: "group_1",
+          name: "Tokyo Trip",
+          currency: "TWD",
+          archived: false,
+          share_minor: 135000,
+          expense_count: 3,
+          by_category: [{ category: "food", share_minor: 135000 }],
+        },
+      ],
+    };
+
+    expect(toPersonalShares(response, "2026-09")).toEqual({
+      month: "2026-09",
+      groups: [
+        {
+          groupId: "group_1",
+          name: "Tokyo Trip",
+          currency: "TWD",
+          archived: false,
+          shareMinor: 135000,
+          expenseCount: 3,
+          byCategory: [{ category: "food", totalMinor: 135000 }],
+        },
+      ],
+    });
+  });
+
+  test("an empty {} body (the screenshot harness's answer to an unlisted route) becomes {month: requested, groups: []}", () => {
+    expect(toPersonalShares({}, "2026-09")).toEqual({ month: "2026-09", groups: [] });
+  });
+
+  test("null/undefined also fall back to the requested month with no groups", () => {
+    expect(toPersonalShares(null, "2026-09")).toEqual({ month: "2026-09", groups: [] });
+    expect(toPersonalShares(undefined, "2026-09")).toEqual({ month: "2026-09", groups: [] });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import type { BalanceSummary, ExpenseSummary, GroupDetail, GroupMemberSummary } from "./apiClient";
+import type { BalanceSummary, ExpenseSummary, GroupDetail, GroupMemberSummary, PersonalGroupSharesResponse } from "./apiClient";
 import type { ApiClientLike } from "./cloudStore";
 import { createCloudGroupsStore } from "./cloudStore";
 import { clearCloudCache, loadCloudCache, saveCloudCache, type CacheStorage } from "./cloudCache";
@@ -1443,4 +1443,91 @@ describe("createCloudGroupsStore", () => {
     });
   });
 
+});
+
+describe("refreshPersonalShares", () => {
+  const sharesResponse: PersonalGroupSharesResponse = {
+    month: "2026-09",
+    groups: [
+      {
+        group_id: "group_1",
+        name: "Tokyo Trip",
+        currency: "TWD",
+        archived: false,
+        share_minor: 135000,
+        expense_count: 3,
+        by_category: [{ category: "food", share_minor: 135000 }],
+      },
+    ],
+  };
+
+  // [MV]
+  test("stores the mapped data and records the attempted month", async () => {
+    const apiClient = makeFakeApiClient({ getPersonalGroupShares: vi.fn(async () => sharesResponse) });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+
+    await store.refreshPersonalShares("2026-09");
+
+    expect(apiClient.getPersonalGroupShares).toHaveBeenCalledWith("2026-09");
+    expect(store.getState().personalShares).toEqual({
+      month: "2026-09",
+      groups: [
+        {
+          groupId: "group_1",
+          name: "Tokyo Trip",
+          currency: "TWD",
+          archived: false,
+          shareMinor: 135000,
+          expenseCount: 3,
+          byCategory: [{ category: "food", totalMinor: 135000 }],
+        },
+      ],
+    });
+    expect(store.getState().personalSharesAttemptedMonth).toBe("2026-09");
+  });
+
+  test("a failure keeps earlier data, sets the attempted month, and does not throw", async () => {
+    let shouldFail = false;
+    const apiClient = makeFakeApiClient({
+      getPersonalGroupShares: vi.fn(async () => {
+        if (shouldFail) throw new Error("network down");
+        return sharesResponse;
+      }),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshPersonalShares("2026-09");
+    const beforeShares = store.getState().personalShares;
+    shouldFail = true;
+
+    await expect(store.refreshPersonalShares("2026-10")).resolves.toBeUndefined();
+
+    expect(store.getState().personalShares).toEqual(beforeShares);
+    expect(store.getState().personalSharesAttemptedMonth).toBe("2026-10");
+  });
+
+  test("an unchanged payload keeps the same object reference", async () => {
+    const apiClient = makeFakeApiClient({ getPersonalGroupShares: vi.fn(async () => sharesResponse) });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired: vi.fn() });
+    await store.refreshPersonalShares("2026-09");
+    const first = store.getState().personalShares;
+
+    await store.refreshPersonalShares("2026-09");
+
+    expect(store.getState().personalShares).toBe(first);
+  });
+
+  test("UNAUTHENTICATED calls onSessionExpired but still does not throw", async () => {
+    const onSessionExpired = vi.fn();
+    const authError = Object.assign(new Error("Please sign in with Google."), { code: "UNAUTHENTICATED" });
+    const apiClient = makeFakeApiClient({
+      getPersonalGroupShares: vi.fn(async () => {
+        throw authError;
+      }),
+    });
+    const store = createCloudGroupsStore({ apiClient, onSessionExpired });
+
+    await expect(store.refreshPersonalShares("2026-09")).resolves.toBeUndefined();
+
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+  });
 });
