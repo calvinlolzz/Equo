@@ -22,7 +22,7 @@ describe("resolveActiveTab", () => {
     expect(resolveActiveTab(null, false)).toBe("home");
   });
 
-  test.each(["profile", "createGroup", "expenseDetail", "inviteMembers", "archive"] as const)(
+  test.each(["profile", "createGroup", "inviteMembers", "archive"] as const)(
     "a non-tab dialog (%s) leaves home selected — it opens over the home screen",
     (dialog) => {
       expect(resolveActiveTab(dialog)).toBe("home");

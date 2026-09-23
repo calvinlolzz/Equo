@@ -228,4 +228,38 @@ describe("useExpenseComposer", () => {
 
     expect(cloudStore.addExpense).not.toHaveBeenCalled();
   });
+
+  describe("the expense detail stacks over whatever is already open", () => {
+    // [MV]
+    test("openExpenseDetail never touches the shared dialog slot", () => {
+      const { hook, setDialog } = setup();
+
+      act(() => hook.result.current.openExpenseDetail("expense_1"));
+
+      expect(hook.result.current.selectedExpenseId).toBe("expense_1");
+      expect(setDialog).not.toHaveBeenCalled();
+    });
+
+    // [MV]
+    test("deleteExpense clears the selected id but leaves the dialog slot alone", async () => {
+      const { hook, setDialog } = setup();
+
+      act(() => hook.result.current.openExpenseDetail("expense_1"));
+      await act(async () => {
+        await hook.result.current.deleteExpense(expense());
+      });
+
+      expect(hook.result.current.selectedExpenseId).toBe("");
+      expect(setDialog).not.toHaveBeenCalled();
+    });
+
+    test("closeExpenseDetail clears the selected id", () => {
+      const { hook } = setup();
+
+      act(() => hook.result.current.openExpenseDetail("expense_1"));
+      act(() => hook.result.current.closeExpenseDetail());
+
+      expect(hook.result.current.selectedExpenseId).toBe("");
+    });
+  });
 });

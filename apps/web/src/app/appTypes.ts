@@ -163,7 +163,6 @@ export type DialogMode =
   | "archive"
   | "delete"
   | "profile"
-  | "expenseDetail"
   | null;
 
 /**

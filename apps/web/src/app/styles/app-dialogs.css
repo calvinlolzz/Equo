@@ -98,6 +98,16 @@
   background: rgba(3, 4, 7, 0.62);
 }
 
+/* A composer opened FROM a detail that is stacked over this sheet (編輯,
+   重複這筆, or the N shortcut) must paint OVER this backdrop even though
+   .composer-backdrop's own z-index (40) is otherwise below this one (42).
+   The discard-confirm dialog is unaffected - it's a plain .modal-backdrop
+   with no data-covered of its own, so it keeps the full 42 and stays above
+   the composer, which is exactly the stacking a confirm-before-discard needs. */
+.modal-backdrop[data-covered="composer"] {
+  z-index: 39;
+}
+
 .flow-dialog {
   position: relative;
   width: min(390px, 100%);

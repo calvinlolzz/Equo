@@ -109,7 +109,6 @@ export function useExpenseComposer({
   }
 
   function openExpenseEdit(expense: Expense) {
-    setDialog(null);
     setSelectedExpenseId("");
     setDuplicatingExpense(null);
     setReceiptPrefill(null);
@@ -118,7 +117,6 @@ export function useExpenseComposer({
   }
 
   function openExpenseDuplicate(expense: Expense) {
-    setDialog(null);
     setSelectedExpenseId("");
     setEditingExpense(null);
     setReceiptPrefill(null);
@@ -133,9 +131,18 @@ export function useExpenseComposer({
     setReceiptPrefill(null);
   }
 
+  /**
+   * Opens as a layer over whatever is already open (records, home, ...)
+   * rather than a `dialog` mode of its own - see appTypes.ts's DialogMode
+   * doc and App.tsx's expenseDetailOpen for why: replacing the underlying
+   * sheet would unmount it and lose its filter/scroll/search state.
+   */
   function openExpenseDetail(expenseId: string) {
     setSelectedExpenseId(expenseId);
-    setDialog("expenseDetail");
+  }
+
+  function closeExpenseDetail() {
+    setSelectedExpenseId("");
   }
 
   async function handleExpenseDraftSubmit(draft: ExpenseDraft) {
@@ -221,7 +228,6 @@ export function useExpenseComposer({
     try {
       await cloudStore.deleteExpense(groupId, expense.id);
       recordCloudActivity(groupId, `${text.deleteExpense}: ${expense.title}`);
-      setDialog(null);
       setSelectedExpenseId("");
       haptic("warning");
       showToast(`${text.deleteExpense}: ${expense.title}`, {
@@ -321,6 +327,7 @@ export function useExpenseComposer({
     openExpenseDuplicate,
     closeExpenseComposer,
     openExpenseDetail,
+    closeExpenseDetail,
     handleExpenseDraftSubmit,
     deleteExpense,
     handleLoadMoreExpenses,

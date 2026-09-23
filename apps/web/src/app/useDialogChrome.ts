@@ -108,6 +108,14 @@ export function useDialogChrome(onClose: () => void) {
 
       const node = nodeRef.current;
       if (!node || !node.isConnected) return;
+      // A dialog stacked over this one (the expense detail over records, or
+      // the composer over either) owns Escape/Tab while it's up - its own
+      // useDialogChrome instance already handles them. Without this, a key
+      // press would be handled TWICE: once here, once by the covering
+      // dialog's own listener. data-covered lives on the covered dialog's
+      // own backdrop (an ancestor of `node`, its root), so `.closest` finds
+      // it from here without either dialog needing to know about the other.
+      if (node.closest("[data-covered]")) return;
       const active = document.activeElement as HTMLElement | null;
       // The dialog owns the keys while focus is inside it — and also when focus
       // has fallen back to <body>/<html>, which happens routinely when a click

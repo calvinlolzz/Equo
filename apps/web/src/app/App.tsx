@@ -430,6 +430,7 @@ export function App() {
     openExpenseDuplicate,
     closeExpenseComposer,
     openExpenseDetail,
+    closeExpenseDetail,
     handleExpenseDraftSubmit,
     deleteExpense,
     handleLoadMoreExpenses,
@@ -447,6 +448,16 @@ export function App() {
     setDialog,
     setBusy,
   });
+
+  // The read-only detail dialog stacks over whatever is already open
+  // (records, home, ...) rather than replacing it - see useExpenseComposer's
+  // openExpenseDetail doc. Placed right after the destructure above so every
+  // hook below that needs to know "is the detail covering the screen right
+  // now" (pull-to-refresh, body scroll lock, shortcuts, Back-button stack,
+  // comments) can just read this flag.
+  const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
+  const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
+  const expenseDetailOpen = selectedExpense !== null;
 
   const {
     groupName,
@@ -579,6 +590,7 @@ export function App() {
     Boolean(session && activeGroup && cloudStore) &&
     !dialog &&
     !expenseComposerOpen &&
+    !expenseDetailOpen &&
     !feedbackOpen &&
     !notificationsOpen &&
     !groupDrawerOpen &&
@@ -595,6 +607,7 @@ export function App() {
     isMobileLayout &&
       (Boolean(dialog) ||
         expenseComposerOpen ||
+        expenseDetailOpen ||
         discardConfirmOpen ||
         Boolean(settleConfirm) ||
         feedbackOpen ||
@@ -615,6 +628,7 @@ export function App() {
   const shortcutsEnabled =
     Boolean(session && activeGroup) &&
     !expenseComposerOpen &&
+    !expenseDetailOpen &&
     !discardConfirmOpen &&
     !settleConfirm &&
     !feedbackOpen &&
@@ -684,6 +698,11 @@ export function App() {
     { open: groupDrawerOpen, close: groupDrawerSwipe.requestClose },
     { open: settingsDrawerOpen, close: settingsDrawerSwipe.requestClose },
     { open: Boolean(dialog), close: dismissDialog },
+    // The detail stacks over whatever dialog/home is already showing, so its
+    // own Back layer sits directly above that dialog layer - closing it
+    // reveals the records sheet (or home) still underneath, not the screen
+    // behind that.
+    { open: expenseDetailOpen, close: closeExpenseDetail },
     { open: dialog === "profile" && infoDialog !== null, close: () => setInfoDialog(null) },
     // Above the dialog layer: the invite scanner is opened FROM the 輸入邀請碼
     // dialog and leaves it standing underneath, so Back must peel the camera
@@ -753,7 +772,7 @@ export function App() {
   const expenseComments = useExpenseComments(
     cloudStore,
     activeGroupId,
-    dialog === "expenseDetail" ? selectedExpenseId : null,
+    expenseDetailOpen ? selectedExpenseId : null,
   );
 
   const dateChips = useMemo(() => lastEightDays(), []);
@@ -826,8 +845,6 @@ export function App() {
     Boolean(settleConfirm) && !settleAmount.valid && settleAmount.minor > settleConfirm!.amountMinor;
 
   const maxBalanceMinor = Math.max(1, ...members.map((member) => Math.abs(balances.get(member.id) ?? 0)));
-  const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
-  const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
   const canLoadMoreExpenses = expenses.length < aggregates.expenseCount;
 
   // The personal ledger's this-month summary is a client-side sum over
@@ -871,6 +888,12 @@ export function App() {
     autoPageFailedGroupRef.current = null;
     setAutoPageInFlightGroupId(null);
   }, [activeGroupId]);
+  // The detail no longer lives inside `dialog`, so switching groups would
+  // otherwise leave a stale id pointed at the old group's expense - which,
+  // now that `expenses` refers to the new group, could even coincide with a
+  // different real expense there. A group switch always means "nothing is
+  // selected."
+  useEffect(() => setSelectedExpenseId(""), [activeGroupId]);
   useEffect(() => {
     if (!activeIsPersonal || !cloudActiveDetail || !cloudStore || !activeGroupId) return;
     if (autoPageInFlightGroupId === activeGroupId || autoPageFailedGroupRef.current === activeGroupId) return;
@@ -1956,6 +1979,7 @@ export function App() {
               onClick={() => {
                 dismissDialog();
                 closeExpenseComposer();
+                closeExpenseDetail();
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             >
@@ -2168,38 +2192,15 @@ export function App() {
         </Suspense>
       ) : null}
 
-      {dialog === "expenseDetail" && selectedExpense ? (
-        <Suspense fallback={null}>
-        <ExpenseDetailDialog
-          expense={selectedExpense}
-          members={members}
-          onClose={closeDialog}
-          onEdit={openExpenseEdit}
-          onDuplicate={openExpenseDuplicate}
-          onDelete={deleteExpense}
-          onPrev={
-            selectedExpenseIndex > 0
-              ? () => setSelectedExpenseId(expenses[selectedExpenseIndex - 1].id)
-              : undefined
-          }
-          onNext={
-            selectedExpenseIndex >= 0 && selectedExpenseIndex < expenses.length - 1
-              ? () => setSelectedExpenseId(expenses[selectedExpenseIndex + 1].id)
-              : undefined
-          }
-          // A personal ledger has nobody else to comment - see the plan's §4c.
-          comments={cloudStore && !activeIsPersonal ? expenseComments : undefined}
-          currentMemberId={currentMember?.id}
-          isGroupOwner={isCurrentMemberOwner}
-          personal={activeIsPersonal}
-        />
-        </Suspense>
-      ) : null}
-
-      {dialog && dialog !== "profile" && dialog !== "expenseDetail" ? (
+      {dialog && dialog !== "profile" ? (
         <div
           className={dialogSwipe.closing ? "modal-backdrop closing" : "modal-backdrop"}
           role="presentation"
+          // The composer can be opened FROM a detail that is stacked over this
+          // sheet (編輯, 重複這筆, or the N shortcut) - without this, the
+          // composer's own 40 z-index backdrop would paint UNDER this 42 one.
+          // See the app-dialogs.css rule keyed off this attribute.
+          data-covered={expenseComposerOpen ? "composer" : expenseDetailOpen ? "detail" : undefined}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) dismissDialog();
           }}
@@ -2618,6 +2619,41 @@ export function App() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {/* After the shared dialog block, not before it: both this and the
+          records sheet above render a plain `.modal-backdrop` at the same
+          z-index (42), and two elements at equal z-index stack by DOM order -
+          later wins. Rendering the detail later is what puts it visually on
+          top of a records sheet it's stacked over, with no z-index override
+          needed (compare the composer, which DOES need one - see
+          data-covered="composer" above and its CSS rule). */}
+      {expenseDetailOpen && selectedExpense ? (
+        <Suspense fallback={null}>
+        <ExpenseDetailDialog
+          expense={selectedExpense}
+          members={members}
+          onClose={closeExpenseDetail}
+          onEdit={openExpenseEdit}
+          onDuplicate={openExpenseDuplicate}
+          onDelete={deleteExpense}
+          onPrev={
+            selectedExpenseIndex > 0
+              ? () => setSelectedExpenseId(expenses[selectedExpenseIndex - 1].id)
+              : undefined
+          }
+          onNext={
+            selectedExpenseIndex >= 0 && selectedExpenseIndex < expenses.length - 1
+              ? () => setSelectedExpenseId(expenses[selectedExpenseIndex + 1].id)
+              : undefined
+          }
+          // A personal ledger has nobody else to comment - see the plan's §4c.
+          comments={cloudStore && !activeIsPersonal ? expenseComments : undefined}
+          currentMemberId={currentMember?.id}
+          isGroupOwner={isCurrentMemberOwner}
+          personal={activeIsPersonal}
+        />
+        </Suspense>
       ) : null}
 
       {/* Last in the tree on purpose: 清償 can be fired from the analysis
