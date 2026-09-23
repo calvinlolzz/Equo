@@ -112,7 +112,7 @@ export function buildJsonLd() {
       applicationCategory: "FinanceApplication",
       operatingSystem: "Web",
       inLanguage: "zh-Hant",
-      description: "記下自己的收支，也和朋友、室友、旅伴輕鬆分帳：自動算出誰欠誰、一鍵結清，你在群組分到的那份也會算進個人帳本。",
+      description: "記下自己的收支，也和朋友、室友、旅伴輕鬆分帳：自動算出誰欠誰、一鍵結清。",
       // Free is the single most load-bearing fact on the page and the first
       // thing the FAQ answers, so it is said here in the form that can be read
       // without parsing prose.

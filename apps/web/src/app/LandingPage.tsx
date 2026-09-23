@@ -285,24 +285,19 @@ export function LandingPage({
           </figure>
         </section>
 
-        {/* Group shares folding into the personal ledger (stage 2). No
-            <button> anywhere in here - the closing band's test at
-            LandingPage.test.tsx pins exactly two buttons on the page, and a
-            third would break every getByRole("button") call site that
-            assumes there are only two. */}
+        {/* The personal ledger on its own. No <button> in here - the page
+            pins exactly two. */}
         <section className="landing-section" id="landing-ledger">
           <h2 className="landing-section-title">{text.ledgerTitle}</h2>
           <p className="landing-ledger-body">{text.ledgerBody}</p>
           <figure className="landing-ledger glass-panel">
             <figcaption className="landing-chat-label">{text.demoLedgerLabel}</figcaption>
             <span>{ledgerText.monthExpense}</span>
-            <strong className="landing-ledger-total">{text.demoLedgerTotal}</strong>
-            <p className="landing-ledger-split">
-              {`${ledgerText.ownPart} ${text.demoLedgerOwn} · ${ledgerText.groupPart} ${text.demoLedgerShare}`}
-            </p>
+            <strong className="landing-ledger-total">{text.demoLedgerExpense}</strong>
+            <p className="landing-ledger-stats">{`${ledgerText.monthIncome} ${text.demoLedgerIncome} · ${ledgerText.monthNet} ${text.demoLedgerNet}`}</p>
             <div className="landing-ledger-row">
-              <span>{text.demoLedgerGroupName}</span>
-              <strong>{text.demoLedgerShare}</strong>
+              <span>{text.demoLedgerBudgetLabel}</span>
+              <strong>{text.demoLedgerBudgetLeft}</strong>
             </div>
           </figure>
         </section>

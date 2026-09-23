@@ -280,7 +280,7 @@ export const EN: UiDictionary = {
     heroShotAlt: "Equo's group home: member balances, the day's spending, and who owes whom.",
     heroPitch: "Free · nothing to install · works in your browser",
     heroLede:
-      "Everyday spending goes in your own ledger. Trips, dinners and shared flats get a group that splits every bill and settles up in the fewest transfers. Your share counts toward your monthly total automatically.",
+      "Everyday spending and income go in your own ledger. Trips, dinners and shared flats get a group that splits every bill and settles up in the fewest transfers.",
     inviteTitle: "You have been invited to join",
     /** Joined as `${n} ${this}`. */
     inviteMemberSuffix: "members",
@@ -295,14 +295,15 @@ export const EN: UiDictionary = {
     value3Title: "Photograph the receipt, the amount fills itself in",
     value3Body: "Snap a receipt and the amount and merchant land in the form. Up to five per expense, and you can talk it over in the comments underneath.",
 
-    ledgerTitle: "Your group shares land in your own ledger",
+    ledgerTitle: "A personal ledger, just for your own money",
     ledgerBody:
-      "Breakfast, the power bill, your salary: they go in a ledger no other user can see. Your share of dinner on the Okinawa trip counts toward this month too, labelled with the group it came from, so nothing gets entered twice.",
+      "Breakfast, the power bill, your salary: they go in a ledger no other user can see. Record spending and income, see this month by category, and set a monthly budget. Group expenses are kept separately and never mixed in.",
     demoLedgerLabel: "Illustration",
-    demoLedgerTotal: "NT$8,450",
-    demoLedgerOwn: "NT$7,100",
-    demoLedgerShare: "NT$1,350",
-    demoLedgerGroupName: "Okinawa trip",
+    demoLedgerExpense: "NT$7,100",
+    demoLedgerIncome: "NT$32,000",
+    demoLedgerNet: "+NT$24,900",
+    demoLedgerBudgetLabel: "Monthly budget NT$10,000",
+    demoLedgerBudgetLeft: "NT$2,900 left",
 
     demoChatLabel: "Illustrative conversation",
     chatLine1: "I covered the izakaya — 2,400",
@@ -671,8 +672,6 @@ export const EN: UiDictionary = {
     settingsSaved: "Ledger settings saved",
     actionUnavailable: "Your personal ledger can't have other members and can't be archived or deleted.",
     composerHint: "Enter an amount and pick a category.",
-    ownPart: "Your entries",
-    groupPart: "Group shares",
   },
   misc: {
     pullRefreshing: "Refreshing…",

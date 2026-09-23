@@ -371,7 +371,7 @@
   width: min(420px, 100%);
 }
 
-/* ---- the group-shares demo (stage 2) ------------------------------------ */
+/* ---- the personal-ledger demo ---- */
 
 .landing-ledger-body {
   margin: 0;
@@ -382,7 +382,7 @@
 
 /* Same glass-panel material as .landing-chat, but a plain figure rather than
    a wide conversation card - centred and narrower, since it is one number
-   and a two-line breakdown rather than a multi-turn exchange. */
+   and a short stats line rather than a multi-turn exchange. */
 .landing-ledger {
   margin: 0 auto;
   width: min(400px, 100%);
@@ -405,7 +405,7 @@
   font-weight: 800;
 }
 
-.landing-ledger-split {
+.landing-ledger-stats {
   margin: 0;
   font-size: 13px;
   color: rgb(var(--fg) / 0.62);

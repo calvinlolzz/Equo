@@ -293,7 +293,7 @@ export const ZH_HANT = {
     heroShotAlt: "Equo 的群組首頁：成員餘額、當日花費，還有誰該付誰多少。",
     heroPitch: "免費・免下載・開瀏覽器就能用",
     /** hero 標題下面那句，取代了原本的 login.tagline 出現在這個位置。 */
-    heroLede: "平常的收支記在自己的帳本；出遊、聚餐、合租就開群組分帳，結清只轉最少次。你在群組分到的那份，會自動算進本月支出。",
+    heroLede: "平常的收支記在自己的帳本；出遊、聚餐、合租就開群組分帳，結清只轉最少次。",
     /** 帶著 ?invite= 進來的人才看得到的那張卡。只說得出群組名與人數。 */
     inviteTitle: "你被邀請加入",
     inviteMemberSuffix: "位成員",
@@ -308,16 +308,17 @@ export const ZH_HANT = {
     value3Title: "拍收據，金額自動填",
     value3Body: "拍一張收據，金額和店名自動帶進表單。一筆最多五張，還能在底下留言討論這筆是誰付的。",
 
-    /** 「群組分到的，自動算進個人帳本」那個示意區塊——landing-value 之後、還有這些之前。 */
-    ledgerTitle: "群組分到的，自動算進個人帳本",
+    /** 個人帳本示意區塊——landing-value 之後、還有這些之前。 */
+    ledgerTitle: "個人帳本，只記你自己的收支",
     ledgerBody:
-      "早餐、電費、薪水記在自己的帳本，其他使用者看不到。沖繩旅行裡你分到的晚餐，也會算進本月支出，並標出來自哪個群組，不用再記兩次。",
+      "早餐、電費、薪水記在自己的帳本，其他使用者看不到。支出和收入分開記，看本月花在哪些分類，也可以設每月預算。群組的帳另外算，不會混進來。",
     /** 示意畫面卡片的免責聲明，理由同 demoChatLabel。 */
     demoLedgerLabel: "示意畫面",
-    demoLedgerTotal: "NT$8,450",
-    demoLedgerOwn: "NT$7,100",
-    demoLedgerShare: "NT$1,350",
-    demoLedgerGroupName: "沖繩旅行",
+    demoLedgerExpense: "NT$7,100",
+    demoLedgerIncome: "NT$32,000",
+    demoLedgerNet: "+NT$24,900",
+    demoLedgerBudgetLabel: "每月預算 NT$10,000",
+    demoLedgerBudgetLeft: "還剩 NT$2,900",
 
     /**
      * hero 裡那段示意對話：兩個人在群組裡對不清楚誰欠誰，Equo 的清償建議卡片
@@ -714,8 +715,6 @@ export const ZH_HANT = {
     settingsSaved: "已更新帳本設定",
     actionUnavailable: "個人帳本不能邀請成員、封存或刪除。",
     composerHint: "填寫金額並選擇分類。",
-    ownPart: "自己記的",
-    groupPart: "群組分攤",
   },
   misc: {
     pullRefreshing: "重新整理中…",

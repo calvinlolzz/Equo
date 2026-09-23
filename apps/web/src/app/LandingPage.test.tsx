@@ -212,7 +212,7 @@ describe("the first screen is four things and a way out of it", () => {
   });
 });
 
-describe("the group-shares demo (stage 2)", () => {
+describe("the personal-ledger demo", () => {
   test("#landing-ledger exists, sits below the fold, and is not in the hero", () => {
     render(<LandingPage onGoogleLogin={() => {}} />);
 
@@ -230,12 +230,21 @@ describe("the group-shares demo (stage 2)", () => {
     expect(label.closest("figure.landing-ledger")).toBeTruthy();
   });
 
-  // [MV: change demoLedgerOwn]
-  test("the demo's own + share amounts sum to the displayed total", () => {
+  // [MV]
+  test("demo figures are consistent", () => {
     render(<LandingPage onGoogleLogin={() => {}} />);
 
-    const parseNt = (value: string) => Number(value.replace(/[^\d.]/g, ""));
-    expect(parseNt(text.demoLedgerOwn) + parseNt(text.demoLedgerShare)).toBe(parseNt(text.demoLedgerTotal));
+    const parseNt = (value: string) => Number(value.replace(/[^-\d.]/g, ""));
+    expect(parseNt(text.demoLedgerIncome) - parseNt(text.demoLedgerExpense)).toBe(parseNt(text.demoLedgerNet));
+    expect(parseNt(text.demoLedgerBudgetLabel) - parseNt(text.demoLedgerExpense)).toBe(parseNt(text.demoLedgerBudgetLeft));
+  });
+
+  // [MV]
+  test("the demo figure mentions no group", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const figure = document.querySelector("figure.landing-ledger");
+    expect(figure?.textContent ?? "").not.toMatch(/群組|group/i);
   });
 
   test("the two-button page is unaffected - no button anywhere in the new section", () => {
