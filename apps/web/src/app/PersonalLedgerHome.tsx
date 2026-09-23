@@ -7,7 +7,7 @@ import { HomeDisclosure } from "./GroupHome";
 import { InstallHint } from "./InstallHint";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { formatRecordStamp } from "./appDates";
-import { combineLedgerMonth, currentMonthKey, summarizeLedgerMonth, type PersonalShares } from "./personalLedger";
+import { currentMonthKey, summarizeLedgerMonth } from "./personalLedger";
 import { budgetProgress } from "./spendBudget";
 import { UI_TEXT } from "./uiText";
 import type { DialogMode, Expense, Group } from "./appTypes";
@@ -36,13 +36,6 @@ export type PersonalLedgerHomeProps = {
   monthlyBudgetMinor?: number | null;
   /** Whether the loaded `expenses` window is enough to trust this month's totals - see ledgerMonthCoverage. */
   coverage: "complete" | "partial";
-  /** The current month's group-shares read, or null when it isn't for this exact month (loading, or never fetched) - see App.tsx's derivation. */
-  groupShares: PersonalShares | null;
-  /** "ready" (groupShares is usable), "loading" (never attempted for this month yet), or "unavailable" (attempted and failed/empty for this month). */
-  groupSharesStatus: "ready" | "loading" | "unavailable";
-  /** Group ids that can be opened from the disclosure - only groups in the caller's own list (D1: archived/beyond-cap groups render as plain text instead). */
-  openableGroupIds: string[];
-  onOpenGroup: (groupId: string) => void;
   onOpenDialog: (mode: DialogMode) => void;
   onScanReceipt: () => void;
   onOpenExpenseComposer: () => void;
@@ -69,10 +62,6 @@ export function PersonalLedgerHome({
   expenseCount,
   monthlyBudgetMinor,
   coverage,
-  groupShares,
-  groupSharesStatus,
-  openableGroupIds,
-  onOpenGroup,
   onOpenDialog,
   onScanReceipt,
   onOpenExpenseComposer,
@@ -82,56 +71,14 @@ export function PersonalLedgerHome({
 }: PersonalLedgerHomeProps) {
   const monthKey = currentMonthKey();
   const summary = summarizeLedgerMonth(expenses, monthKey, group.currency);
-  const view = combineLedgerMonth(summary, groupShares, monthKey, group.currency);
   const budget = budgetProgress({
     budgetMinor: monthlyBudgetMinor,
-    spentMinor: view.expenseMinor,
+    spentMinor: summary.expenseMinor,
     periodKind: "month",
     scope: "group",
   });
-  const shareRows = [...view.countedGroups, ...view.uncountedGroups];
 
-  // The empty state now depends on both halves of the picture: an own-empty
-  // ledger with a real group share to show is not "start recording" - there
-  // is already something on screen (D4). While groupSharesStatus is still
-  // "loading" neither answer is known yet, so the card renders (with its own
-  // sharesLoading split line) rather than flashing the empty state and then
-  // replacing it once the read lands - the empty state is only reachable once
-  // shares are settled one way or the other (ready-with-nothing, or
-  // unavailable).
-  const empty =
-    hasLoadedDetail &&
-    expenses.length === 0 &&
-    groupSharesStatus !== "loading" &&
-    !(groupSharesStatus === "ready" && shareRows.length > 0);
-
-  const splitLine =
-    groupSharesStatus === "loading"
-      ? ledgerText.sharesLoading
-      : groupSharesStatus === "unavailable"
-        ? ledgerText.sharesUnavailable
-        : view.countedGroups.length > 0
-          ? `${ledgerText.ownPart} ${formatAmount(view.ownExpenseMinor, group.currency)} · ${ledgerText.groupPart} ${formatAmount(view.groupShareMinor, group.currency)}`
-          : null;
-
-  /**
-   * The disclosure's collapsed summary: how many SAME-CURRENCY groups counted
-   * (never shareRows.length, which also holds the uncounted foreign-currency
-   * ones - counting those would claim a group that isn't in the total), the
-   * total itself (omitted at $0 so a JPY-only ledger never shows "NT$0"),
-   * and - when there are foreign-currency groups too - how many, so they are
-   * not simply invisible from the collapsed row.
-   */
-  const groupCountLabel = view.countedGroups.length === 1 ? ledgerText.sharesGroupCountOne : ledgerText.sharesGroupCount;
-  const disclosureSummary = [
-    `${view.countedGroups.length} ${groupCountLabel}`,
-    view.groupShareMinor > 0 ? formatAmount(view.groupShareMinor, group.currency) : null,
-    view.uncountedGroups.length > 0
-      ? `${ledgerText.sharesOtherCurrencyCountPrefix}${view.uncountedGroups.length}${ledgerText.sharesOtherCurrencyCountSuffix}`
-      : null,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join(" · ");
+  const empty = hasLoadedDetail && expenses.length === 0;
 
   return (
     <section className="group-room pizo-home enter-content" aria-label={ledgerText.homeLabel}>
@@ -168,16 +115,15 @@ export function PersonalLedgerHome({
           <>
             <div className="ledger-month-card">
               <span className="home-balance-lead">{ledgerText.monthExpense}</span>
-              <strong className="home-balance-amount">{formatAmount(view.expenseMinor, group.currency)}</strong>
-              {splitLine ? <p className="ledger-month-split">{splitLine}</p> : null}
+              <strong className="home-balance-amount">{formatAmount(summary.expenseMinor, group.currency)}</strong>
               <div className="ledger-month-stats">
                 <span>
                   {ledgerText.monthIncome}
-                  <strong className="amount-income">{formatAmount(view.incomeMinor, group.currency)}</strong>
+                  <strong className="amount-income">{formatAmount(summary.incomeMinor, group.currency)}</strong>
                 </span>
                 <span>
                   {ledgerText.monthNet}
-                  <strong>{formatSigned(view.netMinor, group.currency)}</strong>
+                  <strong>{formatSigned(summary.netMinor, group.currency)}</strong>
                 </span>
               </div>
               {coverage === "partial" ? <small className="ledger-month-loading">{ledgerText.monthLoading}</small> : null}
@@ -185,58 +131,15 @@ export function PersonalLedgerHome({
 
             {budget ? <BudgetBar budget={budget} currency={group.currency} /> : null}
 
-            {view.expenseMinor > 0 ? (
+            {summary.expenseMinor > 0 ? (
               <div className="dialog-section-list">
                 <span className="dialog-list-title">{ledgerText.categoryTitle}</span>
-                <CategoryDonut entries={view.byCategory} currency={group.currency} />
+                <CategoryDonut entries={summary.byCategory} currency={group.currency} />
               </div>
             ) : null}
           </>
         )}
       </article>
-
-      {!empty && groupSharesStatus === "ready" && shareRows.length > 0 ? (
-        <HomeDisclosure
-          key={`shares-${group.id}`}
-          id="ledger-group-shares"
-          label={ledgerText.sharesTitle}
-          summary={disclosureSummary}
-        >
-          <div className="ledger-share-list">
-            {shareRows.map((row) => {
-              const openable = openableGroupIds.includes(row.groupId);
-              const content = (
-                <>
-                  <span className="expense-record-main">
-                    <strong>{row.name}</strong>
-                    <small className="ledger-share-meta">
-                      {row.expenseCount} {row.expenseCount === 1 ? ledgerText.sharesEntryCountOne : ledgerText.sharesEntryCount}
-                      {row.archived ? ` · ${ledgerText.sharesArchived}` : ""}
-                      {row.currency !== group.currency ? ` · ${ledgerText.sharesOtherCurrency}` : ""}
-                    </small>
-                  </span>
-                  <span className="expense-record-amount">{formatAmount(row.shareMinor, row.currency)}</span>
-                </>
-              );
-              return openable ? (
-                <button
-                  key={row.groupId}
-                  className="ledger-share-row"
-                  type="button"
-                  onClick={() => onOpenGroup(row.groupId)}
-                >
-                  {content}
-                </button>
-              ) : (
-                <div key={row.groupId} className="ledger-share-row">
-                  {content}
-                </div>
-              );
-            })}
-          </div>
-          <p className="empty-copy ledger-share-hint">{ledgerText.sharesHint}</p>
-        </HomeDisclosure>
-      ) : null}
 
       {empty ? null : (
         <HomeDisclosure

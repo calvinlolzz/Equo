@@ -230,54 +230,6 @@
   font-size: 17px;
 }
 
-/* The headline's own/group split, directly under 本月支出's amount. margin:
-   0 because this is a <p> - its UA default top/bottom margin was opening an
-   inconsistent gap before 本月收入 depending on whether this line was even
-   rendered, on top of the grid's own `gap`. */
-.ledger-month-split {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 800;
-  color: rgb(var(--fg) / 0.62);
-}
-
-.ledger-share-list {
-  display: grid;
-  gap: 6px;
-}
-
-/* Both the button (openable group) and plain-div (not in the caller's own
-   list - archived or past the list's cap) variants get the same look, so a
-   row's tap affordance is the only visible difference between them. */
-.ledger-share-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 52px;
-  padding: 0 12px;
-  border-radius: 12px;
-  background: rgb(var(--surf) / 0.05);
-  width: 100%;
-  text-align: left;
-}
-
-button.ledger-share-row:focus-visible {
-  outline: 2px solid rgb(var(--accent));
-  outline-offset: 2px;
-}
-
-/* A dedicated class rather than the bare-element `.ledger-share-row small`
-   this used to be: that selector and `.expense-record-main small` (this
-   row's <small> matches both, since the row reuses .expense-record-main for
-   its own text layout) have equal specificity, so source order decided the
-   winner - .expense-record-main small comes later in this file and silently
-   overrode this 0.62 with its own 0.55. Two classes outrank one class + one
-   element regardless of order. */
-.ledger-share-row .ledger-share-meta {
-  color: rgb(var(--fg) / 0.62);
-}
-
 /* The member list: one collapsed row per person (avatar/name/amount/caret),
    expanding in place to record-收款/提醒/看明細. See MemberRow in
    GroupHome.tsx. */

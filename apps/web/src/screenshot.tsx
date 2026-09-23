@@ -47,7 +47,6 @@ import { App } from "./app/App";
 import { dismissAppSplash } from "./app/appSplash";
 import { initTheme } from "./app/themeStore";
 import { DEFAULT_CATALOG } from "./app/catalog";
-import { currentMonthKey } from "./app/personalLedger";
 import { daysAgo } from "./screenshotDates";
 import type { GroupDetail, GroupSummary } from "./app/apiClient";
 
@@ -312,27 +311,6 @@ const ROUTES: Record<string, unknown> = {
     ? {
         [`GET /groups/${LEDGER_ID}`]: LEDGER_DETAIL,
         [`GET /groups/${LEDGER_ID}/expenses/search`]: { expenses: LEDGER_EXPENSES, total: LEDGER_EXPENSES.length },
-      }
-    : {}),
-  // The ledger home's 本月群組分攤 disclosure - one demo group's worth of
-  // shared-group spend, so the fold-in has something to show. Only wired up
-  // when the ledger itself is (?ledger=1 or =empty), matching the group above.
-  ...(previewLedger && previewLedger !== "empty"
-    ? {
-        "GET /me/group-shares": {
-          month: currentMonthKey(),
-          groups: [
-            {
-              group_id: GROUP_ID,
-              name: GROUP.name,
-              currency: CURRENCY,
-              archived: false,
-              share_minor: nt(1350),
-              expense_count: 3,
-              by_category: [{ category: "food", share_minor: nt(1350) }],
-            },
-          ],
-        },
       }
     : {}),
   [`GET /groups/${GROUP_ID}`]: DETAIL,
