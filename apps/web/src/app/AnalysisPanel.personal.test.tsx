@@ -79,20 +79,15 @@ describe("AnalysisPanel in a personal ledger", () => {
     expect(screen.getByText(text.settlementHistoryTitle)).toBeTruthy();
   });
 
-  test("shows the own-only note", () => {
-    renderPanel({ personal: true });
-    expect(screen.getByText(UI_TEXT.personalLedger.analysisOwnOnly)).toBeTruthy();
-  });
-
-  test("the shared render has no own-only note", () => {
-    renderPanel();
-    expect(screen.queryByText(UI_TEXT.personalLedger.analysisOwnOnly)).toBeNull();
-  });
-
   // [MV]
-  test("forces the budget bar off even when a budget is passed in", () => {
+  test("a personal ledger's 分析 shows the budget bar when a budget is set", () => {
     renderPanel({ personal: true, monthlyBudgetMinor: 500_000 });
-    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+  });
+
+  test("no own-only note", () => {
+    renderPanel({ personal: true });
+    expect(document.querySelector(".spend-period-note")).toBeNull();
   });
 
   test("the shared render keeps the budget bar when a budget is set", () => {

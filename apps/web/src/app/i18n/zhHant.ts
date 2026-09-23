@@ -716,7 +716,6 @@ export const ZH_HANT = {
     composerHint: "填寫金額並選擇分類。",
     ownPart: "自己記的",
     groupPart: "群組分攤",
-    analysisOwnOnly: "這裡只統計帳本裡自己記的，不含群組分攤。",
   },
   misc: {
     pullRefreshing: "重新整理中…",

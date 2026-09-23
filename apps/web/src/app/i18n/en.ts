@@ -673,7 +673,6 @@ export const EN: UiDictionary = {
     composerHint: "Enter an amount and pick a category.",
     ownPart: "Your entries",
     groupPart: "Group shares",
-    analysisOwnOnly: "This only counts what you recorded in your ledger, not your group shares.",
   },
   misc: {
     pullRefreshing: "Refreshing…",

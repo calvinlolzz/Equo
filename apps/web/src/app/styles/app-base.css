@@ -1527,7 +1527,6 @@ label span {
 :root[data-theme="light"] .archived-dialog-row b,
 :root[data-theme="light"] .composer-section-head small,
 :root[data-theme="light"] .ledger-month-stats span,
-:root[data-theme="light"] .ledger-month-loading,
-:root[data-theme="light"] .spend-period-note {
+:root[data-theme="light"] .ledger-month-loading {
   color: rgb(var(--fg) / 0.72);
 }

@@ -20,8 +20,6 @@ type Props = {
   currency: string;
   /** 每月預算 in the group's currency, or null when nobody set one. */
   monthlyBudgetMinor?: number | null;
-  /** A one-line caveat shown under the period total - currently only the personal ledger's "not including group shares" note. */
-  note?: string;
   onSelectKind: (kind: SpendPeriodKind) => void;
   onSelectKey: (key: string) => void;
   onRetry: () => void;
@@ -45,7 +43,6 @@ export function SpendPeriodSection({
   error,
   currency,
   monthlyBudgetMinor,
-  note,
   onSelectKind,
   onSelectKey,
   onRetry,
@@ -131,7 +128,6 @@ export function SpendPeriodSection({
                   {describeSpendComparison(comparison, periodKind)}
                 </small>
               ) : null}
-              {note ? <small className="spend-period-note">{note}</small> : null}
             </div>
 
             {budget ? <BudgetBar budget={budget} currency={activeCurrency} /> : null}
