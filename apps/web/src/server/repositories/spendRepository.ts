@@ -38,3 +38,29 @@ export type SpendRepository = {
     periodKey: string | null,
   ): Promise<SpendBreakdownRecord | null>;
 };
+
+/** One shared group's fold into `personal_month_group_shares` - see that migration's header comment for D1/D2. */
+export type PersonalGroupShareRecord = {
+  group_id: string;
+  name: string;
+  currency: string;
+  archived: boolean;
+  share_minor: number;
+  expense_count: number;
+  by_category: Array<{ category: string; share_minor: number }>;
+};
+
+export type PersonalGroupSharesRecord = {
+  month: string;
+  groups: PersonalGroupShareRecord[];
+};
+
+/**
+ * Separate from SpendRepository rather than a new method on it: spend.test.ts
+ * (`satisfies SpendRepository`) pins that type's exact member set, and a new
+ * method there would break every fixture in that file for no reason - this
+ * RPC has nothing to do with a single group's breakdown anyway.
+ */
+export type PersonalSharesRepository = {
+  getMonthGroupShares(userId: string, month: string): Promise<PersonalGroupSharesRecord | null>;
+};

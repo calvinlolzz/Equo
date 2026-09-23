@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
-import { handleGetSpendBreakdown, parseSpendPeriod } from "./spend.js";
-import type { SpendBreakdownRecord, SpendRepository } from "../repositories/spendRepository.js";
+import { handleGetPersonalGroupShares, handleGetSpendBreakdown, parseSpendPeriod } from "./spend.js";
+import type {
+  PersonalGroupSharesRecord,
+  PersonalSharesRepository,
+  SpendBreakdownRecord,
+  SpendRepository,
+} from "../repositories/spendRepository.js";
 import type { AuthenticatedContext } from "../auth/session.js";
 
 const context = { user: { id: "user_1" } } as AuthenticatedContext;
@@ -67,5 +72,63 @@ describe("handleGetSpendBreakdown", () => {
     expect(result.ok).toBe(false);
     expect(result.status).toBe(403);
     expect(result.body).toMatchObject({ error: { code: "FORBIDDEN" } });
+  });
+});
+
+const groupShares: PersonalGroupSharesRecord = {
+  month: "2026-09",
+  groups: [
+    {
+      group_id: "group_1",
+      name: "Tokyo Trip",
+      currency: "TWD",
+      archived: false,
+      share_minor: 135000,
+      expense_count: 3,
+      by_category: [{ category: "food", share_minor: 135000 }],
+    },
+  ],
+};
+
+function sharesRepositoryReturning(result: PersonalGroupSharesRecord | null) {
+  const getMonthGroupShares = vi.fn(async () => result);
+  return { repository: { getMonthGroupShares } satisfies PersonalSharesRepository, getMonthGroupShares };
+}
+
+describe("handleGetPersonalGroupShares", () => {
+  test("a valid month reaches the repository as (userId, month)", async () => {
+    const { repository, getMonthGroupShares } = sharesRepositoryReturning(groupShares);
+
+    const result = await handleGetPersonalGroupShares(repository, context, { month: "2026-09" });
+
+    expect(getMonthGroupShares).toHaveBeenCalledWith("user_1", "2026-09");
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual(groupShares);
+  });
+
+  // [MV: drop the regex]
+  test.each([undefined, "2026-13", "2026-9", "whenever"])(
+    "%s is 400 MALFORMED_REQUEST without calling the repository",
+    async (month) => {
+      const { repository, getMonthGroupShares } = sharesRepositoryReturning(groupShares);
+
+      const result = await handleGetPersonalGroupShares(repository, context, { month });
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.body).toMatchObject({ error: { code: "MALFORMED_REQUEST" } });
+      expect(getMonthGroupShares).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a null result is 200 with an empty groups list, not an error", async () => {
+    const { repository } = sharesRepositoryReturning(null);
+
+    const result = await handleGetPersonalGroupShares(repository, context, { month: "2026-09" });
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({ month: "2026-09", groups: [] });
   });
 });

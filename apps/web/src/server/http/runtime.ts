@@ -107,7 +107,7 @@ import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
-import { getSpendBreakdownRoute } from "../routes/spendRoutes.js";
+import { getPersonalGroupSharesRoute, getSpendBreakdownRoute } from "../routes/spendRoutes.js";
 import { deleteRecurringRoute, listRecurringRoute, upsertRecurringRoute } from "../routes/recurringRoutes.js";
 import {
   deleteNotificationsRoute,
@@ -657,6 +657,17 @@ export function createHttpRuntime(options: RuntimeOptions) {
         const result = await getSpendBreakdownRoute(routeOptions(options, request), match[1], {
           kind: queryParam(request, "kind"),
           key: queryParam(request, "key"),
+        });
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/me\/group-shares$/,
+      label: "GET /api/v1/me/group-shares",
+      async handle(request) {
+        const result = await getPersonalGroupSharesRoute(routeOptions(options, request), {
+          month: queryParam(request, "month"),
         });
         return jsonResponse(result.status, result.body);
       },
