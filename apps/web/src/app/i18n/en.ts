@@ -520,7 +520,7 @@ export const EN: UiDictionary = {
     totalSpend: "Spent so far",
     totalSpendHint: "Excludes income and settlements",
     totalSpendHintPersonal: "Excludes income",
-    /** Joined as `${n} ${this}`. */
+    /** Joined by replacing {n}. */
     entryCount: "{n} total",
     daySpend: "Spent",
     searchPlaceholder: "Search items, notes, or amounts",

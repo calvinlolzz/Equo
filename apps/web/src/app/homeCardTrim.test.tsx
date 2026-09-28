@@ -105,7 +105,8 @@ describe("the hero donut is gone", () => {
 describe("the currency code on a record row", () => {
   test("is not printed when it is the group's own", async () => {
     await land({ detail: detail({ expenses: [expenseRow()], expense_count: 1, spend_total_minor: 96_000 }) });
-    // 最近記錄 shows its rows inline - no tap required (Fix 5).
+    // 最近記錄's rows are inline on home, not behind a tap - see GroupHome's
+    // HomeRecordsSection.
     const row = await screen.findByText("拉麵");
     const amount = row.closest(".expense-record-row")?.querySelector(".expense-record-amount");
     expect(amount?.textContent).toContain("$960");

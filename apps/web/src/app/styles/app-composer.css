@@ -1168,7 +1168,12 @@
 
   .expense-composer.expense-sheet {
     width: min(600px, 100%);
-    max-height: min(860px, calc(100dvh - 48px));
+    /* --keyboard-inset (0 everywhere it isn't a real overlap - see the
+       phone step body above) covers a touchscreen device wide enough to hit
+       this band while its on-screen keyboard is up: without it, a focused
+       field near the bottom of the sheet could sit under the keyboard
+       instead of the sheet shrinking to stay above it. */
+    max-height: min(860px, calc(100dvh - 48px - var(--keyboard-inset, 0px)));
     border-radius: var(--r-card-lg);
     /* Not sheet-rise (a slide-up-from-the-bottom-edge animation) - a centred
        dialog rising in place reads as a bottom sheet that forgot where the

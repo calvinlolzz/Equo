@@ -342,7 +342,12 @@ describe("settled groups move the member list below records", () => {
     // DOCUMENT_POSITION_FOLLOWING (4): records comes BEFORE members.
     // eslint-disable-next-line no-bitwise
     expect(records.compareDocumentPosition(memberSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector(".home-balance-card")).toBeNull();
+    // Not .home-balance-card being null - BalanceCard never renders that
+    // class once settled regardless of where the member list ends up (see
+    // the "everyone settled" test above), so that check would pass whether
+    // or not the member list had actually moved. The settled-only wrapper
+    // itself existing is what's specific to this move.
+    expect(document.querySelector(".home-members-section")).toBeTruthy();
   });
 
   // [MV]

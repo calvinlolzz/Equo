@@ -1534,7 +1534,17 @@ export function ExpenseComposerSheet({
         <div className="sheet-drag-handle" aria-hidden="true" />
         <div className="composer-header">
           <h2>{initialExpense ? text.editExpense : text.addExpense}</h2>
-          <button className="composer-close" type="button" aria-label={text.close} onClick={requestClose}>
+          <button
+            className="composer-close"
+            type="button"
+            aria-label={text.close}
+            onClick={requestClose}
+            // First in DOM order (top-right of the header), but opening the
+            // composer should still land focus on the first field/keypad key,
+            // not here - see useDialogChrome's INITIAL_FOCUS_SELECTOR. Still
+            // an ordinary Tab stop.
+            data-skip-initial-focus
+          >
             <X aria-hidden="true" size={20} />
           </button>
         </div>

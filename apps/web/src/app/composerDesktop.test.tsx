@@ -7,9 +7,9 @@ import { insideAtRule, readAppStylesheet, ruleFor } from "./cssDeclarations";
 import { UI_TEXT } from "./uiText";
 
 /**
- * Fix 3: above 620px the composer used to still be a bottom sheet pinned to
- * the screen's bottom edge, with the drag handle showing even though there
- * is nothing to drag with a mouse. It is now a centred dialog, matching
+ * Above 620px the composer used to still be a bottom sheet pinned to the
+ * screen's bottom edge, with the drag handle showing even though there is
+ * nothing to drag with a mouse. It is now a centred dialog, matching
  * .flow-dialog/.panel-dialog's own desktop treatment.
  */
 

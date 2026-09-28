@@ -4,6 +4,18 @@ const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /**
+ * Same as FOCUSABLE_SELECTOR, but excluding anything opted out of being the
+ * dialog's OPENING focus target via `data-skip-initial-focus` - a close
+ * button placed first in DOM order (the composer's ×, top-right of its
+ * header) so it stays reachable by Tab without stealing focus on open from
+ * whatever the dialog actually wants first (a field, a keypad).
+ */
+const INITIAL_FOCUS_SELECTOR = FOCUSABLE_SELECTOR
+  .split(",")
+  .map((part) => `${part}:not([data-skip-initial-focus])`)
+  .join(",");
+
+/**
  * Combine several refs (callback or object) into one. Memoise the result
  * (useMemo over the input refs) before spreading onto an element, or a fresh
  * function every render would detach/reattach the node each time.
@@ -85,7 +97,7 @@ export function useDialogChrome(onClose: () => void) {
         returnFocusRef.current = active;
       }
       if (!node.contains(document.activeElement)) {
-        const first = node.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+        const first = node.querySelector<HTMLElement>(INITIAL_FOCUS_SELECTOR);
         // preventScroll: focusing inside a mid-animation bottom sheet must not
         // scroll the viewport/sheet (which could jump a tall sheet out of view).
         (first ?? node).focus?.({ preventScroll: true });

@@ -950,8 +950,8 @@
   padding: 0 4px;
 }
 
-/* 最近記錄, always open (Fix 5) - not a HomeDisclosure, but styled to read as
-   the same kind of section header. */
+/* 最近記錄, always open - not a HomeDisclosure, but styled to read as the
+   same kind of section header. See GroupHome.tsx's HomeRecordsSection. */
 .home-records {
   display: grid;
   gap: 12px;
@@ -980,6 +980,12 @@
 }
 
 .home-records-all {
+  /* Not just the count's margin-right: auto above - that only pushes this
+     (and the scan button after it) right when a count is actually rendered.
+     With zero records there is no count span at all, and without its own
+     margin this button would sit flush against the title instead of at the
+     row's right edge. */
+  margin-left: auto;
   min-height: 44px;
 }
 
@@ -1267,9 +1273,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  /* Reserved from the start (box-sizing: border-box, see app-base.css *) so
-     the light-mode .secondary-action border below is a colour change, not a
-     size change - box model is identical to .primary-action's in both themes. */
+  /* Reserved from the start (box-sizing: border-box, see app-base.css) so
+     .secondary-action's own border below (rgb(var(--surf) / 0.28), same in
+     both themes) is a colour change on top of this, not a size change - the
+     box model stays identical to .primary-action's, which has no visible
+     border of its own. */
   border: 1px solid transparent;
   border-radius: 14px;
   color: rgb(var(--ink));

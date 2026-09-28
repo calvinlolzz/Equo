@@ -2,11 +2,12 @@ import { describe, expect, test } from "vitest";
 import { readAppStylesheet, ruleFor } from "./cssDeclarations";
 
 /**
- * Fix 4: one primary-action colour (the --cta gradient with --ink text) in
- * both themes, instead of --accent - which passed AA in dark mode but was a
- * real failure in light mode (~3.3:1, saturated blue with white text). See
- * the plan's "one primary colour" rationale and the measured contrast table
- * this file's own test reproduces below.
+ * One primary-action colour (the --cta gradient with --ink text) in both
+ * themes, instead of --accent - which passed AA in dark mode but was a real
+ * failure in light mode (~3.3:1, saturated blue with white text). --gold
+ * stays reserved for selection state (a picked template, a chosen tab), not
+ * a second button colour - see the neutral-secondary and selection checks
+ * below, and the measured contrast table this file's own test reproduces.
  */
 
 const homeCss = readAppStylesheet("app-home.css");
@@ -50,7 +51,12 @@ describe("the neutral secondary style carries no brand colour", () => {
 
   // [MV]
   test("the light-theme .secondary-action override is gone - colour now comes from the shared rule alone", () => {
-    expect(ruleFor(homeCss, ':root[data-theme="light"] .secondary-action').background).toBeUndefined();
+    // border-color, not background: that's what the deleted override
+    // actually set (a saturated --gold-ink edge for the old lavender fill -
+    // see app-home.css's .secondary-action history). Asserting .background
+    // here would be true whether or not the rule still existed, since it
+    // never set background in the first place.
+    expect(ruleFor(homeCss, ':root[data-theme="light"] .secondary-action')["border-color"]).toBeUndefined();
   });
 });
 

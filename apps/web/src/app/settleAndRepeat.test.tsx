@@ -255,7 +255,8 @@ describe("recording one thing after another", () => {
   test("an edit does not offer it — there is no 'another' edit to make", async () => {
     await landOnGroup();
 
-    // 最近記錄 shows its rows inline - no tap required (Fix 5).
+    // 最近記錄's rows are inline on home, not behind a tap - see GroupHome's
+    // HomeRecordsSection.
 
     // Through the expense's own dialog. The records list has 編輯 too, but its
     // swipe actions are aria-hidden until the row is opened - deliberately, so

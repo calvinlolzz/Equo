@@ -2,11 +2,11 @@ import { describe, expect, test } from "vitest";
 import { readAppStylesheet, ruleFor } from "./cssDeclarations";
 
 /**
- * Fix 2: a composer opened FROM a detail that is stacked over the records
- * sheet (編輯, 重複這筆, the N shortcut) has to paint OVER that records
- * backdrop even though .composer-backdrop's own z-index is otherwise below
- * a plain .modal-backdrop. See App.tsx's data-covered="composer" and the CSS
- * rule it drives.
+ * A composer opened FROM a detail that is stacked over the records sheet
+ * (編輯, 重複這筆, the N shortcut) has to paint OVER that records backdrop
+ * even though .composer-backdrop's own z-index is otherwise below a plain
+ * .modal-backdrop. See App.tsx's data-covered="composer" and the CSS rule
+ * it drives.
  */
 
 const dialogsCss = readAppStylesheet("app-dialogs.css");

@@ -556,9 +556,9 @@ export const ZH_HANT = {
     filterSettlement: "結算",
     count: "全部筆數",
     totalSpend: "累計支出",
-    totalSpendHint: "不含收入與清償",
+    totalSpendHint: "不含收入與結算",
     totalSpendHintPersonal: "不含收入",
-    /** Joined as `${n} ${this}`. */
+    /** Joined by replacing {n}. */
     entryCount: "{n} 筆",
     daySpend: "支出",
     searchPlaceholder: "搜尋品項、備註或金額",

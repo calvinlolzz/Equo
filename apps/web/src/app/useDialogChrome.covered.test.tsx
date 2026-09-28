@@ -4,12 +4,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { useDialogChrome } from "./useDialogChrome";
 
 /**
- * Fix 2: when the expense detail (or the composer) is stacked over the
- * records sheet, the records sheet's own useDialogChrome instance must NOT
- * also react to Escape/Tab - only the dialog actually on top should. Without
- * the `data-covered` guard, both instances see the same document-level
- * keydown (focus routinely falls back to <body> in these dialogs - see the
- * hook's own comment) and Escape would call both onClose handlers at once.
+ * When the expense detail (or the composer) is stacked over the records
+ * sheet, the records sheet's own useDialogChrome instance must NOT also
+ * react to Escape/Tab - only the dialog actually on top should. Without the
+ * `data-covered` guard, both instances see the same document-level keydown
+ * (focus routinely falls back to <body> in these dialogs - see the hook's
+ * own comment) and Escape would call both onClose handlers at once.
  */
 
 function Outer({ onClose }: { onClose: () => void }) {
