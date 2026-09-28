@@ -357,7 +357,15 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = init?.method ?? "GET";
   const path = String(typeof input === "string" ? input : input.toString()).replace(/^\/api\/v1/, "").split("?")[0];
   const key = `${method} ${path}`;
-  const body = ROUTES[key];
+  let body = ROUTES[key];
+
+  // One exception to the "unlisted = {}" rule below: every expense's own
+  // comment thread is a GET on a per-id path this table can't enumerate in
+  // advance. `{}` there unwraps to `comments: undefined`, which crashes
+  // ExpenseDetailDialog rather than rendering an empty, harmless thread.
+  if (body === undefined && method === "GET" && path.endsWith("/comments")) {
+    body = { comments: [] };
+  }
 
   if (body === undefined) {
     console.warn("[screenshot] unstubbed route", key);
