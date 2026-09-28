@@ -234,7 +234,7 @@ describe("useExpenseComposer", () => {
     test("openExpenseDetail never touches the shared dialog slot", () => {
       const { hook, setDialog } = setup();
 
-      act(() => hook.result.current.openExpenseDetail("expense_1"));
+      act(() => hook.result.current.openExpenseDetail(expense()));
 
       expect(hook.result.current.selectedExpenseId).toBe("expense_1");
       expect(setDialog).not.toHaveBeenCalled();
@@ -244,7 +244,7 @@ describe("useExpenseComposer", () => {
     test("deleteExpense clears the selected id but leaves the dialog slot alone", async () => {
       const { hook, setDialog } = setup();
 
-      act(() => hook.result.current.openExpenseDetail("expense_1"));
+      act(() => hook.result.current.openExpenseDetail(expense()));
       await act(async () => {
         await hook.result.current.deleteExpense(expense());
       });
@@ -256,10 +256,35 @@ describe("useExpenseComposer", () => {
     test("closeExpenseDetail clears the selected id", () => {
       const { hook } = setup();
 
-      act(() => hook.result.current.openExpenseDetail("expense_1"));
+      act(() => hook.result.current.openExpenseDetail(expense()));
       act(() => hook.result.current.closeExpenseDetail());
 
       expect(hook.result.current.selectedExpenseId).toBe("");
+    });
+
+    // [MV]
+    test("a search result from outside the loaded window is kept as a snapshot", () => {
+      const { hook } = setup();
+      const outOfWindow = expense({ id: "expense_far_away", title: "去年的拉麵" });
+
+      act(() => hook.result.current.openExpenseDetail(outOfWindow));
+
+      expect(hook.result.current.selectedExpenseId).toBe("expense_far_away");
+      expect(hook.result.current.selectedExpenseSnapshot).toEqual(outOfWindow);
+    });
+
+    // [MV]
+    test("openExpenseComposer (记一笔/再記一筆) closes an open detail first", () => {
+      const { hook } = setup();
+
+      act(() => hook.result.current.openExpenseDetail(expense()));
+      expect(hook.result.current.selectedExpenseId).toBe("expense_1");
+
+      act(() => hook.result.current.openExpenseComposer());
+
+      expect(hook.result.current.selectedExpenseId).toBe("");
+      expect(hook.result.current.selectedExpenseSnapshot).toBeNull();
+      expect(hook.result.current.expenseComposerOpen).toBe(true);
     });
   });
 });

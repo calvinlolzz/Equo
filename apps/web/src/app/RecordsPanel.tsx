@@ -53,7 +53,13 @@ type RecordsPanelProps = {
   /** Expense ids still waiting to reach the server - see offlineQueue.ts. */
   pendingWriteIds: Set<string>;
   onLoadMore: () => void;
-  onOpenExpense: (expenseId: string) => void;
+  /**
+   * Takes the whole Expense, not just its id: a search result can be a row
+   * from outside the loaded `expenses` window, which App.tsx cannot resolve
+   * back to an Expense from an id alone - see useExpenseComposer's
+   * openExpenseDetail.
+   */
+  onOpenExpense: (expense: Expense) => void;
   /** Swipe-row shortcuts. Same handlers the detail dialog uses — the gesture is
       a shortcut to them, not a second path with its own rules. */
   onEditExpense: (expense: Expense) => void;
@@ -61,6 +67,20 @@ type RecordsPanelProps = {
   /** Server-side search over the whole history; null when offline/signed out. */
   searchExpenses: Searcher | null;
   describeError: (error: unknown) => string;
+  /**
+   * Bumped on every successful delete/edit anywhere in the group (including
+   * from the expense detail stacked over this panel), so an active search's
+   * cached server page refetches even though the filter itself never
+   * changed - see useExpenseSearch's invalidateToken.
+   */
+  expenseMutationToken?: number;
+  /**
+   * The id of the expense most recently deleted, so this panel can drop it
+   * from an active search's cached page the instant it happens, rather than
+   * waiting on expenseMutationToken's (debounced) refetch - see
+   * useExpenseSearch's removeLocally. Empty string = nothing to drop.
+   */
+  lastDeletedExpenseId?: string;
   /**
    * Bumped by the `/` shortcut to put the cursor in the search box.
    *
@@ -94,6 +114,8 @@ export function RecordsPanel({
   onDeleteExpense,
   searchExpenses,
   describeError,
+  expenseMutationToken = 0,
+  lastDeletedExpenseId = "",
   focusSearchSignal = 0,
   personal = false,
 }: RecordsPanelProps) {
@@ -123,7 +145,27 @@ export function RecordsPanel({
   const [openRowId, setOpenRowId] = useState<string | null>(null);
 
   const filterActive = isExpenseFilterActive(filter);
-  const search = useExpenseSearch({ searchExpenses, filter, enabled: true, describeError });
+  const search = useExpenseSearch({
+    searchExpenses,
+    filter,
+    enabled: true,
+    describeError,
+    invalidateToken: expenseMutationToken,
+  });
+
+  // Drop a just-deleted row from the cached search page immediately, rather
+  // than waiting on expenseMutationToken's debounced refetch - see
+  // useExpenseSearch.removeLocally. Guarded on the id actually changing (not
+  // just truthy) so this doesn't re-fire on every unrelated render.
+  const removedIdRef = useRef("");
+  useEffect(() => {
+    if (!lastDeletedExpenseId || lastDeletedExpenseId === removedIdRef.current) return;
+    removedIdRef.current = lastDeletedExpenseId;
+    search.removeLocally(lastDeletedExpenseId);
+    // search.removeLocally is a fresh function each render (not memoised);
+    // only the id is what should restart this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastDeletedExpenseId]);
 
   // With a filter on, the server answers over the whole history. Without one
   // the in-memory list stays authoritative, which is what keeps optimistic and
@@ -337,7 +379,7 @@ export function RecordsPanel({
                     open={openRowId === expense.id}
                     onOpenRow={() => setOpenRowId(expense.id)}
                     onCloseRow={() => setOpenRowId((current) => (current === expense.id ? null : current))}
-                    onOpenExpense={() => onOpenExpense(expense.id)}
+                    onOpenExpense={() => onOpenExpense(expense)}
                     onEdit={() => {
                       setOpenRowId(null);
                       onEditExpense(expense);

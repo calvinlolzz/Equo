@@ -27,6 +27,17 @@ type Options = {
   /** False while the records panel is closed. */
   enabled: boolean;
   describeError: (error: unknown) => string;
+  /**
+   * Bumped by the caller on every successful delete/edit, so the cached
+   * server page refetches even though nothing the user typed changed.
+   *
+   * Needed because the cache is otherwise keyed only on the filter fields:
+   * a delete or edit reached through the expense detail (stacked over this
+   * panel - see App.tsx's expenseDetailOpen) never touches `filter` at all,
+   * so without this the row it removed or changed would sit in the cached
+   * page, stale, until the filter happened to change for some other reason.
+   */
+  invalidateToken?: number;
 };
 
 const PAGE_SIZE = 50;
@@ -48,7 +59,7 @@ const DEBOUNCE_MS = 300;
  * back is worse than a briefly stale one - `loading` is exposed so the panel
  * can say which it is.
  */
-export function useExpenseSearch({ searchExpenses, filter, enabled, describeError }: Options) {
+export function useExpenseSearch({ searchExpenses, filter, enabled, describeError, invalidateToken = 0 }: Options) {
   const active = enabled && isExpenseFilterActive(filter);
   const [page, setPage] = useState<ExpenseSearchPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,7 +103,7 @@ export function useExpenseSearch({ searchExpenses, filter, enabled, describeErro
     // describeError is a stable formatter; excluded so a parent re-render
     // cannot restart the debounce.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, searchExpenses, query, memberId, category, kind, from, to, reloadToken]);
+  }, [active, searchExpenses, query, memberId, category, kind, from, to, reloadToken, invalidateToken]);
 
   // Clearing the filter (or closing the panel) drops the results, so the next
   // search never flashes the previous one's rows.
@@ -141,6 +152,30 @@ export function useExpenseSearch({ searchExpenses, filter, enabled, describeErro
 
   const retry = useCallback(() => setReloadToken((value) => value + 1), []);
 
+  /**
+   * Drop one row from the cached page the instant it is deleted, rather than
+   * waiting on `invalidateToken` to trigger a full (debounced) refetch - the
+   * gap between "server confirmed the delete" and "the refetch lands" would
+   * otherwise leave a dead row on screen: tapping it opens nothing, and a
+   * second swipe-delete on it would try to delete an id that is already gone.
+   */
+  const removeLocally = useCallback((expenseId: string) => {
+    setPage((current) => {
+      if (!current) return current;
+      const removed = current.expenses.find((expense) => expense.id === expenseId);
+      if (!removed) return current;
+      const stillExpenseKind = (removed.kind ?? "expense") === "expense";
+      return {
+        ...current,
+        expenses: current.expenses.filter((expense) => expense.id !== expenseId),
+        matchCount: Math.max(0, current.matchCount - 1),
+        matchTotalMinor: stillExpenseKind
+          ? Math.max(0, current.matchTotalMinor - removed.amountMinor)
+          : current.matchTotalMinor,
+      };
+    });
+  }, []);
+
   return {
     /** True when the server is the source of truth for what the panel shows. */
     active,
@@ -155,5 +190,6 @@ export function useExpenseSearch({ searchExpenses, filter, enabled, describeErro
     error,
     loadMore,
     retry,
+    removeLocally,
   };
 }

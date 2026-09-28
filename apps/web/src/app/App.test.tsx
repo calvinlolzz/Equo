@@ -712,7 +712,8 @@ describe("recording an expense with no connection", () => {
     // Recorded, not lost: the banner counts it and the composer closed as if
     // the save had succeeded - which, from the user's side, it did.
     expect(await screen.findByText(`1${UI_TEXT.app.offlinePendingSuffix}`)).toBeTruthy();
-    // 最近記錄 shows its rows inline - no tap required (Fix 5).
+    // 最近記錄's rows are inline on home, not behind a tap - see GroupHome's
+    // HomeRecordsSection.
     expect(await screen.findByText("便當")).toBeTruthy();
   });
 });

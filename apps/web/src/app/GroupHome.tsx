@@ -90,7 +90,13 @@ export type GroupHomeProps = {
   onNudgeMember: (member: Member) => void;
   /** "提醒 N 位成員" - every current debtor at once. See App.tsx's nudgeEveryDebtor. */
   onNudgeAll: (targets: Member[]) => void;
-  onOpenExpenseDetail: (expenseId: string) => void;
+  /**
+   * Takes the whole Expense, not just its id - App.tsx resolves the detail
+   * from it directly when the row came from outside the loaded window (see
+   * useExpenseComposer's openExpenseDetail), which a row rendered here never
+   * is, but the signature is shared with RecordsPanel's, which can be.
+   */
+  onOpenExpenseDetail: (expense: Expense) => void;
 };
 
 /** A member paying into your balance, and which of the three bar colours stands for them. */
@@ -603,7 +609,7 @@ export function GroupHome({
                       className="expense-record-row pizo-expense-row"
                       type="button"
                       key={expense.id}
-                      onClick={() => onOpenExpenseDetail(expense.id)}
+                      onClick={() => onOpenExpenseDetail(expense)}
                     >
                       {isSettlement ? (
                         <span className="member-avatar photo settlement-avatar">
@@ -650,7 +656,15 @@ export function GroupHome({
             )}
           </HomeRecordsSection>
 
-          {groupSettled ? <section className="home-section home-members-section">{memberList}</section> : null}
+          {groupSettled ? (
+            <section className="home-section home-members-section" aria-label={text.members}>
+              {/* Reuses the records section's own heading style - moved out
+                  of the now one-line balance card, the member list needs
+                  its own label or it reads as headless. */}
+              <h2 className="home-records-title">{text.members}</h2>
+              {memberList}
+            </section>
+          ) : null}
 
           {/* 首頁拿不到「整月」金額 (aggregates.spendByDay is an 8-day rolling
               window, and the true month/period totals live behind

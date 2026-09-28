@@ -80,9 +80,27 @@ export function useExpenseComposer({
    * the submit path keys replace-vs-create off editingExpense alone.
    */
   const [receiptPrefill, setReceiptPrefill] = useState<ReceiptPrefill | null>(null);
+  /**
+   * The Expense object a detail was opened with, kept alongside
+   * selectedExpenseId. App.tsx's own `expenses` window is what the detail
+   * prefers (it is the freshest copy, and reflects an edit immediately) -
+   * this is only the fallback for a row that a server search surfaced from
+   * outside that window, which `expenses.find` can never resolve on its own.
+   * See openExpenseDetail.
+   */
+  const [selectedExpenseSnapshot, setSelectedExpenseSnapshot] = useState<Expense | null>(null);
+  /** Bumped on every successful delete/edit - see useExpenseSearch's invalidateToken. */
+  const [expenseMutationToken, setExpenseMutationToken] = useState(0);
+  /** The id useExpenseSearch's cached page should drop immediately on delete. */
+  const [lastDeletedExpenseId, setLastDeletedExpenseId] = useState("");
 
   /** Open the composer for a brand-new expense (never carrying a prior edit). */
   function openExpenseComposer() {
+    // A detail (or a stale selection left over from one) must not keep
+    // showing underneath a composer that has nothing to do with it - see
+    // App.tsx's data-covered wiring, which only accounts for the composer
+    // covering a DIALOG, not the detail layer.
+    closeExpenseDetail();
     setEditingExpense(null);
     setDuplicatingExpense(null);
     setReceiptPrefill(null);
@@ -101,7 +119,7 @@ export function useExpenseComposer({
   /** Open the composer seeded from a receipt photo, before any scan has resolved. */
   function openExpenseFromReceipt(prefill: ReceiptPrefill) {
     setDialog(null);
-    setSelectedExpenseId("");
+    closeExpenseDetail();
     setEditingExpense(null);
     setDuplicatingExpense(null);
     setReceiptPrefill(prefill);
@@ -109,7 +127,7 @@ export function useExpenseComposer({
   }
 
   function openExpenseEdit(expense: Expense) {
-    setSelectedExpenseId("");
+    closeExpenseDetail();
     setDuplicatingExpense(null);
     setReceiptPrefill(null);
     setEditingExpense(expense);
@@ -117,7 +135,7 @@ export function useExpenseComposer({
   }
 
   function openExpenseDuplicate(expense: Expense) {
-    setSelectedExpenseId("");
+    closeExpenseDetail();
     setEditingExpense(null);
     setReceiptPrefill(null);
     setDuplicatingExpense(expense);
@@ -136,13 +154,20 @@ export function useExpenseComposer({
    * rather than a `dialog` mode of its own - see appTypes.ts's DialogMode
    * doc and App.tsx's expenseDetailOpen for why: replacing the underlying
    * sheet would unmount it and lose its filter/scroll/search state.
+   *
+   * Takes the whole Expense, not just its id: the records panel's server
+   * search can surface a row from outside the loaded `expenses` window
+   * (see RecordsPanel/useExpenseSearch), and an id alone would leave App.tsx
+   * with nothing to resolve the detail from - see selectedExpenseSnapshot.
    */
-  function openExpenseDetail(expenseId: string) {
-    setSelectedExpenseId(expenseId);
+  function openExpenseDetail(expense: Expense) {
+    setSelectedExpenseId(expense.id);
+    setSelectedExpenseSnapshot(expense);
   }
 
   function closeExpenseDetail() {
     setSelectedExpenseId("");
+    setSelectedExpenseSnapshot(null);
   }
 
   async function handleExpenseDraftSubmit(draft: ExpenseDraft) {
@@ -189,6 +214,12 @@ export function useExpenseComposer({
           ? `${text.editExpense}: ${draft.title}`
           : `${text.addExpense}: ${draft.title} (${formatAmount(draft.amountMinor, activeGroup.currency)})`,
       );
+      if (editingId) {
+        // Not a create: the records panel's cached search page (if a filter
+        // is active) may be showing this row with its old title/amount -
+        // see useExpenseSearch's invalidateToken.
+        setExpenseMutationToken((token) => token + 1);
+      }
       setExpenseComposerOpen(false);
       setEditingExpense(null);
       setDuplicatingExpense(null);
@@ -228,7 +259,12 @@ export function useExpenseComposer({
     try {
       await cloudStore.deleteExpense(groupId, expense.id);
       recordCloudActivity(groupId, `${text.deleteExpense}: ${expense.title}`);
-      setSelectedExpenseId("");
+      closeExpenseDetail();
+      // Tells the records panel's cached search page (if a filter is active)
+      // to drop this row right away, and to refetch so a later reopen of the
+      // panel doesn't see it either - see useExpenseSearch.
+      setLastDeletedExpenseId(expense.id);
+      setExpenseMutationToken((token) => token + 1);
       haptic("warning");
       showToast(`${text.deleteExpense}: ${expense.title}`, {
         label: text.undo,
@@ -321,6 +357,10 @@ export function useExpenseComposer({
     setReceiptScan,
     selectedExpenseId,
     setSelectedExpenseId,
+    selectedExpenseSnapshot,
+    setSelectedExpenseSnapshot,
+    expenseMutationToken,
+    lastDeletedExpenseId,
     openExpenseComposer,
     openExpenseFromReceipt,
     openExpenseEdit,

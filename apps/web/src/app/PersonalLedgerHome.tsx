@@ -1,4 +1,4 @@
-import { HandCoins, ReceiptText, Scan } from "lucide-react";
+import { HandCoins, ReceiptText } from "lucide-react";
 import type { ReactNode } from "react";
 import { BudgetBar } from "./BudgetBar";
 import { CategoryDonut } from "./CategoryDonut";
@@ -39,7 +39,8 @@ export type PersonalLedgerHomeProps = {
   onOpenDialog: (mode: DialogMode) => void;
   onScanReceipt: () => void;
   onOpenExpenseComposer: () => void;
-  onOpenExpenseDetail: (expenseId: string) => void;
+  /** Takes the whole Expense - see GroupHome's own doc on this prop. */
+  onOpenExpenseDetail: (expense: Expense) => void;
   onCreateGroup: () => void;
   onJoinGroup: () => void;
 };
@@ -157,7 +158,7 @@ export function PersonalLedgerHome({
                     className="expense-record-row pizo-expense-row"
                     type="button"
                     key={expense.id}
-                    onClick={() => onOpenExpenseDetail(expense.id)}
+                    onClick={() => onOpenExpenseDetail(expense)}
                   >
                     <span className={isIncome ? "member-avatar photo income-avatar" : "member-avatar photo"}>
                       {isIncome ? <HandCoins aria-hidden="true" size={16} /> : <ReceiptText aria-hidden="true" size={16} />}

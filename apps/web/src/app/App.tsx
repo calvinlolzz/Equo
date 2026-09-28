@@ -426,6 +426,10 @@ export function App() {
     setReceiptScan,
     selectedExpenseId,
     setSelectedExpenseId,
+    selectedExpenseSnapshot,
+    setSelectedExpenseSnapshot,
+    expenseMutationToken,
+    lastDeletedExpenseId,
     openExpenseComposer,
     openExpenseEdit,
     openExpenseDuplicate,
@@ -456,7 +460,14 @@ export function App() {
   // hook below that needs to know "is the detail covering the screen right
   // now" (pull-to-refresh, body scroll lock, shortcuts, Back-button stack,
   // comments) can just read this flag.
-  const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) ?? null;
+  // The loaded window is preferred (freshest copy - reflects an edit the
+  // instant it lands), and is all that ever matters for a row reached the
+  // ordinary way. The snapshot is only consulted for a row the records
+  // panel's server search surfaced from OUTSIDE that window - see
+  // useExpenseComposer's openExpenseDetail/selectedExpenseSnapshot.
+  const selectedExpense =
+    expenses.find((expense) => expense.id === selectedExpenseId) ??
+    (selectedExpenseSnapshot?.id === selectedExpenseId ? selectedExpenseSnapshot : null);
   const selectedExpenseIndex = expenses.findIndex((expense) => expense.id === selectedExpenseId);
   const expenseDetailOpen = selectedExpense !== null;
 
@@ -890,11 +901,16 @@ export function App() {
     setAutoPageInFlightGroupId(null);
   }, [activeGroupId]);
   // The detail no longer lives inside `dialog`, so switching groups would
-  // otherwise leave a stale id pointed at the old group's expense - which,
-  // now that `expenses` refers to the new group, could even coincide with a
-  // different real expense there. A group switch always means "nothing is
-  // selected."
-  useEffect(() => setSelectedExpenseId(""), [activeGroupId]);
+  // otherwise leave a stale id (and snapshot) pointed at the old group's
+  // expense - which, now that `expenses` refers to the new group, could
+  // even coincide with a different real expense there. A group switch
+  // always means "nothing is selected." Both setters (not closeExpenseDetail
+  // itself, which is a fresh function every render) so this effect only
+  // re-runs when activeGroupId actually changes.
+  useEffect(() => {
+    setSelectedExpenseId("");
+    setSelectedExpenseSnapshot(null);
+  }, [activeGroupId]);
   useEffect(() => {
     if (!activeIsPersonal || !cloudActiveDetail || !cloudStore || !activeGroupId) return;
     if (autoPageInFlightGroupId === activeGroupId || autoPageFailedGroupRef.current === activeGroupId) return;
@@ -2351,6 +2367,8 @@ export function App() {
                   onDeleteExpense={deleteExpense}
                   searchExpenses={searchExpensesInGroup}
                   describeError={describeCloudActionError}
+                  expenseMutationToken={expenseMutationToken}
+                  lastDeletedExpenseId={lastDeletedExpenseId}
                   focusSearchSignal={focusSearchSignal}
                   personal={activeIsPersonal}
                 />
