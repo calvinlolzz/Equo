@@ -1995,8 +1995,8 @@
   place-items: center;
   gap: 4px;
   padding: 0;
-  color: rgb(var(--ink));
-  background: rgb(var(--gold));
+  color: rgb(var(--fg));
+  background: rgb(var(--surf) / 0.14);
   font-size: 12px;
   font-weight: 860;
 }

@@ -17,12 +17,14 @@
   --income: 77 227 166;
   --accent: 77 227 166;     /* interactive/selection accent */
   --accent-fg: 5 34 26;     /* text on --accent fills */
-  /* aurora lavender — secondary highlight (formerly gold), the third hue so
-     .secondary-action (--gold) doesn't collapse onto .primary-action
-     (--accent). Kept BRIGHT on purpose, same semantics as the old gold: a
-     light fill that a dark --ink sits on top of - a saturated dark purple
-     read fine as decoration but failed AA under --ink text (measured ~3.4:1
-     in light mode). */
+  /* aurora lavender — SELECTION only now (.start-mode.active,
+     .template-chip.active), not a button colour: .primary-action moved to
+     --cta and .secondary-action moved to a neutral fg-on-surf outline, so
+     this is no longer "the third hue keeping two button classes apart" -
+     see the "one primary colour" plan doc. Kept BRIGHT on purpose, same
+     semantics as the old gold: a light fill that a dark --ink sits on top
+     of - a saturated dark purple read fine as decoration but failed AA
+     under --ink text (measured ~3.4:1 in light mode). */
   --gold: 190 160 255;
   /* Purple that is being READ rather than filled: a deeper, more saturated
      tint than --gold, so it holds contrast for TEXT on a dark CARD, which a
@@ -75,8 +77,8 @@
   --accent: 61 139 255;     /* aurora blue — light only */
   --accent-fg: 255 255 255; /* white text on blue */
   /* aurora lavender, same "light fill + dark --ink text" semantics as dark
-     mode — the third hue, so .secondary-action (--gold) doesn't collapse
-     onto .primary-action (--accent). */
+     mode, and the same SELECTION-only role - see the dark block's comment
+     above. */
   --gold: 196 181 253;
   /* ~9:1 on white — passes AA for the large amounts it carries. */
   --gold-ink: 91 33 182;
@@ -587,8 +589,8 @@ label span {
 }
 
 .start-mode.active {
-  color: rgb(var(--accent-fg));
-  background: rgb(var(--accent));
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
 }
 
 .start-panel {
@@ -815,10 +817,13 @@ label span {
   font-weight: 820;
 }
 
+/* Selection, not action: a picked template stays lavender (--gold), the hue
+   reserved for "this one is chosen" now that --cta owns every primary
+   button. */
 .template-chip.active {
-  border-color: rgb(var(--accent) / 0.72);
-  color: rgb(var(--accent-fg));
-  background: rgb(var(--accent));
+  border-color: rgb(var(--gold-ink) / 0.5);
+  color: rgb(var(--ink));
+  background: rgb(var(--gold));
 }
 
 .create-name-field {
@@ -829,7 +834,7 @@ label span {
   min-height: 56px;
   border-radius: 16px;
   color: rgb(var(--ink));
-  background: rgb(var(--gold));
+  background: var(--cta);
   font-size: 17px;
   font-weight: 900;
 }

@@ -32,7 +32,8 @@ describe("app iconography", () => {
       floatingAdd: "Plus",
       close: "X",
       openGroupDrawer: "Menu",
-      openGroupSettings: "Settings",
+      openGroupSettings: "UsersRound",
+      openLedgerSettings: "Wallet",
     });
   });
 

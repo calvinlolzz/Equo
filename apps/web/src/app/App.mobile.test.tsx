@@ -94,11 +94,11 @@ describe("the mobile chrome", () => {
 
     // The top-bar drawer triggers and the bottom tab bar are live on mobile.
     expect(screen.getByRole("button", { name: app.groupList })).toBeTruthy();
-    // 群組管理 moved out of the top bar into the 設定 tab.
+    // 群組管理 moved out of the top bar into the 群組 tab.
     expect(screen.queryByRole("button", { name: app.groupManage })).toBeNull();
     expect(screen.getByRole("button", { name: app.navRecords })).toBeTruthy();
     expect(screen.getByRole("button", { name: app.navAnalysis })).toBeTruthy();
-    expect(screen.getByRole("button", { name: app.navSettings })).toBeTruthy();
+    expect(screen.getByRole("button", { name: app.navGroup })).toBeTruthy();
 
     // The desktop group rail is aria-hidden on mobile, so its actions are out of
     // the accessibility tree entirely - not merely visually hidden. If the inert
@@ -172,16 +172,45 @@ describe("the group drawer", () => {
 });
 
 describe("the settings drawer", () => {
-  test("the 設定 tab opens the right drawer", async () => {
+  test("the 群組 tab opens the right drawer", async () => {
     await landOnGroup();
 
     expect(screen.queryByRole("dialog", { name: app.groupManage })).toBeNull();
 
-    screen.getByRole("button", { name: app.navSettings }).click();
+    screen.getByRole("button", { name: app.navGroup }).click();
 
     expect(await screen.findByRole("dialog", { name: app.groupManage })).toBeTruthy();
     // ...and the tab bar says that is where you are.
-    expect(screen.getByRole("button", { name: app.navSettings }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: app.navGroup }).getAttribute("aria-current")).toBe("page");
+  });
+
+  // [MV]
+  test("reads 帳本 in a personal ledger, and there is no 群組 button", async () => {
+    signIn();
+    fakeApi([
+      { route: "GET /groups", body: { groups: [group({ id: "group_ledger", name: "我的帳本", kind: "personal" })] } },
+      {
+        route: "GET /groups/group_ledger",
+        body: groupDetail({ group: group({ id: "group_ledger", name: "我的帳本", kind: "personal" }) }),
+      },
+    ]);
+    renderApp();
+    await waitFor(() => expect(window.location.pathname).toBe("/group/group_ledger"));
+
+    expect(screen.getByRole("button", { name: app.navLedger })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: app.navGroup })).toBeNull();
+  });
+
+  // [MV]
+  test("個人設定 in the drawer opens the profile dialog", async () => {
+    await landOnGroup();
+
+    screen.getByRole("button", { name: app.navGroup }).click();
+    const drawer = await screen.findByRole("dialog", { name: app.groupManage });
+
+    within(drawer).getByText(app.personalSettings).click();
+
+    expect(await screen.findByRole("dialog", { name: UI_TEXT.profile.title })).toBeTruthy();
   });
 });
 
@@ -431,7 +460,7 @@ describe("the Back button", () => {
   test("closes a drawer rather than leaving the group", async () => {
     await landOnGroup();
 
-    screen.getByRole("button", { name: app.navSettings }).click();
+    screen.getByRole("button", { name: app.navGroup }).click();
     await screen.findByRole("dialog", { name: app.groupManage });
 
     await pressBack();

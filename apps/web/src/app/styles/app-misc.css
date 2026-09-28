@@ -432,8 +432,8 @@
   flex: 0 0 auto;
   border-radius: 999px;
   padding: 9px 16px;
-  color: rgb(var(--accent-fg));
-  background: rgb(var(--accent));
+  color: rgb(var(--ink));
+  background: var(--cta);
   font-size: 13px;
   font-weight: 880;
 }

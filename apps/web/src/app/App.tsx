@@ -14,9 +14,10 @@ import {
   Plus,
   Scan,
   ScanLine,
-  Settings,
   Sun,
   UserRound,
+  UsersRound,
+  Wallet,
   X,
 } from "lucide-react";
 import { syncAppBadge } from "./appBadge";
@@ -1947,6 +1948,7 @@ export function App() {
                 onArchive={() => setDialog("archive")}
                 onDelete={() => setDialog("delete")}
                 onBeforeNavigate={() => setSettingsDrawerOpen(false)}
+                onOpenProfile={openProfileDialog}
                 personal={activeIsPersonal}
               />
             ) : null}
@@ -2014,19 +2016,22 @@ export function App() {
               <ChartNoAxesColumn aria-hidden="true" size={20} />
               <span>{text.navAnalysis}</span>
             </button>
-            {/* 設定, not 群組成員: the member list lives one row inside this
-                drawer, and a settings destination is what the fifth slot is for
-                on every phone app people already use. It also gives the gear
-                that used to sit in the top bar a home. */}
+            {/* 群組 / 帳本, not 設定: this opens the group-management drawer
+                (GroupSideNav variant="drawer") - member list, export, edit,
+                archive/delete - not a settings screen, and calling it 設定
+                read as "where did account settings go" (the avatar in the
+                top bar is the actual answer, on every screen - see
+                onOpenProfile below). The personal ledger has no group to
+                manage, so its own label and icon read 帳本 instead. */}
             <button
               className={activeTab === "settings" ? "mobile-tab-item active" : "mobile-tab-item"}
               type="button"
-              aria-label={text.navSettings}
+              aria-label={activeIsPersonal ? text.navLedger : text.navGroup}
               aria-current={activeTab === "settings" ? "page" : undefined}
               onClick={() => setSettingsDrawerOpen(true)}
             >
-              <Settings aria-hidden="true" size={20} />
-              <span>{text.navSettings}</span>
+              {activeIsPersonal ? <Wallet aria-hidden="true" size={20} /> : <UsersRound aria-hidden="true" size={20} />}
+              <span>{activeIsPersonal ? text.navLedger : text.navGroup}</span>
             </button>
           </nav>
         </section>

@@ -18,7 +18,7 @@ export type ActiveTab = "home" | "records" | "analysis" | "settings";
  * `settingsOpen` is the group-settings drawer, which is the fifth tab. The
  * member list gets the same answer: it is only reachable from inside that
  * drawer, and the drawer closes on the way - without this the tab bar would
- * snap back to 首頁 the moment you arrived somewhere you navigated to from 設定.
+ * snap back to 首頁 the moment you arrived somewhere you navigated to from 群組.
  */
 export function resolveActiveTab(dialog: DialogMode, settingsOpen = false): ActiveTab {
   if (dialog === "recordsPanel") return "records";

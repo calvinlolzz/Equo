@@ -8,6 +8,7 @@ import {
   Repeat,
   Share,
   Trash2,
+  UserCog,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
@@ -40,7 +41,7 @@ const DRAWER_ITEMS = new Set(["members", "recurring"]);
 type GroupSideNavProps = {
   /**
    * "rail" is the desktop wide-layout navigation (phase 3: no longer
-   * rendered on screen, kept for reversibility); "drawer" is the phone's 設定
+   * rendered on screen, kept for reversibility); "drawer" is the phone's 群組
    * sheet; "menu" is the desktop ▾ popover next to the group's name, which
    * replaced "rail" as the actual desktop route to this content.
    */
@@ -65,6 +66,15 @@ type GroupSideNavProps = {
   onArchive: () => void;
   onDelete: () => void;
   /**
+   * Opens the account-settings dialog (ProfileDialog). Only offered by the
+   * "drawer" variant - the phone lost its 設定 tab (renamed 群組/帳本 to say
+   * what it actually opens), and the top-bar avatar that answers "where did
+   * account settings go" is easy to miss on a first visit, so this drawer
+   * keeps a second, explicit route to it. "menu"/"rail" don't need it: the
+   * avatar sits in the same top bar as those, at every width.
+   */
+  onOpenProfile?: () => void;
+  /**
    * True for the caller's own personal ledger: no members to list or invite,
    * no archive/delete (the server rejects both - see handlers/groups.ts),
    * and the edit row is 帳本設定 rather than 編輯群組.
@@ -76,7 +86,7 @@ type GroupSideNavProps = {
  * The group side navigation (group card, nav list, settings, owner danger
  * actions) — three variants of one list. "menu" (the desktop ▾ popover,
  * GroupMenu.tsx) is the one actually reachable on a wide screen; "drawer" is
- * the phone's 設定 sheet; "rail" — the old three-column layout's permanent
+ * the phone's 群組 sheet; "rail" — the old three-column layout's permanent
  * right-hand column — is kept only so App.tsx's now-permanently-inert
  * `<aside className="group-side-nav">` still has something to mount, for
  * reversibility, and is not on any screen a user can reach.
@@ -95,6 +105,7 @@ export function GroupSideNav({
   onNavigate,
   onArchive,
   onDelete,
+  onOpenProfile,
   personal = false,
 }: GroupSideNavProps) {
   const closeDrawer = () => onBeforeNavigate?.();
@@ -198,6 +209,19 @@ export function GroupSideNav({
             <Share aria-hidden="true" size={19} />
             <span>{exporting ? text.processing : text.exportCsv}</span>
           </button>
+          {variant === "drawer" && onOpenProfile ? (
+            <button
+              className="side-settings-row side-settings-action"
+              type="button"
+              onClick={() => {
+                closeDrawer();
+                onOpenProfile();
+              }}
+            >
+              <UserCog size={19} aria-hidden />
+              <span>{text.personalSettings}</span>
+            </button>
+          ) : null}
         </div>
       </div>
       {isOwner && !personal ? (

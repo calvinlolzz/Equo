@@ -207,7 +207,7 @@
   min-height: 52px;
   border-radius: 16px;
   color: rgb(var(--ink));
-  background: rgb(var(--gold));
+  background: var(--cta);
   font-size: 16px;
   font-weight: 900;
 }
@@ -324,8 +324,8 @@
   flex: 1 1 auto;
   min-height: 52px;
   border-radius: 16px;
-  color: rgb(var(--accent-fg));
-  background: rgb(var(--accent));
+  color: rgb(var(--ink));
+  background: var(--cta);
   font-size: 16px;
   font-weight: 900;
 }
@@ -527,8 +527,9 @@
   min-height: 36px;
   border-radius: 999px;
   padding: 0 10px;
-  color: rgb(var(--ink));
-  background: rgb(var(--gold));
+  color: rgb(var(--fg));
+  background: rgb(var(--surf) / 0.08);
+  border: 1px solid rgb(var(--surf) / 0.22);
   font-size: 12px;
   font-weight: 900;
 }

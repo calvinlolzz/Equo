@@ -1228,22 +1228,26 @@
   font-weight: 860;
 }
 
+/* The one primary-action colour, in both themes: the --cta gradient with
+   --ink text (already what the FAB and the tab-bar centre button use). The
+   old --accent fill was AA in dark mode but ~3.3:1 in light mode - a real
+   failure, not a near-miss - because --accent's light stop is a saturated
+   blue with white text sitting on it. --cta's two stops both clear 4.5:1
+   against --ink in both themes; see primaryActions.test.ts for the measured
+   numbers. */
 .primary-action {
-  color: rgb(var(--accent-fg));
-  background: rgb(var(--accent));
+  color: rgb(var(--ink));
+  background: var(--cta);
 }
 
+/* Neutral outline, not a second brand colour: --gold is reserved for
+   selection state now (.start-mode.active, .template-chip.active) - see the
+   CLAUDE.md-adjacent plan doc's "one primary colour" rationale. fg-on-surf is
+   ~13-14:1 in both themes, comfortably past AA. */
 .secondary-action {
-  background: rgb(var(--gold));
-}
-
-/* Dark mode's --gold fill is dark-card-relative bright enough to read its own
-   edge (measured 9.2:1 against --page-1) - no border needed. Light mode's
-   lavender fill on a near-white card is ~1.85:1, which is no edge at all;
-   give it one, in the saturated --gold-ink rather than --gold itself so the
-   border doesn't just repeat the pale fill it's meant to separate from. */
-:root[data-theme="light"] .secondary-action {
-  border-color: rgb(var(--gold-ink) / 0.45);
+  color: rgb(var(--fg));
+  background: rgb(var(--surf) / 0.08);
+  border: 1px solid rgb(var(--surf) / 0.28);
 }
 
 .primary-action:disabled,
