@@ -105,8 +105,7 @@ describe("the hero donut is gone", () => {
 describe("the currency code on a record row", () => {
   test("is not printed when it is the group's own", async () => {
     await land({ detail: detail({ expenses: [expenseRow()], expense_count: 1, spend_total_minor: 96_000 }) });
-    // 最近記錄 is a disclosure now - the row is inside its collapsed body.
-    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
+    // 最近記錄 shows its rows inline - no tap required (Fix 5).
     const row = await screen.findByText("拉麵");
     const amount = row.closest(".expense-record-row")?.querySelector(".expense-record-amount");
     expect(amount?.textContent).toContain("$960");
@@ -121,7 +120,6 @@ describe("the currency code on a record row", () => {
         spend_total_minor: 96_000,
       }),
     });
-    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
     const row = await screen.findByText("拉麵");
     const amount = row.closest(".expense-record-row")?.querySelector(".expense-record-amount");
     expect(amount?.querySelector("small")?.textContent).toBe("USD");

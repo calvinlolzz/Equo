@@ -266,31 +266,12 @@ describe("the summary rows hide themselves when they have nothing", () => {
     expect(screen.queryByRole("region", { name: app.recentActivity })).toBeNull();
   });
 
-  test("最近記錄's list stays shut until tapped", async () => {
-    await land(
-      personDetail(soloAlice, {
-        expenses: [expenseRow(), expenseRow({ id: "expense_2" }), expenseRow({ id: "expense_3" })],
-        expense_count: 3,
-      }),
-    );
-    await waitFor(() => expect(document.getElementById("group-records")).toBeTruthy());
-    expect(document.querySelectorAll(".expense-record-row")).toHaveLength(0);
-
-    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
-
-    await waitFor(() => expect(document.querySelectorAll(".expense-record-row").length).toBeGreaterThan(0));
-  });
-});
-
-describe("labelled amounts on the home disclosures", () => {
-  const soloAlice: Person[] = [{ id: "member_alice", user_id: "user_alice", display_name: "Alice", role: "owner", balance: 0 }];
-
   // [MV]
-  test("最近記錄's summary reads as a count and a latest amount, not a repeated total", async () => {
+  test("最近記錄 shows the latest 3 without a tap", async () => {
     await land(
       personDetail(soloAlice, {
-        expenses: [expenseRow(), expenseRow({ id: "expense_2" }), expenseRow({ id: "expense_3" })],
-        expense_count: 3,
+        expenses: [expenseRow(), expenseRow({ id: "expense_2" }), expenseRow({ id: "expense_3" }), expenseRow({ id: "expense_4" })],
+        expense_count: 4,
       }),
     );
     const section = await waitFor(() => {
@@ -298,11 +279,13 @@ describe("labelled amounts on the home disclosures", () => {
       if (!node) throw new Error("no #group-records");
       return node;
     });
-    const summary = within(section).getByText(
-      `${UI_TEXT.records.entryCount.replace("{n}", "3")} · ${UI_TEXT.records.latestAmount.replace("{amount}", "$960")}`,
-    );
-    expect(summary.className).toContain("home-disclosure-summary");
+    expect(section.querySelectorAll(".expense-record-row")).toHaveLength(3);
+    expect(section.querySelector(".home-disclosure-toggle")).toBeNull();
   });
+});
+
+describe("labelled amounts on the home disclosures", () => {
+  const soloAlice: Person[] = [{ id: "member_alice", user_id: "user_alice", display_name: "Alice", role: "owner", balance: 0 }];
 
   // [MV]
   test("這個月's summary says whose spend it is", async () => {
@@ -331,6 +314,54 @@ describe("labelled amounts on the home disclosures", () => {
       return node;
     });
     expect(p.textContent).toContain(UI_TEXT.records.totalSpend);
+  });
+});
+
+describe("settled groups move the member list below records", () => {
+  const settledPair: Person[] = [
+    { id: "member_alice", user_id: "user_alice", display_name: "Alice", role: "owner", balance: 0 },
+    { id: "member_bob", user_id: "user_bob", display_name: "Bob", role: "member", balance: 0 },
+  ];
+  const unsettledPair: Person[] = [
+    { id: "member_alice", user_id: "user_alice", display_name: "Alice", role: "owner", balance: 4355 },
+    { id: "member_bob", user_id: "user_bob", display_name: "Bob", role: "member", balance: -4355 },
+  ];
+  const threeExpenses = [expenseRow(), expenseRow({ id: "expense_2" }), expenseRow({ id: "expense_3" })];
+
+  // [MV]
+  test("settled: #group-records comes before #group-members, and the balance card is gone", async () => {
+    await land(personDetail(settledPair, { expenses: threeExpenses, expense_count: 3 }));
+    const records = await waitFor(() => {
+      const node = document.getElementById("group-records");
+      if (!node) throw new Error("no #group-records");
+      return node;
+    });
+    const memberSection = document.getElementById("group-members");
+    if (!memberSection) throw new Error("no #group-members");
+
+    // DOCUMENT_POSITION_FOLLOWING (4): records comes BEFORE members.
+    // eslint-disable-next-line no-bitwise
+    expect(records.compareDocumentPosition(memberSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector(".home-balance-card")).toBeNull();
+  });
+
+  // [MV]
+  test("unsettled: #group-members stays before #group-records, inside #group-home", async () => {
+    await land(personDetail(unsettledPair, { expenses: threeExpenses, expense_count: 3 }));
+    // Wait for the loaded, unsettled state specifically (the balance card's
+    // debtor view) - not merely for #group-members to exist, which it also
+    // does, briefly, in the settled position before balances arrive.
+    await screen.findByText(`1 ${app.owedByCount}`);
+    const memberSection = document.getElementById("group-members");
+    if (!memberSection) throw new Error("no #group-members");
+    const records = document.getElementById("group-records");
+    if (!records) throw new Error("no #group-records");
+    const card = document.getElementById("group-home");
+    if (!card) throw new Error("no #group-home");
+
+    // eslint-disable-next-line no-bitwise
+    expect(memberSection.compareDocumentPosition(records) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.contains(memberSection)).toBe(true);
   });
 });
 

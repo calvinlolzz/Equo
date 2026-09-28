@@ -93,4 +93,17 @@ describe("PersonalLedgerHome stands on its own", () => {
 
     expect(screen.getByRole("region", { name: ledgerText.homeLabel })).toBeTruthy();
   });
+
+  // [MV]
+  test("最近記錄 shows only the latest 3, inline, with 查看全部 opening the full list", () => {
+    const props = renderHome({
+      expenses: Array.from({ length: 5 }, (_, i) => ownExpense({ id: `exp_${i}`, title: `品項 ${i}` })),
+      expenseCount: 5,
+    });
+
+    expect(document.querySelectorAll(".expense-record-row")).toHaveLength(3);
+
+    screen.getByText(UI_TEXT.app.viewAll).click();
+    expect(props.onOpenDialog).toHaveBeenCalledWith("recordsPanel");
+  });
 });

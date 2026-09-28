@@ -156,8 +156,6 @@ describe("dictionaries", () => {
 
     expect(ZH_HANT.records.entryCount).toContain("{n}");
     expect(EN.records.entryCount).toContain("{n}");
-    expect(ZH_HANT.records.latestAmount).toContain("{amount}");
-    expect(EN.records.latestAmount).toContain("{amount}");
     expect(ZH_HANT.spend.budgetUsage).toContain("{pct}");
     expect(ZH_HANT.spend.budgetUsage).toContain("{amount}");
     expect(EN.spend.budgetUsage).toContain("{pct}");

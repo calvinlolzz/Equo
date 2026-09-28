@@ -712,11 +712,7 @@ describe("recording an expense with no connection", () => {
     // Recorded, not lost: the banner counts it and the composer closed as if
     // the save had succeeded - which, from the user's side, it did.
     expect(await screen.findByText(`1${UI_TEXT.app.offlinePendingSuffix}`)).toBeTruthy();
-    // 最近記錄 is a disclosure now, collapsed by default - open it to see the
-    // row itself. (Scoped by id, not by the 支出記錄 label - the group side
-    // nav has its own nav item with that exact text.)
-    await waitFor(() => expect(document.querySelector("#group-records .home-disclosure-toggle")).toBeTruthy());
-    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
+    // 最近記錄 shows its rows inline - no tap required (Fix 5).
     expect(await screen.findByText("便當")).toBeTruthy();
   });
 });

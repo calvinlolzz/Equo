@@ -560,8 +560,6 @@ export const ZH_HANT = {
     totalSpendHintPersonal: "不含收入",
     /** Joined as `${n} ${this}`. */
     entryCount: "{n} 筆",
-    /** Joined with `${amount}`. */
-    latestAmount: "最新 {amount}",
     daySpend: "支出",
     searchPlaceholder: "搜尋品項、備註或金額",
     searchLabel: "搜尋支出",

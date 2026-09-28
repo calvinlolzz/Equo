@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { BellRing, ChevronRight, HandCoins, History, Plus, Scan } from "lucide-react";
+import { BellRing, ChevronRight, CircleCheck, HandCoins, History, Plus, Scan } from "lucide-react";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
 import { InstallHint } from "./InstallHint";
 import { MemberAvatar } from "./MemberAvatar";
@@ -113,7 +113,12 @@ type BalanceCardProps = {
  */
 function BalanceCard({ currency, myBalanceMinor, debtors, groupSettled }: BalanceCardProps) {
   if (groupSettled) {
-    return <p className="home-balance-settled">{text.settled}</p>;
+    return (
+      <p className="home-balance-settled">
+        <CircleCheck aria-hidden="true" size={16} />
+        {text.settled}
+      </p>
+    );
   }
 
   if (myBalanceMinor > 0) {
@@ -269,8 +274,9 @@ type HomeDisclosureProps = {
 };
 
 /**
- * One of the three "point-and-it-opens" summary rows below the member list:
- * 最近記錄 / 這個月 / 動態. Starts collapsed and stays that way until tapped -
+ * One of the two remaining "point-and-it-opens" summary rows below the
+ * records section: 這個月 / 動態 (最近記錄 stopped being one of these - see
+ * HomeRecordsSection). Starts collapsed and stays that way until tapped -
  * see GroupHome's `key={group.id}` on each instance for why switching groups
  * doesn't leave one of these pinned open on stale content.
  */
@@ -302,16 +308,61 @@ export function HomeDisclosure({ id, label, summary, headExtra, children }: Home
   );
 }
 
+/** How many records show inline on home, always visible - no tap required. */
+export const HOME_RECORD_LIMIT = 3;
+
+type HomeRecordsSectionProps = {
+  label: string;
+  /** A muted count beside the title (e.g. "12 筆"); omitted (falsy) shows nothing. */
+  count: string | null;
+  onViewAll: () => void;
+  onScanReceipt: () => void;
+  children: ReactNode;
+};
+
 /**
- * The mobile group home: a balance card, a disclosable member list, and
- * three disclosable summary rows (records / spend / activity).
+ * 最近記錄, always open: unlike the other two summary rows (這個月 / 動態),
+ * records are useful enough often enough that hiding them behind a tap cost
+ * more than the tap saved - see groupHomeDisclosure.test.tsx's replacement
+ * assertion and the plan's "Records visible on home" rationale. Keeps the
+ * same `id="group-records"` and `aria-label={label}` HomeDisclosure carried,
+ * since both App.tsx and several tests find this section by them.
+ */
+export function HomeRecordsSection({ label, count, onViewAll, onScanReceipt, children }: HomeRecordsSectionProps) {
+  return (
+    <section className="home-section home-records" id="group-records" aria-label={label}>
+      <div className="section-title-row home-records-head">
+        <h2 className="home-records-title">{label}</h2>
+        {count ? <span className="home-records-count">{count}</span> : null}
+        <button className="text-action home-records-all" type="button" onClick={onViewAll}>
+          {text.viewAll}
+        </button>
+        <button className="icon-action" type="button" aria-label={text.scanReceipt} onClick={onScanReceipt}>
+          <Scan aria-hidden="true" size={18} />
+        </button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * The mobile group home: a balance card, a disclosable member list, the
+ * latest records always inline, and two disclosable summary rows (spend /
+ * activity).
  *
  * Second-stage redesign of what used to be a fixed hero card + debt card +
  * always-expanded record/activity sections (see git history for the
  * first-stage commit, which only moved this file without changing it). The
- * page now shows a name and a number for everyone, and asks a tap before it
+ * page shows a name and a number for everyone, and asks a tap before it
  * shows anything more - see groupHomeDisclosure.test.tsx for what that
- * collapsed state is required to look like.
+ * collapsed state is required to look like. Records are the one exception
+ * (third stage): useful enough, often enough, that a tap cost more than it
+ * saved - see HomeRecordsSection.
+ *
+ * Once nothing is owed anywhere, the member list (nothing left to settle,
+ * still worth seeing who is in the group) moves below the records instead of
+ * sitting inside the now one-line balance card - see `groupSettled` below.
  */
 export function GroupHome({
   isMobileLayout,
@@ -400,6 +451,84 @@ export function GroupHome({
       !nudgedMemberIds.includes(member.id),
   );
 
+  // Hoisted rather than inlined twice: it renders inside the balance card
+  // while there is something to settle, and below the records section once
+  // the group is fully settled (see `groupSettled` in the JSX below) - one
+  // definition, two mount points, never both at once.
+  const memberList = (
+    <>
+      <div className="home-member-list" id="group-members" aria-label={text.members}>
+        {rowMembers.map((member) => {
+          const isSelf = member.id === currentMember?.id;
+          const settleIntent =
+            currentMember && !isSelf
+              ? settlementBetween(
+                  { id: currentMember.id, balanceMinor: balances.get(currentMember.id) ?? 0 },
+                  { id: member.id, balanceMinor: balances.get(member.id) ?? 0 },
+                )
+              : null;
+          const nudgeable = !member.virtual && !isSelf && (balances.get(member.id) ?? 0) < 0;
+          const nudged = nudgedMemberIds.includes(member.id);
+          return (
+            <MemberRow
+              key={member.id}
+              member={member}
+              currency={group.currency}
+              balanceMinor={balances.get(member.id) ?? 0}
+              isSelf={isSelf}
+              colorIndex={debtorColorIndex.get(member.id)}
+              expanded={expandedMemberId === member.id}
+              onToggle={() => setExpandedMemberId((current) => (current === member.id ? null : member.id))}
+              settleIntent={settleIntent}
+              nudgeable={nudgeable}
+              nudged={nudged}
+              pendingAction={pendingAction}
+              onSettle={(intent) => onSettleTransfer(intent.fromMemberId, intent.toMemberId, intent.amountMinor)}
+              onNudge={onNudgeMember}
+              onViewDetail={() => onOpenDialog("memberList")}
+            />
+          );
+        })}
+        {/* Deliberately not `.member-row` - a count of ".member-row"
+            is a count of actual members, and these two rows aren't
+            one. */}
+        {crowded ? (
+          <div className="member-row-extra">
+            <button className="member-row-head member-row-more" type="button" onClick={() => onOpenDialog("memberList")}>
+              <span className="member-row-icon" aria-hidden="true">
+                <ChevronRight size={18} />
+              </span>
+              <span className="member-row-name">
+                <strong>{text.viewAll}</strong>
+              </span>
+            </button>
+          </div>
+        ) : null}
+        <div className="member-row-extra">
+          <button className="member-row-head member-row-add" type="button" onClick={() => onOpenDialog("memberActions")}>
+            <span className="member-row-icon" aria-hidden="true">
+              <Plus size={19} />
+            </span>
+            <span className="member-row-name">
+              <strong>{text.addMember}</strong>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {nudgeTargets.length ? (
+        <button
+          className="primary-action home-nudge-all"
+          type="button"
+          disabled={pendingAction === "nudgeAll"}
+          onClick={() => onNudgeAll(nudgeTargets)}
+        >
+          {pendingAction === "nudgeAll" ? text.processing : `${text.nudge} ${nudgeTargets.length} ${text.people}`}
+        </button>
+      ) : null}
+    </>
+  );
+
   const dateLabel = selectedDateChip
     ? monthDayLabel(selectedDateChip.month, selectedDateChip.day, ACTIVE_LOCALE)
     : monthDayLabel(new Date().getMonth() + 1, new Date().getDate(), ACTIVE_LOCALE);
@@ -445,108 +574,22 @@ export function GroupHome({
         ) : (
           <>
             <BalanceCard currency={group.currency} myBalanceMinor={myBalanceMinor} debtors={debtors} groupSettled={groupSettled} />
-
-            <div className="home-member-list" id="group-members" aria-label={text.members}>
-              {rowMembers.map((member) => {
-                const isSelf = member.id === currentMember?.id;
-                const settleIntent =
-                  currentMember && !isSelf
-                    ? settlementBetween(
-                        { id: currentMember.id, balanceMinor: balances.get(currentMember.id) ?? 0 },
-                        { id: member.id, balanceMinor: balances.get(member.id) ?? 0 },
-                      )
-                    : null;
-                const nudgeable = !member.virtual && !isSelf && (balances.get(member.id) ?? 0) < 0;
-                const nudged = nudgedMemberIds.includes(member.id);
-                return (
-                  <MemberRow
-                    key={member.id}
-                    member={member}
-                    currency={group.currency}
-                    balanceMinor={balances.get(member.id) ?? 0}
-                    isSelf={isSelf}
-                    colorIndex={debtorColorIndex.get(member.id)}
-                    expanded={expandedMemberId === member.id}
-                    onToggle={() => setExpandedMemberId((current) => (current === member.id ? null : member.id))}
-                    settleIntent={settleIntent}
-                    nudgeable={nudgeable}
-                    nudged={nudged}
-                    pendingAction={pendingAction}
-                    onSettle={(intent) => onSettleTransfer(intent.fromMemberId, intent.toMemberId, intent.amountMinor)}
-                    onNudge={onNudgeMember}
-                    onViewDetail={() => onOpenDialog("memberList")}
-                  />
-                );
-              })}
-              {/* Deliberately not `.member-row` - a count of ".member-row"
-                  is a count of actual members, and these two rows aren't
-                  one. */}
-              {crowded ? (
-                <div className="member-row-extra">
-                  <button className="member-row-head member-row-more" type="button" onClick={() => onOpenDialog("memberList")}>
-                    <span className="member-row-icon" aria-hidden="true">
-                      <ChevronRight size={18} />
-                    </span>
-                    <span className="member-row-name">
-                      <strong>{text.viewAll}</strong>
-                    </span>
-                  </button>
-                </div>
-              ) : null}
-              <div className="member-row-extra">
-                <button className="member-row-head member-row-add" type="button" onClick={() => onOpenDialog("memberActions")}>
-                  <span className="member-row-icon" aria-hidden="true">
-                    <Plus size={19} />
-                  </span>
-                  <span className="member-row-name">
-                    <strong>{text.addMember}</strong>
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {nudgeTargets.length ? (
-              <button
-                className="primary-action home-nudge-all"
-                type="button"
-                disabled={pendingAction === "nudgeAll"}
-                onClick={() => onNudgeAll(nudgeTargets)}
-              >
-                {pendingAction === "nudgeAll" ? text.processing : `${text.nudge} ${nudgeTargets.length} ${text.people}`}
-              </button>
-            ) : null}
+            {groupSettled ? null : memberList}
           </>
         )}
       </article>
 
       {emptyGroup ? null : (
         <>
-          <HomeDisclosure
-            key={`records-${group.id}`}
-            id="group-records"
+          <HomeRecordsSection
             label={text.records}
-            summary={
-              expenses.length
-                ? `${UI_TEXT.records.entryCount.replace("{n}", String(expenseCount))} · ${UI_TEXT.records.latestAmount.replace("{amount}", (expenses[0].kind === "income" ? "+" : "") + formatAmount(expenses[0].amountMinor, expenses[0].currency))}`
-                : text.noRecords
-            }
-            headExtra={
-              <>
-                {/* The disclosure's own body only ever shows the last 5 -
-                    this is the way to the full, searchable history (see
-                    RecordsPanel, opened the same way from the bottom nav). */}
-                <button className="text-action" type="button" onClick={() => onOpenDialog("recordsPanel")}>
-                  {text.viewAll}
-                </button>
-                <button className="icon-action" type="button" aria-label={text.scanReceipt} onClick={onScanReceipt}>
-                  <Scan aria-hidden="true" size={18} />
-                </button>
-              </>
-            }
+            count={expenses.length ? UI_TEXT.records.entryCount.replace("{n}", String(expenseCount)) : null}
+            onViewAll={() => onOpenDialog("recordsPanel")}
+            onScanReceipt={onScanReceipt}
           >
             {expenses.length ? (
               <div className="expense-record-list">
-                {expenses.slice(0, 5).map((expense) => {
+                {expenses.slice(0, HOME_RECORD_LIMIT).map((expense) => {
                   const payer = members.find((member) => member.id === expense.payerId);
                   const shareMembers = expense.shareMemberIds
                     .map((id) => members.find((member) => member.id === id))
@@ -605,7 +648,9 @@ export function GroupHome({
             ) : (
               <p className="empty-copy">{text.noRecords}</p>
             )}
-          </HomeDisclosure>
+          </HomeRecordsSection>
+
+          {groupSettled ? <section className="home-section home-members-section">{memberList}</section> : null}
 
           {/* 首頁拿不到「整月」金額 (aggregates.spendByDay is an 8-day rolling
               window, and the true month/period totals live behind

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { BudgetBar } from "./BudgetBar";
 import { CategoryDonut } from "./CategoryDonut";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
-import { HomeDisclosure } from "./GroupHome";
+import { HOME_RECORD_LIMIT, HomeRecordsSection } from "./GroupHome";
 import { InstallHint } from "./InstallHint";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { formatRecordStamp } from "./appDates";
@@ -48,7 +48,7 @@ export type PersonalLedgerHomeProps = {
  * The personal ledger's home screen: a sibling of GroupHome, not a branch of
  * it - GroupHome's body is almost entirely members/balances/settle/nudge
  * (see its own doc comment), none of which a one-member ledger has any use
- * for. Only HomeDisclosure is worth sharing (imported from GroupHome).
+ * for. Only HomeRecordsSection is worth sharing (imported from GroupHome).
  */
 export function PersonalLedgerHome({
   isMobileLayout,
@@ -142,29 +142,15 @@ export function PersonalLedgerHome({
       </article>
 
       {empty ? null : (
-        <HomeDisclosure
-          key={`records-${group.id}`}
-          id="group-records"
+        <HomeRecordsSection
           label={text.records}
-          summary={
-            expenses.length
-              ? `${UI_TEXT.records.entryCount.replace("{n}", String(expenseCount))} · ${UI_TEXT.records.latestAmount.replace("{amount}", (expenses[0].kind === "income" ? "+" : "") + formatAmount(expenses[0].amountMinor, expenses[0].currency))}`
-              : text.noRecords
-          }
-          headExtra={
-            <>
-              <button className="text-action" type="button" onClick={() => onOpenDialog("recordsPanel")}>
-                {text.viewAll}
-              </button>
-              <button className="icon-action" type="button" aria-label={text.scanReceipt} onClick={onScanReceipt}>
-                <Scan aria-hidden="true" size={18} />
-              </button>
-            </>
-          }
+          count={expenses.length ? UI_TEXT.records.entryCount.replace("{n}", String(expenseCount)) : null}
+          onViewAll={() => onOpenDialog("recordsPanel")}
+          onScanReceipt={onScanReceipt}
         >
           {expenses.length ? (
             <div className="expense-record-list">
-              {expenses.slice(0, 5).map((expense) => {
+              {expenses.slice(0, HOME_RECORD_LIMIT).map((expense) => {
                 const isIncome = expense.kind === "income";
                 return (
                   <button
@@ -191,7 +177,7 @@ export function PersonalLedgerHome({
           ) : (
             <p className="empty-copy">{text.noRecords}</p>
           )}
-        </HomeDisclosure>
+        </HomeRecordsSection>
       )}
     </section>
   );

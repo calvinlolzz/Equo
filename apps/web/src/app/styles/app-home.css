@@ -175,11 +175,18 @@
 }
 
 .home-balance-settled {
-  min-height: 44px;
-  display: grid;
-  place-items: start center;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
   font-weight: 820;
   color: rgb(var(--fg) / 0.72);
+}
+
+.home-balance-settled svg {
+  flex: 0 0 auto;
+  color: rgb(var(--income));
 }
 
 /* PersonalLedgerHome's month card: the same lead+glow-amount pattern as
@@ -941,6 +948,47 @@
 
 .home-disclosure .section-title-row {
   padding: 0 4px;
+}
+
+/* 最近記錄, always open (Fix 5) - not a HomeDisclosure, but styled to read as
+   the same kind of section header. */
+.home-records {
+  display: grid;
+  gap: 12px;
+}
+
+.home-records-head {
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.home-records-title {
+  min-width: 0;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 860;
+  line-height: 1.2;
+  color: rgb(var(--fg));
+}
+
+/* Colour and size come from the shared `.section-title-row span` rule above
+   (and its light-theme override, which applies automatically); this only
+   fixes its position in the row and stops it wrapping. */
+.home-records-head .home-records-count {
+  margin-right: auto;
+  white-space: nowrap;
+}
+
+.home-records-all {
+  min-height: 44px;
+}
+
+/* The member list's own top border/padding exists to separate it from
+   whatever sits above it inside the balance card - moved below the records
+   section (settled groups), it would just be a stray line under nothing. */
+.home-members-section .home-member-list {
+  border-top: 0;
+  padding-top: 0;
 }
 
 /* Specificity, not source order: `.section-title-row span` above is a class

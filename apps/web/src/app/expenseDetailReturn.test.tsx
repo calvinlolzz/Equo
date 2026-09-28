@@ -127,12 +127,20 @@ async function land() {
   return api;
 }
 
-/** Open 紀錄, search for 拉, and open 拉麵's detail. Returns the search input. */
+/**
+ * Open 紀錄, search for 拉, and open 拉麵's detail. Returns the search input.
+ *
+ * Scoped to the records panel throughout (not `screen` directly): since Fix
+ * 5, home's own 最近記錄 section also shows 拉麵 inline underneath this panel,
+ * so an unscoped query for the text would match two elements.
+ */
 async function openRecordsSearchAndDetail() {
   fireEvent.click(screen.getByRole("button", { name: app.navRecords }));
   const search = await screen.findByLabelText(UI_TEXT.records.searchLabel);
+  const panel = search.closest(".panel-dialog");
+  if (!panel) throw new Error("search input is not inside the records panel");
   fireEvent.change(search, { target: { value: "拉" } });
-  const row = await screen.findByText("拉麵");
+  const row = await within(panel as HTMLElement).findByText("拉麵");
   fireEvent.click(row.closest(".record-dialog-row")!);
   await screen.findByRole("dialog", { name: UI_TEXT.expenseDetail.title });
   return search;
@@ -205,8 +213,7 @@ describe("the detail stacks over the records sheet instead of replacing it", () 
 
   test("a detail opened from a home row leaves no records sheet behind when closed", async () => {
     await land();
-    // Before Fix 5, 最近記錄's rows are behind a tap on the disclosure.
-    fireEvent.click(document.querySelector<HTMLElement>("#group-records .home-disclosure-toggle")!);
+    // Since Fix 5, 最近記錄's rows are inline on home - no tap required.
     const row = await screen.findByText("拉麵");
     fireEvent.click(row.closest(".expense-record-row")!);
     await screen.findByRole("dialog", { name: UI_TEXT.expenseDetail.title });

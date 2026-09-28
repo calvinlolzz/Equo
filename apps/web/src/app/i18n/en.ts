@@ -522,8 +522,6 @@ export const EN: UiDictionary = {
     totalSpendHintPersonal: "Excludes income",
     /** Joined as `${n} ${this}`. */
     entryCount: "{n} total",
-    /** Joined with `${amount}`. */
-    latestAmount: "latest {amount}",
     daySpend: "Spent",
     searchPlaceholder: "Search items, notes, or amounts",
     searchLabel: "Search expenses",

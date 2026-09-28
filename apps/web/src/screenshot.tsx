@@ -24,6 +24,11 @@
  *   npm --workspace apps/web run dev   →   http://localhost:14100/screenshot.html
  * then capture 390×844 (narrow) and 1280×800 (wide) into public/screenshots/.
  *
+ * `?settled=1` zeroes every member's balance (see `balances()` below), for
+ * looking at the fully-settled home layout - the balance card collapses to
+ * one line and the member list moves below the records section. Opt-in, like
+ * `?ledger=`, so the default store screenshots are unaffected.
+ *
  * The landing page's hero shot is the top 390×416 of the narrow screen, and it
  * needs two things the store screenshots do not:
  *
@@ -52,6 +57,9 @@ import type { GroupDetail, GroupSummary } from "./app/apiClient";
 
 const GROUP_ID = "group_demo";
 const CURRENCY = "TWD";
+
+/** `?settled=1` - see the header comment. */
+const previewSettled = new URLSearchParams(window.location.search).get("settled") === "1";
 
 /** Whole units, spelled out here so the fixtures read like money and not like cents. */
 function nt(amount: number): number {
@@ -115,6 +123,12 @@ const EXPENSES = [
 
 /** Balances are derived from the fixtures rather than typed in, so they agree. */
 function balances(): GroupDetail["balances"] {
+  // `?settled=1`: every member owes/is owed nothing, regardless of the
+  // expense fixtures above - for looking at the fully-settled home layout.
+  if (previewSettled) {
+    return MEMBERS.map((member) => ({ memberId: member.id, balance: { amount_minor: 0, currency: CURRENCY } }));
+  }
+
   const totals = new Map(MEMBERS.map((member) => [member.id, 0]));
 
   for (const entry of EXPENSES) {
