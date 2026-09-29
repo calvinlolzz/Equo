@@ -37,9 +37,14 @@ export type RuntimeEnv = {
 
 type EnvSource = Record<string, string | undefined>;
 
-function cleanEnvValue(value: string | undefined): string | undefined {
-  // Strip BOM and surrounding whitespace: values piped into `vercel env add`
-  // can arrive polluted, which breaks URL building and token comparisons.
+/**
+ * Strip BOM and surrounding whitespace: values piped into `vercel env add`
+ * can arrive polluted, which breaks URL building and token comparisons.
+ * Exported because the LINE webhook function reads its own env directly
+ * (readLineEnv below) rather than through readRuntimeEnv, and needs the same
+ * cleaning.
+ */
+export function cleanEnvValue(value: string | undefined): string | undefined {
   const cleaned = value?.replace(/^[\s﻿]+|[\s﻿]+$/g, "");
   return cleaned || undefined;
 }
@@ -109,6 +114,48 @@ export function missingRuntimeEnv(env: Partial<RuntimeEnv>): Array<keyof Runtime
   if (!env.SESSION_SECRET) {
     missing.push("SESSION_SECRET");
   }
+
+  return missing;
+}
+
+/**
+ * The LINE webhook function's own env, read directly from process.env by
+ * vercel-api/lineWebhookHandler.ts rather than through readRuntimeEnv/
+ * createHttpRuntime - the webhook is a separate Vercel function outside
+ * /api/v1 with a deliberately small import graph (see the plan's §1), so it
+ * does not pull in the rest of the runtime just to read four strings.
+ */
+export type LineEnv = {
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  LINE_CHANNEL_SECRET?: string;
+  LINE_CHANNEL_ACCESS_TOKEN?: string;
+  /** Defaults to the production origin - see readLineEnv. */
+  APP_ORIGIN: string;
+};
+
+const DEFAULT_APP_ORIGIN = "https://equo-mu.vercel.app";
+
+export function readLineEnv(source: EnvSource): LineEnv {
+  const rawOrigin = cleanEnvValue(source.APP_ORIGIN);
+
+  return {
+    SUPABASE_URL: cleanEnvValue(source.SUPABASE_URL),
+    SUPABASE_SERVICE_ROLE_KEY: cleanEnvValue(source.SUPABASE_SERVICE_ROLE_KEY),
+    LINE_CHANNEL_SECRET: cleanEnvValue(source.LINE_CHANNEL_SECRET),
+    LINE_CHANNEL_ACCESS_TOKEN: cleanEnvValue(source.LINE_CHANNEL_ACCESS_TOKEN),
+    APP_ORIGIN: (rawOrigin ?? DEFAULT_APP_ORIGIN).replace(/\/+$/, ""),
+  };
+}
+
+/** The four required LINE variables - APP_ORIGIN always has a default, so it is never "missing". */
+export function missingLineEnv(env: LineEnv): string[] {
+  const missing: string[] = [];
+
+  if (!env.SUPABASE_URL) missing.push("SUPABASE_URL");
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+  if (!env.LINE_CHANNEL_SECRET) missing.push("LINE_CHANNEL_SECRET");
+  if (!env.LINE_CHANNEL_ACCESS_TOKEN) missing.push("LINE_CHANNEL_ACCESS_TOKEN");
 
   return missing;
 }

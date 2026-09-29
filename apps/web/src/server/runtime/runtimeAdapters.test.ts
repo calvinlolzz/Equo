@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createGoogleTokenVerifier } from "./googleTokenVerifier.js";
-import { missingRuntimeEnv, readRuntimeEnv } from "./runtimeEnv.js";
+import { missingLineEnv, missingRuntimeEnv, readLineEnv, readRuntimeEnv } from "./runtimeEnv.js";
 import { createSupabaseStorageClient } from "./supabaseStorageClient.js";
 
 describe("runtime adapters", () => {
@@ -57,6 +57,52 @@ describe("runtime adapters", () => {
     ]);
   });
 
+});
+
+describe("readLineEnv / missingLineEnv", () => {
+  test("strips BOM and surrounding whitespace", () => {
+    const env = readLineEnv({
+      SUPABASE_URL: "﻿ https://example.supabase.co \n",
+      SUPABASE_SERVICE_ROLE_KEY: "  service-role-key\t",
+      LINE_CHANNEL_SECRET: "secret",
+      LINE_CHANNEL_ACCESS_TOKEN: "token",
+    });
+
+    expect(env.SUPABASE_URL).toBe("https://example.supabase.co");
+    expect(env.SUPABASE_SERVICE_ROLE_KEY).toBe("service-role-key");
+  });
+
+  test("APP_ORIGIN defaults to the production origin, with trailing slashes stripped", () => {
+    expect(readLineEnv({}).APP_ORIGIN).toBe("https://equo-mu.vercel.app");
+    expect(readLineEnv({ APP_ORIGIN: "https://staging.example.com/" }).APP_ORIGIN).toBe(
+      "https://staging.example.com",
+    );
+    expect(readLineEnv({ APP_ORIGIN: "https://staging.example.com///" }).APP_ORIGIN).toBe(
+      "https://staging.example.com",
+    );
+  });
+
+  test("missingLineEnv lists the four required variables and never APP_ORIGIN", () => {
+    expect(missingLineEnv(readLineEnv({}))).toEqual([
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "LINE_CHANNEL_SECRET",
+      "LINE_CHANNEL_ACCESS_TOKEN",
+    ]);
+  });
+
+  test("missingLineEnv is empty once all four are set", () => {
+    expect(
+      missingLineEnv(
+        readLineEnv({
+          SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_SERVICE_ROLE_KEY: "key",
+          LINE_CHANNEL_SECRET: "secret",
+          LINE_CHANNEL_ACCESS_TOKEN: "token",
+        }),
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("createSupabaseStorageClient", () => {

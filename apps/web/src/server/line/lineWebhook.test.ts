@@ -1,0 +1,492 @@
+import { createHmac } from "node:crypto";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { DEFAULT_CATALOG } from "../../app/catalog.js";
+import { createFakePostgrest, type FakePostgrest } from "../db/fakePostgrest.js";
+import { resetSiteNoticeCache } from "../http/maintenance.js";
+import type { LineClient, LineMessage } from "./lineClient.js";
+import { sha256Hex } from "./lineCrypto.js";
+import { LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
+import { handleLineWebhook, type LineWebhookDeps } from "./lineWebhook.js";
+
+const SECRET = "test_channel_secret";
+const APP_ORIGIN = "https://equo-mu.vercel.app";
+const LINE_USER_ID = "U0123456789abcdef0123456789abcdef";
+
+function sign(body: string, secret = SECRET): string {
+  return createHmac("sha256", secret).update(Buffer.from(body, "utf8")).digest("base64");
+}
+
+function bytes(text: string): Uint8Array {
+  return new TextEncoder().encode(text);
+}
+
+function webhookBody(events: unknown[]): string {
+  return JSON.stringify({ destination: "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", events });
+}
+
+// Byte-identical to lineCrypto.test.ts's BODY_A/BODY_B - the same fixtures
+// this bot's signature check was verified against.
+const BODY_A = '{"destination":"Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","events":[]}';
+const BODY_B =
+  '{"destination":"Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","events":[{"type":"message","message":{"type":"text","id":"1","text":"早餐 60"},"webhookEventId":"01J0000000000000000000000A","deliveryContext":{"isRedelivery":false},"timestamp":1790000000000,"source":{"type":"user","userId":"U0123456789abcdef0123456789abcdef"},"replyToken":"rt1","mode":"active"}]}';
+
+function messageEvent(
+  opts: {
+    text?: string;
+    webhookEventId?: string;
+    userId?: string;
+    timestamp?: number;
+    replyToken?: string;
+    sourceType?: "user" | "group" | "room";
+    mode?: string;
+    isRedelivery?: boolean;
+    nonText?: boolean;
+  } = {},
+) {
+  return {
+    type: "message",
+    mode: opts.mode ?? "active",
+    timestamp: opts.timestamp ?? 1790000000000,
+    webhookEventId: opts.webhookEventId ?? "01J0000000000000000000000X",
+    deliveryContext: { isRedelivery: opts.isRedelivery ?? false },
+    replyToken: opts.replyToken ?? "rt1",
+    source:
+      opts.sourceType === "group"
+        ? { type: "group", groupId: "G1" }
+        : opts.sourceType === "room"
+          ? { type: "room", roomId: "R1" }
+          : { type: "user", userId: opts.userId ?? LINE_USER_ID },
+    message: opts.nonText ? { type: "image", id: "2" } : { type: "text", id: "1", text: opts.text ?? "早餐 60" },
+  };
+}
+
+function joinEvent(opts: { replyToken?: string; webhookEventId?: string } = {}) {
+  return {
+    type: "join",
+    mode: "active",
+    timestamp: 1790000000000,
+    webhookEventId: opts.webhookEventId ?? "01J0000000000000000000000J",
+    replyToken: opts.replyToken ?? "rt5",
+    source: { type: "group", groupId: "G1" },
+  };
+}
+
+function accountLinkEvent(
+  opts: { result?: "ok" | "failed"; nonce?: string; userId?: string; replyToken?: string; webhookEventId?: string } = {},
+) {
+  const result = opts.result ?? "ok";
+  const base: Record<string, unknown> = {
+    type: "accountLink",
+    mode: "active",
+    timestamp: 1790000000000,
+    webhookEventId: opts.webhookEventId ?? "01J0000000000000000000000C",
+    source: { type: "user", userId: opts.userId ?? LINE_USER_ID },
+    link: { result },
+  };
+  if (result === "ok") {
+    base.replyToken = opts.replyToken ?? "rt3";
+    (base.link as Record<string, unknown>).nonce = opts.nonce ?? "raw-nonce-value";
+  }
+  return base;
+}
+
+const LINKED_CONTEXT = {
+  user_id: "user_1",
+  email: "alice@example.com",
+  locale: "zh-Hant",
+  disabled: false,
+  ledger: {
+    id: "ledger_1",
+    name: "我的帳本",
+    currency: "TWD",
+    owner_member_id: "member_1",
+    cover_image_url: null,
+    monthly_budget_minor: 0,
+    kind: "personal",
+  },
+  categories: DEFAULT_CATALOG.categories,
+};
+
+type RpcHandler = (args: Record<string, unknown>) => unknown;
+
+function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {}) {
+  const state = { recordedEntries: new Map<string, unknown>() };
+
+  const defaults: Record<string, RpcHandler> = {
+    site_notice_settings: () => ({
+      banner: { message: "", level: "info", ends_at: null, active: false },
+      maintenance: { enabled: false, message: "" },
+    }),
+    consume_rate_limit: () => ({ allowed: true }),
+    line_register_link_token: () => ({ ok: true }),
+    line_unlink: () => ({ ok: true, unlinked: true }),
+    line_month_summary: () => ({
+      ok: true,
+      ledger_id: "ledger_1",
+      currency: "TWD",
+      budget_minor: 0,
+      month: { expense_minor: 0, income_minor: 0 },
+    }),
+    line_context: () => null,
+    line_consume_link_nonce: () => ({ ok: false, reason: "unknown" }),
+    line_record_entry: (args) => {
+      const eventId = args.p_event_id as string;
+      const replay = state.recordedEntries.has(eventId);
+      const expense =
+        state.recordedEntries.get(eventId) ??
+        {
+          id: `exp_${eventId}`,
+          title: args.p_title,
+          kind: args.p_kind,
+          category: args.p_category,
+          amount_minor: args.p_amount_minor,
+          currency: "TWD",
+          expense_date: args.p_expense_date,
+        };
+      state.recordedEntries.set(eventId, expense);
+      const amountMinor = (expense as { amount_minor: number }).amount_minor;
+      return {
+        ok: true,
+        replay,
+        expense,
+        ledger_id: "ledger_1",
+        currency: "TWD",
+        budget_minor: 0,
+        month: { expense_minor: amountMinor, income_minor: 0 },
+      };
+    },
+    line_undo_last: () => ({
+      ok: true,
+      replay: false,
+      expense: { id: "exp_undo", title: "早餐", amount_minor: 6000, currency: "TWD" },
+    }),
+  };
+
+  const merged = { ...defaults, ...overrides };
+
+  const client: FakePostgrest = createFakePostgrest({
+    rpc: (fn, args) => {
+      const handler = merged[fn];
+      if (!handler) throw new Error(`unexpected rpc ${fn}`);
+      return handler(args);
+    },
+  });
+
+  return { client, state };
+}
+
+function fakeLineClient() {
+  const calls: {
+    reply: Array<{ replyToken: string; messages: LineMessage[] }>;
+    issueLinkToken: string[];
+    leave: Array<{ type: "group" | "room"; groupId?: string; roomId?: string }>;
+  } = { reply: [], issueLinkToken: [], leave: [] };
+  let issuedToken = "faketoken123";
+
+  const client: LineClient = {
+    async reply(replyToken, messages) {
+      calls.reply.push({ replyToken, messages });
+    },
+    async issueLinkToken(userId) {
+      calls.issueLinkToken.push(userId);
+      return issuedToken;
+    },
+    async leave(target) {
+      calls.leave.push(target as { type: "group" | "room"; groupId?: string; roomId?: string });
+    },
+  };
+
+  return { client, calls, setIssuedToken: (token: string) => (issuedToken = token) };
+}
+
+function deps(client: FakePostgrest, line: LineClient): LineWebhookDeps {
+  return { client, line, channelSecret: SECRET, appOrigin: APP_ORIGIN };
+}
+
+beforeEach(() => {
+  resetSiteNoticeCache();
+});
+
+describe("handleLineWebhook - signature and framing", () => {
+  test("a bad signature returns 401 without touching the database or LINE", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+
+    const result = await handleLineWebhook(deps(client, line.client), {
+      rawBody: bytes(BODY_B),
+      signature: "not-the-real-signature",
+    });
+
+    expect(result.status).toBe(401);
+    expect(client.calls).toHaveLength(0);
+    expect(line.calls.reply).toHaveLength(0);
+  });
+
+  test("LINE's verification payload (empty events) returns 200", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(BODY_A), signature: sign(BODY_A) });
+
+    expect(result.status).toBe(200);
+  });
+
+  test("a body over 256 KB is rejected with 413 before verifying", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    const huge = webhookBody([]) + " ".repeat(300 * 1024);
+
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(huge), signature: sign(huge) });
+
+    expect(result.status).toBe(413);
+    expect(client.calls).toHaveLength(0);
+  });
+
+  test("standby mode events are ignored entirely", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    const body = webhookBody([messageEvent({ mode: "standby" })]);
+
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(body), signature: sign(body) });
+
+    expect(result.status).toBe(200);
+    expect(client.calls).toHaveLength(0);
+    expect(line.calls.reply).toHaveLength(0);
+  });
+});
+
+describe("handleLineWebhook - recording", () => {
+  test("a linked user's expense calls line_record_entry with exact args and replies with quick replies", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(BODY_B), signature: sign(BODY_B) });
+
+    expect(result.status).toBe(200);
+    const call = client.rpcCall("line_record_entry");
+    expect(call?.args).toEqual({
+      p_line_user_id: "U0123456789abcdef0123456789abcdef",
+      p_event_id: "01J0000000000000000000000A",
+      p_title: "早餐",
+      p_kind: "expense",
+      p_category: "food",
+      p_amount_minor: 6000,
+      p_expense_date: "2026-09-21",
+      p_month_start: "2026-09-01",
+    });
+
+    expect(line.calls.reply).toHaveLength(1);
+    expect(line.calls.reply[0].replyToken).toBe("rt1");
+    const message = line.calls.reply[0].messages[0] as { quickReply?: { items: unknown[] } };
+    expect(message.quickReply?.items.length).toBeGreaterThan(0);
+  });
+
+  // [MV]: redelivery must reuse the SAME event id both times. If the
+  // implementation ever derives the idempotency key from something that
+  // changes per delivery (e.g. Date.now()) instead of the webhook's own
+  // event id, this goes red.
+  test("redelivery is idempotent: both deliveries carry the same event id and only one entry is stored", async () => {
+    const { client, state } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+    const d = deps(client, line.client);
+
+    await handleLineWebhook(d, { rawBody: bytes(BODY_B), signature: sign(BODY_B) });
+    const redelivered = BODY_B.replace('"isRedelivery":false', '"isRedelivery":true');
+    await handleLineWebhook(d, { rawBody: bytes(redelivered), signature: sign(redelivered) });
+
+    const eventIds = client.calls
+      .filter((c): c is Extract<typeof c, { op: "rpc" }> => c.op === "rpc" && c.fn === "line_record_entry")
+      .map((c) => c.args.p_event_id);
+
+    expect(eventIds).toEqual(["01J0000000000000000000000A", "01J0000000000000000000000A"]);
+    expect(state.recordedEntries.size).toBe(1);
+  });
+
+  test("undo delivered twice (replay) sends the same event id both times", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+    const d = deps(client, line.client);
+    const body = webhookBody([messageEvent({ text: "復原", webhookEventId: "01J0000000000000000000000U", replyToken: "rt2" })]);
+
+    await handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+    await handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+
+    const eventIds = client.calls
+      .filter((c): c is Extract<typeof c, { op: "rpc" }> => c.op === "rpc" && c.fn === "line_undo_last")
+      .map((c) => c.args.p_event_id);
+
+    expect(eventIds).toEqual(["01J0000000000000000000000U", "01J0000000000000000000000U"]);
+  });
+});
+
+describe("handleLineWebhook - group chats", () => {
+  test("a group text message is ignored silently", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    const body = webhookBody([messageEvent({ sourceType: "group" })]);
+
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(body), signature: sign(body) });
+
+    expect(result.status).toBe(200);
+    expect(client.calls).toHaveLength(0);
+    expect(line.calls.reply).toHaveLength(0);
+  });
+
+  test("join replies groupNotSupported, then leaves the group", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    const body = webhookBody([joinEvent()]);
+
+    await handleLineWebhook(deps(client, line.client), { rawBody: bytes(body), signature: sign(body) });
+
+    expect(line.calls.reply).toHaveLength(1);
+    expect((line.calls.reply[0].messages[0] as { text: string }).text).toBe(ZH_HANT.groupNotSupported);
+    expect(line.calls.leave).toEqual([{ type: "group", groupId: "G1" }]);
+  });
+});
+
+describe("handleLineWebhook - linking", () => {
+  // [MV]: the raw link token must never reach a database call - only its
+  // sha256 hash. If a future edit passes the raw token to
+  // line_register_link_token, this goes red.
+  test("an unlinked user's message issues a link token and shows the link button; the raw token never touches the DB", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    line.setIssuedToken("linktoken123");
+
+    const body = webhookBody([messageEvent({ text: "早餐 60" })]);
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(body), signature: sign(body) });
+
+    expect(result.status).toBe(200);
+    expect(line.calls.issueLinkToken).toEqual([LINE_USER_ID]);
+
+    const registerCall = client.rpcCall("line_register_link_token");
+    expect(registerCall?.args.p_link_token_hash).toBe(sha256Hex("linktoken123"));
+
+    for (const call of client.calls) {
+      expect(JSON.stringify(call)).not.toContain("linktoken123");
+    }
+
+    const lastReply = line.calls.reply.at(-1)!;
+    const templateMessage = lastReply.messages.find((m) => (m as { type: string }).type === "template") as {
+      template: { actions: Array<{ uri: string }> };
+    };
+    expect(templateMessage.template.actions[0].uri).toContain("openExternalBrowser=1");
+  });
+
+  // [MV]: same guard as above, for the nonce this time.
+  test("accountLink ok consumes the nonce's hash, never the raw nonce, and replies", async () => {
+    const { client } = createLineFakeClient({
+      line_consume_link_nonce: () => ({ ok: true, replay: false, email: "alice@example.com", locale: "zh-Hant" }),
+    });
+    const line = fakeLineClient();
+    const body = webhookBody([accountLinkEvent({ nonce: "raw-nonce-value" })]);
+
+    await handleLineWebhook(deps(client, line.client), { rawBody: bytes(body), signature: sign(body) });
+
+    const call = client.rpcCall("line_consume_link_nonce");
+    expect(call?.args.p_nonce_hash).toBe(sha256Hex("raw-nonce-value"));
+
+    for (const c of client.calls) {
+      expect(JSON.stringify(c)).not.toContain("raw-nonce-value");
+    }
+    expect(line.calls.reply).toHaveLength(1);
+  });
+
+  test("accountLink failed carries no replyToken and makes no calls at all", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    const body = webhookBody([accountLinkEvent({ result: "failed" })]);
+
+    const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(body), signature: sign(body) });
+
+    expect(result.status).toBe(200);
+    expect(client.calls).toHaveLength(0);
+    expect(line.calls.reply).toHaveLength(0);
+  });
+});
+
+describe("handleLineWebhook - maintenance", () => {
+  test("maintenance blocks recording but still consumes an accountLink nonce", async () => {
+    const { client } = createLineFakeClient({
+      site_notice_settings: () => ({
+        banner: { message: "", level: "info", ends_at: null, active: false },
+        maintenance: { enabled: true, message: "維護中" },
+      }),
+      line_context: () => LINKED_CONTEXT,
+      line_consume_link_nonce: () => ({ ok: true, replay: false, email: "alice@example.com", locale: "zh-Hant" }),
+    });
+    const line = fakeLineClient();
+    const d = deps(client, line.client);
+
+    const recordResult = await handleLineWebhook(d, { rawBody: bytes(BODY_B), signature: sign(BODY_B) });
+    expect(recordResult.status).toBe(200);
+    expect(client.rpcCall("line_record_entry")).toBeUndefined();
+    expect((line.calls.reply.at(-1)!.messages[0] as { text: string }).text).toBe(ZH_HANT.maintenance);
+
+    const accountLinkBody = webhookBody([accountLinkEvent()]);
+    await handleLineWebhook(d, { rawBody: bytes(accountLinkBody), signature: sign(accountLinkBody) });
+    expect(client.rpcCall("line_consume_link_nonce")).toBeDefined();
+  });
+});
+
+describe("handleLineWebhook - rate limiting", () => {
+  test("rate limited: no record is made", async () => {
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      consume_rate_limit: () => ({ allowed: false, retry_after: 5 }),
+    });
+    const line = fakeLineClient();
+
+    await handleLineWebhook(deps(client, line.client), { rawBody: bytes(BODY_B), signature: sign(BODY_B) });
+
+    expect(client.rpcCall("line_record_entry")).toBeUndefined();
+    expect((line.calls.reply.at(-1)!.messages[0] as { text: string }).text).toBe(ZH_HANT.rateLimited);
+  });
+
+  test("a throwing rate limiter still records (fail-open)", async () => {
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      consume_rate_limit: () => {
+        throw new Error("counter down");
+      },
+    });
+    const line = fakeLineClient();
+
+    await handleLineWebhook(deps(client, line.client), { rawBody: bytes(BODY_B), signature: sign(BODY_B) });
+
+    expect(client.rpcCall("line_record_entry")).toBeDefined();
+  });
+});
+
+describe("handleLineWebhook - error handling", () => {
+  // [MV]: the log line must never carry the message text, the reply token or
+  // a raw LINE user id. Change the log call to interpolate
+  // event.message?.text (or event.replyToken, or the raw userId) and this
+  // goes red.
+  test("a throwing RPC still returns 200 with a generic-error reply, and logs neither the message text, the reply token, nor a raw LINE userId", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_record_entry: () => {
+          throw new Error("boom");
+        },
+      });
+      const line = fakeLineClient();
+
+      const result = await handleLineWebhook(deps(client, line.client), { rawBody: bytes(BODY_B), signature: sign(BODY_B) });
+
+      expect(result.status).toBe(200);
+      expect((line.calls.reply.at(-1)!.messages[0] as { text: string }).text).toBe(ZH_HANT.genericError);
+
+      const logged = consoleErrorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(logged).not.toContain("早餐");
+      expect(logged).not.toContain("rt1");
+      expect(logged).not.toContain(LINE_USER_ID);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+});

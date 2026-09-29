@@ -31,7 +31,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENTRY = ROOT / "vercel-api" / "v1Handler.ts"
+ENTRIES = [
+    ROOT / "vercel-api" / "v1Handler.ts",
+    ROOT / "vercel-api" / "lineWebhookHandler.ts",
+    ROOT / "api" / "line" / "webhook.ts",
+]
 
 # `from "..."` and `import("...")`, skipping bare package specifiers.
 IMPORT_RE = re.compile(r"""(?:from|import)\s*\(?\s*["'](\.[^"']+)["']""")
@@ -60,12 +64,13 @@ def resolve(importer: Path, specifier: str) -> Path | None:
 
 
 def main() -> int:
-    if not ENTRY.is_file():
-        print(f"FAIL: API entry point not found at {ENTRY}")
-        return 1
+    for entry in ENTRIES:
+        if not entry.is_file():
+            print(f"FAIL: API entry point not found at {entry}")
+            return 1
 
     seen: set[Path] = set()
-    queue = [ENTRY]
+    queue = list(ENTRIES)
     problems: list[str] = []
     unresolved: list[str] = []
 
