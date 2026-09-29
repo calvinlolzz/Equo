@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Calculator, Camera, ChevronDown, ReceiptText, UsersRound } from "lucide-react";
+import { ArrowRight, Calculator, Camera, ChevronDown, MessageCircle, ReceiptText, UsersRound } from "lucide-react";
 import { readPendingInviteToken } from "./useInviteFlow";
 import { LEGAL_CONTACT_EMAIL } from "./legalContact";
+import { lineOaUrl } from "./lineLink";
 import { UI_TEXT } from "./uiText";
 
 const text = UI_TEXT.landing;
@@ -94,6 +95,8 @@ export function LandingPage({
   // the OAuth round-trip.
   const [inviteToken] = useState(readPendingInviteToken);
   const [invite, setInvite] = useState<{ name: string; memberCount: number } | null>(null);
+  // A render-time call, not a module constant: tests stub the env per case.
+  const lineUrl = lineOaUrl();
 
   useEffect(() => {
     if (!inviteToken || !fetchInvitePreview) return;
@@ -300,6 +303,15 @@ export function LandingPage({
               <strong>{text.demoLedgerBudgetLeft}</strong>
             </div>
           </figure>
+          {lineUrl ? (
+            <div className="landing-line">
+              <p className="landing-line-copy">{text.ledgerLine}</p>
+              <a className="landing-line-link" href={lineUrl} target="_blank" rel="noopener noreferrer">
+                <MessageCircle aria-hidden="true" size={18} />
+                {text.ledgerLineAction}
+              </a>
+            </div>
+          ) : null}
         </section>
 
         <section className="landing-section">

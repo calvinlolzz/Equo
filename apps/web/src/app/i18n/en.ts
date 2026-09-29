@@ -311,6 +311,8 @@ export const EN: UiDictionary = {
     demoLedgerNet: "+NT$24,900",
     demoLedgerBudgetLabel: "Monthly budget NT$10,000",
     demoLedgerBudgetLeft: "NT$2,900 left",
+    ledgerLine: 'You can also record from LINE: add Equo as a friend and send "breakfast 60" to log it in your personal ledger.',
+    ledgerLineAction: "Add on LINE",
 
     demoChatLabel: "Illustrative conversation",
     chatLine1: "I covered the izakaya — 2,400",

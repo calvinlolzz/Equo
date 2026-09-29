@@ -11,6 +11,7 @@ const text = UI_TEXT.landing;
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllEnvs();
   window.sessionStorage.clear();
   window.history.replaceState(null, "", "/");
 });
@@ -377,5 +378,36 @@ describe("the page's own metadata", () => {
     // one; this is the part that can be told without locale negotiation.
     expect(html).toContain('property="og:locale" content="zh_TW"');
     expect(html).toContain('property="og:locale:alternate" content="en_US"');
+  });
+});
+
+describe("the LINE add-friend link in the personal-ledger section", () => {
+  const OA_URL = "https://line.me/R/ti/p/@100ujhjj";
+
+  // [MV]
+  test("with the URL configured it is a safe external link inside the ledger section, and still only two buttons", () => {
+    vi.stubEnv("VITE_LINE_OA_URL", OA_URL);
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    const link = screen.getByRole("link", { name: text.ledgerLineAction });
+    expect(link.getAttribute("href")).toBe(OA_URL);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(link.closest("#landing-ledger")).toBeTruthy();
+    expect(link.closest("figure")).toBeNull();
+    expect(screen.getByText(text.ledgerLine)).toBeTruthy();
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
+      UI_TEXT.login.googleLogin,
+      text.closingCta,
+    ]);
+  });
+
+  // [MV]
+  test("without the URL neither the link nor its sentence renders", () => {
+    render(<LandingPage onGoogleLogin={() => {}} />);
+
+    expect(screen.queryByRole("link", { name: text.ledgerLineAction })).toBeNull();
+    expect(screen.queryByText(text.ledgerLine)).toBeNull();
+    expect(document.querySelector(".landing-line")).toBeNull();
   });
 });

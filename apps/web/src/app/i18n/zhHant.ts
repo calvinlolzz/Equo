@@ -326,6 +326,8 @@ export const ZH_HANT = {
     demoLedgerNet: "+NT$24,900",
     demoLedgerBudgetLabel: "每月預算 NT$10,000",
     demoLedgerBudgetLeft: "還剩 NT$2,900",
+    ledgerLine: "也能在 LINE 記帳：加 Equo 好友，傳「早餐 60」就記進個人帳本。",
+    ledgerLineAction: "加 LINE 好友",
 
     /**
      * hero 裡那段示意對話：兩個人在群組裡對不清楚誰欠誰，Equo 的清償建議卡片

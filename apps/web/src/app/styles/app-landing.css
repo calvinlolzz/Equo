@@ -421,6 +421,47 @@
   border-top: 1px solid rgb(var(--fg) / 0.12);
 }
 
+/* "Record from LINE" line under the ledger demo. Rendered only when the
+   add-friend URL is configured. Tokens only. */
+.landing-line {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: 0 auto;
+  max-width: 560px;
+  text-align: center;
+}
+
+.landing-line-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgb(var(--fg) / 0.72);
+}
+
+.landing-line-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--line-brand) / 0.5);
+  color: rgb(var(--fg));
+  background: rgb(var(--line-brand) / 0.12);
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.landing-line-link svg {
+  color: rgb(var(--line-brand));
+}
+
+.landing-line-link:hover {
+  background: rgb(var(--line-brand) / 0.2);
+}
+
 /* ---- sections ---------------------------------------------------------- */
 
 .landing-section {
