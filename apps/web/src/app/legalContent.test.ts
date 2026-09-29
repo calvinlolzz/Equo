@@ -70,6 +70,23 @@ describe("legal content", () => {
     expect(allText(TERMS_OF_SERVICE)).toContain("第三方 AI");
   });
 
+  test("the privacy policy discloses the LINE link, its third party, and how to undo it", () => {
+    // The LINE bot stores a LINE user ID and routes messages through LY
+    // Corporation; LINE also requires that users can unlink at any time.
+    const text = allText(PRIVACY_POLICY);
+    expect(text).toContain("LINE 使用者識別碼");
+    expect(text).toContain("LY Corporation");
+    expect(text).toContain("解除綁定");
+  });
+
+  test("the privacy policy discloses administrators' read-only access", () => {
+    // Admins can view an account read-only (view-as) - which is also why no
+    // copy anywhere may promise that only the user can see their ledger.
+    const text = allText(PRIVACY_POLICY);
+    expect(text).toContain("唯讀");
+    expect(text).not.toContain("只有你看得到");
+  });
+
   test("the terms disclaim payment handling and name the governing law", () => {
     const text = allText(TERMS_OF_SERVICE);
     // Equo is a record-keeping tool, not a money mover — the disclaimer stores

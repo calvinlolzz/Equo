@@ -12,7 +12,8 @@ import { LEGAL_CONTACT_EMAIL } from "../legalContact";
  * published version — the renderer in ProfileDialog only needs the same shape.
  *
  * Plain-language, Traditional Chinese, ROC (Taiwan) jurisdiction. Reviewed and
- * approved 2026-07-25; receipt-recognition disclosure added 2026-08-03.
+ * approved 2026-07-25; receipt-recognition disclosure added 2026-08-03;
+ * personal ledger, LINE bookkeeping and admin read-only access added 2026-09-30.
  * Contact: support@equomu.com.
  *
  * ⚠️ The receipt-recognition section names the AI provider and its tier, because
@@ -41,7 +42,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-const LAST_UPDATED = "最後更新：2026 年 8 月 3 日";
+const LAST_UPDATED = "最後更新：2026 年 9 月 30 日";
 
 export const PRIVACY_POLICY_ZH: LegalDocument = {
   title: "隱私權政策",
@@ -53,8 +54,9 @@ export const PRIVACY_POLICY_ZH: LegalDocument = {
       heading: "1. 我們收集哪些資料",
       bullets: [
         "你用 Google 登入時：你的電子郵件、顯示名稱，以及 Google 頭像。Equo 只用 Google 登入，我們看不到、也不儲存你的 Google 密碼。",
-        "你在 App 裡建立的內容：群組、支出記錄（品項、金額、分類、備註、日期）、你新增的成員名稱（含沒有帳號的「虛擬成員」）、清償記錄，以及你上傳的圖片（收據、群組封面、自訂頭像）。",
+        "你在 App 裡建立的內容：個人帳本的收支、群組、支出記錄（品項、金額、分類、備註、日期）、你新增的成員名稱（含沒有帳號的「虛擬成員」）、清償記錄，以及你上傳的圖片（收據、群組封面、自訂頭像）。",
       "你選擇使用掃描收據時：那張收據照片，以及從照片辨識出來的金額、店名、日期與品項。詳見第 3 節。",
+        "你選擇連結 LINE 時：你的 LINE 使用者識別碼，以及你傳給 Equo 官方帳號的記帳訊息。詳見第 4 節。",
         "你主動送出的：意見回饋的內容。",
         "系統自動記錄的：為了修正錯誤而記下的當機資訊（錯誤訊息與當下頁面），以及維持登入所需的一個 cookie。",
       ],
@@ -63,7 +65,7 @@ export const PRIVACY_POLICY_ZH: LegalDocument = {
     {
       heading: "2. 我們怎麼使用這些資料",
       bullets: [
-        "提供分帳功能：記帳、計算餘額與「誰欠誰」、把資料顯示給同群組的成員。",
+        "提供記帳與分帳功能：記錄你個人帳本的收支；在群組裡記帳、計算餘額與「誰欠誰」，並把群組資料顯示給同群組的成員。",
         "維持你的登入狀態。",
         "修正錯誤、回覆你的意見回饋。",
       ],
@@ -84,48 +86,66 @@ export const PRIVACY_POLICY_ZH: LegalDocument = {
       },
     },
     {
-      heading: "4. 誰看得到你的資料",
+      heading: "4. LINE 記帳（選用功能）",
+      paragraphs: [
+        "你可以把 LINE 連結到 Equo 帳號，之後在 LINE 私訊 Equo 官方帳號（例如傳「早餐 60」）就能記進你的個人帳本。不連結，就不會有任何資料經過 LINE。",
+      ],
       bullets: [
-        "同群組的其他成員：你的名字、頭像，以及你記的帳，會被同一個群組裡的人看到——這是共同分帳本來就需要的。",
-        "我們委託的服務商（只用於提供服務、不會另作他用）：Google（登入）、Supabase（資料庫與圖片儲存）、Vercel（網站代管）。你的資料存放在位於新加坡的伺服器。",
+        "我們會保存：LINE 提供給我們的使用者識別碼（一串代碼，不是你的手機號碼或名字）、連結時間、最後使用時間，以及機器人回覆用的語言。只要保持連結，這些資料就會保留。",
+        "我們不會讀取：你的 LINE 暱稱、大頭貼或狀態訊息。",
+        "你傳來的訊息：只在處理當下用來判讀，存下來的只有記帳結果（項目、金額、分類、日期），和你在 App 裡記的帳一樣。",
+        "暫存資料：連結過程中的一次性驗證碼只保存雜湊值，過期後約一天內刪除；每一筆從 LINE 記下的帳與對應的訊息編號保留 90 天，用於「復原」；復原的處理紀錄保留 2 天。",
+        "日期一律以台灣時間計算。",
+        "訊息與機器人的回覆會經過 LINE（LY Corporation）的平台傳遞；回覆內容可能包含金額、本月總額，以及部分遮蔽的電子郵件。",
+        "你隨時可以在 LINE 傳「解除綁定」，或到個人資料頁解除連結；解除後，上述 LINE 相關資料會一併刪除（已記下的帳會保留在你的帳本裡）。",
+      ],
+    },
+    {
+      heading: "5. 誰看得到你的資料",
+      bullets: [
+        "你的個人帳本：其他使用者看不到。",
+        "同群組的其他成員：你的名字、頭像，以及你在群組裡記的帳，會被同一個群組裡的人看到——這是共同分帳本來就需要的。",
+        "我們委託的服務商（只用於提供服務、不會另作他用）：Google（登入）、Supabase（資料庫與圖片儲存）、Vercel（網站代管）；你連結 LINE 時，還有 LINE（LY Corporation）。你的資料存放在位於新加坡的伺服器。",
+        "Equo 的管理員：為了處理客服詢問、排查錯誤或處理濫用，少數管理員在必要時可以用唯讀方式查看帳號內容（包含個人帳本），也看得到帳號是否連結了 LINE。這類查看會留下紀錄。",
         "AI 辨識服務：只有在你使用掃描收據時，該張照片會送給 Google Gemini。條件與風險見第 3 節。",
         "法律要求時：當法律或主管機關依法要求，我們可能需要提供必要資料。",
       ],
     },
     {
-      heading: "5. 資料會保留多久，刪帳號會發生什麼",
+      heading: "6. 資料會保留多久，刪帳號會發生什麼",
       paragraphs: [
         "你的資料會一直保留，直到你自己刪除為止——你可以刪掉單筆支出、整個群組，或整個帳號。",
       ],
       callout: {
         tag: "刪除帳號時",
         paragraphs: [
-          "我們會永久刪除你的帳號與個人資料（電子郵件、名字、頭像、Google 綁定），用同一個 Google 帳號重新登入會是全新帳號。",
-          "你自己一個人的群組會連同帳目一起刪除。你在和別人共用的群組裡記的帳，會保留給其他成員（否則會弄壞他們的餘額計算），但你的成員身分會顯示為「已刪除的使用者」。",
+          "我們會永久刪除你的帳號與個人資料（電子郵件、名字、頭像、Google 綁定、LINE 連結），用同一個 Google 帳號重新登入會是全新帳號。",
+          "你的個人帳本，以及你自己一個人的群組，會連同帳目一起刪除。你在和別人共用的群組裡記的帳，會保留給其他成員（否則會弄壞他們的餘額計算），但你的成員身分會顯示為「已刪除的使用者」。",
         ],
       },
     },
     {
-      heading: "6. 你的權利",
+      heading: "7. 你的權利",
       bullets: [
         "查看與更正：隨時在 App 內修改你的名字、頭像與帳目。",
         "匯出：每個群組都可以匯出成 CSV 檔。",
         "刪除：個人資料頁 →「刪除帳號」。",
+        "解除 LINE 連結：在 LINE 傳「解除綁定」，或到個人資料頁操作。",
         `詢問：對你的資料有任何疑問，寄信到 ${LEGAL_CONTACT_EMAIL}。`,
       ],
     },
     {
-      heading: "7. Cookie",
+      heading: "8. Cookie",
       paragraphs: [
         "我們只用一個維持登入的必要 cookie（equo_session），沒有任何廣告或跨站追蹤 cookie。",
       ],
     },
     {
-      heading: "8. 兒童",
+      heading: "9. 兒童",
       paragraphs: ["本服務不面向 13 歲以下的兒童，也不會刻意收集他們的資料。"],
     },
     {
-      heading: "9. 政策變更與聯絡",
+      heading: "10. 政策變更與聯絡",
       paragraphs: [
         `若這份政策有重大變更，我們會在 App 內告知。有任何隱私相關問題，請聯絡 ${LEGAL_CONTACT_EMAIL}。`,
       ],
@@ -140,7 +160,7 @@ export const TERMS_OF_SERVICE_ZH: LegalDocument = {
   sections: [
     {
       heading: "1. Equo 是什麼",
-      paragraphs: ["Equo 是一個幫你和朋友、室友、旅伴記帳、分攤、計算誰欠誰的工具。"],
+      paragraphs: ["Equo 是一個記帳與分帳工具：你可以在個人帳本記自己的收支，也可以和朋友、室友、旅伴在群組裡記帳、分攤、計算誰欠誰。連結 LINE 後，也能透過 Equo 的 LINE 官方帳號記進個人帳本。"],
     },
     {
       heading: "2. 使用資格與你的帳號",

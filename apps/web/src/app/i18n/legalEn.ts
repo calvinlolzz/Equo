@@ -17,7 +17,7 @@ import { LEGAL_CONTACT_EMAIL } from "../legalContact";
  * on legalZhHant.ts about naming the AI provider applies here twice over.
  */
 
-const LAST_UPDATED = "Last updated: 3 August 2026";
+const LAST_UPDATED = "Last updated: 30 September 2026";
 
 /** Shown at the top of both English documents. */
 export const TRANSLATION_NOTICE =
@@ -33,8 +33,9 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
       heading: "1. What we collect",
       bullets: [
         "When you sign in with Google: your email address, display name, and Google profile picture. Equo only signs you in with Google — we never see or store your Google password.",
-        "What you create in the app: groups, expenses (item, amount, category, note, date), the member names you add (including placeholder members with no account), settlement records, and the images you upload (receipts, group covers, custom avatars).",
+        "What you create in the app: your personal ledger's spending and income, groups, expenses (item, amount, category, note, date), the member names you add (including placeholder members with no account), settlement records, and the images you upload (receipts, group covers, custom avatars).",
         "If you choose to scan a receipt: that photo, and the amount, shop name, date, and items read from it. See section 3.",
+        "If you choose to link LINE: your LINE user ID, and the bookkeeping messages you send to Equo's official LINE account. See section 4.",
         "What you send us: the contents of your feedback.",
         "Recorded automatically: crash information kept so we can fix bugs (the error message and the page it happened on), and the one cookie that keeps you signed in.",
       ],
@@ -45,7 +46,7 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
     {
       heading: "2. How we use it",
       bullets: [
-        "To run the app: recording expenses, working out balances and who owes whom, and showing that to the other people in your group.",
+        "To run the app: recording your personal ledger's spending and income; recording expenses in groups, working out balances and who owes whom, and showing group data to the other people in that group.",
         "To keep you signed in.",
         "To fix bugs and reply to your feedback.",
       ],
@@ -66,50 +67,68 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
       },
     },
     {
-      heading: "4. Who can see your data",
+      heading: "4. LINE bookkeeping (optional)",
+      paragraphs: [
+        "You can link LINE to your Equo account and then record into your personal ledger by messaging Equo's official LINE account (for example, sending \"breakfast 60\"). If you don't link it, no data goes through LINE.",
+      ],
       bullets: [
-        "Other members of your groups: your name, your picture, and the expenses you record are visible to everyone in the same group. That is what sharing a ledger means.",
-        "The providers we use (only to run the service, never for anything else): Google (sign-in), Supabase (database and image storage), Vercel (hosting). Your data is stored on servers in Singapore.",
+        "What we keep: the user ID LINE gives us (an opaque code, not your phone number or name), when you linked, when you last used it, and the language the bot replies in. These stay for as long as the link does.",
+        "What we never read: your LINE display name, profile picture, or status message.",
+        "Your messages: read only while they are being processed. What is saved is the resulting entry (item, amount, category, date), the same as an entry you record in the app.",
+        "Temporary data: the one-time codes used while linking are stored only as hashes and deleted within about a day of expiring; each entry recorded from LINE is kept with its message ID for 90 days so it can be undone; the record of each undo request is kept for 2 days.",
+        "Dates are always interpreted in Taiwan time.",
+        "Messages and the bot's replies travel through LINE's platform (LY Corporation). Replies may include amounts, this month's totals, and a partly masked email address.",
+        "You can unlink at any time by sending \"unlink\" in LINE or from your profile. Unlinking deletes the LINE data above (entries you already recorded stay in your ledger).",
+      ],
+    },
+    {
+      heading: "5. Who can see your data",
+      bullets: [
+        "Your personal ledger: no other user can see it.",
+        "Other members of your groups: your name, your picture, and the expenses you record in a group are visible to everyone in that group. That is what sharing a ledger means.",
+        "The providers we use (only to run the service, never for anything else): Google (sign-in), Supabase (database and image storage), Vercel (hosting), and LINE (LY Corporation) if you link LINE. Your data is stored on servers in Singapore.",
+        "Equo's administrators: to handle support requests, investigate errors, or deal with abuse, a small number of administrators can, when necessary, view an account read-only (including its personal ledger), and can see whether an account has LINE linked. Such viewing is logged.",
         "The AI recognition service: only when you scan a receipt, and only that photo. The conditions and risks are in section 3.",
         "When the law requires it: we may have to provide data if lawfully required by a court or authority.",
       ],
     },
     {
-      heading: "5. How long we keep it, and what deleting your account does",
+      heading: "6. How long we keep it, and what deleting your account does",
       paragraphs: [
         "Your data stays until you delete it. You can delete a single expense, a whole group, or your entire account.",
       ],
       callout: {
         tag: "When you delete your account",
         paragraphs: [
-          "We permanently delete your account and your personal details (email, name, picture, Google connection). Signing in again with the same Google account creates a brand-new account.",
-          "Groups where you are the only member are deleted along with their entries. Expenses you recorded in groups shared with other people stay, because removing them would break everyone else's balances — but your membership shows as “Deleted user”.",
+          "We permanently delete your account and your personal details (email, name, picture, Google connection, LINE link). Signing in again with the same Google account creates a brand-new account.",
+          "Your personal ledger, and groups where you are the only member, are deleted along with their entries. Expenses you recorded in groups shared with other people stay, because removing them would break everyone else's balances — but your membership shows as “Deleted user”.",
         ],
       },
     },
     {
-      heading: "6. Your rights",
+      heading: "7. Your rights",
       bullets: [
         "See and correct: change your name, picture, and entries in the app at any time.",
         "Export: every group can be exported as a CSV file.",
         "Delete: Profile → “Delete account”.",
+        "Unlink LINE: send \"unlink\" in LINE, or do it from your profile.",
         `Ask: for any question about your data, email ${LEGAL_CONTACT_EMAIL}.`,
       ],
     },
     {
-      heading: "7. Cookies",
+      heading: "8. Cookies",
       paragraphs: [
         "We use one strictly necessary cookie to keep you signed in (equo_session). There are no advertising or cross-site tracking cookies.",
       ],
     },
     {
-      heading: "8. Children",
+      heading: "9. Children",
       paragraphs: [
         "This service is not aimed at children under 13, and we do not knowingly collect their data.",
       ],
     },
     {
-      heading: "9. Changes and contact",
+      heading: "10. Changes and contact",
       paragraphs: [
         `If this policy changes materially we will say so in the app. For any privacy question, contact ${LEGAL_CONTACT_EMAIL}.`,
       ],
@@ -125,7 +144,7 @@ export const TERMS_OF_SERVICE_EN: LegalDocument = {
     {
       heading: "1. What Equo is",
       paragraphs: [
-        "Equo is a tool for recording what you and your friends, flatmates, or travel companions spend, splitting it, and working out who owes whom.",
+        "Equo is a bookkeeping and bill-splitting tool: you can track your own spending and income in a personal ledger, and record, split, and settle shared costs with friends, flatmates, or travel companions in groups. Once linked, you can also record into your personal ledger through Equo's official LINE account.",
       ],
     },
     {
