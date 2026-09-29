@@ -474,6 +474,8 @@ https://equo-mu.vercel.app/api/v1/health
 
 用 LINE 官方帳號傳「早餐 60」，記進**個人帳本**（只記個人帳本，沒有群組 id 的參數：`line_record_entry` 靠 `ensure_personal_ledger` 自己找帳本）。綁定走 LINE 官方的 account-link 流程；日期一律用**台灣時間**、一律記在**傳訊當天**。
 
+也能用文字指令管理個人帳本的**每月預算**：「預算 15000」設定或修改、「預算」查看、「取消預算」取消。`line_set_budget` 跟 `line_record_entry` 一樣沒有群組 id 的參數，只靠 `ensure_personal_ledger` 找帳本；它寫的就是 App「編輯帳本」改的同一個 `groups.monthly_budget_minor`，所以 App 在下一次列表同步就會看到。「預算 0」不會取消（回覆會教你傳「取消預算」）；「預算外 300」這類不是整句只有一個金額的訊息仍照一般記帳處理。
+
 ### 環境變數（Vercel Production）
 
 | 變數 | 用途 |
@@ -489,7 +491,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 - Webhook：`POST /api/line/webhook`（獨立 function，不在 `/api/v1` 底下，因為簽章要讀原始 body）。
 - **Kill switch：LINE Developers console → Messaging API → 關掉 Use webhook。** 關掉之後不會再記任何東西；已綁定的資料留著。
-- 只擋寫入的維護模式對它也有效（記帳、復原會回維護訊息），但**解除綁定與 `DELETE /api/v1/me/line` 一律放行**（LINE 要求隨時能解除，且它只刪這個功能自己的資料）。綁定事件（`accountLink`）與發 link token 也不被維護擋住。
+- 只擋寫入的維護模式對它也有效（記帳、復原、設定／取消預算會回維護訊息；「本月」與「預算」（查看）照常可用），但**解除綁定與 `DELETE /api/v1/me/line` 一律放行**（LINE 要求隨時能解除，且它只刪這個功能自己的資料）。綁定事件（`accountLink`）與發 link token 也不被維護擋住。
 
 ### Console 設定清單
 
@@ -510,4 +512,4 @@ https://equo-mu.vercel.app/api/v1/health
 
 ### 上線前
 
-隱私權政策要先寫明 LINE 這條資料流（見計畫 §11），**之後**才開 webhook。真機（iOS／Android × 已登入／未登入 Equo）要走一遍：加好友 → 綁定 → `早餐 60` → `本月` → `復原` → `解除綁定` → 再綁定；LINE 內建瀏覽器擋 Google 登入，頁面會給「用瀏覽器開啟」的連結（已帶 token 與 `openExternalBrowser=1`）。
+隱私權政策要先寫明 LINE 這條資料流（見計畫 §11），**之後**才開 webhook。真機（iOS／Android × 已登入／未登入 Equo）要走一遍：加好友 → 綁定 → `早餐 60` → `本月` → `預算 15000` → `預算` → `取消預算` → `復原` → `解除綁定` → 再綁定；LINE 內建瀏覽器擋 Google 登入，頁面會給「用瀏覽器開啟」的連結（已帶 token 與 `openExternalBrowser=1`）。
