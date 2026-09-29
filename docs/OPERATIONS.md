@@ -78,6 +78,9 @@ psql "$TARGET_DB_URL" -f equo.sql
 | `app_error_alerts` | 90 天 | 全部（一年沒出現的 fingerprint 再出現時應該重新告警） | `purge_error_alerts` |
 | `push_delivery_logs` | 90 天 | 全部 | `purge_push_delivery_logs` |
 | `expense_comments` | 90 天 | **只清收回的**（`deleted_at` 有值）；還看得到的留言不清 | `purge_deleted_expense_comments` |
+| `line_link_requests` | **1 天** | 過期超過一天的（見第 18 節：它們 10 分鐘後就是死憑證，不是歷史） | `purge_line_link_requests` |
+| `line_bot_entries` | 90 天 | 全部（只為復原視窗與重送冪等存在；帳目本身不動） | `purge_line_bot_entries` |
+| `line_undo_events` | 90 天 | 全部（讓重送的「復原」得到原本的答案） | `purge_line_undo_events` |
 
 三件下手前要知道的事：
 
@@ -462,3 +465,47 @@ https://equo-mu.vercel.app/api/v1/health
 
 - Supabase Pro + PITR（完整備份、含 `auth.*`、可還原到任意時間點）
 - 自訂網域（目前仍是 `equo-mu.vercel.app`）
+
+---
+
+## 18. LINE 記帳機器人
+
+用 LINE 官方帳號傳「早餐 60」，記進**個人帳本**（只記個人帳本，沒有群組 id 的參數：`line_record_entry` 靠 `ensure_personal_ledger` 自己找帳本）。綁定走 LINE 官方的 account-link 流程；日期一律用**台灣時間**、一律記在**傳訊當天**。
+
+### 環境變數（Vercel Production）
+
+| 變數 | 用途 |
+|---|---|
+| `LINE_CHANNEL_SECRET` | 驗證 webhook 簽章（HMAC-SHA256，對**原始位元組**） |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 回覆訊息、發 link token（長效） |
+| `APP_ORIGIN` | 選填，預設 `https://equo-mu.vercel.app`；綁定連結與「開啟帳本」按鈕用 |
+| `VITE_LINE_OA_URL` | **建置時**變數（改了要重新部署）：個人資料頁「加入好友」連結，只接受 `https://lin.ee/` 或 `https://line.me/` |
+
+缺少前四個之一時 webhook 回 `503 LINE_NOT_CONFIGURED`，log 只寫變數名稱不寫值。Preview 部署沒有這些變數，所以會回 503，這是預期的。**祕密不要貼進聊天、issue 或 log。**
+
+### 端點與 kill switch
+
+- Webhook：`POST /api/line/webhook`（獨立 function，不在 `/api/v1` 底下，因為簽章要讀原始 body）。
+- **Kill switch：LINE Developers console → Messaging API → 關掉 Use webhook。** 關掉之後不會再記任何東西；已綁定的資料留著。
+- 只擋寫入的維護模式對它也有效（記帳、復原會回維護訊息），但**解除綁定與 `DELETE /api/v1/me/line` 一律放行**（LINE 要求隨時能解除，且它只刪這個功能自己的資料）。綁定事件（`accountLink`）與發 link token 也不被維護擋住。
+
+### Console 設定清單
+
+- Webhook URL = `https://equo-mu.vercel.app/api/line/webhook` → Update → Verify（應為 Success）
+- Use webhook：開；**Webhook redelivery：開**（安全：每筆寫入都以 `webhookEventId` 為冪等鍵）
+- Error statistics aggregation：開；第一週看有沒有 `request_timeout`
+- Allow bot to join group chats：**關**（程式碼也會在被加進群組時道歉並離開）
+- OA Manager → Response settings：Auto-response 關、Greeting message 關（bot 自己會送歡迎訊息）
+- 把加好友網址填進 Vercel `VITE_LINE_OA_URL` 並重新部署
+
+### 資料與保留
+
+`line_accounts`（綁定，帳號刪除時 `ON DELETE CASCADE` 帶走）、`line_link_requests`（只存 link token 與 nonce 的**雜湊**，1 天後清）、`line_bot_entries`（事件 id → 帳目，供復原用，90 天）、`line_undo_events`（每次復原嘗試的結果，讓**重送的復原**永遠得到原本的答案，不會刪到之後才記的新帳，90 天）。清理掛在每晚 workflow 的保留步驟（第 2 節）。帳號合併（`admin_console_merge_users`）會**刪掉**被併掉那個帳號的綁定，不搬給目標帳號。
+
+### 不會出現在 log 的東西
+
+訊息內容、reply token、link token、nonce、email、原始 LINE user id。log 只有 `lineUserTag`（雜湊前綴）與 HTTP 狀態碼。
+
+### 上線前
+
+隱私權政策要先寫明 LINE 這條資料流（見計畫 §11），**之後**才開 webhook。真機（iOS／Android × 已登入／未登入 Equo）要走一遍：加好友 → 綁定 → `早餐 60` → `本月` → `復原` → `解除綁定` → 再綁定；LINE 內建瀏覽器擋 Google 登入，頁面會給「用瀏覽器開啟」的連結（已帶 token 與 `openExternalBrowser=1`）。

@@ -51,6 +51,17 @@ Frontend build — just the one (without it the login button is dead):
 VITE_SUPABASE_URL
 ```
 
+LINE bot (optional; all absent = the webhook answers 503 `LINE_NOT_CONFIGURED` and nothing else is affected). It is its own function, `api/line/webhook.ts`, outside `/api/v1` so `vercel.json` needs no change. Production only:
+
+```text
+LINE_CHANNEL_SECRET
+LINE_CHANNEL_ACCESS_TOKEN
+APP_ORIGIN              (optional, defaults to https://equo-mu.vercel.app)
+VITE_LINE_OA_URL        (build-time; the add-friend link shown in the profile)
+```
+
+Setup, kill switch and checklist: `docs/OPERATIONS.md` section 18.
+
 `SUPABASE_SERVICE_ROLE_KEY` and `SESSION_SECRET` are server-only. Do not expose them as public client variables. `SUPABASE_ANON_KEY` is **also server-only** here — it is the apikey used to verify Supabase access tokens; the frontend holds no Supabase key at all. See `docs/SUPABASE.md` for the details.
 
 > This list previously omitted `SUPABASE_ANON_KEY` and `VITE_SUPABASE_URL` (following it

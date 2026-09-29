@@ -8,13 +8,15 @@ import { describe, expect, test } from "vitest";
  * integration test against a live database, so the invariants the migrations
  * rely on are pinned as source text too.
  *
- * The workflow-file assertions (db-backup.yml wiring the two purge RPCs) are
- * deliberately NOT here - that lands with the separate workflow commit, after
- * the migration has been applied to production (see the plan's §12, commit 7).
+ * The nightly workflow must wire every purge function this migration defines.
+ * It only merges after the migration is applied - otherwise the purge step
+ * fails on functions that do not exist yet (see the plan's §8).
  */
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "..", "..", "supabase", "migrations");
 const botSql = readFileSync(join(MIGRATIONS_DIR, "20260929090000_line_bot.sql"), "utf8");
 const mergeSql = readFileSync(join(MIGRATIONS_DIR, "20260929090100_line_merge_users.sql"), "utf8");
+const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
+const workflow = readFileSync(join(REPO_ROOT, ".github", "workflows", "db-backup.yml"), "utf8");
 
 describe("line_bot migration", () => {
   test("every table foreign key cascades", () => {
@@ -119,5 +121,20 @@ describe("line_merge_users migration", () => {
   test("deletes the source account's LINE link rather than moving it", () => {
     expect(mergeSql).toContain("delete from line_accounts where user_id = p_source_user_id;");
     expect(mergeSql).toContain("delete from line_link_requests where user_id = p_source_user_id;");
+  });
+});
+
+describe("nightly retention wiring", () => {
+  // [MV]
+  test("db-backup.yml purges line_link_requests(1), line_bot_entries(90) and line_undo_events(90)", () => {
+    expect(workflow).toContain("public.purge_line_link_requests(1)");
+    expect(workflow).toContain("public.purge_line_bot_entries(90)");
+    expect(workflow).toContain("public.purge_line_undo_events(90)");
+  });
+
+  test("every purge_line_ function the migration defines is called by the workflow", () => {
+    const defined = [...botSql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."(purge_line_\w+)"/g)].map((m) => m[1]);
+    expect(defined.length).toBe(3);
+    for (const name of defined) expect(workflow, `${name} should be wired`).toContain(`public.${name}(`);
   });
 });
