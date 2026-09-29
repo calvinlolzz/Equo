@@ -135,7 +135,7 @@ jobs:
               'comments',        public.purge_deleted_expense_comments(90),
               'line_link_requests', public.purge_line_link_requests(1),
               'line_bot_entries',   public.purge_line_bot_entries(90),
-              'line_undo_events',   public.purge_line_undo_events(90)
+              'line_undo_events',   public.purge_line_undo_events(2)
             ));"
 
       # 循環支出: turn every rule that has come due into a real expense.

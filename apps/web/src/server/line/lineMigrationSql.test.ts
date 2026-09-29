@@ -126,15 +126,40 @@ describe("line_merge_users migration", () => {
 
 describe("nightly retention wiring", () => {
   // [MV]
-  test("db-backup.yml purges line_link_requests(1), line_bot_entries(90) and line_undo_events(90)", () => {
+  test("db-backup.yml purges line_link_requests(1), line_bot_entries(90) and line_undo_events(2)", () => {
     expect(workflow).toContain("public.purge_line_link_requests(1)");
     expect(workflow).toContain("public.purge_line_bot_entries(90)");
-    expect(workflow).toContain("public.purge_line_undo_events(90)");
+    expect(workflow).toContain("public.purge_line_undo_events(2)");
   });
 
   test("every purge_line_ function the migration defines is called by the workflow", () => {
     const defined = [...botSql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."(purge_line_\w+)"/g)].map((m) => m[1]);
     expect(defined.length).toBe(3);
     for (const name of defined) expect(workflow, `${name} should be wired`).toContain(`public.${name}(`);
+  });
+});
+
+describe("line_undo_events does not outlive the link", () => {
+  const fn = (name: string) => {
+    const start = botSql.indexOf(`CREATE OR REPLACE FUNCTION "public"."${name}"`);
+    return botSql.slice(start, botSql.indexOf("\n$$;", start));
+  };
+
+  // [MV]
+  test("both unlink paths delete the LINE id's undo events", () => {
+    expect(fn("line_unlink")).toContain("delete from line_undo_events where line_user_id = p_line_user_id");
+    expect(fn("line_unlink_user")).toContain("delete from line_undo_events where line_user_id = v_line");
+  });
+
+  test("re-linking clears the undo events of the LINE id being displaced", () => {
+    const body = fn("line_consume_link_nonce");
+    expect(body).toContain("v_prev <> p_line_user_id");
+    expect(body).toContain("delete from line_undo_events where line_user_id = v_prev");
+  });
+
+  test("purge_line_undo_events keeps two days by default with a one-day floor", () => {
+    const body = fn("purge_line_undo_events");
+    expect(body).toContain('"p_days" integer DEFAULT 2');
+    expect(body).toContain("greatest(coalesce(p_days, 2), 1)");
   });
 });

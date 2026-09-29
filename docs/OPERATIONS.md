@@ -80,7 +80,7 @@ psql "$TARGET_DB_URL" -f equo.sql
 | `expense_comments` | 90 天 | **只清收回的**（`deleted_at` 有值）；還看得到的留言不清 | `purge_deleted_expense_comments` |
 | `line_link_requests` | **1 天** | 過期超過一天的（見第 18 節：它們 10 分鐘後就是死憑證，不是歷史） | `purge_line_link_requests` |
 | `line_bot_entries` | 90 天 | 全部（只為復原視窗與重送冪等存在；帳目本身不動） | `purge_line_bot_entries` |
-| `line_undo_events` | 90 天 | 全部（讓重送的「復原」得到原本的答案） | `purge_line_undo_events` |
+| `line_undo_events` | **2 天**（下限 1 天） | 全部（只需涵蓋 LINE 重送的時間窗；刻意很短，因為這張表沒有外鍵，帳號刪除後 LINE id 只能靠它過期才消失；解除綁定時也會直接清掉） | `purge_line_undo_events` |
 
 三件下手前要知道的事：
 
@@ -500,7 +500,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 ### 資料與保留
 
-`line_accounts`（綁定，帳號刪除時 `ON DELETE CASCADE` 帶走）、`line_link_requests`（只存 link token 與 nonce 的**雜湊**，1 天後清）、`line_bot_entries`（事件 id → 帳目，供復原用，90 天）、`line_undo_events`（每次復原嘗試的結果，讓**重送的復原**永遠得到原本的答案，不會刪到之後才記的新帳，90 天）。清理掛在每晚 workflow 的保留步驟（第 2 節）。帳號合併（`admin_console_merge_users`）會**刪掉**被併掉那個帳號的綁定，不搬給目標帳號。
+`line_accounts`（綁定，帳號刪除時 `ON DELETE CASCADE` 帶走）、`line_link_requests`（只存 link token 與 nonce 的**雜湊**，1 天後清）、`line_bot_entries`（事件 id → 帳目，供復原用，90 天）、`line_undo_events`（每次復原嘗試的結果，讓**重送的復原**永遠得到原本的答案，不會刪到之後才記的新帳，只留 2 天，解除綁定時一併刪除）。清理掛在每晚 workflow 的保留步驟（第 2 節）。帳號合併（`admin_console_merge_users`）會**刪掉**被併掉那個帳號的綁定，不搬給目標帳號。
 
 ### 不會出現在 log 的東西
 

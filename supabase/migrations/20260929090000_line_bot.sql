@@ -90,7 +90,7 @@ CREATE INDEX IF NOT EXISTS "line_bot_entries_created_at_idx" ON "public"."line_b
 -- recorded in between - and delete it by mistake. Deliberately no foreign key
 -- (cascade-free): this is a short-lived idempotency log, not history tied to
 -- the account's lifetime, and it is purged on its own schedule alongside
--- line_bot_entries (see purge_line_undo_events below).
+-- line_bot_entries (see purge_line_undo_events below), and cleared on unlink.
 CREATE TABLE IF NOT EXISTS "public"."line_undo_events" (
   "webhook_event_id" text NOT NULL,
   "line_user_id" text NOT NULL,
@@ -283,6 +283,12 @@ begin
 
   delete from line_accounts where user_id = r.user_id or line_user_id = p_line_user_id;
 
+  -- The LINE id this account is leaving is no longer tied to anything here:
+  -- drop its undo log too rather than let the id linger.
+  if v_prev is not null and v_prev <> p_line_user_id then
+    delete from line_undo_events where line_user_id = v_prev;
+  end if;
+
   insert into line_accounts (line_user_id, user_id, locale) values (p_line_user_id, r.user_id, r.locale);
 
   return jsonb_build_object(
@@ -313,6 +319,7 @@ begin
   get diagnostics v_count = row_count;
 
   delete from line_bot_entries where line_user_id = p_line_user_id;
+  delete from line_undo_events where line_user_id = p_line_user_id;
   delete from line_link_requests where line_user_id = p_line_user_id;
 
   return jsonb_build_object('ok', true, 'unlinked', v_count > 0);
@@ -339,6 +346,7 @@ begin
 
   if v_line is not null then
     delete from line_bot_entries where line_user_id = v_line;
+    delete from line_undo_events where line_user_id = v_line;
     delete from line_link_requests where line_user_id = v_line;
   end if;
 
@@ -716,17 +724,19 @@ REVOKE ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) FROM "anon";
 REVOKE ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) FROM "authenticated";
 GRANT ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) TO "service_role";
 
--- 13. Nightly purge: undo-attempt outcomes. Same 30-day floor and purpose as
--- purge_line_bot_entries (these rows only exist to make a redelivered undo
--- safe) - purged on the same schedule, from the same nightly step.
-CREATE OR REPLACE FUNCTION "public"."purge_line_undo_events"("p_days" integer DEFAULT 90) RETURNS jsonb
+-- 13. Nightly purge: undo-attempt outcomes. Short on purpose: these rows only
+-- make a REDELIVERED undo safe, and idempotency only has to cover LINE's
+-- redelivery window (hours, not months). A short retention also limits how
+-- long a LINE id survives an account deletion - the table has no foreign key
+-- by design, so nothing cascades to it. Default 2 days, floor 1 day.
+CREATE OR REPLACE FUNCTION "public"."purge_line_undo_events"("p_days" integer DEFAULT 2) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
 declare
   v_deleted integer;
 begin
-  delete from line_undo_events where created_at < now() - make_interval(days => greatest(coalesce(p_days, 90), 30));
+  delete from line_undo_events where created_at < now() - make_interval(days => greatest(coalesce(p_days, 2), 1));
   get diagnostics v_deleted = row_count;
 
   return jsonb_build_object('deleted', v_deleted);
