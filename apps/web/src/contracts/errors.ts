@@ -82,6 +82,12 @@ export const errorCodes = [
    * members, archive, delete.
    */
   "PERSONAL_LEDGER",
+  /**
+   * POST /me/line/link's link_token has expired, was already used, or was
+   * never issued. The client's answer is the same either way: go back to
+   * LINE and send "綁定" for a fresh one.
+   */
+  "LINE_LINK_EXPIRED",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

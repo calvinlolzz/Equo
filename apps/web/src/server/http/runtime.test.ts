@@ -148,6 +148,10 @@ function makeClient(): PostgrestClient {
       }
       if (fn === "soft_delete_expense") return { ...expenseRow, version: 2 };
       if (fn === "accept_invite") return { group: groupRow, member: ownerMember, claimed: false };
+      if (fn === "line_attach_link_request") {
+        return { ok: true, already_linked: false, currently_linked: false };
+      }
+      if (fn === "line_unlink_user") return { ok: true, unlinked: true };
       return null;
     },
   });
@@ -1451,5 +1455,99 @@ describe("GET /api/v1/me/group-shares", () => {
 
     expect(response.status).toBe(404);
     expect((response.body as { error: { code: string } }).error.code).not.toBe("UNAUTHENTICATED");
+  });
+});
+
+describe("LINE account link routes", () => {
+  function makeRuntime(client: PostgrestClient = makeClient()) {
+    return createHttpRuntime({
+      client,
+      storage: makeStorage(),
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+      sessionSecret: "session-secret",
+      now: 1_000,
+    });
+  }
+
+  test("all three routes are wired", async () => {
+    const runtime = makeRuntime();
+    const auth = { authorization: "Bearer google-alice" };
+
+    const get = await runtime.handle({ method: "GET", path: "/api/v1/me/line", headers: auth });
+    expect(get.status).toBe(200);
+    expect(get.body).toEqual({ linked: false, linked_at: null });
+
+    const post = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/me/line/link",
+      headers: auth,
+      json: { link_token: "abcd1234efgh5678", locale: "zh-Hant" },
+    });
+    expect(post.status).toBe(200);
+
+    const del = await runtime.handle({ method: "DELETE", path: "/api/v1/me/line", headers: auth });
+    expect(del.status).toBe(200);
+    expect(del.body).toEqual({ ok: true, unlinked: true });
+  });
+
+  test("a view-as cookie refuses POST /me/line/link and DELETE /me/line with VIEW_AS_READONLY", async () => {
+    const { createViewAsToken } = await import("../auth/sessionToken.js");
+    const token = await createViewAsToken(
+      { auth_user_id: "user_alice", google_sub: "google_alice", email: "alice@example.com", display_name: "Alice" },
+      "user_admin",
+      "session-secret",
+      1_000,
+    );
+    const runtime = makeRuntime();
+    const headers = { cookie: `equo_view_as=${token}` };
+
+    const post = await runtime.handle({
+      method: "POST",
+      path: "/api/v1/me/line/link",
+      headers,
+      json: { link_token: "abcd1234efgh5678" },
+    });
+    expect(post.status).toBe(403);
+    expect((post.body as { error: { code: string } }).error.code).toBe("VIEW_AS_READONLY");
+
+    const del = await runtime.handle({ method: "DELETE", path: "/api/v1/me/line", headers });
+    expect(del.status).toBe(403);
+    expect((del.body as { error: { code: string } }).error.code).toBe("VIEW_AS_READONLY");
+  });
+
+  test("maintenance blocks POST /me/line/link", async () => {
+    const { resetSiteNoticeCache } = await import("./maintenance.js");
+    resetSiteNoticeCache();
+
+    const client = makeClient();
+    const maintenanceClient: PostgrestClient = {
+      ...client,
+      async rpc(fn, args) {
+        if (fn === "site_notice_settings") {
+          return {
+            banner: { message: "", level: "info", ends_at: null, active: false },
+            maintenance: { enabled: true, message: "維護中" },
+          } as never;
+        }
+        return client.rpc(fn, args);
+      },
+    };
+
+    const response = await makeRuntime(maintenanceClient).handle({
+      method: "POST",
+      path: "/api/v1/me/line/link",
+      headers: { authorization: "Bearer google-alice" },
+      json: { link_token: "abcd1234efgh5678" },
+    });
+
+    expect(response.status).toBe(503);
+    expect((response.body as { error: { code: string } }).error.code).toBe("MAINTENANCE");
+
+    resetSiteNoticeCache();
   });
 });

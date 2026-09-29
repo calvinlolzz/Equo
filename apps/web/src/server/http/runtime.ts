@@ -104,6 +104,7 @@ import {
   adminSetReceiptScanSettingsRoute,
 } from "../routes/adminRoutes.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
+import { getMyLineLinkRoute, startLineLinkRoute, unlinkMyLineRoute } from "../routes/lineRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
@@ -881,6 +882,36 @@ export function createHttpRuntime(options: RuntimeOptions) {
         return "headers" in result && result.headers
           ? { ...response, headers: { ...response.headers, ...result.headers } }
           : response;
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/me\/line$/,
+      label: "GET /api/v1/me/line",
+      async handle(request) {
+        const result = await getMyLineLinkRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/me\/line\/link$/,
+      label: "POST /api/v1/me/line/link",
+      async handle(request) {
+        const result = await startLineLinkRoute(
+          routeOptions(options, request),
+          body<{ link_token?: unknown; locale?: unknown }>(request),
+        );
+        return jsonResponse(result.status, result.body);
+      },
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/v1\/me\/line$/,
+      label: "DELETE /api/v1/me/line",
+      async handle(request) {
+        const result = await unlinkMyLineRoute(routeOptions(options, request));
+        return jsonResponse(result.status, result.body);
       },
     },
     {
