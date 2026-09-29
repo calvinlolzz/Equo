@@ -41,7 +41,21 @@ describe("LINE_TEXT dictionaries", () => {
     expect(placeholders(ZH_HANT.noDecimals).has("currency")).toBe(true);
   });
 
-  test.each(["linkPrompt", "linkFailed"] as const)("%s is at most 160 characters in both locales", (key) => {
+  test("budgetSet and budgetShow carry exactly budget/spent/remaining", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      expect(placeholders(dict.budgetSet)).toEqual(new Set(["budget", "spent", "remaining"]));
+      expect(placeholders(dict.budgetShow)).toEqual(new Set(["budget", "spent", "remaining"]));
+    }
+  });
+
+  test("budgetRemainingLeft carries {left} and budgetRemainingOver carries {over}", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      expect(placeholders(dict.budgetRemainingLeft)).toEqual(new Set(["left"]));
+      expect(placeholders(dict.budgetRemainingOver)).toEqual(new Set(["over"]));
+    }
+  });
+
+  test.each(["linkPrompt", "linkFailed", "budgetNone", "budgetInvalid"] as const)("%s is at most 160 characters in both locales", (key) => {
     expect([...ZH_HANT[key]].length).toBeLessThanOrEqual(MEDIUM_LIMIT);
     expect([...EN[key]].length).toBeLessThanOrEqual(MEDIUM_LIMIT);
   });
@@ -53,6 +67,14 @@ describe("LINE_TEXT dictionaries", () => {
       expect([...EN[key]].length).toBeLessThanOrEqual(SHORT_LIMIT);
     },
   );
+
+  // [MV]: remove the help bullet and this goes red.
+  test("help teaches the budget commands in both locales", () => {
+    expect(ZH_HANT.help).toContain("預算 15000");
+    expect(ZH_HANT.help).toContain("取消預算");
+    expect(EN.help).toContain("budget 15000");
+    expect(EN.help).toContain("budget off");
+  });
 
   test("linkAltText is at most 400 characters in both locales", () => {
     expect([...ZH_HANT.linkAltText].length).toBeLessThanOrEqual(LONG_LIMIT);

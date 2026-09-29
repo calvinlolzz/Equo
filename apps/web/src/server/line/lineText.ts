@@ -49,6 +49,13 @@ export type LineDictionary = {
   monthButtonLabel: string;
   monthText: string;
   openLedgerLabel: string;
+  budgetSet: string;
+  budgetShow: string;
+  budgetRemainingLeft: string;
+  budgetRemainingOver: string;
+  budgetNone: string;
+  budgetCleared: string;
+  budgetInvalid: string;
 };
 
 const ZH_HANT: LineDictionary = {
@@ -74,7 +81,7 @@ const ZH_HANT: LineDictionary = {
   undone: "已刪除：{title} {amount}",
   undoNothing: "沒有可以復原的記錄。只能復原 {minutes} 分鐘內從 LINE 記下的記錄。",
   undoAlreadyGone: "上一筆已經在 App 裡修改或刪除了，請到 App 查看。",
-  help: "Equo 記帳小幫手指令：\n・記支出：早餐 60、60 早餐、午餐 120 餐飲\n・記收入：+52000 薪水、收入 52000 薪水\n・本月：本月支出、收入與預算\n・復原：刪除 {minutes} 分鐘內從 LINE 記的最後一筆\n・解除綁定：取消與 Equo 帳號的連結\n日期以台灣時間計算。",
+  help: "Equo 記帳小幫手指令：\n・記支出：早餐 60、60 早餐、午餐 120 餐飲\n・記收入：+52000 薪水、收入 52000 薪水\n・本月：本月支出、收入與預算\n・預算：傳「預算 15000」設定或修改每月預算，「預算」查看，「取消預算」取消\n・復原：刪除 {minutes} 分鐘內從 LINE 記的最後一筆\n・解除綁定：取消與 Equo 帳號的連結\n日期以台灣時間計算。",
   notUnderstood: "看不懂這句話。記帳請傳「項目 金額」，例如「早餐 60」；傳「說明」看所有指令。",
   multipleAmounts: "一次只能記一筆，這句有好幾個金額。請分開傳，例如「午餐 120」。",
   missingTitle: "請加上項目名稱，例如「早餐 60」。",
@@ -95,6 +102,13 @@ const ZH_HANT: LineDictionary = {
   monthButtonLabel: "本月",
   monthText: "本月",
   openLedgerLabel: "開啟帳本",
+  budgetSet: "每月預算已設為 {budget}。\n本月已花 {spent}，{remaining}",
+  budgetShow: "每月預算 {budget}\n本月已花 {spent}，{remaining}",
+  budgetRemainingLeft: "還剩 {left}",
+  budgetRemainingOver: "已超出 {over}",
+  budgetNone: "還沒有設定每月預算。傳「預算 15000」就能設定。",
+  budgetCleared: "已取消每月預算。",
+  budgetInvalid: "預算請用大於 0 的金額，例如「預算 15000」。要取消預算請傳「取消預算」。",
 };
 
 const EN: LineDictionary = {
@@ -122,7 +136,7 @@ const EN: LineDictionary = {
   undoNothing: "Nothing to undo. Only entries recorded from LINE in the last {minutes} minutes can be undone.",
   undoAlreadyGone: "That entry was already edited or deleted in the app.",
   help:
-    'Equo bot commands:\n• Expense: breakfast 60, 60 breakfast, lunch 120 Food\n• Income: +52000 salary, income 52000 salary\n• month: this month\'s spending, income and budget\n• undo: delete the last entry recorded from LINE in the past {minutes} minutes\n• unlink: disconnect your Equo account\nDates use Taiwan time.',
+    'Equo bot commands:\n• Expense: breakfast 60, 60 breakfast, lunch 120 Food\n• Income: +52000 salary, income 52000 salary\n• month: this month\'s spending, income and budget\n• budget 15000: set or change your monthly budget ("budget" to view, "budget off" to remove)\n• undo: delete the last entry recorded from LINE in the past {minutes} minutes\n• unlink: disconnect your Equo account\nDates use Taiwan time.',
   notUnderstood: 'I didn\'t get that. To record, send "item amount", e.g. "breakfast 60". Send "help" for all commands.',
   multipleAmounts: 'One entry at a time, please — I found more than one amount. Send them separately, e.g. "lunch 120".',
   missingTitle: 'Add what it was for, e.g. "breakfast 60".',
@@ -143,6 +157,13 @@ const EN: LineDictionary = {
   monthButtonLabel: "This month",
   monthText: "month",
   openLedgerLabel: "Open ledger",
+  budgetSet: "Monthly budget set to {budget}.\nSpent this month: {spent}, {remaining}",
+  budgetShow: "Monthly budget: {budget}\nSpent this month: {spent}, {remaining}",
+  budgetRemainingLeft: "{left} left",
+  budgetRemainingOver: "{over} over",
+  budgetNone: 'No monthly budget yet. Send "budget 15000" to set one.',
+  budgetCleared: "Monthly budget removed.",
+  budgetInvalid: 'The budget must be an amount above 0, e.g. "budget 15000". To remove it, send "budget off".',
 };
 
 const LINE_TEXT: Record<Locale, LineDictionary> = { "zh-Hant": ZH_HANT, en: EN };

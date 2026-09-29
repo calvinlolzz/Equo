@@ -48,23 +48,34 @@ export function maskEmail(email: string): string {
   return `${local.slice(0, 2)}***@${domain}`;
 }
 
+function ledgerUri(appOrigin: string, ledgerId: string): string {
+  return `${appOrigin}/group/${ledgerId}?openExternalBrowser=1`;
+}
+
 function recordQuickReply(dict: LineDictionary, appOrigin: string, ledgerId: string) {
   return quickReply([
     { type: "message", label: dict.undoLabel, text: dict.undoText },
     { type: "message", label: dict.monthButtonLabel, text: dict.monthText },
-    { type: "uri", label: dict.openLedgerLabel, uri: `${appOrigin}/group/${ledgerId}?openExternalBrowser=1` },
+    { type: "uri", label: dict.openLedgerLabel, uri: ledgerUri(appOrigin, ledgerId) },
+  ]);
+}
+
+function budgetQuickReply(dict: LineDictionary, appOrigin: string, ledgerId: string) {
+  return quickReply([
+    { type: "message", label: dict.monthButtonLabel, text: dict.monthText },
+    { type: "uri", label: dict.openLedgerLabel, uri: ledgerUri(appOrigin, ledgerId) },
   ]);
 }
 
 /** The suffix appended to "本月支出 {spent}" when the ledger has a budget set. Empty string when it doesn't. */
-function budgetSuffix(dict: LineDictionary, currency: string, budgetMinor: number, spentMinor: number): string {
+function budgetSuffix(dict: LineDictionary, currency: string, budgetMinor: number | null, spentMinor: number): string {
   if (!budgetMinor || budgetMinor <= 0) return "";
   const left = budgetMinor - spentMinor;
   if (left >= 0) return fill(dict.budgetLeftSuffix, { left: formatAmount(left, currency) });
   return fill(dict.budgetOverSuffix, { over: formatAmount(Math.abs(left), currency) });
 }
 
-function budgetLine(dict: LineDictionary, currency: string, budgetMinor: number, spentMinor: number): string {
+function budgetLine(dict: LineDictionary, currency: string, budgetMinor: number | null, spentMinor: number): string {
   if (!budgetMinor || budgetMinor <= 0) return "";
   const left = budgetMinor - spentMinor;
   if (left >= 0) return fill(dict.budgetLeftLine, { left: formatAmount(left, currency) });
@@ -80,7 +91,7 @@ export function recordedReply(
     amountMinor: number;
     categoryLabel: string;
     currency: string;
-    budgetMinor: number;
+    budgetMinor: number | null;
     month: LineMonthTotals;
     ledgerId: string;
     appOrigin: string;
@@ -109,7 +120,7 @@ export function recordedReply(
 /** The "本月" summary reply. */
 export function monthReply(
   dict: LineDictionary,
-  args: { year: number; month: number; currency: string; budgetMinor: number; month_totals: LineMonthTotals; ledgerId: string; appOrigin: string },
+  args: { year: number; month: number; currency: string; budgetMinor: number | null; month_totals: LineMonthTotals; ledgerId: string; appOrigin: string },
 ): LineMessage {
   const monthLabel = fill(dict.monthLabel, {
     year: args.year,
@@ -127,8 +138,46 @@ export function monthReply(
 
   return textMessage(
     body,
-    quickReply([{ type: "uri", label: dict.openLedgerLabel, uri: `${args.appOrigin}/group/${args.ledgerId}?openExternalBrowser=1` }]),
+    quickReply([{ type: "uri", label: dict.openLedgerLabel, uri: ledgerUri(args.appOrigin, args.ledgerId) }]),
   );
+}
+
+/** "還剩 {left}" / "已超出 {over}" for the budget replies. */
+function budgetRemaining(dict: LineDictionary, currency: string, budgetMinor: number, spentMinor: number): string {
+  const left = budgetMinor - spentMinor;
+  if (left >= 0) return fill(dict.budgetRemainingLeft, { left: formatAmount(left, currency) });
+  return fill(dict.budgetRemainingOver, { over: formatAmount(Math.abs(left), currency) });
+}
+
+/**
+ * The reply to viewing ("show") or just having set ("set") the monthly budget.
+ * A ledger with no budget gets the "how to set one" text in either mode.
+ */
+export function budgetReply(
+  dict: LineDictionary,
+  args: {
+    mode: "set" | "show";
+    currency: string;
+    budgetMinor: number | null;
+    spentMinor: number;
+    ledgerId: string;
+    appOrigin: string;
+  },
+): LineMessage {
+  const qr = budgetQuickReply(dict, args.appOrigin, args.ledgerId);
+  if (args.budgetMinor === null || args.budgetMinor <= 0) return textMessage(dict.budgetNone, qr);
+
+  const text = fill(args.mode === "set" ? dict.budgetSet : dict.budgetShow, {
+    budget: formatAmount(args.budgetMinor, args.currency),
+    spent: formatAmount(args.spentMinor, args.currency),
+    remaining: budgetRemaining(dict, args.currency, args.budgetMinor, args.spentMinor),
+  });
+  return textMessage(text, qr);
+}
+
+/** The reply to 「取消預算」. */
+export function budgetClearedReply(dict: LineDictionary, args: { ledgerId: string; appOrigin: string }): LineMessage {
+  return textMessage(dict.budgetCleared, budgetQuickReply(dict, args.appOrigin, args.ledgerId));
 }
 
 export function helpReply(dict: LineDictionary, undoWindowMinutes: number): LineMessage {

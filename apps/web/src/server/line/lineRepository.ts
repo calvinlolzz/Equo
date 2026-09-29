@@ -4,7 +4,8 @@ import { sha256Hex } from "./lineCrypto.js";
 
 /**
  * Typed wrappers around the line_* RPCs from
- * supabase/migrations/20260929090000_line_bot.sql. One function per RPC,
+ * supabase/migrations/20260929090000_line_bot.sql (and, for the budget
+ * commands, 20260930090000_line_set_budget.sql). One function per RPC,
  * named to match, so a call site reads like the SQL it triggers.
  */
 
@@ -14,7 +15,7 @@ export type LineLedger = {
   currency: string;
   owner_member_id: string;
   cover_image_url: string | null;
-  monthly_budget_minor: number;
+  monthly_budget_minor: number | null;
   kind: string;
 };
 
@@ -98,7 +99,7 @@ export type RecordLineEntryResult =
       expense: Record<string, unknown>;
       ledger_id: string;
       currency: string;
-      budget_minor: number;
+      budget_minor: number | null;
       month: LineMonthTotals;
     };
 
@@ -146,7 +147,7 @@ export async function undoLastLineEntry(
 
 export type LineMonthSummaryResult =
   | { ok: false; reason: "not_linked" | "account_disabled" | "no_ledger" }
-  | { ok: true; ledger_id: string; currency: string; budget_minor: number; month: LineMonthTotals };
+  | { ok: true; ledger_id: string; currency: string; budget_minor: number | null; month: LineMonthTotals };
 
 export async function lineMonthSummary(
   client: PostgrestClient,
@@ -155,6 +156,27 @@ export async function lineMonthSummary(
 ): Promise<LineMonthSummaryResult> {
   return client.rpc<LineMonthSummaryResult>("line_month_summary", {
     p_line_user_id: lineUserId,
+    p_month_start: monthStart,
+  });
+}
+
+/** line_set_budget answers in the same shape as line_month_summary. */
+export type SetLineBudgetResult = LineMonthSummaryResult;
+
+/**
+ * 「預算 N」 / 「取消預算」. `budgetMinor: null` clears the budget. Always pass
+ * null explicitly, never undefined: JSON.stringify drops an undefined key, and
+ * PostgREST then cannot find the (text, integer, date) function.
+ */
+export async function setLineBudget(
+  client: PostgrestClient,
+  lineUserId: string,
+  budgetMinor: number | null,
+  monthStart: string,
+): Promise<SetLineBudgetResult> {
+  return client.rpc<SetLineBudgetResult>("line_set_budget", {
+    p_line_user_id: lineUserId,
+    p_budget_minor: budgetMinor,
     p_month_start: monthStart,
   });
 }
