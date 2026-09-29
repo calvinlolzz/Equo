@@ -305,6 +305,10 @@ function errorText(dict: LineDictionary, reason: LineCommandErrorReason, currenc
       return dict.dateNotSupported;
     case "budget_invalid":
       return dict.budgetInvalid;
+    case "budget_too_large":
+      return dict.budgetTooLarge;
+    case "budget_ambiguous":
+      return dict.budgetAmbiguous;
   }
 }
 

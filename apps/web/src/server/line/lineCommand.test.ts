@@ -324,12 +324,19 @@ describe("parseLineCommand - budget commands", () => {
     expect(parse("預算 0")).toEqual({ type: "error", reason: "budget_invalid" });
   });
 
-  test.each(["預算 -500", "預算 +15000", "預算 1.234", "預算 99999999999"])('"%s" -> budget_invalid', (text) => {
+  test.each(["預算 -500", "預算 +15000", "預算 1.234"])('"%s" -> budget_invalid', (text) => {
     expect(errorReason(text)).toBe("budget_invalid");
   });
 
-  // [MV]: drop the "rest must be exactly one amount token" check, or match
-  // the prefix with includes() instead of startsWith(), and these go red.
+  // Too large has its own reply (please set it in the app), not "must be above 0".
+  test('"預算 99999999999" -> budget_too_large', () => {
+    expect(errorReason("預算 99999999999")).toBe("budget_too_large");
+  });
+
+  // [MV]: match the prefix with includes() and split at its position instead
+  // of startsWith(), and 「買 預算 300」 goes red. (The "exactly one amount
+  // token" rule needs no guard of its own: parseAmountToken's patterns are
+  // anchored and allow no whitespace.)
   test.each([
     ["預算外 300", "預算外", 30000],
     ["預算外300", "預算外", 30000],
@@ -340,8 +347,55 @@ describe("parseLineCommand - budget commands", () => {
     expect(record(text)).toMatchObject({ kind: "expense", title, amountMinor });
   });
 
-  test('"預算 15000 餐飲" (more than one token) is a record, not a budget', () => {
-    expect(record("預算 15000 餐飲")).toMatchObject({ title: "預算", amountMinor: 1500000, category: "food" });
+  // [MV]: take the first token of the rest instead of requiring exactly one,
+  // and this goes red (it would set a 15,000 budget and drop 餐飲).
+  // [MV]: remove the safety net in parseLineCommand and this goes red too
+  // (it would record a 15,000 expense titled 預算).
+  test.each(["預算 15000 餐飲", "budget 15000 food", "我的預算 300 餐飲", "預算改 15000 餐飲", "設定預算 300 餐飲"])(
+    '"%s" (a near-miss the grammar does not know) asks what was meant instead of recording',
+    (text) => {
+      expect(errorReason(text)).toBe("budget_ambiguous");
+    },
+  );
+
+  test("the safety net does not catch real titles: 預算書, 預算外, 買預算書", () => {
+    expect(record("買預算書 200")).toMatchObject({ title: "買預算書", amountMinor: 20000 });
+    expect(record("預算書 200").title).toBe("預算書");
+    expect(record("預算外 300").title).toBe("預算外");
+  });
+
+  // [MV]: remove the matching prefix (or the verb / separator / unit handling)
+  // and its row goes red.
+  test.each([
+    ["本月預算 15000", 1500000],
+    ["我的預算 15000", 1500000],
+    ["月預算 15000", 1500000],
+    ["預算 15000 元", 1500000],
+    ["預算 15,000 元", 1500000],
+    ["預算 15000 塊", 1500000],
+    ["預算 NT$ 15000", 1500000],
+    ["預算設成 15000", 1500000],
+    ["預算調整 20000", 2000000],
+    ["預算調成20000", 2000000],
+    ["設定預算為 15000", 1500000],
+    ["預算 改成 20000", 2000000],
+    ["預算 改為 20000", 2000000],
+    ["預算 改 20000", 2000000],
+    ["預算=15000", 1500000],
+    ["預算＝15000", 1500000],
+    ["预算设为 15000", 1500000],
+    ["预算设定 15000", 1500000],
+    ["更改预算 15000", 1500000],
+    ["设定每月预算 15000", 1500000],
+    ["my budget 15000", 1500000],
+    ["budget: 15000", 1500000],
+    ["budget=15000", 1500000],
+  ])('near-miss "%s" -> budget_set %i', (text, amountMinor) => {
+    expect(parse(text)).toEqual({ type: "budget_set", amountMinor });
+  });
+
+  test.each(["預算？", "預算?", "我的預算 ？"])('"%s" -> budget_show (trailing question mark)', (text) => {
+    expect(parse(text)).toEqual({ type: "budget_show" });
   });
 
   test('"預算改" alone -> not_understood', () => {

@@ -474,7 +474,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 用 LINE 官方帳號傳「早餐 60」，記進**個人帳本**（只記個人帳本，沒有群組 id 的參數：`line_record_entry` 靠 `ensure_personal_ledger` 自己找帳本）。綁定走 LINE 官方的 account-link 流程；日期一律用**台灣時間**、一律記在**傳訊當天**。
 
-也能用文字指令管理個人帳本的**每月預算**：「預算 15000」設定或修改、「預算」查看、「取消預算」取消。`line_set_budget` 跟 `line_record_entry` 一樣沒有群組 id 的參數，只靠 `ensure_personal_ledger` 找帳本；它寫的就是 App「編輯帳本」改的同一個 `groups.monthly_budget_minor`，所以 App 在下一次列表同步就會看到。「預算 0」不會取消（回覆會教你傳「取消預算」）；「預算外 300」這類不是整句只有一個金額的訊息仍照一般記帳處理。
+也能用文字指令管理個人帳本的**每月預算**：「預算 15000」設定或修改、「預算」查看、「取消預算」取消。`line_set_budget` 跟 `line_record_entry` 一樣沒有群組 id 的參數，只靠 `ensure_personal_ledger` 找帳本；它寫的就是 App「編輯帳本」改的同一個 `groups.monthly_budget_minor`，所以 App 在下一次列表同步就會看到。「預算 0」不會取消（回覆會教你傳「取消預算」）。**行為變更**：以前傳「預算 15000」／「budget 15000」會記成一筆名為「預算」的支出，現在改為設定預算。長得像設定、但文法沒認出來的說法（例如「預算 15000 餐飲」）**不會**被記成支出，而是回問「是要設定每月預算嗎？」；「預算外 300」、「預算書 200」這類真的項目名稱仍照一般記帳處理。
 
 ### 環境變數（Vercel Production）
 

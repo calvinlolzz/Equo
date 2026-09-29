@@ -40,7 +40,9 @@ export type LineCommandErrorReason =
   | "multiple_amounts"
   | "title_too_long"
   | "date_not_supported"
-  | "budget_invalid";
+  | "budget_invalid"
+  | "budget_too_large"
+  | "budget_ambiguous";
 
 export type LineCommand =
   | { type: "help" }
@@ -162,26 +164,52 @@ const BUDGET_CLEAR_COMMANDS = [
 /** Longest first, so 「預算改成」 wins over 「預算改」 wins over 「預算」. Sorted once at module load. */
 const BUDGET_SET_PREFIXES_CJK = [
   "設定每月預算",
+  "設定預算為",
   "設定預算",
   "修改預算",
   "更改預算",
   "每月預算",
+  "本月預算",
+  "我的預算",
+  "月預算",
   "預算改成",
   "預算改為",
   "預算設為",
+  "預算設成",
   "預算設定",
+  "預算調整",
+  "預算調成",
   "預算改",
   "預算",
+  "设定每月预算",
+  "设定预算为",
   "设定预算",
   "修改预算",
+  "更改预算",
   "每月预算",
+  "本月预算",
+  "我的预算",
+  "月预算",
   "预算改成",
   "预算改为",
+  "预算设为",
+  "预算设成",
+  "预算设定",
+  "预算调整",
+  "预算调成",
   "预算改",
   "预算",
 ].sort((a, b) => b.length - a.length);
-/** ASCII prefixes need a separator (a colon or a space), so 「budgeting 50」 stays a record. */
-const BUDGET_SET_ASCII = /^(?:set monthly budget|set budget|monthly budget|budget)\s*[:\s]\s*(.+)$/;
+/** ASCII prefixes need a separator (a colon, an equals sign or a space), so 「budgeting 50」 stays a record. */
+const BUDGET_SET_ASCII = /^(?:set my budget|set monthly budget|set budget|monthly budget|my budget|budget)\s*[:=\s]\s*(.+)$/;
+/**
+ * A record whose title is essentially just "budget" - what a near-miss
+ * phrasing of the set command turns into (「預算 15000 餐飲」). Deliberately
+ * NOT a loose prefix test: 「預算外」 and 「預算書」 are real expense titles.
+ */
+const BUDGET_TITLE_CJK =
+  /^(?:設定|设定|修改|更改|調整|调整|本月|我的|每月|月)?(?:預算|预算)(?:改成|改為|改为|改|設成|设成|設為|设为|設定|设定|調整|调整|調成|调成|為|为)?$/;
+const BUDGET_TITLE_ASCII = /^(?:my |monthly |set |set my |set monthly )?budget$/;
 
 // ---------------------------------------------------------------------------
 // Amount tokens
@@ -557,41 +585,63 @@ function parseRecordCommand(
 /**
  * The budget grammar, on the folded + lowercased message. Returns null - not an
  * error - for anything that is not a whole-message budget command, so it falls
- * through to the record grammar: 「預算外 300」, 「預算外300」, 「預算書 200」,
- * 「預算 15000 餐飲」 (more than one token) and 「budgeting 50」 all stay records.
+ * through to the record grammar: 「預算外 300」, 「預算外300」, 「預算書 200」
+ * and 「budgeting 50」 stay records. (「預算 15000 餐飲」 also falls through, but
+ * parseLineCommand's safety net then asks what was meant.)
  *
  * After a set prefix the rest must be exactly ONE amount token. An amount
- * that is present but unusable (0, negative, a leading +, too many decimals,
- * too large) is `budget_invalid`, never a clear: clearing needs explicit words
+ * that is present but unusable (0, negative, a leading +, too many decimals)
+ * is `budget_invalid`, and too large is `budget_too_large` - never a clear:
+ * clearing needs explicit words
  * (「取消預算」), and 「預算 0」 must not silently destroy a budget.
  */
 export function parseBudgetCommand(lower: string, currency: string): LineCommand | null {
-  if (BUDGET_SHOW_COMMANDS.includes(lower)) return { type: "budget_show" };
+  // 「預算？」 - a trailing question mark still means "show me".
+  if (BUDGET_SHOW_COMMANDS.includes(lower.replace(/\s*\?+$/, ""))) return { type: "budget_show" };
   if (BUDGET_CLEAR_COMMANDS.includes(lower)) return { type: "budget_clear" };
 
   let rest: string | null = null;
   const cjkPrefix = BUDGET_SET_PREFIXES_CJK.find((prefix) => lower.startsWith(prefix));
   if (cjkPrefix) {
-    rest = lower.slice(cjkPrefix.length).replace(/^\s*:?\s*/, "");
+    rest = lower
+      .slice(cjkPrefix.length)
+      // "預算：15000" / "預算=15000" / "預算 15000"
+      .replace(/^\s*[:=]?\s*/, "")
+      // "預算 改成 20000" - a change verb after a space
+      .replace(/^(?:改成|改為|改为|改)\s*[:=]?\s*/, "");
   } else {
     const ascii = lower.match(BUDGET_SET_ASCII);
     if (ascii) rest = ascii[1];
   }
 
-  if (rest === null || rest === "" || /\s/.test(rest)) return null;
+  if (rest === null || rest === "") return null;
+
+  // "15000 元" / "NT$ 15000" - a space between the amount and its unit.
+  rest = rest.replace(/^(nt\$|\$)\s+/, "$1").replace(/\s+(元|塊錢|塊)$/, "$1");
 
   // "15000." / "15000。" - a sentence-final stop glued to the amount.
   const stripped = rest.replace(/[.。]+$/, "");
   if (stripped === "") return null;
 
+  // The rest must be exactly ONE amount token: parseAmountToken's patterns
+  // are anchored and allow no whitespace, so 「預算 15000 餐飲」 and 「預算書
+  // 200」 come back null here and fall through to the record grammar.
   const result = parseAmountToken(stripped, currency);
   if (result === null) return null;
   if ("error" in result) {
-    return { type: "error", reason: result.error === "no_decimals" ? "no_decimals" : "budget_invalid" };
+    if (result.error === "no_decimals") return { type: "error", reason: "no_decimals" };
+    if (result.error === "too_large") return { type: "error", reason: "budget_too_large" };
+    return { type: "error", reason: "budget_invalid" };
   }
   if (result.income) return { type: "error", reason: "budget_invalid" };
 
   return { type: "budget_set", amountMinor: result.amountMinor };
+}
+
+/** Whether a record's title is essentially just "budget" - see BUDGET_TITLE_CJK. */
+function looksLikeBudgetTitle(title: string): boolean {
+  const folded = title.normalize("NFKC").toLowerCase().trim();
+  return BUDGET_TITLE_CJK.test(folded) || BUDGET_TITLE_ASCII.test(folded);
 }
 
 export function parseLineCommand(
@@ -614,7 +664,15 @@ export function parseLineCommand(
   const budget = parseBudgetCommand(lower, options.currency);
   if (budget) return budget;
 
-  return parseRecordCommand(originalForRecord(text), options);
+  const record = parseRecordCommand(originalForRecord(text), options);
+
+  // Safety net: a near-miss budget phrasing we did not recognise must not
+  // silently become a big expense titled "預算". Ask instead.
+  if (record.type === "record" && looksLikeBudgetTitle(record.title)) {
+    return { type: "error", reason: "budget_ambiguous" };
+  }
+
+  return record;
 }
 
 /** The user's text for the record path: whitespace-collapsed, trimmed, trailing sentence punctuation dropped - but NOT folded, so the stored title stays as typed. */

@@ -56,6 +56,8 @@ export type LineDictionary = {
   budgetNone: string;
   budgetCleared: string;
   budgetInvalid: string;
+  budgetTooLarge: string;
+  budgetAmbiguous: string;
 };
 
 const ZH_HANT: LineDictionary = {
@@ -109,6 +111,8 @@ const ZH_HANT: LineDictionary = {
   budgetNone: "還沒有設定每月預算。傳「預算 15000」就能設定。",
   budgetCleared: "已取消每月預算。",
   budgetInvalid: "預算請用大於 0 的金額，例如「預算 15000」。要取消預算請傳「取消預算」。",
+  budgetTooLarge: "預算金額太大了，請到 App 裡設定。",
+  budgetAmbiguous: "是要設定每月預算嗎？請傳「預算 15000」；要記一筆支出，請換個項目名稱，例如「買預算書 200」。",
 };
 
 const EN: LineDictionary = {
@@ -164,6 +168,9 @@ const EN: LineDictionary = {
   budgetNone: 'No monthly budget yet. Send "budget 15000" to set one.',
   budgetCleared: "Monthly budget removed.",
   budgetInvalid: 'The budget must be an amount above 0, e.g. "budget 15000". To remove it, send "budget off".',
+  budgetTooLarge: "That budget is too large — please set it in the app.",
+  budgetAmbiguous:
+    'Did you mean to set your monthly budget? Send "budget 15000". To record an expense, use a different item name.',
 };
 
 const LINE_TEXT: Record<Locale, LineDictionary> = { "zh-Hant": ZH_HANT, en: EN };

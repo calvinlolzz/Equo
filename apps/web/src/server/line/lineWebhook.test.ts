@@ -776,6 +776,27 @@ describe("handleLineWebhook - budget commands", () => {
     expect(messageOf(line).text).toBe(ZH_HANT.noLedger);
   });
 
+  test("a too-large budget gets budgetTooLarge, not the 'above 0' text, and touches no RPC", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 99999999999" })]);
+
+    expect(client.rpcCall("line_set_budget")).toBeUndefined();
+    expect(messageOf(line).text).toBe(ZH_HANT.budgetTooLarge);
+  });
+
+  test("a near-miss like 「預算 15000 餐飲」 asks what was meant and records nothing", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 15000 餐飲" })]);
+
+    expect(client.rpcCall("line_set_budget")).toBeUndefined();
+    expect(client.rpcCall("line_record_entry")).toBeUndefined();
+    expect(messageOf(line).text).toBe(ZH_HANT.budgetAmbiguous);
+  });
+
   test("an English-locale user gets the English reply", async () => {
     const { client } = createLineFakeClient({ line_context: () => ({ ...LINKED_CONTEXT, locale: "en" }) });
     const line = fakeLineClient();

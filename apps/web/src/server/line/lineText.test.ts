@@ -56,7 +56,7 @@ describe("LINE_TEXT dictionaries", () => {
     }
   });
 
-  test.each(["linkPrompt", "linkFailed", "budgetNone", "budgetInvalid"] as const)("%s is at most 160 characters in both locales", (key) => {
+  test.each(["linkPrompt", "linkFailed", "budgetNone", "budgetInvalid", "budgetTooLarge", "budgetAmbiguous"] as const)("%s is at most 160 characters in both locales", (key) => {
     expect([...ZH_HANT[key]].length).toBeLessThanOrEqual(MEDIUM_LIMIT);
     expect([...EN[key]].length).toBeLessThanOrEqual(MEDIUM_LIMIT);
   });
@@ -113,6 +113,9 @@ describe("budget examples in the reply text actually parse", () => {
     ["en budgetNone", EN.budgetNone, "budget 15000", "budget_set"],
     ["en budgetInvalid", EN.budgetInvalid, "budget 15000", "budget_set"],
     ["en budgetInvalid", EN.budgetInvalid, "budget off", "budget_clear"],
+    ["zh budgetAmbiguous", ZH_HANT.budgetAmbiguous, "預算 15000", "budget_set"],
+    ["zh budgetAmbiguous", ZH_HANT.budgetAmbiguous, "買預算書 200", "record"],
+    ["en budgetAmbiguous", EN.budgetAmbiguous, "budget 15000", "budget_set"],
   ];
 
   test.each(cases)("%s teaches %s -> %s", (_label, text, example, type) => {
