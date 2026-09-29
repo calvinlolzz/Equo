@@ -715,6 +715,11 @@ export const EN: UiDictionary = {
     failed: "Couldn't start linking. Please try again.",
     recordBadge: "LINE",
     recordBadgeTitle: "Recorded in LINE",
+    hintTitle: "Record faster in LINE",
+    hintBody: 'Add Equo as a friend and send "breakfast 60" — it lands in this ledger.',
+    hintScan: "Or scan the QR code with LINE on your phone",
+    hintQrAlt: "QR code to add Equo on LINE",
+    hintDismiss: "Dismiss LINE tip",
     backHome: "Back to Equo",
   },
   misc: {

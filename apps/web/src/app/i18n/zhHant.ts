@@ -759,6 +759,11 @@ export const ZH_HANT = {
     backHome: "回到 Equo",
     recordBadge: "LINE",
     recordBadgeTitle: "從 LINE 記錄",
+    hintTitle: "用 LINE 記帳更快",
+    hintBody: "加 Equo 好友，傳「早餐 60」就記進這本帳。",
+    hintScan: "或用手機 LINE 掃描 QR code",
+    hintQrAlt: "加 Equo 為 LINE 好友的 QR code",
+    hintDismiss: "關閉 LINE 記帳提示",
   },
   misc: {
     pullRefreshing: "重新整理中…",

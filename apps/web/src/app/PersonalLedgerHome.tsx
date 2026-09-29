@@ -5,6 +5,7 @@ import { CategoryDonut } from "./CategoryDonut";
 import { GroupHomeSkeleton } from "./GroupHomeSkeleton";
 import { HOME_RECORD_LIMIT, HomeRecordsSection } from "./GroupHome";
 import { InstallHint } from "./InstallHint";
+import { LineLedgerHint } from "./LineLedgerHint";
 import { formatAmount, formatSigned } from "./formatAmount";
 import { formatRecordStamp } from "./appDates";
 import { currentMonthKey, summarizeLedgerMonth } from "./personalLedger";
@@ -37,6 +38,8 @@ export type PersonalLedgerHomeProps = {
   monthlyBudgetMinor?: number | null;
   /** Whether the loaded `expenses` window is enough to trust this month's totals - see ledgerMonthCoverage. */
   coverage: "complete" | "partial";
+  /** Admin read-only view-as; the LINE hint neither fetches nor shows. */
+  viewingAs: boolean;
   onOpenDialog: (mode: DialogMode) => void;
   onScanReceipt: () => void;
   onOpenExpenseComposer: () => void;
@@ -64,6 +67,7 @@ export function PersonalLedgerHome({
   expenseCount,
   monthlyBudgetMinor,
   coverage,
+  viewingAs,
   onOpenDialog,
   onScanReceipt,
   onOpenExpenseComposer,
@@ -82,6 +86,14 @@ export function PersonalLedgerHome({
 
   const empty = hasLoadedDetail && expenses.length === 0;
 
+  // One suggestion at a time: on a phone the install hint has the floor.
+  const lineHint = (
+    <LineLedgerHint
+      enabled={hasLoadedDetail && !viewingAs && !(isMobileLayout && install.state !== "unavailable")}
+      showQr={!isMobileLayout}
+    />
+  );
+
   return (
     <section className="group-room pizo-home enter-content" aria-label={ledgerText.homeLabel}>
       {isMobileLayout ? <h1 className="visually-hidden">{displayName}</h1> : null}
@@ -97,6 +109,7 @@ export function PersonalLedgerHome({
         </div>
 
         {empty ? (
+          <>
           <div className="home-empty-actions">
             <p className="ledger-empty-title">{ledgerText.emptyTitle}</p>
             <p className="empty-copy">{ledgerText.emptyBody}</p>
@@ -113,6 +126,8 @@ export function PersonalLedgerHome({
               {text.joinGroup}
             </button>
           </div>
+          {lineHint}
+          </>
         ) : (
           <>
             <div className="ledger-month-card">
@@ -132,6 +147,8 @@ export function PersonalLedgerHome({
             </div>
 
             {budget ? <BudgetBar budget={budget} currency={group.currency} /> : null}
+
+            {lineHint}
 
             {summary.expenseMinor > 0 ? (
               <div className="dialog-section-list">

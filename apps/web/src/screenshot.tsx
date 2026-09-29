@@ -336,6 +336,10 @@ const ROUTES: Record<string, unknown> = {
     : {}),
   [`GET /groups/${GROUP_ID}`]: DETAIL,
   "GET /notifications": { notifications: [], unread_count: 0 },
+  "GET /me/line": {
+    linked: previewLine !== "unlinked",
+    linked_at: previewLine === "unlinked" ? null : "2026-09-29T00:00:00Z",
+  },
   "GET /me": { user: { id: "u_me", email: "demo@example.com", display_name: "我" } },
   "GET /catalog": DEFAULT_CATALOG,
   [`GET /groups/${GROUP_ID}/spend-breakdown`]: spendBreakdown(),

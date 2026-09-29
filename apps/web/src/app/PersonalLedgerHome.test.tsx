@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { PersonalLedgerHome, type PersonalLedgerHomeProps } from "./PersonalLedgerHome";
 import { currentMonthKey } from "./personalLedger";
 import type { Expense, Group } from "./appTypes";
@@ -38,6 +38,7 @@ function renderHome(overrides: Partial<PersonalLedgerHomeProps> = {}) {
     expenseCount: 1,
     monthlyBudgetMinor: null,
     coverage: "complete",
+    viewingAs: false,
     onOpenDialog: vi.fn(),
     onScanReceipt: vi.fn(),
     onOpenExpenseComposer: vi.fn(),
@@ -50,7 +51,29 @@ function renderHome(overrides: Partial<PersonalLedgerHomeProps> = {}) {
   return props;
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  localStorage.clear();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+const OA_URL = "https://line.me/R/ti/p/@100ujhjj";
+
+function stubUnlinkedLine() {
+  const calls: string[] = [];
+  vi.stubEnv("VITE_LINE_OA_URL", OA_URL);
+  vi.stubGlobal("fetch", async (url: string) => {
+    calls.push(String(url));
+    return { ok: true, json: async () => ({ linked: false, linked_at: null }) } as Response;
+  });
+  return calls;
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 describe("PersonalLedgerHome stands on its own", () => {
   // [MV]
@@ -120,5 +143,64 @@ describe("PersonalLedgerHome stands on its own", () => {
     expect(badged).toHaveLength(1);
     expect(badged[0].textContent).toContain("午餐");
     expect(badged[0].querySelector(".record-line-badge")?.textContent).toBe(UI_TEXT.lineLink.recordBadge);
+  });
+
+  describe("the LINE hint", () => {
+    // [MV]
+    test("sits after the month card and before the category donut", async () => {
+      stubUnlinkedLine();
+      renderHome({ expenses: [ownExpense({ amountMinor: 8500 })], monthlyBudgetMinor: 10000 });
+
+      const hint = await screen.findByRole("complementary", { name: UI_TEXT.lineLink.hintTitle });
+      const home = document.querySelector("#group-home")!;
+      expect(home.contains(hint)).toBe(true);
+      const card = document.querySelector(".ledger-month-card")!;
+      const donut = document.querySelector(".dialog-section-list")!;
+      expect(card.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(hint.compareDocumentPosition(donut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    // [MV]
+    test("in the empty state it follows the empty-state actions", async () => {
+      stubUnlinkedLine();
+      renderHome({ expenses: [], expenseCount: 0 });
+
+      const hint = await screen.findByRole("complementary", { name: UI_TEXT.lineLink.hintTitle });
+      const actions = document.querySelector(".home-empty-actions")!;
+      expect(actions.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    test("an admin in view-as neither sees it nor triggers the fetch", async () => {
+      const calls = stubUnlinkedLine();
+      renderHome({ viewingAs: true });
+      await settle();
+
+      expect(calls).toHaveLength(0);
+      expect(document.querySelector(".line-hint")).toBeNull();
+    });
+
+    test("on a phone the install hint has the floor: no card, no fetch", async () => {
+      const calls = stubUnlinkedLine();
+      renderHome({
+        isMobileLayout: true,
+        install: { state: "manual", promptInstall: vi.fn(), dismiss: vi.fn() } as unknown as PersonalLedgerHomeProps["install"],
+      });
+      await settle();
+
+      expect(calls).toHaveLength(0);
+      expect(document.querySelector(".line-hint")).toBeNull();
+    });
+
+    test("with no add-friend URL nothing is fetched", async () => {
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        calls.push(String(url));
+        return { ok: true, json: async () => ({}) } as Response;
+      });
+      renderHome();
+      await settle();
+
+      expect(calls).toHaveLength(0);
+    });
   });
 });

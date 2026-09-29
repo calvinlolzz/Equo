@@ -84,6 +84,25 @@ export function lineOaUrl(): string {
   return LINE_OA_URL_PATTERN.test(raw) ? raw : "";
 }
 
+/** Set once the ledger's LINE hint is dismissed or the account is seen linked - per device, forever (the InstallHint precedent). */
+export const LINE_HINT_DISMISSED_KEY = "equo.clean.line_hint_dismissed";
+
+export function readLineHintDismissed(): boolean {
+  try {
+    return localStorage.getItem(LINE_HINT_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markLineHintDismissed(): void {
+  try {
+    localStorage.setItem(LINE_HINT_DISMISSED_KEY, "1");
+  } catch {
+    // Storage unreachable: the hint just comes back next visit.
+  }
+}
+
 /**
  * The page's own URL with the token AND LINE's openExternalBrowser flag, for
  * the "open in Safari/Chrome" link shown inside LINE's in-app browser. The

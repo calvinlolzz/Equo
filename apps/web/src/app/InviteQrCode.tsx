@@ -18,24 +18,34 @@ const QUIET_ZONE = 2;
  * it is already a large flat area of background, which is what the margin is
  * there to provide.
  */
-export function InviteQrCode({ value }: { value: string }) {
+export function InviteQrCode({
+  value,
+  label = text.inviteQrAlt,
+  frameClassName = "invite-qr-frame",
+}: {
+  value: string;
+  /** The image's accessible name. */
+  label?: string;
+  /** The wrapper's class; the empty placeholder gets `${frameClassName}--empty`. */
+  frameClassName?: string;
+}) {
   const { path, size } = useMemo(() => {
     if (!value) return { path: "", size: 0 };
     const modules = buildQrModules(value);
     return { path: buildQrPath(modules), size: modules.length };
   }, [value]);
 
-  if (!path) return <div className="invite-qr-frame invite-qr-frame--empty" aria-hidden="true" />;
+  if (!path) return <div className={`${frameClassName} ${frameClassName}--empty`} aria-hidden="true" />;
 
   const extent = size + QUIET_ZONE * 2;
 
   return (
-    <div className="invite-qr-frame">
+    <div className={frameClassName}>
       <svg
         className="invite-qr"
         viewBox={`0 0 ${extent} ${extent}`}
         role="img"
-        aria-label={text.inviteQrAlt}
+        aria-label={label}
         shapeRendering="crispEdges"
       >
         <path d={path} transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`} fill="currentColor" />

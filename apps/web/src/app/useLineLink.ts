@@ -5,7 +5,9 @@ export type LineLinkState = "loading" | "linked" | "unlinked" | "hidden";
 
 /**
  * Whether this account has a LINE account linked, for the profile page's
- * account tab.
+ * account tab and for the ledger home's LINE hint (LineLedgerHint, which
+ * passes `active` false when the add-friend URL is unset, the hint was
+ * dismissed, an admin is in view-as, or another suggestion is on screen).
  *
  * Fetches only while `active` (the account tab being on screen) - the same
  * shape as usePushNotifications: opening this dialog is not worth a round
