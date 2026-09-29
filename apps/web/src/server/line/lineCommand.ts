@@ -4,7 +4,7 @@ import { LINE_CATEGORY_KEYWORDS } from "./lineCategoryKeywords.js";
 
 /**
  * The LINE chat command grammar: parses a normalized message into either a
- * named command (help/month/undo/unlink/link), a record attempt, or an error
+ * named command (help/month/undo/unlink/link/budget), a record attempt, or an error
  * reason the reply text can explain.
  *
  * Pure and synchronous by design - nothing here touches the database or the
@@ -39,7 +39,8 @@ export type LineCommandErrorReason =
   | "missing_title"
   | "multiple_amounts"
   | "title_too_long"
-  | "date_not_supported";
+  | "date_not_supported"
+  | "budget_invalid";
 
 export type LineCommand =
   | { type: "help" }
@@ -47,6 +48,9 @@ export type LineCommand =
   | { type: "undo" }
   | { type: "unlink" }
   | { type: "link" }
+  | { type: "budget_show" }
+  | { type: "budget_set"; amountMinor: number }
+  | { type: "budget_clear" }
   | { type: "record"; kind: "expense" | "income"; title: string; amountMinor: number; category: string }
   | { type: "error"; reason: LineCommandErrorReason };
 
@@ -118,6 +122,66 @@ const MONTH_COMMANDS = ["本月", "這個月", "這月", "月報", "本月统计
 const UNDO_COMMANDS = ["復原", "刪除上一筆", "刪掉上一筆", "取消上一筆", "撤銷", "复原", "删除上一笔", "undo"];
 const UNLINK_COMMANDS = ["解除綁定", "解除連結", "取消綁定", "解除绑定", "unlink"];
 const LINK_COMMANDS = ["綁定", "連結", "連結帳號", "綁定帳號", "绑定", "link"];
+
+// 「預算」 commands: view, set/change, clear the personal ledger's monthly
+// budget. Checked AFTER the exact-match commands above and BEFORE the record
+// grammar, so 「預算 15000」 sets the budget instead of recording an expense
+// titled 預算. Only a whole-message amount counts - see parseBudgetCommand.
+const BUDGET_SHOW_COMMANDS = [
+  "預算",
+  "每月預算",
+  "本月預算",
+  "查看預算",
+  "我的預算",
+  "预算",
+  "每月预算",
+  "本月预算",
+  "查看预算",
+  "我的预算",
+  "budget",
+  "monthly budget",
+  "my budget",
+];
+const BUDGET_CLEAR_COMMANDS = [
+  "刪除預算",
+  "清除預算",
+  "取消預算",
+  "移除預算",
+  "刪掉預算",
+  "取消每月預算",
+  "删除预算",
+  "清除预算",
+  "取消预算",
+  "budget off",
+  "budget clear",
+  "clear budget",
+  "remove budget",
+  "delete budget",
+  "no budget",
+];
+/** Longest first, so 「預算改成」 wins over 「預算改」 wins over 「預算」. Sorted once at module load. */
+const BUDGET_SET_PREFIXES_CJK = [
+  "設定每月預算",
+  "設定預算",
+  "修改預算",
+  "更改預算",
+  "每月預算",
+  "預算改成",
+  "預算改為",
+  "預算設為",
+  "預算設定",
+  "預算改",
+  "預算",
+  "设定预算",
+  "修改预算",
+  "每月预算",
+  "预算改成",
+  "预算改为",
+  "预算改",
+  "预算",
+].sort((a, b) => b.length - a.length);
+/** ASCII prefixes need a separator (a colon or a space), so 「budgeting 50」 stays a record. */
+const BUDGET_SET_ASCII = /^(?:set monthly budget|set budget|monthly budget|budget)\s*[:\s]\s*(.+)$/;
 
 // ---------------------------------------------------------------------------
 // Amount tokens
@@ -490,6 +554,46 @@ function parseRecordCommand(
   return { type: "record", kind, title, amountMinor: amount.amountMinor, category: resolved.category };
 }
 
+/**
+ * The budget grammar, on the folded + lowercased message. Returns null - not an
+ * error - for anything that is not a whole-message budget command, so it falls
+ * through to the record grammar: 「預算外 300」, 「預算外300」, 「預算書 200」,
+ * 「預算 15000 餐飲」 (more than one token) and 「budgeting 50」 all stay records.
+ *
+ * After a set prefix the rest must be exactly ONE amount token. An amount
+ * that is present but unusable (0, negative, a leading +, too many decimals,
+ * too large) is `budget_invalid`, never a clear: clearing needs explicit words
+ * (「取消預算」), and 「預算 0」 must not silently destroy a budget.
+ */
+export function parseBudgetCommand(lower: string, currency: string): LineCommand | null {
+  if (BUDGET_SHOW_COMMANDS.includes(lower)) return { type: "budget_show" };
+  if (BUDGET_CLEAR_COMMANDS.includes(lower)) return { type: "budget_clear" };
+
+  let rest: string | null = null;
+  const cjkPrefix = BUDGET_SET_PREFIXES_CJK.find((prefix) => lower.startsWith(prefix));
+  if (cjkPrefix) {
+    rest = lower.slice(cjkPrefix.length).replace(/^\s*:?\s*/, "");
+  } else {
+    const ascii = lower.match(BUDGET_SET_ASCII);
+    if (ascii) rest = ascii[1];
+  }
+
+  if (rest === null || rest === "" || /\s/.test(rest)) return null;
+
+  // "15000." / "15000。" - a sentence-final stop glued to the amount.
+  const stripped = rest.replace(/[.。]+$/, "");
+  if (stripped === "") return null;
+
+  const result = parseAmountToken(stripped, currency);
+  if (result === null) return null;
+  if ("error" in result) {
+    return { type: "error", reason: result.error === "no_decimals" ? "no_decimals" : "budget_invalid" };
+  }
+  if (result.income) return { type: "error", reason: "budget_invalid" };
+
+  return { type: "budget_set", amountMinor: result.amountMinor };
+}
+
 export function parseLineCommand(
   text: string,
   options: { currency: string; categories: readonly LineCategoryInfo[] },
@@ -506,6 +610,9 @@ export function parseLineCommand(
   if (UNDO_COMMANDS.includes(lower)) return { type: "undo" };
   if (UNLINK_COMMANDS.includes(lower)) return { type: "unlink" };
   if (LINK_COMMANDS.includes(lower)) return { type: "link" };
+
+  const budget = parseBudgetCommand(lower, options.currency);
+  if (budget) return budget;
 
   return parseRecordCommand(originalForRecord(text), options);
 }

@@ -250,3 +250,106 @@ describe("parseLineCommand - dates are refused", () => {
     expect(record("咖啡 9.5").amountMinor).toBe(950);
   });
 });
+
+describe("parseLineCommand - budget commands", () => {
+  test.each([
+    "預算",
+    "每月預算",
+    "本月預算",
+    "查看預算",
+    "我的預算",
+    "预算",
+    "budget",
+    "Budget",
+    "monthly budget",
+    "my budget",
+  ])('"%s" -> budget_show', (text) => {
+    expect(parse(text)).toEqual({ type: "budget_show" });
+  });
+
+  test.each([
+    "預算 15000",
+    "預算15000",
+    "設定預算 15000",
+    "每月預算 15000",
+    "預算：15000",
+    "預算 15,000元",
+    "預算 NT$15000",
+    "預算 １５０００",
+    "budget 15000",
+    "set budget 15000",
+    "預算 15000.",
+    "預算 15000。",
+  ])('"%s" -> budget_set 1500000', (text) => {
+    expect(parse(text)).toEqual({ type: "budget_set", amountMinor: 1500000 });
+  });
+
+  test.each(["預算改 20000", "預算改成 20000", "預算改為20000", "修改預算 20000"])(
+    '"%s" -> budget_set 2000000',
+    (text) => {
+      expect(parse(text)).toEqual({ type: "budget_set", amountMinor: 2000000 });
+    },
+  );
+
+  test('"預算 15000.5" -> budget_set 1500050', () => {
+    expect(parse("預算 15000.5")).toEqual({ type: "budget_set", amountMinor: 1500050 });
+  });
+
+  test('JPY "預算 50000" -> budget_set 5000000', () => {
+    expect(parse("預算 50000", "JPY")).toEqual({ type: "budget_set", amountMinor: 5000000 });
+  });
+
+  test('JPY "預算 500.5" -> no_decimals', () => {
+    expect(errorReason("預算 500.5", "JPY")).toBe("no_decimals");
+  });
+
+  // [MV]: delete 取消預算 from BUDGET_CLEAR_COMMANDS and this goes red.
+  test.each([
+    "刪除預算",
+    "清除預算",
+    "取消預算",
+    "移除預算",
+    "删除预算",
+    "budget off",
+    "Budget Off",
+    "clear budget",
+    "remove budget",
+  ])('"%s" -> budget_clear', (text) => {
+    expect(parse(text)).toEqual({ type: "budget_clear" });
+  });
+
+  // [MV]: map the amount-0 case to budget_clear and this goes red. A budget
+  // of 0 does not exist; clearing needs explicit words.
+  test('"預算 0" -> budget_invalid, never a clear', () => {
+    expect(parse("預算 0")).toEqual({ type: "error", reason: "budget_invalid" });
+  });
+
+  test.each(["預算 -500", "預算 +15000", "預算 1.234", "預算 99999999999"])('"%s" -> budget_invalid', (text) => {
+    expect(errorReason(text)).toBe("budget_invalid");
+  });
+
+  // [MV]: drop the "rest must be exactly one amount token" check, or match
+  // the prefix with includes() instead of startsWith(), and these go red.
+  test.each([
+    ["預算外 300", "預算外", 30000],
+    ["預算外300", "預算外", 30000],
+    ["預算書 200", "預算書", 20000],
+    ["budgeting 50", "budgeting", 5000],
+    ["買 預算 300", "買 預算", 30000],
+  ])('"%s" is still recorded as an expense titled "%s"', (text, title, amountMinor) => {
+    expect(record(text)).toMatchObject({ kind: "expense", title, amountMinor });
+  });
+
+  test('"預算 15000 餐飲" (more than one token) is a record, not a budget', () => {
+    expect(record("預算 15000 餐飲")).toMatchObject({ title: "預算", amountMinor: 1500000, category: "food" });
+  });
+
+  test('"預算改" alone -> not_understood', () => {
+    expect(errorReason("預算改")).toBe("not_understood");
+  });
+
+  test("the neighbouring commands are unchanged: 取消上一筆 -> undo, 取消綁定 -> unlink", () => {
+    expect(parse("取消上一筆")).toEqual({ type: "undo" });
+    expect(parse("取消綁定")).toEqual({ type: "unlink" });
+  });
+});

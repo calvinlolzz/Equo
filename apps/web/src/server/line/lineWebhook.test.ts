@@ -127,6 +127,13 @@ function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {
       budget_minor: 0,
       month: { expense_minor: 0, income_minor: 0 },
     }),
+    line_set_budget: (args) => ({
+      ok: true,
+      ledger_id: "ledger_1",
+      currency: "TWD",
+      budget_minor: args.p_budget_minor,
+      month: { expense_minor: 600000, income_minor: 0 },
+    }),
     line_context: () => null,
     line_consume_link_nonce: () => ({ ok: false, reason: "unknown" }),
     line_record_entry: (args) => {
@@ -598,5 +605,184 @@ describe("handleLineWebhook - review fixes", () => {
       p_amount_minor: 5000000,
       p_title: "薪水",
     });
+  });
+});
+
+describe("handleLineWebhook - budget commands", () => {
+  // 2026-09 in Taiwan time, so the month passed to the RPCs is 2026-09-01.
+  const budgetDeps = (client: FakePostgrest, line: LineClient): LineWebhookDeps => ({
+    ...deps(client, line),
+    now: () => 1790000000000,
+  });
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const messageOf = (line: ReturnType<typeof fakeLineClient>) =>
+    line.calls.reply.at(-1)!.messages[0] as {
+      text: string;
+      quickReply?: { items: Array<{ action: { type: string; label: string; uri?: string } }> };
+    };
+  const rpcCalls = (client: FakePostgrest, fn: string) =>
+    client.calls.filter((c): c is Extract<typeof c, { op: "rpc" }> => c.op === "rpc" && c.fn === fn);
+  const maintenanceOn = () => ({
+    banner: { message: "", level: "info", ends_at: null, active: false },
+    maintenance: { enabled: true, message: "" },
+  });
+
+  test("「預算 15000」 sets the budget and replies with budget, spent, what is left and the quick replies", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 15000" })]);
+
+    expect(client.rpcCall("line_set_budget")?.args).toEqual({
+      p_line_user_id: LINE_USER_ID,
+      p_budget_minor: 1500000,
+      p_month_start: "2026-09-01",
+    });
+    const message = messageOf(line);
+    expect(message.text).toContain("$15,000");
+    expect(message.text).toContain("$6,000");
+    expect(message.text).toContain("還剩 $9,000");
+    expect(message.quickReply?.items.map((i) => i.action.label)).toEqual(["本月", "開啟帳本"]);
+    expect(message.quickReply?.items[1].action.uri).toContain("/group/ledger_1");
+  });
+
+  test("over budget says how far over", async () => {
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      line_set_budget: (args) => ({
+        ok: true,
+        ledger_id: "ledger_1",
+        currency: "TWD",
+        budget_minor: args.p_budget_minor,
+        month: { expense_minor: 2000000, income_minor: 0 },
+      }),
+    });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 15000" })]);
+
+    expect(messageOf(line).text).toContain("已超出 $5,000");
+  });
+
+  // [MV]: pass undefined (or leave the key out) instead of null and this goes
+  // red - JSON drops an undefined key and PostgREST then cannot find the function.
+  test("「取消預算」 sends an explicit null and replies budgetCleared", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "取消預算" })]);
+
+    expect(client.rpcCall("line_set_budget")?.args).toEqual({
+      p_line_user_id: LINE_USER_ID,
+      p_budget_minor: null,
+      p_month_start: "2026-09-01",
+    });
+    expect(messageOf(line).text).toBe(ZH_HANT.budgetCleared);
+  });
+
+  // [MV]: remove the gate from the write handler, or add one to the show handler, and this goes red.
+  test("maintenance blocks setting and clearing, but not viewing", async () => {
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      site_notice_settings: maintenanceOn,
+    });
+    const line = fakeLineClient();
+    const d = budgetDeps(client, line.client);
+
+    await send(d, [messageEvent({ text: "預算 15000" })]);
+    expect(messageOf(line).text).toBe(ZH_HANT.maintenance);
+    await send(d, [messageEvent({ text: "取消預算" })]);
+    expect(messageOf(line).text).toBe(ZH_HANT.maintenance);
+    expect(client.rpcCall("line_set_budget")).toBeUndefined();
+
+    await send(d, [messageEvent({ text: "預算" })]);
+    expect(client.rpcCall("line_month_summary")).toBeDefined();
+    expect(messageOf(line).text).not.toBe(ZH_HANT.maintenance);
+  });
+
+  test("「預算」 with no budget set explains how to set one; with a budget it shows it", async () => {
+    let budget: number | null = null;
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      line_month_summary: () => ({
+        ok: true,
+        ledger_id: "ledger_1",
+        currency: "TWD",
+        budget_minor: budget,
+        month: { expense_minor: 600000, income_minor: 0 },
+      }),
+    });
+    const line = fakeLineClient();
+    const d = budgetDeps(client, line.client);
+
+    await send(d, [messageEvent({ text: "預算" })]);
+    expect(messageOf(line).text).toBe(ZH_HANT.budgetNone);
+
+    budget = 1500000;
+    await send(d, [messageEvent({ text: "預算" })]);
+    expect(messageOf(line).text).toContain("每月預算 $15,000");
+    expect(rpcCalls(client, "line_month_summary")[1].args.p_month_start).toBe("2026-09-01");
+  });
+
+  test("「預算 0」 is refused with budgetInvalid and touches neither RPC", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 0" })]);
+
+    expect(client.rpcCall("line_set_budget")).toBeUndefined();
+    expect(client.rpcCall("line_month_summary")).toBeUndefined();
+    expect(messageOf(line).text).toBe(ZH_HANT.budgetInvalid);
+  });
+
+  test("「預算外 300」 is still recorded as an expense", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算外 300" })]);
+
+    expect(client.rpcCall("line_set_budget")).toBeUndefined();
+    expect(client.rpcCall("line_record_entry")?.args).toMatchObject({ p_title: "預算外", p_amount_minor: 30000 });
+  });
+
+  test("the same delivery twice makes two identical calls and gets an identical reply", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+    const d = budgetDeps(client, line.client);
+    const event = messageEvent({ text: "預算 15000", webhookEventId: "01J0000000000000000000000B" });
+
+    await send(d, [event]);
+    await send(d, [{ ...event, deliveryContext: { isRedelivery: true } }]);
+
+    const calls = rpcCalls(client, "line_set_budget");
+    expect(calls).toHaveLength(2);
+    expect(calls[1].args).toEqual(calls[0].args);
+    expect(line.calls.reply).toHaveLength(2);
+    expect(messageOf(line).text).toBe((line.calls.reply[0].messages[0] as { text: string }).text);
+  });
+
+  test("a missing ledger answers noLedger", async () => {
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      line_set_budget: () => ({ ok: false, reason: "no_ledger" }),
+    });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 15000" })]);
+
+    expect(messageOf(line).text).toBe(ZH_HANT.noLedger);
+  });
+
+  test("an English-locale user gets the English reply", async () => {
+    const { client } = createLineFakeClient({ line_context: () => ({ ...LINKED_CONTEXT, locale: "en" }) });
+    const line = fakeLineClient();
+
+    await send(budgetDeps(client, line.client), [messageEvent({ text: "預算 15000" })]);
+
+    expect(messageOf(line).text.startsWith("Monthly budget set to")).toBe(true);
+    expect(messageOf(line).text).toContain("$9,000 left");
   });
 });

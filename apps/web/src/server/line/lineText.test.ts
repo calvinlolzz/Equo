@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { parseLineCommand } from "./lineCommand.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT, lineText } from "./lineText.js";
 
 const SHORT_LIMIT = 20;
@@ -92,5 +93,31 @@ describe("lineText", () => {
   test("returns the matching dictionary for a known locale", () => {
     expect(lineText("en")).toBe(EN);
     expect(lineText("zh-Hant")).toBe(ZH_HANT);
+  });
+});
+
+describe("budget examples in the reply text actually parse", () => {
+  const parse = (text: string) => parseLineCommand(text, { currency: "TWD", categories: [] }).type;
+
+  // Every command a string teaches must do what the string says it does.
+  const cases: Array<[string, string, string, string]> = [
+    ["zh help", ZH_HANT.help, "預算 15000", "budget_set"],
+    ["zh help", ZH_HANT.help, "「預算」", "budget_show"],
+    ["zh help", ZH_HANT.help, "取消預算", "budget_clear"],
+    ["zh budgetNone", ZH_HANT.budgetNone, "預算 15000", "budget_set"],
+    ["zh budgetInvalid", ZH_HANT.budgetInvalid, "預算 15000", "budget_set"],
+    ["zh budgetInvalid", ZH_HANT.budgetInvalid, "取消預算", "budget_clear"],
+    ["en help", EN.help, "budget 15000", "budget_set"],
+    ["en help", EN.help, '"budget"', "budget_show"],
+    ["en help", EN.help, "budget off", "budget_clear"],
+    ["en budgetNone", EN.budgetNone, "budget 15000", "budget_set"],
+    ["en budgetInvalid", EN.budgetInvalid, "budget 15000", "budget_set"],
+    ["en budgetInvalid", EN.budgetInvalid, "budget off", "budget_clear"],
+  ];
+
+  test.each(cases)("%s teaches %s -> %s", (_label, text, example, type) => {
+    expect(text).toContain(example);
+    // A quoted example ("預算" / "budget") is checked without its quotes.
+    expect(parse(example.replace(/[「」"]/g, ""))).toBe(type);
   });
 });

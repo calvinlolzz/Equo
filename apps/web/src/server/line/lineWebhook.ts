@@ -7,7 +7,17 @@ import type { LineClient, LineMessage } from "./lineClient.js";
 import { lineUserTag, redactForLog, sha256Hex, verifyLineSignature } from "./lineCrypto.js";
 import { type LineCommandErrorReason, parseLineCommand } from "./lineCommand.js";
 import { lineDateKey, lineMonthStart } from "./lineDates.js";
-import { helpReply, linkButtonsMessage, linkPageUrl, maskEmail, monthReply, recordedReply, textMessage } from "./lineMessages.js";
+import {
+  budgetClearedReply,
+  budgetReply,
+  helpReply,
+  linkButtonsMessage,
+  linkPageUrl,
+  maskEmail,
+  monthReply,
+  recordedReply,
+  textMessage,
+} from "./lineMessages.js";
 import {
   type LineContext,
   consumeLineRateLimit,
@@ -16,6 +26,7 @@ import {
   lineMonthSummary,
   recordLineEntry,
   registerLinkToken,
+  setLineBudget,
   undoLastLineEntry,
   unlinkLineUser,
 } from "./lineRepository.js";
@@ -236,6 +247,15 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
     case "month":
       await handleMonth(deps, event, dict, lineUserId);
       return;
+    case "budget_show":
+      await handleBudgetShow(deps, event, dict, lineUserId);
+      return;
+    case "budget_set":
+      await handleBudgetWrite(deps, event, dict, lineUserId, command.amountMinor);
+      return;
+    case "budget_clear":
+      await handleBudgetWrite(deps, event, dict, lineUserId, null);
+      return;
     case "undo":
       await handleUndo(deps, event, dict, lineUserId);
       return;
@@ -283,6 +303,8 @@ function errorText(dict: LineDictionary, reason: LineCommandErrorReason, currenc
       return dict.titleTooLong;
     case "date_not_supported":
       return dict.dateNotSupported;
+    case "budget_invalid":
+      return dict.budgetInvalid;
   }
 }
 
@@ -376,6 +398,76 @@ async function handleMonth(deps: LineWebhookDeps, event: LineEvent, dict: LineDi
     ledgerId: result.ledger_id,
     appOrigin: deps.appOrigin,
   });
+  await safeReply(deps, event.replyToken, [message]);
+}
+
+/** Viewing the budget is a read like 「本月」, so it is deliberately not behind the maintenance gate. */
+async function handleBudgetShow(deps: LineWebhookDeps, event: LineEvent, dict: LineDictionary, lineUserId: string): Promise<void> {
+  const now = deps.now?.() ?? Date.now();
+  const monthStart = lineMonthStart(lineDateKey(now));
+
+  const result = await lineMonthSummary(deps.client, lineUserId, monthStart);
+  if (!result.ok) {
+    const text =
+      result.reason === "no_ledger" ? dict.noLedger : result.reason === "account_disabled" ? dict.accountDisabled : dict.genericError;
+    await safeReply(deps, event.replyToken, [textMessage(text)]);
+    return;
+  }
+
+  const message = budgetReply(dict, {
+    mode: "show",
+    currency: result.currency,
+    budgetMinor: result.budget_minor,
+    spentMinor: result.month.expense_minor,
+    ledgerId: result.ledger_id,
+    appOrigin: deps.appOrigin,
+  });
+  await safeReply(deps, event.replyToken, [message]);
+}
+
+/**
+ * Set / change (`budgetMinor` = amount) or clear (`null`) the monthly budget.
+ * Behind the maintenance gate like every other write.
+ *
+ * No lineEventKey / event-id table on purpose: setting a value is idempotent
+ * by value (line_set_budget only writes when the value differs), and the
+ * clear reply is the same text every time, so a redelivered event gets the
+ * same answer without bookkeeping.
+ */
+async function handleBudgetWrite(
+  deps: LineWebhookDeps,
+  event: LineEvent,
+  dict: LineDictionary,
+  lineUserId: string,
+  budgetMinor: number | null,
+): Promise<void> {
+  if (await isMaintenanceOn(deps)) {
+    await safeReply(deps, event.replyToken, [textMessage(dict.maintenance)]);
+    return;
+  }
+
+  const now = deps.now?.() ?? Date.now();
+  const monthStart = lineMonthStart(lineDateKey(now));
+
+  const result = await setLineBudget(deps.client, lineUserId, budgetMinor, monthStart);
+  if (!result.ok) {
+    const text =
+      result.reason === "no_ledger" ? dict.noLedger : result.reason === "account_disabled" ? dict.accountDisabled : dict.genericError;
+    await safeReply(deps, event.replyToken, [textMessage(text)]);
+    return;
+  }
+
+  const message =
+    budgetMinor === null
+      ? budgetClearedReply(dict, { ledgerId: result.ledger_id, appOrigin: deps.appOrigin })
+      : budgetReply(dict, {
+          mode: "set",
+          currency: result.currency,
+          budgetMinor: result.budget_minor,
+          spentMinor: result.month.expense_minor,
+          ledgerId: result.ledger_id,
+          appOrigin: deps.appOrigin,
+        });
   await safeReply(deps, event.replyToken, [message]);
 }
 
