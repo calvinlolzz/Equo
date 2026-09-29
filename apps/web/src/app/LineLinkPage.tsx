@@ -3,6 +3,7 @@ import { createApiClient } from "./apiClient";
 import {
   clearPendingLineLink,
   isLineInAppBrowser,
+  openInBrowserUrl,
   readLinkTokenFromSearch,
   readPendingLineLink,
   stashPendingLineLink,
@@ -45,13 +46,20 @@ export function LineLinkPage() {
   useEffect(() => {
     const now = Date.now();
     const urlToken = readLinkTokenFromSearch(window.location.search);
+    const inApp = typeof navigator !== "undefined" && isLineInAppBrowser(navigator.userAgent);
 
     if (urlToken) {
       stashPendingLineLink(urlToken, now);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("linkToken");
-      url.searchParams.delete("openExternalBrowser");
-      window.history.replaceState(null, document.title, `${url.pathname}${url.search}${url.hash}`);
+      // Not stripped inside LINE's in-app browser: that is the one place the
+      // token still has to be readable from the address, because the
+      // "open in browser" hand-off below is built from it (and LINE's own
+      // "open in browser" menu reopens the CURRENT url).
+      if (!inApp) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("linkToken");
+        url.searchParams.delete("openExternalBrowser");
+        window.history.replaceState(null, document.title, `${url.pathname}${url.search}${url.hash}`);
+      }
     }
 
     const resolved = urlToken || readPendingLineLink(now);
@@ -78,6 +86,26 @@ export function LineLinkPage() {
         setState(error?.code === "UNAUTHENTICATED" ? "signedOut" : "error");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Coming back with the browser's Back button after being sent to LINE can
+  // restore this page from the back/forward cache still frozen on
+  // "redirecting", with nothing left running to move it on. Put it back
+  // somewhere usable: the confirm step if the token is still stashed,
+  // otherwise the expired view (which says how to get a fresh link).
+  useEffect(() => {
+    function handlePageShow(event: PageTransitionEvent) {
+      if (!event.persisted) return;
+      setState((current) => {
+        if (current !== "redirecting") return current;
+        const stashed = readPendingLineLink(Date.now());
+        if (stashed) setToken(stashed);
+        return stashed ? "confirm" : "expired";
+      });
+    }
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
   }, []);
 
   function handleSignIn() {
@@ -142,9 +170,20 @@ export function LineLinkPage() {
         {state === "signedOut" ? (
           <div className="line-link-body">
             <h1>{text.pageTitle}</h1>
+            <p>{text.intro}</p>
             <p>{text.signInPrompt}</p>
             {inAppBrowser ? (
-              <p className="line-link-hint">{text.inAppBrowserHint}</p>
+              <>
+                <p className="line-link-hint">{text.inAppBrowserHint}</p>
+                <a
+                  className="primary-action line-link-action"
+                  href={openInBrowserUrl(window.location.origin, token)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {text.openInBrowser}
+                </a>
+              </>
             ) : (
               <button className="primary-action line-link-action" type="button" onClick={handleSignIn}>
                 {text.signIn}
@@ -156,6 +195,7 @@ export function LineLinkPage() {
         {state === "confirm" || state === "redirecting" ? (
           <div className="line-link-body">
             <h1>{text.pageTitle}</h1>
+            <p>{text.intro}</p>
             <p>{confirmAccountText}</p>
             {alreadyLinked ? <p className="line-link-hint">{text.alreadyLinkedNote}</p> : null}
             <p className="line-link-notice">{text.unlinkNotice}</p>

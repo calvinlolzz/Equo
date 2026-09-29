@@ -84,6 +84,16 @@ export function lineOaUrl(): string {
   return LINE_OA_URL_PATTERN.test(raw) ? raw : "";
 }
 
+/**
+ * The page's own URL with the token AND LINE's openExternalBrowser flag, for
+ * the "open in Safari/Chrome" link shown inside LINE's in-app browser. The
+ * token has to ride in the URL: sessionStorage does not cross browsers, so
+ * whatever the external browser opens can only know it from the address.
+ */
+export function openInBrowserUrl(origin: string, linkToken: string): string {
+  return `${origin}${LINE_LINK_PATH}?linkToken=${encodeURIComponent(linkToken)}&openExternalBrowser=1`;
+}
+
 /** LINE's in-app browser blocks Google OAuth (disallowed_useragent) - detect it to show a hint instead of a dead-end sign-in button. */
 export function isLineInAppBrowser(ua: string): boolean {
   return /\bLine\//i.test(ua);

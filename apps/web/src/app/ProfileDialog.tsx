@@ -170,8 +170,11 @@ export function ProfileDialog({
     }
     setConfirmingLineUnlink(false);
     try {
-      const unlinked = await lineLink.unlink();
-      onToast(unlinked ? lineLinkText.unlinked : lineLinkText.unlinkFailed);
+      // A successful DELETE is a success even when it reports unlinked:false
+      // (it was already unlinked, say from LINE): the person wanted it gone and
+      // it is. "Failed" is only for the request itself failing, below.
+      await lineLink.unlink();
+      onToast(lineLinkText.unlinked);
     } catch (error) {
       onToast(describeCloudActionError(error));
     }

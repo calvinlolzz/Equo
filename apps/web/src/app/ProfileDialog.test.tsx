@@ -158,4 +158,22 @@ describe("the LINE row", () => {
     await waitFor(() => expect(screen.getByText(UI_TEXT.lineLink.rowTitle)).toBeTruthy());
     expect(screen.getByRole("button", { name: UI_TEXT.lineLink.unlink })).toBeTruthy();
   });
+
+  // [MV]
+  test("unlinking toasts 'unlinked' whenever the DELETE succeeds, even when it reports unlinked:false", async () => {
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        return { ok: true, json: async () => ({ ok: true, unlinked: false }) } as Response;
+      }
+      return { ok: true, json: async () => ({ linked: true, linked_at: "2026-09-29T00:00:00Z" }) } as Response;
+    });
+    const onToast = vi.fn();
+    renderDialog({ session: aliceSession, onToast });
+
+    const unlink = await screen.findByRole("button", { name: UI_TEXT.lineLink.unlink });
+    fireEvent.click(unlink);
+    fireEvent.click(await screen.findByRole("button", { name: UI_TEXT.lineLink.unlinkConfirm }));
+
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith(UI_TEXT.lineLink.unlinked));
+  });
 });

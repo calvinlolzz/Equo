@@ -751,6 +751,7 @@ export const ZH_HANT = {
     signInPrompt: "請先登入 Equo，再完成連結。",
     signIn: "使用 Google 登入",
     inAppBrowserHint: "LINE 內建瀏覽器無法使用 Google 登入，請用 Safari 或 Chrome 開啟這個頁面。",
+    openInBrowser: "用瀏覽器開啟",
     expiredTitle: "連結已失效",
     expiredBody: "請回到 LINE，傳「綁定」取得新的連結。",
     doneAlready: "這個 LINE 已經連結到你的帳號了。",

@@ -6,6 +6,7 @@ import {
   isLineInAppBrowser,
   isLineLinkPath,
   lineOaUrl,
+  openInBrowserUrl,
   readLinkTokenFromSearch,
   readPendingLineLink,
   resumePendingLineLink,
@@ -150,6 +151,14 @@ describe("isLineInAppBrowser", () => {
   test("does not flag an ordinary browser", () => {
     expect(isLineInAppBrowser("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120")).toBe(
       false,
+    );
+  });
+});
+
+describe("openInBrowserUrl", () => {
+  test("carries the token and LINE's openExternalBrowser flag", () => {
+    expect(openInBrowserUrl("https://equo-mu.vercel.app", "abcd1234efgh5678")).toBe(
+      "https://equo-mu.vercel.app/line/link?linkToken=abcd1234efgh5678&openExternalBrowser=1",
     );
   });
 });

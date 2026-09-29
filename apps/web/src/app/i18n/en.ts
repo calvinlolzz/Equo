@@ -708,6 +708,7 @@ export const EN: UiDictionary = {
     signInPrompt: "Sign in to Equo to finish linking.",
     signIn: "Sign in with Google",
     inAppBrowserHint: "Google sign-in doesn't work in LINE's built-in browser. Open this page in Safari or Chrome.",
+    openInBrowser: "Open in browser",
     expiredTitle: "This link has expired",
     expiredBody: 'Go back to LINE and send "link" to get a new one.',
     doneAlready: "This LINE account is already linked to you.",

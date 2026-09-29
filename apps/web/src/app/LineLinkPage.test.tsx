@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { LineLinkPage } from "./LineLinkPage";
 import { UI_TEXT } from "./uiText";
@@ -50,7 +50,12 @@ beforeEach(() => {
   setUrl(`?linkToken=${VALID_TOKEN}`);
 });
 
+function stubUserAgent(userAgent: string) {
+  Object.defineProperty(window.navigator, "userAgent", { configurable: true, value: userAgent });
+}
+
 afterEach(() => {
+  delete (window.navigator as { userAgent?: string }).userAgent;
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -178,5 +183,99 @@ describe("LineLinkPage - no token", () => {
     setUrl("");
     render(<LineLinkPage />);
     await waitFor(() => expect(screen.getByText(text.expiredTitle)).toBeTruthy());
+  });
+});
+
+describe("LineLinkPage - inside LINE's in-app browser", () => {
+  const LINE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Line/13.0.0";
+
+  // [MV]
+  test("signed out: offers a real open-in-browser link that carries the token, and keeps it in the address bar", async () => {
+    stubUserAgent(LINE_UA);
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(<LineLinkPage />);
+
+    const link = (await screen.findByRole("link", { name: text.openInBrowser })) as HTMLAnchorElement;
+    const href = new URL(link.href);
+    expect(href.pathname).toBe("/line/link");
+    expect(href.searchParams.get("linkToken")).toBe(VALID_TOKEN);
+    expect(href.searchParams.get("openExternalBrowser")).toBe("1");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toContain("noopener");
+    // Not stripped here: LINE's own "open in browser" reopens the CURRENT url.
+    expect(window.location.search).toContain(`linkToken=${VALID_TOKEN}`);
+    // ...and there is no Google button that could only dead-end.
+    expect(screen.queryByRole("button", { name: text.signIn })).toBeNull();
+  });
+
+  test("an ordinary browser still strips the token from the address bar", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<LineLinkPage />);
+    await screen.findByRole("button", { name: text.signIn });
+    expect(window.location.search).not.toContain("linkToken");
+    expect(screen.queryByRole("link", { name: text.openInBrowser })).toBeNull();
+  });
+});
+
+describe("LineLinkPage - intro", () => {
+  test("shows the intro above the sign-in and the confirm content", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    render(<LineLinkPage />);
+    await screen.findByRole("button", { name: text.signIn });
+    expect(screen.getByText(text.intro)).toBeTruthy();
+
+    cleanup();
+    aliceSession();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ linked: false, linked_at: null }) }) as Response),
+    );
+    setUrl(`?linkToken=${VALID_TOKEN}`);
+    render(<LineLinkPage />);
+    await screen.findByRole("button", { name: text.confirm });
+    expect(screen.getByText(text.intro)).toBeTruthy();
+  });
+});
+
+describe("LineLinkPage - restored from the back/forward cache", () => {
+  async function stuckOnRedirecting() {
+    aliceSession();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (String(url).includes("/me/line/link")) return new Promise(() => {}); // never settles
+        return Promise.resolve({ ok: true, json: async () => ({ linked: false, linked_at: null }) } as Response);
+      }),
+    );
+    render(<LineLinkPage />);
+    (await screen.findByRole("button", { name: text.confirm })).click();
+    await screen.findByRole("button", { name: text.redirecting });
+  }
+
+  function pageshow(persisted: boolean) {
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted }));
+    });
+  }
+
+  // [MV]
+  test("goes back to the confirm step when the token is still stashed", async () => {
+    await stuckOnRedirecting();
+    pageshow(true);
+    expect(await screen.findByRole("button", { name: text.confirm })).toBeTruthy();
+  });
+
+  test("goes to the expired view when the stash is gone", async () => {
+    await stuckOnRedirecting();
+    window.sessionStorage.clear();
+    pageshow(true);
+    expect(await screen.findByText(text.expiredTitle)).toBeTruthy();
+  });
+
+  test("a pageshow that is not from the cache changes nothing", async () => {
+    await stuckOnRedirecting();
+    pageshow(false);
+    expect(screen.getByRole("button", { name: text.redirecting })).toBeTruthy();
   });
 });
