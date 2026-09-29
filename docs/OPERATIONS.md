@@ -470,6 +470,8 @@ https://equo-mu.vercel.app/api/v1/health
 
 ## 18. LINE 記帳機器人
 
+> **狀態（2026-09-30 啟用）**：官方帳號 `@100ujhjj`（加好友 `https://line.me/R/ti/p/@100ujhjj`），Messaging API channel `2011782046`。Webhook URL `https://equo-mu.vercel.app/api/line/webhook`（Verify 成功）、Use webhook／Webhook redelivery／Error statistics aggregation 皆開；OA Manager 的聊天、加入好友歡迎訊息、自動回應訊息皆關；Allow bot to join group chats 關。隱私權政策第 4 節已於同日上線。
+
 用 LINE 官方帳號傳「早餐 60」，記進**個人帳本**（只記個人帳本，沒有群組 id 的參數：`line_record_entry` 靠 `ensure_personal_ledger` 自己找帳本）。綁定走 LINE 官方的 account-link 流程；日期一律用**台灣時間**、一律記在**傳訊當天**。
 
 ### 環境變數（Vercel Production）
