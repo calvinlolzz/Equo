@@ -106,4 +106,19 @@ describe("PersonalLedgerHome stands on its own", () => {
     screen.getByText(UI_TEXT.app.viewAll).click();
     expect(props.onOpenDialog).toHaveBeenCalledWith("recordsPanel");
   });
+
+  // [MV]
+  test("only rows recorded from LINE carry the LINE badge", () => {
+    renderHome({
+      expenses: [ownExpense({ id: "exp_line", title: "午餐", source: "line" }), ownExpense({ id: "exp_app", title: "早餐" })],
+      expenseCount: 2,
+    });
+
+    const rows = Array.from(document.querySelectorAll(".expense-record-row"));
+    expect(rows).toHaveLength(2);
+    const badged = rows.filter((row) => row.querySelector(".record-line-badge"));
+    expect(badged).toHaveLength(1);
+    expect(badged[0].textContent).toContain("午餐");
+    expect(badged[0].querySelector(".record-line-badge")?.textContent).toBe(UI_TEXT.lineLink.recordBadge);
+  });
 });

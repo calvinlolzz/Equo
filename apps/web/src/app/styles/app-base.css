@@ -15,6 +15,9 @@
      mode's 本月收入 headline text - see the light block below. Same mint hue
      as --brand in dark mode, so this is a no-op there. */
   --income: 77 227 166;
+  /* LINE's official green. Small marks only (hint disc, record badge, landing
+     link icon); never text on a light surface. */
+  --line-brand: 6 199 85;
   --accent: 77 227 166;     /* interactive/selection accent */
   --accent-fg: 5 34 26;     /* text on --accent fills */
   /* aurora lavender — SELECTION only now (.start-mode.active,
@@ -74,6 +77,7 @@
      needed because .amount-income uses this for the 本月收入 headline text,
      not just a small fill/mark. */
   --income: 4 120 87;
+  --line-brand: 6 199 85;
   --accent: 61 139 255;     /* aurora blue — light only */
   --accent-fg: 255 255 255; /* white text on blue */
   /* aurora lavender, same "light fill + dark --ink text" semantics as dark

@@ -713,6 +713,8 @@ export const EN: UiDictionary = {
     expiredBody: 'Go back to LINE and send "link" to get a new one.',
     doneAlready: "This LINE account is already linked to you.",
     failed: "Couldn't start linking. Please try again.",
+    recordBadge: "LINE",
+    recordBadgeTitle: "Recorded in LINE",
     backHome: "Back to Equo",
   },
   misc: {

@@ -319,3 +319,15 @@ describe("RecordsPanel in a personal ledger", () => {
     expect(screen.getByText(UI_TEXT.records.member)).toBeTruthy();
   });
 });
+
+describe("records list LINE badge", () => {
+  test("only rows recorded from LINE carry the badge", () => {
+    const [first, second] = dailyExpenses(2);
+    renderPanel([{ ...first, source: "line" }, second]);
+
+    const rows = screen.getAllByRole("button").filter((node) => node.className.includes("record-dialog-row"));
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelector(".record-line-badge")?.textContent).toBe(UI_TEXT.lineLink.recordBadge);
+    expect(rows[1].querySelector(".record-line-badge")).toBeNull();
+  });
+});

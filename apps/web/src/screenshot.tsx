@@ -265,6 +265,13 @@ const previewInvite = new URLSearchParams(window.location.search).get("invite");
  * so the store screenshots above stay exactly what they were.
  */
 const previewLedger = new URLSearchParams(window.location.search).get("ledger");
+/**
+ * `?line=unlinked|linked` drives the LINE hint on the ledger home: the /me/line
+ * answer, and (when present at all) marks l1 as recorded from LINE so the
+ * record badge is visible. Absent = linked and no badge, so the store
+ * screenshots never grow the card.
+ */
+const previewLine = new URLSearchParams(window.location.search).get("line");
 const LEDGER_ID = "ledger_demo";
 
 function ledgerEntry(
@@ -289,7 +296,7 @@ const LEDGER_EXPENSES =
   previewLedger === "empty"
     ? []
     : [
-        ledgerEntry("l1", "早餐", "expense", "food", 85, 0),
+        previewLine ? { ...ledgerEntry("l1", "早餐", "expense", "food", 85, 0), client_request_id: "line:demo_l1" } : ledgerEntry("l1", "早餐", "expense", "food", 85, 0),
         ledgerEntry("l2", "捷運", "expense", "transport", 40, 0),
         ledgerEntry("l3", "電影", "expense", "entertainment", 320, 1),
         ledgerEntry("l4", "電費", "expense", "bills", 1280, 2),

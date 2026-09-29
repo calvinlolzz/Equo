@@ -864,3 +864,29 @@ describe("expenseKindToApiKind", () => {
     expect(mapped.kind).toBe("settlement");
   });
 });
+
+describe("toExpense marks rows recorded from LINE", () => {
+  const base = {
+    id: "expense_1",
+    group_id: "group_1",
+    title: "早餐",
+    kind: "expense" as const,
+    category: "food",
+    amount_minor: 6000,
+    currency: "TWD",
+    expense_date: "2026-09-29",
+    created_at: "2026-09-29T01:00:00.000Z",
+    note: null,
+    version: 1,
+    expense_payments: [{ payer_member_id: "member_1", amount_minor: 6000, currency: "TWD" }],
+    expense_shares: [{ member_id: "member_1", share_type: "even" as const, amount_minor: 6000 }],
+  };
+
+  // [MV]
+  test("a line: client_request_id gives source line; anything else leaves it absent", () => {
+    expect(toExpense({ ...base, client_request_id: "line:abc" }).source).toBe("line");
+    expect(toExpense({ ...base, client_request_id: "3f2a9c1e-7b1d-4c55-9a52-0d6f5e8b1a00" }).source).toBeUndefined();
+    // The prefix has to be at the start: the screenshot fixture's "demo_line:x" is an app row.
+    expect(toExpense({ ...base, client_request_id: "demo_line:x" }).source).toBeUndefined();
+  });
+});

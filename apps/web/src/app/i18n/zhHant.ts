@@ -757,6 +757,8 @@ export const ZH_HANT = {
     doneAlready: "這個 LINE 已經連結到你的帳號了。",
     failed: "無法開始連結，請再試一次。",
     backHome: "回到 Equo",
+    recordBadge: "LINE",
+    recordBadgeTitle: "從 LINE 記錄",
   },
   misc: {
     pullRefreshing: "重新整理中…",

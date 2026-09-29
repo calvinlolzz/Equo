@@ -269,6 +269,10 @@ export function toExpense(summary: ExpenseSummary): Expense {
     shareAmountsMinor,
   };
 
+  if (typeof summary.client_request_id === "string" && summary.client_request_id.startsWith("line:")) {
+    expense.source = "line";
+  }
+
   if (payments.length > 0) {
     expense.payments = payments.map((payment) => ({
       payerId: payment.payer_member_id,

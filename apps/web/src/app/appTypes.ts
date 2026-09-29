@@ -89,6 +89,13 @@ export type Expense = {
   category?: string;
   note?: string;
   /**
+   * Derived from client_request_id's "line:" prefix (the LINE bot writes its
+   * rows with that key). Absent means recorded in the app. A web edit replaces
+   * the row with the web's own id, so the mark disappears after an edit -
+   * intended.
+   */
+  source?: "line";
+  /**
    * The first receipt. Derived from imageUrls, never set apart from it - the
    * records list and the admin console want one thumbnail, and having them read
    * imageUrls[0] would spread the same decision across four call sites. Mirrors

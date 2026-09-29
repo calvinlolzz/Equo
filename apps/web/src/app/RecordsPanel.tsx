@@ -542,7 +542,14 @@ function ExpenseRow({
             {expense.title}
             {pending ? <em className="record-pending-badge">{text.offlinePendingBadge}</em> : null}
           </strong>
-          <small>{expense.note ? expense.note : formatActivityTime(expense.createdAt)}</small>
+          <small>
+            {expense.note ? expense.note : formatActivityTime(expense.createdAt)}
+            {expense.source === "line" ? (
+              <em className="record-line-badge" title={UI_TEXT.lineLink.recordBadgeTitle}>
+                {UI_TEXT.lineLink.recordBadge}
+              </em>
+            ) : null}
+          </small>
         </span>
         <b className={expense.kind === "income" ? "amount-income" : undefined}>
           {expense.kind === "income"

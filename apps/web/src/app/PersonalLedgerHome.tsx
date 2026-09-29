@@ -15,6 +15,7 @@ import type { useInstallPrompt } from "./useInstallPrompt";
 
 const text = UI_TEXT.app;
 const ledgerText = UI_TEXT.personalLedger;
+const lineText = UI_TEXT.lineLink;
 
 export type PersonalLedgerHomeProps = {
   isMobileLayout: boolean;
@@ -165,7 +166,14 @@ export function PersonalLedgerHome({
                     </span>
                     <span className="expense-record-main">
                       <strong>{expense.title}</strong>
-                      <small>{formatRecordStamp(expense.createdAt)}</small>
+                      <small>
+                        {formatRecordStamp(expense.createdAt)}
+                        {expense.source === "line" ? (
+                          <em className="record-line-badge" title={lineText.recordBadgeTitle}>
+                            {lineText.recordBadge}
+                          </em>
+                        ) : null}
+                      </small>
                     </span>
                     <span className={isIncome ? "expense-record-amount amount-income" : "expense-record-amount"}>
                       {expense.currency === group.currency ? null : <small>{expense.currency}</small>}
