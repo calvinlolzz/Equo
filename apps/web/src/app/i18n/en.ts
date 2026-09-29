@@ -311,7 +311,7 @@ export const EN: UiDictionary = {
     demoLedgerNet: "+NT$24,900",
     demoLedgerBudgetLabel: "Monthly budget NT$10,000",
     demoLedgerBudgetLeft: "NT$2,900 left",
-    ledgerLine: 'You can also record from LINE: add Equo as a friend and send "breakfast 60" to log it in your personal ledger.',
+    ledgerLine: 'You can also record from LINE: add Equo as a friend, link your account, then send "breakfast 60" to log it in your personal ledger.',
     ledgerLineAction: "Add on LINE",
 
     demoChatLabel: "Illustrative conversation",
@@ -718,7 +718,7 @@ export const EN: UiDictionary = {
     recordBadge: "LINE",
     recordBadgeTitle: "Recorded in LINE",
     hintTitle: "Record faster in LINE",
-    hintBody: 'Add Equo as a friend and send "breakfast 60" — it lands in this ledger.',
+    hintBody: 'Add Equo as a friend and link your account, then send "breakfast 60" to record it here.',
     hintScan: "Or scan the QR code with LINE on your phone",
     hintQrAlt: "QR code to add Equo on LINE",
     hintDismiss: "Dismiss LINE tip",

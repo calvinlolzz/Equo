@@ -1861,6 +1861,7 @@ export function App() {
               monthlyBudgetMinor={activeGroup.monthlyBudgetMinor ?? activeListGroup?.monthlyBudgetMinor}
               coverage={ledgerMonthCoverage(expenses, aggregates.expenseCount, currentMonthKey())}
               viewingAs={siteNotice.viewingAs}
+              siteNoticeLoaded={siteNotice.loaded}
               onOpenDialog={setDialog}
               onScanReceipt={openReceiptScan}
               onOpenExpenseComposer={openExpenseComposer}

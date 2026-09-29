@@ -39,6 +39,7 @@ function renderHome(overrides: Partial<PersonalLedgerHomeProps> = {}) {
     monthlyBudgetMinor: null,
     coverage: "complete",
     viewingAs: false,
+    siteNoticeLoaded: true,
     onOpenDialog: vi.fn(),
     onScanReceipt: vi.fn(),
     onOpenExpenseComposer: vi.fn(),
@@ -47,8 +48,8 @@ function renderHome(overrides: Partial<PersonalLedgerHomeProps> = {}) {
     onJoinGroup: vi.fn(),
     ...overrides,
   };
-  render(<PersonalLedgerHome {...props} />);
-  return props;
+  const { rerender } = render(<PersonalLedgerHome {...props} />);
+  return { ...props, props, rerender };
 }
 
 beforeEach(() => {
@@ -155,8 +156,10 @@ describe("PersonalLedgerHome stands on its own", () => {
       const home = document.querySelector("#group-home")!;
       expect(home.contains(hint)).toBe(true);
       const card = document.querySelector(".ledger-month-card")!;
+      const budget = document.querySelector(".spend-budget")!;
       const donut = document.querySelector(".dialog-section-list")!;
       expect(card.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(budget.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(hint.compareDocumentPosition(donut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
@@ -168,6 +171,34 @@ describe("PersonalLedgerHome stands on its own", () => {
       const hint = await screen.findByRole("complementary", { name: UI_TEXT.lineLink.hintTitle });
       const actions = document.querySelector(".home-empty-actions")!;
       expect(actions.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    // [MV]
+    test("recording the first entry keeps the same card: no remount, no second fetch", async () => {
+      const calls = stubUnlinkedLine();
+      const { rerender, props } = renderHome({ expenses: [], expenseCount: 0 });
+
+      const hint = await screen.findByRole("complementary", { name: UI_TEXT.lineLink.hintTitle });
+      const fetchesBefore = calls.filter((url) => url.includes("/me/line")).length;
+
+      rerender(<PersonalLedgerHome {...props} expenses={[ownExpense()]} expenseCount={1} />);
+      await settle();
+
+      expect(document.querySelector(".ledger-month-card")).toBeTruthy();
+      const after = screen.getByRole("complementary", { name: UI_TEXT.lineLink.hintTitle });
+      expect(after).toBe(hint);
+      expect(calls.filter((url) => url.includes("/me/line"))).toHaveLength(fetchesBefore);
+    });
+
+    // [MV]
+    test("until the site notice has landed (view-as unknown) it neither fetches nor writes the dismiss key", async () => {
+      const calls = stubUnlinkedLine();
+      renderHome({ siteNoticeLoaded: false });
+      await settle();
+
+      expect(calls).toHaveLength(0);
+      expect(document.querySelector(".line-hint")).toBeNull();
+      expect(localStorage.getItem("equo.clean.line_hint_dismissed")).toBeNull();
     });
 
     test("an admin in view-as neither sees it nor triggers the fetch", async () => {
@@ -192,6 +223,7 @@ describe("PersonalLedgerHome stands on its own", () => {
     });
 
     test("with no add-friend URL nothing is fetched", async () => {
+      vi.stubEnv("VITE_LINE_OA_URL", "");
       const calls: string[] = [];
       vi.stubGlobal("fetch", async (url: string) => {
         calls.push(String(url));

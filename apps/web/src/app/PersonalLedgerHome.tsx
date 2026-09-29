@@ -40,6 +40,8 @@ export type PersonalLedgerHomeProps = {
   coverage: "complete" | "partial";
   /** Admin read-only view-as; the LINE hint neither fetches nor shows. */
   viewingAs: boolean;
+  /** Whether the site-notice fetch (which is what says whether this is a view-as) has landed; the LINE hint waits for it. */
+  siteNoticeLoaded: boolean;
   onOpenDialog: (mode: DialogMode) => void;
   onScanReceipt: () => void;
   onOpenExpenseComposer: () => void;
@@ -68,6 +70,7 @@ export function PersonalLedgerHome({
   monthlyBudgetMinor,
   coverage,
   viewingAs,
+  siteNoticeLoaded,
   onOpenDialog,
   onScanReceipt,
   onOpenExpenseComposer,
@@ -87,9 +90,19 @@ export function PersonalLedgerHome({
   const empty = hasLoadedDetail && expenses.length === 0;
 
   // One suggestion at a time: on a phone the install hint has the floor.
+  // Known and accepted: on Android the install prompt can become available
+  // after the card is already showing, and then replaces it (the card is gated
+  // on the install state as it is now, not as it was when the card appeared).
+  //
+  // `key` keeps one instance across the empty and non-empty branches: the hint
+  // sits at a different child index in each, so without it recording the very
+  // first entry would remount it (refetch, flicker, gone on a failed fetch).
   const lineHint = (
     <LineLedgerHint
-      enabled={hasLoadedDetail && !viewingAs && !(isMobileLayout && install.state !== "unavailable")}
+      key="line-hint"
+      enabled={
+        hasLoadedDetail && siteNoticeLoaded && !viewingAs && !(isMobileLayout && install.state !== "unavailable")
+      }
       showQr={!isMobileLayout}
     />
   );
@@ -110,23 +123,23 @@ export function PersonalLedgerHome({
 
         {empty ? (
           <>
-          <div className="home-empty-actions">
-            <p className="ledger-empty-title">{ledgerText.emptyTitle}</p>
-            <p className="empty-copy">{ledgerText.emptyBody}</p>
-            <button className="primary-action" type="button" onClick={onOpenExpenseComposer}>
-              {text.addExpense}
-            </button>
-            {/* The ledger being the new landing screen means create/join is no
-                longer reachable through StartFlow for a brand-new user - kept
-                discoverable here instead. */}
-            <button className="secondary-action" type="button" onClick={onCreateGroup}>
-              {text.createGroup}
-            </button>
-            <button className="secondary-action" type="button" onClick={onJoinGroup}>
-              {text.joinGroup}
-            </button>
-          </div>
-          {lineHint}
+            <div className="home-empty-actions">
+              <p className="ledger-empty-title">{ledgerText.emptyTitle}</p>
+              <p className="empty-copy">{ledgerText.emptyBody}</p>
+              <button className="primary-action" type="button" onClick={onOpenExpenseComposer}>
+                {text.addExpense}
+              </button>
+              {/* The ledger being the new landing screen means create/join is no
+                  longer reachable through StartFlow for a brand-new user - kept
+                  discoverable here instead. */}
+              <button className="secondary-action" type="button" onClick={onCreateGroup}>
+                {text.createGroup}
+              </button>
+              <button className="secondary-action" type="button" onClick={onJoinGroup}>
+                {text.joinGroup}
+              </button>
+            </div>
+            {lineHint}
           </>
         ) : (
           <>

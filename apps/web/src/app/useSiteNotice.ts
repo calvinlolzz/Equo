@@ -56,6 +56,13 @@ export type SiteNoticeState = {
   maintenance: { message: string } | null;
   /** True while an admin is looking at the app as somebody else. */
   viewingAs: boolean;
+  /**
+   * True once the first fetch has landed. Until then `viewingAs` is only a
+   * default, not an answer - anything that must not run for an admin looking
+   * at somebody else's account (the LINE hint's fetch and its dismiss write)
+   * waits for this.
+   */
+  loaded: boolean;
   dismissBanner: () => void;
 };
 
@@ -65,6 +72,7 @@ export function useSiteNotice(
 ): SiteNoticeState {
   const [notice, setNotice] = useState<SiteNotice>(EMPTY);
   const [viewingAs, setViewingAs] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(() => dismissedMessage());
 
   useEffect(() => {
@@ -81,6 +89,7 @@ export function useSiteNotice(
           // minutes, and the banner has to stop claiming a view that has
           // already ended.
           setViewingAs(result.view_as?.active === true);
+          setLoaded(true);
         })
         .catch(() => {
           // Silent. This is an extra on top of the app, and an app that shows
@@ -126,6 +135,7 @@ export function useSiteNotice(
       ? { message: notice.maintenance.message || UI_TEXT.notice.maintenanceFallback }
       : null,
     viewingAs,
+    loaded,
     dismissBanner,
   };
 }

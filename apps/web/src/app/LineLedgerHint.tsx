@@ -1,5 +1,5 @@
 import { MessageCircle, X } from "lucide-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useId, useMemo, useState } from "react";
 import { lazyChunk } from "./lazyChunk";
 import { lineOaUrl, markLineHintDismissed, readLineHintDismissed } from "./lineLink";
 import { UI_TEXT } from "./uiText";
@@ -25,6 +25,7 @@ const t = UI_TEXT.lineLink;
  */
 export function LineLedgerHint({ enabled, showQr }: { enabled: boolean; showQr: boolean }) {
   const url = useMemo(() => lineOaUrl(), []);
+  const titleId = useId();
   const [dismissed, setDismissed] = useState(readLineHintDismissed);
   const active = enabled && url !== "" && !dismissed;
   const { state } = useLineLink(active);
@@ -36,9 +37,9 @@ export function LineLedgerHint({ enabled, showQr }: { enabled: boolean; showQr: 
   if (!active || state !== "unlinked") return null;
 
   return (
-    <aside className={showQr ? "line-hint line-hint--qr enter-content" : "line-hint enter-content"} aria-label={t.hintTitle}>
+    <aside className={showQr ? "line-hint line-hint--qr enter-content" : "line-hint enter-content"} aria-labelledby={titleId}>
       <div className="line-hint-body">
-        <strong>
+        <strong id={titleId}>
           <span className="line-hint-mark" aria-hidden="true">
             <MessageCircle size={11} strokeWidth={2.5} />
           </span>

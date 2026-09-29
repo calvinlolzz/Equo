@@ -350,6 +350,12 @@ const ROUTES: Record<string, unknown> = {
 };
 
 
+if (previewLine === "unlinked") {
+  // The hint is remembered as dismissed per device; a preview that asks to see
+  // it must start from a clean device.
+  window.localStorage.removeItem("equo.clean.line_hint_dismissed");
+}
+
 if (!previewInvite) {
   window.localStorage.setItem(
     "equo.clean.session",

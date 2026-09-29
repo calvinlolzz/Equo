@@ -481,7 +481,7 @@ https://equo-mu.vercel.app/api/v1/health
 | `LINE_CHANNEL_SECRET` | 驗證 webhook 簽章（HMAC-SHA256，對**原始位元組**） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | 回覆訊息、發 link token（長效） |
 | `APP_ORIGIN` | 選填，預設 `https://equo-mu.vercel.app`；綁定連結與「開啟帳本」按鈕用 |
-| `VITE_LINE_OA_URL` | **建置時**變數（改了要重新部署）：個人資料頁「加入好友」連結，只接受 `https://lin.ee/` 或 `https://line.me/` |
+| `VITE_LINE_OA_URL` | **建置時**變數（改了要重新部署）：同一個網址驅動三處：個人資料頁「加入好友」連結、個人帳本首頁的 LINE 記帳提示卡、公開落地頁的「加 LINE 好友」連結。只接受 `https://lin.ee/` 或 `https://line.me/`；沒設或格式不符時三處會**靜默一起隱藏**（不會報錯） |
 
 缺少前四個之一時 webhook 回 `503 LINE_NOT_CONFIGURED`，log 只寫變數名稱不寫值。Preview 部署沒有這些變數，所以會回 503，這是預期的。**祕密不要貼進聊天、issue 或 log。**
 

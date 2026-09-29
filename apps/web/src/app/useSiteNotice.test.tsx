@@ -49,6 +49,21 @@ describe("useSiteNotice", () => {
     await waitFor(() => expect(result.current.banner).toBeNull());
   });
 
+  // [MV]
+  test("loaded flips true only once the first fetch has landed", async () => {
+    const { result } = renderHook(() => useSiteNotice(fetcher(notice({}))));
+
+    expect(result.current.loaded).toBe(false);
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+  });
+
+  test("a failed first fetch leaves loaded false", async () => {
+    const { result } = renderHook(() => useSiteNotice(() => Promise.reject(new Error("offline"))));
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.loaded).toBe(false);
+  });
+
   test("a dismissed banner stays dismissed", async () => {
     const live = notice({ banner: { message: "維護預告", level: "info", ends_at: null, active: true } });
     const { result } = renderHook(() => useSiteNotice(fetcher(live)));

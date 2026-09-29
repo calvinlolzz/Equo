@@ -42,6 +42,7 @@ afterEach(() => {
 describe("LineLedgerHint", () => {
   // [MV]
   test("without a configured add-friend URL it neither fetches nor shows", async () => {
+    vi.stubEnv("VITE_LINE_OA_URL", "");
     const calls = stubLineFetch(false);
     render(<LineLedgerHint enabled showQr={false} />);
     await settle();

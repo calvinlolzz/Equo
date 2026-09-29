@@ -404,6 +404,7 @@ describe("the LINE add-friend link in the personal-ledger section", () => {
 
   // [MV]
   test("without the URL neither the link nor its sentence renders", () => {
+    vi.stubEnv("VITE_LINE_OA_URL", "");
     render(<LandingPage onGoogleLogin={() => {}} />);
 
     expect(screen.queryByRole("link", { name: text.ledgerLineAction })).toBeNull();

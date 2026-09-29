@@ -326,7 +326,7 @@ export const ZH_HANT = {
     demoLedgerNet: "+NT$24,900",
     demoLedgerBudgetLabel: "每月預算 NT$10,000",
     demoLedgerBudgetLeft: "還剩 NT$2,900",
-    ledgerLine: "也能在 LINE 記帳：加 Equo 好友，傳「早餐 60」就記進個人帳本。",
+    ledgerLine: "也能在 LINE 記帳：加 Equo 好友、連結帳號後，傳「早餐 60」就記進個人帳本。",
     ledgerLineAction: "加 LINE 好友",
 
     /**
@@ -762,7 +762,7 @@ export const ZH_HANT = {
     recordBadge: "LINE",
     recordBadgeTitle: "從 LINE 記錄",
     hintTitle: "用 LINE 記帳更快",
-    hintBody: "加 Equo 好友，傳「早餐 60」就記進這本帳。",
+    hintBody: "加 Equo 好友並連結帳號，就能傳「早餐 60」記進這本帳。",
     hintScan: "或用手機 LINE 掃描 QR code",
     hintQrAlt: "加 Equo 為 LINE 好友的 QR code",
     hintDismiss: "關閉 LINE 記帳提示",

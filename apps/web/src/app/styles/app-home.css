@@ -237,9 +237,12 @@
   font-size: 17px;
 }
 
-/* A row recorded from LINE (client_request_id "line:..."). Ink on the LINE
-   green is ~7.4:1 in both themes, so it is deliberately not in the light-theme
-   grey-text list. Same shape as .record-pending-badge. */
+/* A row recorded from LINE (client_request_id "line:..."). The fill is the LINE
+   green at 0.9 alpha over the card base, so the real pair is --ink on about
+   rgb(7 181 79) in dark (5 34 26 ink, 6.2:1) and on about rgb(31 205 102) in
+   light (7 17 15 ink, 9.1:1) - not the ~7.4:1 an opaque fill would suggest.
+   Deliberately not in the light-theme grey-text list. Same shape as
+   .record-pending-badge. */
 .record-line-badge {
   margin-left: 6px;
   padding: 1px 6px;

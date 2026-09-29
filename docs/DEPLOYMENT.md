@@ -57,7 +57,8 @@ LINE bot (optional; all absent = the webhook answers 503 `LINE_NOT_CONFIGURED` a
 LINE_CHANNEL_SECRET
 LINE_CHANNEL_ACCESS_TOKEN
 APP_ORIGIN              (optional, defaults to https://equo-mu.vercel.app)
-VITE_LINE_OA_URL        (build-time; the add-friend link shown in the profile)
+VITE_LINE_OA_URL        (build-time; the add-friend link: profile row, ledger-home hint, landing link.
+                         Unset or not https://lin.ee/ or https://line.me/ hides all three silently)
 ```
 
 Setup, kill switch and checklist: `docs/OPERATIONS.md` section 18.
