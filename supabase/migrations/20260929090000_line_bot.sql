@@ -82,6 +82,25 @@ CREATE INDEX IF NOT EXISTS "line_bot_entries_group_id_idx" ON "public"."line_bot
 CREATE INDEX IF NOT EXISTS "line_bot_entries_expense_id_idx" ON "public"."line_bot_entries" ("expense_id");
 CREATE INDEX IF NOT EXISTS "line_bot_entries_created_at_idx" ON "public"."line_bot_entries" ("created_at");
 
+-- Every outcome of an undo attempt, not just successful ones - keyed on the
+-- webhook event id so a REDELIVERED "復原" can never re-run the undo logic
+-- from scratch. Without this, a redelivered event that first found "nothing
+-- to undo" (or "already gone") would, on redelivery, look at whatever is
+-- newest AT THAT LATER MOMENT - which could by then be a real entry the user
+-- recorded in between - and delete it by mistake. Deliberately no foreign key
+-- (cascade-free): this is a short-lived idempotency log, not history tied to
+-- the account's lifetime, and it is purged on its own schedule alongside
+-- line_bot_entries (see purge_line_undo_events below).
+CREATE TABLE IF NOT EXISTS "public"."line_undo_events" (
+  "webhook_event_id" text NOT NULL,
+  "line_user_id" text NOT NULL,
+  "result" text NOT NULL,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "line_undo_events_pkey" PRIMARY KEY ("webhook_event_id"),
+  CONSTRAINT "line_undo_events_result_check" CHECK ("result" IN ('not_linked', 'nothing_to_undo', 'already_gone', 'ok'))
+);
+CREATE INDEX IF NOT EXISTS "line_undo_events_created_at_idx" ON "public"."line_undo_events" ("created_at");
+
 ALTER TABLE "public"."line_accounts" OWNER TO "postgres";
 ALTER TABLE "public"."line_accounts" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE "public"."line_accounts" FROM PUBLIC;
@@ -102,6 +121,13 @@ REVOKE ALL ON TABLE "public"."line_bot_entries" FROM PUBLIC;
 REVOKE ALL ON TABLE "public"."line_bot_entries" FROM "anon";
 REVOKE ALL ON TABLE "public"."line_bot_entries" FROM "authenticated";
 GRANT ALL ON TABLE "public"."line_bot_entries" TO "service_role";
+
+ALTER TABLE "public"."line_undo_events" OWNER TO "postgres";
+ALTER TABLE "public"."line_undo_events" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE "public"."line_undo_events" FROM PUBLIC;
+REVOKE ALL ON TABLE "public"."line_undo_events" FROM "anon";
+REVOKE ALL ON TABLE "public"."line_undo_events" FROM "authenticated";
+GRANT ALL ON TABLE "public"."line_undo_events" TO "service_role";
 
 -- ---------------------------------------------------------------------------
 -- Functions
@@ -169,6 +195,14 @@ begin
 
   if exists (select 1 from line_accounts where line_user_id = r.line_user_id and user_id = p_user) then
     return jsonb_build_object('ok', true, 'already_linked', true);
+  end if;
+
+  -- Somebody else already attached to this same link request (a race between
+  -- two tabs/people, or a stale token reused after it was claimed). The same
+  -- user re-tapping still works above, via the already_linked check - this
+  -- only rejects a DIFFERENT user_id.
+  if r.user_id is not null and r.user_id <> p_user then
+    return jsonb_build_object('ok', false, 'reason', 'claimed');
   end if;
 
   update line_link_requests
@@ -507,6 +541,14 @@ GRANT ALL ON FUNCTION "public"."line_record_entry"(text, text, text, text, text,
 -- been edited or deleted in the app (does not fall back to an older one),
 -- because guessing which earlier entry the user meant is worse than asking
 -- them to open the app.
+--
+-- Every outcome (not just a successful delete) is recorded in
+-- line_undo_events, keyed on the webhook event id, and checked FIRST. Without
+-- this, a redelivered "復原" whose first attempt found nothing to undo would
+-- re-run the whole lookup on redelivery - and by then a genuinely new entry
+-- might exist, which it would delete by mistake. Recording every outcome
+-- means a redelivery always echoes the original answer instead of doing new
+-- work.
 CREATE OR REPLACE FUNCTION "public"."line_undo_last"(
   "p_line_user_id" text,
   "p_event_id" text,
@@ -520,10 +562,16 @@ declare
   v_user uuid;
   v_deleted_at timestamptz;
   v_deleted jsonb;
+  v_prior_result text;
 begin
-  select * into e from line_bot_entries where undone_by_event_id = p_event_id;
+  select result into v_prior_result from line_undo_events where webhook_event_id = p_event_id;
+
   if found then
-    return jsonb_build_object('ok', true, 'replay', true, 'expense', expense_json(e.expense_id));
+    if v_prior_result = 'ok' then
+      select * into e from line_bot_entries where undone_by_event_id = p_event_id;
+      return jsonb_build_object('ok', true, 'replay', true, 'expense', expense_json(e.expense_id));
+    end if;
+    return jsonb_build_object('ok', false, 'reason', v_prior_result, 'replay', true);
   end if;
 
   select la.user_id, u.deleted_at into v_user, v_deleted_at
@@ -532,6 +580,7 @@ begin
   where la.line_user_id = p_line_user_id;
 
   if v_user is null then
+    insert into line_undo_events (webhook_event_id, line_user_id, result) values (p_event_id, p_line_user_id, 'not_linked');
     return jsonb_build_object('ok', false, 'reason', 'not_linked');
   end if;
 
@@ -546,16 +595,20 @@ begin
   for update;
 
   if not found then
+    insert into line_undo_events (webhook_event_id, line_user_id, result) values (p_event_id, p_line_user_id, 'nothing_to_undo');
     return jsonb_build_object('ok', false, 'reason', 'nothing_to_undo');
   end if;
 
   if exists (select 1 from expenses where id = e.expense_id and deleted_at is not null) then
+    insert into line_undo_events (webhook_event_id, line_user_id, result) values (p_event_id, p_line_user_id, 'already_gone');
     return jsonb_build_object('ok', false, 'reason', 'already_gone');
   end if;
 
   v_deleted := soft_delete_expense(e.group_id, v_user, e.expense_id, 'line:' || p_event_id);
 
   update line_bot_entries set undone_at = now(), undone_by_event_id = p_event_id where id = e.id;
+
+  insert into line_undo_events (webhook_event_id, line_user_id, result) values (p_event_id, p_line_user_id, 'ok');
 
   return jsonb_build_object('ok', true, 'replay', false, 'expense', v_deleted);
 end
@@ -662,3 +715,26 @@ REVOKE ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) FROM "anon";
 REVOKE ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) FROM "authenticated";
 GRANT ALL ON FUNCTION "public"."purge_line_bot_entries"(integer) TO "service_role";
+
+-- 13. Nightly purge: undo-attempt outcomes. Same 30-day floor and purpose as
+-- purge_line_bot_entries (these rows only exist to make a redelivered undo
+-- safe) - purged on the same schedule, from the same nightly step.
+CREATE OR REPLACE FUNCTION "public"."purge_line_undo_events"("p_days" integer DEFAULT 90) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_deleted integer;
+begin
+  delete from line_undo_events where created_at < now() - make_interval(days => greatest(coalesce(p_days, 90), 30));
+  get diagnostics v_deleted = row_count;
+
+  return jsonb_build_object('deleted', v_deleted);
+end
+$$;
+
+ALTER FUNCTION "public"."purge_line_undo_events"(integer) OWNER TO postgres;
+REVOKE ALL ON FUNCTION "public"."purge_line_undo_events"(integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "public"."purge_line_undo_events"(integer) FROM "anon";
+REVOKE ALL ON FUNCTION "public"."purge_line_undo_events"(integer) FROM "authenticated";
+GRANT ALL ON FUNCTION "public"."purge_line_undo_events"(integer) TO "service_role";

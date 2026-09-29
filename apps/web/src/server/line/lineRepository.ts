@@ -45,7 +45,7 @@ export async function registerLinkToken(
 }
 
 export type AttachLinkRequestResult =
-  | { ok: false; reason: "unknown" | "used" | "expired" }
+  | { ok: false; reason: "unknown" | "used" | "expired" | "claimed" }
   | { ok: true; already_linked: boolean; currently_linked?: boolean };
 
 export async function attachLinkRequest(
@@ -128,7 +128,7 @@ export async function recordLineEntry(
 }
 
 export type UndoLastLineEntryResult =
-  | { ok: false; reason: "not_linked" | "nothing_to_undo" | "already_gone" }
+  | { ok: false; reason: "not_linked" | "nothing_to_undo" | "already_gone"; replay?: boolean }
   | { ok: true; replay: boolean; expense: Record<string, unknown> };
 
 export async function undoLastLineEntry(

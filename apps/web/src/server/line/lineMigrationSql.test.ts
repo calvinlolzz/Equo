@@ -36,7 +36,7 @@ describe("line_bot migration", () => {
   });
 
   test("every table revokes anon and authenticated", () => {
-    for (const table of ["line_accounts", "line_link_requests", "line_bot_entries"]) {
+    for (const table of ["line_accounts", "line_link_requests", "line_bot_entries", "line_undo_events"]) {
       expect(botSql).toContain(`REVOKE ALL ON TABLE "public"."${table}" FROM "anon"`);
       expect(botSql).toContain(`REVOKE ALL ON TABLE "public"."${table}" FROM "authenticated"`);
     }
@@ -64,6 +64,39 @@ describe("line_bot migration", () => {
     expect(body).toContain("'line:' || p_event_id");
     expect(body).toContain("ensure_personal_ledger(");
     expect(body).toContain("on conflict (webhook_event_id) do nothing");
+  });
+
+  // [MV]: a link request already attached to a DIFFERENT user must be
+  // refused, not silently reassigned - break the guard and this goes red.
+  test("line_attach_link_request refuses a link request another user already attached to", () => {
+    const start = botSql.indexOf('CREATE OR REPLACE FUNCTION "public"."line_attach_link_request"');
+    const end = botSql.indexOf("\n$$;", start);
+    const body = botSql.slice(start, end);
+
+    expect(body).toMatch(/r\.user_id is not null and r\.user_id <> p_user/);
+    expect(body).toContain("'reason', 'claimed'");
+  });
+
+  // [MV]: every exit path of line_undo_last must record its outcome, and the
+  // very first thing the function does must be to check for a prior outcome -
+  // otherwise a redelivered "復原" that first found nothing to undo would
+  // re-run the lookup and could delete an entry recorded in between.
+  test("line_undo_last checks line_undo_events first and records every outcome", () => {
+    const start = botSql.indexOf('CREATE OR REPLACE FUNCTION "public"."line_undo_last"');
+    const end = botSql.indexOf("\n$$;", start);
+    const body = botSql.slice(start, end);
+
+    const firstStatementIndex = body.indexOf("select result into v_prior_result from line_undo_events");
+    expect(firstStatementIndex).toBeGreaterThan(-1);
+    // Nothing that reads line_bot_entries or touches expenses may run before
+    // the prior-outcome check.
+    expect(body.indexOf("from line_bot_entries")).toBeGreaterThan(firstStatementIndex);
+
+    const insertCount = (body.match(/insert into line_undo_events/g) ?? []).length;
+    expect(insertCount).toBe(4); // not_linked, nothing_to_undo, already_gone, ok
+    for (const result of ["not_linked", "nothing_to_undo", "already_gone", "ok"]) {
+      expect(body).toContain(`'${result}'`);
+    }
   });
 });
 
