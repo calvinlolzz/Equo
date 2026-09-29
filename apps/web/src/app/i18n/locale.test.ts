@@ -160,5 +160,8 @@ describe("dictionaries", () => {
     expect(ZH_HANT.spend.budgetUsage).toContain("{amount}");
     expect(EN.spend.budgetUsage).toContain("{pct}");
     expect(EN.spend.budgetUsage).toContain("{amount}");
+
+    expect(ZH_HANT.lineLink.confirmAccount).toContain("{email}");
+    expect(EN.lineLink.confirmAccount).toContain("{email}");
   });
 });

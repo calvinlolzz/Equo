@@ -120,3 +120,42 @@ describe("the 其他設定 rows", () => {
     );
   });
 });
+
+describe("the LINE row", () => {
+  const aliceSession = {
+    expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    user: { id: "user_alice", email: "alice@example.com", displayName: "Alice" },
+  };
+
+  function stubLineLinkFetch(linked: boolean) {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls.push(String(url));
+      if (String(url).includes("/me/line")) {
+        return {
+          ok: true,
+          json: async () => ({ linked, linked_at: linked ? "2026-09-29T00:00:00Z" : null }),
+        } as Response;
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    return calls;
+  }
+
+  test("is hidden when unlinked and no LINE add-friend URL is configured", async () => {
+    const calls = stubLineLinkFetch(false);
+    renderDialog({ session: aliceSession });
+
+    await waitFor(() => expect(calls.some((url) => url.includes("/me/line"))).toBe(true));
+    // Let the fetch's own .then() settle before asserting the row stayed absent.
+    await waitFor(() => expect(screen.queryByText(UI_TEXT.lineLink.rowTitle)).toBeNull());
+  });
+
+  test("shows an unlink control when linked", async () => {
+    stubLineLinkFetch(true);
+    renderDialog({ session: aliceSession });
+
+    await waitFor(() => expect(screen.getByText(UI_TEXT.lineLink.rowTitle)).toBeTruthy());
+    expect(screen.getByRole("button", { name: UI_TEXT.lineLink.unlink })).toBeTruthy();
+  });
+});

@@ -903,3 +903,67 @@
   border-bottom: 1px solid rgb(var(--surf) / 0.2);
   padding-bottom: 2px;
 }
+
+/* ---- /line/link ---------------------------------------------------- */
+/* Same shell as the legal pages (.legal-page / .legal-page-inner /
+   .glass-panel above); .primary-action / .secondary-action are the app's
+   one shared button pair (see app-home.css) - reused here rather than
+   re-declaring colours, which is exactly the trap the aurora-restyle
+   postmortem flagged (a button missing `color` gets reintroduced by new
+   code that doesn't know the shared class exists). */
+.line-link-page {
+  width: min(420px, 100%);
+  text-align: center;
+}
+
+.line-link-body {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+
+.line-link-body h1 {
+  margin: 0;
+  font-size: clamp(20px, 5vw, 24px);
+}
+
+.line-link-body p {
+  margin: 0;
+  color: rgb(var(--fg) / 0.82);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.line-link-hint {
+  color: rgb(var(--fg) / 0.65) !important;
+  font-size: 13px !important;
+}
+
+.line-link-notice {
+  font-size: 12px !important;
+  color: rgb(var(--fg) / 0.58) !important;
+}
+
+.line-link-status {
+  color: rgb(var(--fg) / 0.6);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.line-link-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Overrides .primary-action / .secondary-action's own width:100% so the two
+   buttons in .line-link-actions share the row instead of stacking. A lone
+   action (expired/done/error/sign-in) keeps the full-width default. */
+.line-link-actions .line-link-action {
+  width: auto;
+  flex: 1;
+}
+
+a.line-link-action {
+  text-decoration: none;
+}

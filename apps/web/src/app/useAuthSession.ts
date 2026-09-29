@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createApiClient } from "./apiClient";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
+import { resumePendingLineLink } from "./lineLink";
 import { stashPendingRoute } from "./pendingRoute";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
 import { buildAuthorizeUrl, parseOAuthFragment } from "./supabaseOAuth";
@@ -127,6 +128,11 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
           },
         };
         saveSession(stored);
+        // A pending LINE link survives the round trip the same way an
+        // invite token does - see lineLink.ts. If one is waiting, bounce
+        // straight to /line/link instead of finishing the rest of this
+        // (App-shell-only) sign-in flow.
+        if (resumePendingLineLink(Date.now())) return;
         setSession(stored);
         onSignedIn(stored);
         showToast(`${text.loginSuccessPrefix}${stored.user.displayName}`);

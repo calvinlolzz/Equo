@@ -727,6 +727,25 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "DELETE",
       });
     },
+    getMyLineLink() {
+      return request<{ linked: boolean; linked_at: string | null }>("/me/line", {
+        method: "GET",
+      });
+    },
+    startLineLink(linkToken: string, locale: string) {
+      return request<{ already_linked: true } | { redirect_url: string; currently_linked: boolean }>(
+        "/me/line/link",
+        {
+          method: "POST",
+          body: JSON.stringify({ link_token: linkToken, locale }),
+        },
+      );
+    },
+    unlinkMyLine() {
+      return request<{ ok: true; unlinked: boolean }>("/me/line", {
+        method: "DELETE",
+      });
+    },
     setMemberPaymentNote(groupId: string, memberId: string, paymentNote: string) {
       return request<{ member: GroupMemberSummary }>(`/groups/${groupId}/members/${memberId}/payment-note`, {
         method: "PUT",

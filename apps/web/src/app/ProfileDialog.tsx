@@ -1,7 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageSquareText, Moon, Pencil, ScanLine, Sun, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bell, FileText, Globe, Lock, LogOut, MessageCircle, MessageSquareText, Moon, Pencil, ScanLine, Sun, Trash2, X } from "lucide-react";
+import { describeCloudActionError } from "./describeCloudActionError";
 import { downscaleImageFileToDataUrl } from "./expenseImage";
+import { lineOaUrl } from "./lineLink";
 import { upscaleGoogleAvatar } from "./MemberAvatar";
+import { useLineLink } from "./useLineLink";
 import { useAnimatedHeight } from "./useAnimatedHeight";
 import { useSwipeToDismiss } from "./useSwipeToDismiss";
 import { mergeRefs, useDialogChrome } from "./useDialogChrome";
@@ -18,6 +21,7 @@ import { LOCALE_NAMES, LOCALES, setLocale, type Locale } from "./i18n/locale";
 
 const text = UI_TEXT.profile;
 const appText = UI_TEXT.app;
+const lineLinkText = UI_TEXT.lineLink;
 
 type ProfileTab = "account" | "other";
 
@@ -125,6 +129,9 @@ export function ProfileDialog({
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isLoggedIn = Boolean(session);
+  const lineLink = useLineLink(tab === "account" && isLoggedIn);
+  const [confirmingLineUnlink, setConfirmingLineUnlink] = useState(false);
+  const lineOaAddFriendUrl = useMemo(() => lineOaUrl(), []);
   const swipe = useSwipeToDismiss(onClose);
   // The two tabs are very different heights; without this the sheet teleports.
   const panelsRef = useAnimatedHeight<HTMLDivElement>();
@@ -154,6 +161,21 @@ export function ProfileDialog({
   }
 
   const hasPendingChange = name.trim() !== profile.name || avatarDataUrl !== initialAvatarDataUrl;
+
+  /** Two taps, same as account deletion: unlinking is easy to reach and easy to regret, but always available (LINE requires the ability to disconnect at any time). */
+  async function handleLineUnlink() {
+    if (!confirmingLineUnlink) {
+      setConfirmingLineUnlink(true);
+      return;
+    }
+    setConfirmingLineUnlink(false);
+    try {
+      const unlinked = await lineLink.unlink();
+      onToast(unlinked ? lineLinkText.unlinked : lineLinkText.unlinkFailed);
+    } catch (error) {
+      onToast(describeCloudActionError(error));
+    }
+  }
 
   return (
     <div
@@ -266,6 +288,47 @@ export function ProfileDialog({
                   {text.unlinkAccount}
                 </button>
               </div>
+              {/* A linked row always shows, so unlinking is always reachable
+                  (LINE requires this). An unlinked row is worth showing only
+                  when there is somewhere to send the person to add the bot -
+                  no OA URL configured means no row, rather than a dead end. */}
+              {lineLink.state === "linked" ? (
+                <div className="profile-account-row">
+                  <span className="profile-account-icon">
+                    <MessageCircle aria-hidden="true" size={20} />
+                  </span>
+                  <span className="profile-account-info">
+                    <strong>{lineLinkText.rowTitle}</strong>
+                    <small className="profile-status-linked">{lineLinkText.statusLinked}</small>
+                  </span>
+                  <button
+                    className="profile-link-action"
+                    type="button"
+                    disabled={lineLink.busy}
+                    onClick={handleLineUnlink}
+                  >
+                    {lineLink.busy ? lineLinkText.unlinking : confirmingLineUnlink ? lineLinkText.unlinkConfirm : lineLinkText.unlink}
+                  </button>
+                </div>
+              ) : lineLink.state === "unlinked" && lineOaAddFriendUrl ? (
+                <div className="profile-account-row">
+                  <span className="profile-account-icon">
+                    <MessageCircle aria-hidden="true" size={20} />
+                  </span>
+                  <span className="profile-account-info">
+                    <strong>{lineLinkText.rowTitle}</strong>
+                    <small>{lineLinkText.statusUnlinked} · {lineLinkText.addFriendHint}</small>
+                  </span>
+                  <a
+                    className="profile-link-action"
+                    href={lineOaAddFriendUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {lineLinkText.addFriend}
+                  </a>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="profile-other-list enter-content" key={tab}>

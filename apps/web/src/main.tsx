@@ -8,6 +8,7 @@ import { dismissAppSplash } from "./app/appSplash";
 import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
+import { isLineLinkPath } from "./app/lineLink";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { resolvePublicPage } from "./app/publicRoute";
 import { initRail } from "./app/railStore";
@@ -47,6 +48,13 @@ const AdminApp = lazyChunk(() => import("./app/AdminApp").then((module) => ({ de
 const publicPage = isAdminPath ? null : resolvePublicPage(window.location.pathname);
 const LegalPage = lazyChunk(() => import("./app/LegalPage").then((module) => ({ default: module.LegalPage })));
 
+// /line/link - the browser half of the LINE account-link flow (see
+// app/LineLinkPage.tsx). Lazy for the same reason LegalPage is: most visits
+// never touch it. <Analytics /> is skipped on this path below so the
+// linkToken query param never reaches page-view analytics.
+const lineLinkPage = !isAdminPath && isLineLinkPath(window.location.pathname);
+const LineLinkPage = lazyChunk(() => import("./app/LineLinkPage").then((module) => ({ default: module.LineLinkPage })));
+
 // Apply the persisted day/night theme to <html> before first paint (no flash).
 // Same for the desktop group rail's collapsed/expanded state — a 64px strip
 // that widens to 260px one frame after mount is exactly the flash this avoids.
@@ -77,7 +85,11 @@ createRoot(root).render(
     ) : (
       <>
         <ErrorBoundary source="web">
-          {publicPage ? (
+          {lineLinkPage ? (
+            <Suspense fallback={null}>
+              <LineLinkPage />
+            </Suspense>
+          ) : publicPage ? (
             <Suspense fallback={null}>
               <LegalPage page={publicPage} />
             </Suspense>
@@ -89,8 +101,11 @@ createRoot(root).render(
             origin (/_vercel/insights/*), so the CSP's `self` script-src and
             connect-src already allow it — no policy change needed. Cookieless
             and no cross-site tracking, which is what the privacy policy says.
-            Only on the user-facing app; the operator console isn't measured. */}
-        <Analytics />
+            Only on the user-facing app; the operator console isn't measured.
+            Skipped on /line/link so the linkToken query param never reaches
+            page-view analytics — it is stripped from the URL a moment later,
+            but a beacon can fire before that happens. */}
+        {lineLinkPage ? null : <Analytics />}
       </>
     )}
   </React.StrictMode>,

@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_GOOGLE_OAUTH_CLIENT_ID?: string;
   readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_LINE_OA_URL?: string;
 }
 
 interface ImportMeta {
