@@ -15,6 +15,7 @@ import { describe, expect, test } from "vitest";
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "..", "..", "supabase", "migrations");
 const botSql = readFileSync(join(MIGRATIONS_DIR, "20260929090000_line_bot.sql"), "utf8");
 const mergeSql = readFileSync(join(MIGRATIONS_DIR, "20260929090100_line_merge_users.sql"), "utf8");
+const budgetSql = readFileSync(join(MIGRATIONS_DIR, "20260930090000_line_set_budget.sql"), "utf8");
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const workflow = readFileSync(join(REPO_ROOT, ".github", "workflows", "db-backup.yml"), "utf8");
 
@@ -161,5 +162,37 @@ describe("line_undo_events does not outlive the link", () => {
     const body = fn("purge_line_undo_events");
     expect(body).toContain('"p_days" integer DEFAULT 2');
     expect(body).toContain("greatest(coalesce(p_days, 2), 1)");
+  });
+});
+
+describe("line_set_budget migration", () => {
+  const start = budgetSql.indexOf('CREATE OR REPLACE FUNCTION "public"."line_set_budget"');
+  const body = budgetSql.slice(start, budgetSql.indexOf("\n$$;", start));
+
+  test("security posture: definer, pinned search_path, service_role only", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(budgetSql).toContain("SECURITY DEFINER");
+    expect(budgetSql).toContain("SET search_path TO 'public'");
+    const sig = '"public"."line_set_budget"(text, integer, date)';
+    expect(budgetSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC`);
+    expect(budgetSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM "anon"`);
+    expect(budgetSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM "authenticated"`);
+    expect(budgetSql).toContain(`GRANT ALL ON FUNCTION ${sig} TO "service_role"`);
+  });
+
+  // [MV]: add a p_group parameter or drop the kind filter and this goes red.
+  test("is ledger-only: no group parameter, resolves via ensure_personal_ledger, updates only a personal ledger", () => {
+    expect(body).not.toMatch(/p_group\b/);
+    expect(body).toContain("ensure_personal_ledger(");
+    expect(body).toContain("id = v_group and kind = 'personal'");
+  });
+
+  // [MV]: loosen the lower bound to >= 0 and this goes red.
+  test("range matches validateMonthlyBudgetMinor: above 0, at most 2,000,000,000", () => {
+    expect(body).toContain("p_budget_minor > 0 and p_budget_minor <= 2000000000");
+  });
+
+  test("a no-op write does not touch the row", () => {
+    expect(body).toContain("is distinct from p_budget_minor");
   });
 });
