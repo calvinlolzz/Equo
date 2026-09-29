@@ -10,6 +10,8 @@
  * function's cold start stays cheap and its dependency graph is easy to
  * reason about for the ESM check (scripts/check-api-esm-imports.py).
  */
+const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
+
 export async function handleLineWebhookRequest(request: Request): Promise<Response> {
   try {
     const [{ createPostgrestClient }, { createLineClient }, { handleLineWebhook }, { readLineEnv, missingLineEnv }] =
@@ -45,6 +47,14 @@ export async function handleLineWebhookRequest(request: Request): Promise<Respon
       serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY as string,
     });
     const line = createLineClient({ channelAccessToken: env.LINE_CHANNEL_ACCESS_TOKEN as string });
+
+    // Turned away on the declared size BEFORE the body is read: reading is
+    // what buffers it into memory. handleLineWebhook re-checks the real byte
+    // length afterwards, since the header is only a claim.
+    const declared = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_WEBHOOK_BODY_BYTES) {
+      return Response.json({ error: "PAYLOAD_TOO_LARGE" }, { status: 413, headers: { "cache-control": "no-store" } });
+    }
 
     const rawBody = new Uint8Array(await request.arrayBuffer());
     const signature = request.headers.get("x-line-signature");

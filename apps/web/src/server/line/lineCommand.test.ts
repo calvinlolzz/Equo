@@ -177,3 +177,76 @@ describe("LINE_CATEGORY_KEYWORDS", () => {
     }
   });
 });
+
+describe("parseLineCommand - income without a marker", () => {
+  // [MV]
+  test.each([
+    ["薪水 50000", "薪水", 5000000, "salary"],
+    ["薪資 50000", "薪資", 5000000, "salary"],
+    ["salary 50000", "salary", 5000000, "salary"],
+    ["月薪 42000", "月薪", 4200000, "salary"],
+    ["獎金 3000", "獎金", 300000, "bonus"],
+    ["bonus 3000", "bonus", 300000, "bonus"],
+    ["利息 50", "利息", 5000, "investment"],
+    ["dividend 120", "dividend", 12000, "investment"],
+  ])('"%s" -> income %s', (text, title, amountMinor, category) => {
+    expect(record(text)).toMatchObject({ kind: "income", title, amountMinor, category });
+  });
+
+  test("a mixed title is an expense: an expense keyword anywhere beats an income one", () => {
+    // Documented rule: income only when the title hits the income scope AND
+    // nothing in it hits an expense label or keyword. Expense wins the tie.
+    expect(record("利息 50 早餐")).toMatchObject({ kind: "expense", title: "利息 早餐", category: "food" });
+    expect(record("bonus lunch 100")).toMatchObject({ kind: "expense", category: "food" });
+  });
+
+  test("an explicit 支出 / expense marker switches the inference off", () => {
+    expect(record("支出 薪水 100")).toMatchObject({ kind: "expense", title: "薪水" });
+    expect(record("expense salary 100")).toMatchObject({ kind: "expense" });
+  });
+
+  test("ordinary expenses are unaffected", () => {
+    expect(record("早餐 60").kind).toBe("expense");
+    expect(record("薪水袋 60").kind).toBe("income");
+  });
+});
+
+describe("parseLineCommand - the stored title stays as typed", () => {
+  test("full-width letters and digits in the title are not folded", () => {
+    expect(record("ＬＵＮＣＨ 60")).toMatchObject({ title: "ＬＵＮＣＨ", amountMinor: 6000, category: "food" });
+  });
+
+  test("a glued full-width amount keeps the title's own spelling", () => {
+    expect(record("ｃａｆｅ６０")).toMatchObject({ title: "ｃａｆｅ", amountMinor: 6000 });
+  });
+
+  test("a trailing full stop on the amount is ignored", () => {
+    expect(record("早餐 60.").amountMinor).toBe(6000);
+    expect(record("早餐 60。").amountMinor).toBe(6000);
+    expect(record("60． 早餐").amountMinor).toBe(6000);
+    expect(record("咖啡 85.5.").amountMinor).toBe(8550);
+  });
+
+  test("a title that ends in a stop but is not an amount is left alone", () => {
+    expect(record("Mr. Wong 60").title).toBe("Mr. Wong");
+  });
+});
+
+describe("parseLineCommand - dates are refused", () => {
+  // [MV]
+  test.each(["午餐 120 9/30", "午餐 120 9-30", "午餐 120 2026/9/30", "午餐 120 2026-09-30", "午餐 120 9月30日", "9/30 午餐 120", "午餐 120 ９／３０"])(
+    '"%s" -> date_not_supported',
+    (text) => {
+      expect(errorReason(text)).toBe("date_not_supported");
+    },
+  );
+
+  test("a store name that looks like a short date is still a title (7-11, 5-12)", () => {
+    expect(record("7-11 咖啡 45").title).toBe("7-11 咖啡");
+    expect(record("5-12 飲料 30").title).toBe("5-12 飲料");
+  });
+
+  test("an amount is not mistaken for a date", () => {
+    expect(record("咖啡 9.5").amountMinor).toBe(950);
+  });
+});

@@ -490,3 +490,113 @@ describe("handleLineWebhook - error handling", () => {
     }
   });
 });
+
+describe("handleLineWebhook - review fixes", () => {
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const textOf = (line: ReturnType<typeof fakeLineClient>) =>
+    (line.calls.reply.at(-1)!.messages[0] as { text: string }).text;
+
+  // [MV]: the rate limit is the first database call, ahead of the context lookup.
+  test("a rate-limited message never reaches line_context, and is answered in zh-Hant", async () => {
+    const { client } = createLineFakeClient({
+      consume_rate_limit: () => ({ allowed: false, retry_after: 5 }),
+      line_context: () => {
+        throw new Error("line_context must not be called");
+      },
+    });
+    const line = fakeLineClient();
+
+    const result = await send(deps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+    expect(result.status).toBe(200);
+    expect(client.rpcCall("line_context")).toBeUndefined();
+    expect(textOf(line)).toBe(ZH_HANT.rateLimited);
+    expect(client.calls.map((c) => (c.op === "rpc" ? c.fn : c.op))).toEqual(["consume_rate_limit"]);
+  });
+
+  test("a linked user sending 綁定 is told they are already linked (masked email) and no link is issued", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "綁定" })]);
+
+    expect(line.calls.issueLinkToken).toHaveLength(0);
+    expect(client.rpcCall("line_register_link_token")).toBeUndefined();
+    expect(textOf(line)).toContain("al***@example.com");
+    expect(textOf(line)).not.toContain("alice@example.com");
+  });
+
+  // [MV]
+  test("解除綁定 still works while maintenance is on", async () => {
+    const { client } = createLineFakeClient({
+      site_notice_settings: () => ({
+        banner: { message: "", level: "info", ends_at: null, active: false },
+        maintenance: { enabled: true, message: "" },
+      }),
+      line_context: () => LINKED_CONTEXT,
+    });
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "解除綁定" })]);
+
+    expect(client.rpcCall("line_unlink")).toBeDefined();
+    expect(textOf(line)).toBe(ZH_HANT.unlinked);
+  });
+
+  test("a redelivered undo that found nothing keeps answering the same, even after a new entry exists", async () => {
+    // Mirrors line_undo_last's contract: the first outcome for an event id is
+    // remembered and echoed, so a later, newer entry is never touched.
+    const outcomes = new Map<string, unknown>();
+    const entries: string[] = [];
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      line_undo_last: (args) => {
+        const key = args.p_event_id as string;
+        if (outcomes.has(key)) return { ...(outcomes.get(key) as object), replay: true };
+        const outcome = entries.length
+          ? { ok: true, replay: false, expense: { title: entries.pop(), amount_minor: 6000, currency: "TWD" } }
+          : { ok: false, reason: "nothing_to_undo" };
+        outcomes.set(key, outcome);
+        return outcome;
+      },
+    });
+    const line = fakeLineClient();
+    const undo = messageEvent({ text: "復原", webhookEventId: "01J0000000000000000000000U" });
+
+    await send(deps(client, line.client), [undo]);
+    const first = textOf(line);
+    entries.push("新的一筆");
+    await send(deps(client, line.client), [{ ...undo, deliveryContext: { isRedelivery: true } }]);
+
+    expect(first).toContain("沒有可以復原");
+    expect(textOf(line)).toBe(first);
+    expect(entries).toEqual(["新的一筆"]);
+  });
+
+  test("a date in the message is refused with the pointer to the app", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "午餐 120 9/30" })]);
+
+    expect(client.rpcCall("line_record_entry")).toBeUndefined();
+    expect(textOf(line)).toBe(ZH_HANT.dateNotSupported);
+  });
+
+  test("「薪水 50000」 is recorded as income / salary", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "薪水 50000" })]);
+
+    expect(client.rpcCall("line_record_entry")?.args).toMatchObject({
+      p_kind: "income",
+      p_category: "salary",
+      p_amount_minor: 5000000,
+      p_title: "薪水",
+    });
+  });
+});

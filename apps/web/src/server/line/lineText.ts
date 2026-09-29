@@ -36,6 +36,7 @@ export type LineDictionary = {
   noDecimals: string;
   amountTooLarge: string;
   titleTooLong: string;
+  dateNotSupported: string;
   nonText: string;
   groupNotSupported: string;
   maintenance: string;
@@ -81,6 +82,7 @@ const ZH_HANT: LineDictionary = {
   noDecimals: "{currency} 金額不能有小數。",
   amountTooLarge: "金額太大了，這筆請到 App 裡記。",
   titleTooLong: "項目名稱太長了（最多 60 字）。",
+  dateNotSupported: "日期請到 App 裡修改，LINE 記帳一律記在今天。",
   nonText: "目前只看得懂文字。傳「說明」看怎麼用。",
   groupNotSupported: "目前只支援一對一私訊記帳，群組分帳還在準備中，我先離開這個群組。",
   maintenance: "Equo 正在維護，暫時無法記帳，請稍後再試。",
@@ -128,6 +130,7 @@ const EN: LineDictionary = {
   noDecimals: "{currency} amounts can't have decimals.",
   amountTooLarge: "That amount is too large — please record it in the app.",
   titleTooLong: "The description is too long (60 characters max).",
+  dateNotSupported: "To change the date, use the app — LINE entries are dated today.",
   nonText: 'I can only read text for now. Send "help" to see how.',
   groupNotSupported: "I only work in one-on-one chats for now — group splitting is coming. I'll leave this group.",
   maintenance: "Equo is under maintenance. Recording is paused — please try again later.",

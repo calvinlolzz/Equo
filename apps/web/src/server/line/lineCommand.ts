@@ -38,7 +38,8 @@ export type LineCommandErrorReason =
   | "too_large"
   | "missing_title"
   | "multiple_amounts"
-  | "title_too_long";
+  | "title_too_long"
+  | "date_not_supported";
 
 export type LineCommand =
   | { type: "help" }
@@ -182,13 +183,16 @@ export function parseAmountToken(token: string, currency: string): AmountTokenRe
   return null;
 }
 
-function trySplitToken(token: string, currency: string): { amount: AmountToken; titleText: string } | null {
+function trySplitToken(
+  token: string,
+  currency: string,
+): { amount: AmountToken; titleText: string; titleAtStart: boolean } | null {
   const prefixMatch = token.match(PREFIX_SPLIT);
   if (prefixMatch) {
     const [, titlePart, amountPart] = prefixMatch;
     const parsed = parseAmountToken(amountPart, currency);
     if (parsed && !("error" in parsed)) {
-      return { amount: parsed, titleText: titlePart.trim() };
+      return { amount: parsed, titleText: titlePart.trim(), titleAtStart: true };
     }
   }
 
@@ -197,7 +201,7 @@ function trySplitToken(token: string, currency: string): { amount: AmountToken; 
     const [, amountPart, titlePart] = suffixMatch;
     const parsed = parseAmountToken(amountPart, currency);
     if (parsed && !("error" in parsed)) {
-      return { amount: parsed, titleText: titlePart.trim() };
+      return { amount: parsed, titleText: titlePart.trim(), titleAtStart: false };
     }
   }
 
@@ -277,63 +281,155 @@ function matchKeyword(
   return null;
 }
 
+type TitleToken = {
+  /** NFKC-folded, used only to MATCH categories and keywords. */
+  norm: string;
+  /** What the user actually typed, used for the stored title. */
+  orig: string;
+};
+
 function resolveCategory(
-  titleTokens: readonly string[],
+  titleTokens: readonly TitleToken[],
   kind: "expense" | "income",
   categories: readonly LineCategoryInfo[],
 ): { category: string; title: string } {
   const scopes: LineCatalogScope[] = kind === "income" ? ["income"] : ["shared", "personal"];
+  const joinOrig = (tokens: readonly TitleToken[]) => tokens.map((t) => t.orig).join(" ");
 
   if (titleTokens.length >= 2) {
     const last = titleTokens[titleTokens.length - 1];
-    const lastKey = matchCategoryToken(last, scopes, categories);
-    if (lastKey) return { category: lastKey, title: titleTokens.slice(0, -1).join(" ") };
+    const lastKey = matchCategoryToken(last.norm, scopes, categories);
+    if (lastKey) return { category: lastKey, title: joinOrig(titleTokens.slice(0, -1)) };
 
     const first = titleTokens[0];
-    const firstKey = matchCategoryToken(first, scopes, categories);
-    if (firstKey) return { category: firstKey, title: titleTokens.slice(1).join(" ") };
+    const firstKey = matchCategoryToken(first.norm, scopes, categories);
+    if (firstKey) return { category: firstKey, title: joinOrig(titleTokens.slice(1)) };
   } else if (titleTokens.length === 1) {
-    const key = matchCategoryToken(titleTokens[0], scopes, categories);
-    if (key) return { category: key, title: titleTokens[0] };
+    const key = matchCategoryToken(titleTokens[0].norm, scopes, categories);
+    if (key) return { category: key, title: titleTokens[0].orig };
   }
 
-  const titleText = titleTokens.join(" ");
-  const keywordKey = matchKeyword(titleText, titleTokens, scopes, categories);
-  if (keywordKey) return { category: keywordKey, title: titleText };
+  const norms = titleTokens.map((t) => t.norm);
+  const keywordKey = matchKeyword(norms.join(" "), norms, scopes, categories);
+  if (keywordKey) return { category: keywordKey, title: joinOrig(titleTokens) };
 
-  return { category: LINE_DEFAULT_CATEGORY[kind], title: titleText };
+  return { category: LINE_DEFAULT_CATEGORY[kind], title: joinOrig(titleTokens) };
+}
+
+/** Whether a title names something in the given scopes, by category label/key or by keyword. */
+function titleHitsScopes(
+  titleTokens: readonly TitleToken[],
+  scopes: readonly LineCatalogScope[],
+  categories: readonly LineCategoryInfo[],
+): boolean {
+  const norms = titleTokens.map((t) => t.norm);
+  if (norms.some((n) => matchCategoryToken(n, scopes, categories))) return true;
+  return matchKeyword(norms.join(" "), norms, scopes, categories) !== null;
+}
+
+/**
+ * Income without an explicit marker: "薪水 50000", "salary 50000", "利息 50".
+ *
+ * The rule, deterministic and deliberately conservative: a message is income
+ * only when its title hits the INCOME scope (an income category label/key or an
+ * income keyword) AND nothing in it hits an expense category label or keyword.
+ * So "利息 50 早餐" stays an expense (早餐 is food) - expense wins any tie,
+ * because a wrongly-recorded income silently inflates the month's balance,
+ * while a wrongly-recorded expense is the default and is caught at a glance.
+ * An explicit "支出"/"expense" marker turns inference off entirely.
+ */
+function looksLikeIncome(titleTokens: readonly TitleToken[], categories: readonly LineCategoryInfo[]): boolean {
+  return (
+    titleHitsScopes(titleTokens, ["income"], categories) &&
+    !titleHitsScopes(titleTokens, ["shared", "personal"], categories)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dates
+// ---------------------------------------------------------------------------
+
+/**
+ * A token that reads as a date (9/30, 2026/9/30, 2026-09-30, 9月30日, and 9-30
+ * when the day is 13 or more). LINE entries are always dated today - see
+ * lineDateKey - so a date is refused with a pointer to the app rather than
+ * being silently absorbed into the title.
+ *
+ * The two-part dash form is the one ambiguity: "7-11" is a convenience store
+ * as often as July 11th, and the grammar's own table keeps it as a title. A
+ * day of 13+ cannot be a store name in practice, so only then is M-D a date.
+ * Slash forms are always dates.
+ */
+function isDateToken(token: string): boolean {
+  if (/^\d{1,2}月\d{1,2}[日号]?$/.test(token)) return true;
+  if (/^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(token)) return true;
+  if (/^\d{1,2}\/\d{1,2}$/.test(token)) return true;
+  const dash = token.match(/^(\d{1,2})-(\d{1,2})$/);
+  return Boolean(dash && Number(dash[1]) >= 1 && Number(dash[1]) <= 12 && Number(dash[2]) >= 13 && Number(dash[2]) <= 31);
 }
 
 // ---------------------------------------------------------------------------
 // The parser
 // ---------------------------------------------------------------------------
 
+/**
+ * The user's own spelling of the title half of a split token ("早餐６０" ->
+ * "早餐"): the same number of code points, taken from the matching end of the
+ * original - unless folding changed the length, in which case the folded text
+ * is the best available.
+ */
+function originalTitlePart(token: TitleToken, foldedTitle: string, titleAtStart: boolean): string {
+  const count = [...foldedTitle].length;
+  const chars = [...token.orig];
+  if (chars.length !== [...token.norm].length) return foldedTitle;
+  return (titleAtStart ? chars.slice(0, count) : chars.slice(chars.length - count)).join("");
+}
+
 function parseRecordCommand(
-  normalized: string,
+  original: string,
   options: { currency: string; categories: readonly LineCategoryInfo[] },
 ): LineCommand {
-  let tokens = normalized.split(" ").filter(Boolean);
+  // Two parallel views of each token: the user's own text (for the stored
+  // title) and its NFKC fold (for everything that DETECTS something - amounts,
+  // markers, dates, categories). Splitting on whitespace BEFORE folding keeps
+  // them one-to-one.
+  let pairs: TitleToken[] = original
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((orig) => ({ orig, norm: orig.normalize("NFKC") }));
 
   let incomeMarker = false;
-  if (tokens.length > 0) {
-    const first = tokens[0];
+  let expenseMarker = false;
+  if (pairs.length > 0) {
+    const first = pairs[0].norm;
     const firstLower = first.toLowerCase();
     if (first === "收入" || firstLower === "income" || first === "+") {
       incomeMarker = true;
-      tokens = tokens.slice(1);
+      pairs = pairs.slice(1);
     } else if (first === "支出" || firstLower === "expense") {
-      tokens = tokens.slice(1);
+      expenseMarker = true;
+      pairs = pairs.slice(1);
     }
   }
 
   const amounts: AmountToken[] = [];
   const amountErrors: LineCommandErrorReason[] = [];
-  let titleTokens: string[] = [];
+  let titleTokens: TitleToken[] = [];
+  let sawDate = false;
 
-  for (const token of tokens) {
-    const result = parseAmountToken(token, options.currency);
+  for (const pair of pairs) {
+    if (isDateToken(pair.norm)) {
+      sawDate = true;
+      continue;
+    }
+
+    // "60." / "60。" - a sentence-final stop glued to the amount.
+    const stripped = pair.norm.replace(/[.。]+$/, "");
+    const probe = stripped !== pair.norm && parseAmountToken(stripped, options.currency) !== null ? stripped : pair.norm;
+    const result = parseAmountToken(probe, options.currency);
+
     if (result === null) {
-      titleTokens.push(token);
+      titleTokens.push(pair);
     } else if ("error" in result) {
       amountErrors.push(result.error);
     } else {
@@ -343,12 +439,19 @@ function parseRecordCommand(
 
   // "早餐60": the whole message came in as one token that is neither a clean
   // amount nor a clean piece of text. Try splitting it before giving up.
-  if (amounts.length === 0 && amountErrors.length === 0 && titleTokens.length === 1) {
-    const split = trySplitToken(titleTokens[0], options.currency);
+  if (amounts.length === 0 && amountErrors.length === 0 && !sawDate && titleTokens.length === 1) {
+    const only = titleTokens[0];
+    const split = trySplitToken(only.norm, options.currency);
     if (split) {
       amounts.push(split.amount);
-      titleTokens = split.titleText ? [split.titleText] : [];
+      titleTokens = split.titleText
+        ? [{ norm: split.titleText, orig: originalTitlePart(only, split.titleText, split.titleAtStart) }]
+        : [];
     }
+  }
+
+  if (sawDate) {
+    return { type: "error", reason: "date_not_supported" };
   }
 
   if (amounts.length > 1) {
@@ -369,14 +472,16 @@ function parseRecordCommand(
     return { type: "error", reason: "missing_title" };
   }
 
-  const rawTitle = titleTokens.join(" ");
+  const rawTitle = titleTokens.map((t) => t.orig).join(" ");
   if ([...rawTitle].length > LINE_MAX_TITLE) {
     return { type: "error", reason: "title_too_long" };
   }
 
-  const kind: "expense" | "income" = incomeMarker || amount.income ? "income" : "expense";
+  const explicitIncome = incomeMarker || amount.income;
+  const kind: "expense" | "income" =
+    explicitIncome || (!expenseMarker && looksLikeIncome(titleTokens, options.categories)) ? "income" : "expense";
   const resolved = resolveCategory(titleTokens, kind, options.categories);
-  const title = resolved.title || rawTitle;
+  const title = resolved.title.trim() || rawTitle.trim();
 
   if (title.length === 0) {
     return { type: "error", reason: "missing_title" };
@@ -402,5 +507,10 @@ export function parseLineCommand(
   if (UNLINK_COMMANDS.includes(lower)) return { type: "unlink" };
   if (LINK_COMMANDS.includes(lower)) return { type: "link" };
 
-  return parseRecordCommand(normalized, options);
+  return parseRecordCommand(originalForRecord(text), options);
+}
+
+/** The user's text for the record path: whitespace-collapsed, trimmed, trailing sentence punctuation dropped - but NOT folded, so the stored title stays as typed. */
+function originalForRecord(text: string): string {
+  return text.replace(/\s+/g, " ").trim().replace(TRAILING_PUNCTUATION, "").trim();
 }

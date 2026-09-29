@@ -40,18 +40,19 @@ export function createLineClient(options: LineClientOptions): LineClient {
   const fetcher = options.fetcher ?? fetch;
   const timeoutMs = options.timeoutMs ?? 3000;
 
-  function headers(): Record<string, string> {
+  /** Content-Type describes a body, so it is sent only when there is one - issueLinkToken and leave have none. */
+  function headers(hasBody: boolean): Record<string, string> {
     return {
       Authorization: `Bearer ${options.channelAccessToken}`,
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
     };
   }
 
   async function send(path: string, body: unknown): Promise<Response> {
     const response = await fetcher(`${LINE_API_BASE}${path}`, {
       method: "POST",
-      headers: headers(),
-      body: JSON.stringify(body),
+      headers: headers(body !== undefined),
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
 

@@ -61,6 +61,17 @@ describe("blocksRequest", () => {
     expect(blocksRequest(notice(), "POST", "/api/v1/site-notice")).toBe(false);
   });
 
+  // [MV]
+  test("never blocks unlinking LINE - disconnecting must always be possible", () => {
+    expect(blocksRequest(notice(), "DELETE", "/api/v1/me/line")).toBe(false);
+  });
+
+  test("but still blocks starting a LINE link, and any other write on that path", () => {
+    expect(blocksRequest(notice(), "POST", "/api/v1/me/line/link")).toBe(true);
+    expect(blocksRequest(notice(), "PUT", "/api/v1/me/line")).toBe(true);
+    expect(blocksRequest(notice(), "DELETE", "/api/v1/me")).toBe(true);
+  });
+
   test("blocks an unknown path too, so probing cannot map the API mid-window", () => {
     expect(blocksRequest(notice(), "POST", "/api/v1/does-not-exist")).toBe(true);
   });

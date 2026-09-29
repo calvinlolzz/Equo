@@ -101,12 +101,17 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * Crash reports stay open because maintenance is exactly when you want to know
  * what is breaking, and a report is a row nobody reads twice.
  */
-function isExempt(path: string): boolean {
+function isExempt(method: string, path: string): boolean {
   return (
     path.startsWith("/api/v1/admin") ||
     path.startsWith("/api/v1/auth/") ||
     path === "/api/v1/errors" ||
-    path === "/api/v1/site-notice"
+    path === "/api/v1/site-notice" ||
+    // Unlinking LINE. Only the DELETE: starting a link (POST .../link) is a
+    // write like any other and stays blocked. Being able to disconnect is a
+    // LINE platform requirement, and it removes this feature's own rows
+    // rather than touching the ledger, so it cannot get in a migration's way.
+    (method === "DELETE" && path === "/api/v1/me/line")
   );
 }
 
@@ -121,5 +126,5 @@ function isExempt(path: string): boolean {
 export function blocksRequest(notice: SiteNotice, method: string, path: string): boolean {
   if (!notice.maintenance.enabled) return false;
   if (!WRITE_METHODS.has(method)) return false;
-  return !isExempt(path);
+  return !isExempt(method, path);
 }

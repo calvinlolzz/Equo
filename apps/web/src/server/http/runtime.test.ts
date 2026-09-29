@@ -1520,6 +1520,34 @@ describe("LINE account link routes", () => {
     expect((del.body as { error: { code: string } }).error.code).toBe("VIEW_AS_READONLY");
   });
 
+  test("maintenance does not block DELETE /me/line (unlinking is always possible)", async () => {
+    const { resetSiteNoticeCache } = await import("./maintenance.js");
+    resetSiteNoticeCache();
+
+    const client = makeClient();
+    const maintenanceClient: PostgrestClient = {
+      ...client,
+      async rpc(fn, args) {
+        if (fn === "site_notice_settings") {
+          return {
+            banner: { message: "", level: "info", ends_at: null, active: false },
+            maintenance: { enabled: true, message: "維護中" },
+          } as never;
+        }
+        return client.rpc(fn, args);
+      },
+    };
+
+    const response = await makeRuntime(maintenanceClient).handle({
+      method: "DELETE",
+      path: "/api/v1/me/line",
+      headers: { authorization: "Bearer google-alice" },
+    });
+
+    expect(response.status).toBe(200);
+    resetSiteNoticeCache();
+  });
+
   test("maintenance blocks POST /me/line/link", async () => {
     const { resetSiteNoticeCache } = await import("./maintenance.js");
     resetSiteNoticeCache();

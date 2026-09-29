@@ -88,3 +88,27 @@ describe("createLineClient.leave", () => {
     expect(url).toBe("https://api.line.me/v2/bot/room/R1/leave");
   });
 });
+
+describe("Content-Type is sent only with a body", () => {
+  // [MV]
+  test("reply has a JSON body and says so", async () => {
+    const fetcher = fakeFetch(200);
+    await createLineClient({ channelAccessToken: "t", fetcher }).reply("rt", []);
+    const [, init] = (fetcher as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(init.body).toBeDefined();
+  });
+
+  test("issueLinkToken and leave have no body and send no Content-Type", async () => {
+    const fetcher = fakeFetch(200, { linkToken: "abc123" });
+    const client = createLineClient({ channelAccessToken: "t", fetcher });
+    await client.issueLinkToken("U0123456789abcdef0123456789abcdef");
+    await client.leave({ type: "group", groupId: "G1" });
+
+    for (const [, init] of (fetcher as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(init.body).toBeUndefined();
+      expect(init.headers["Content-Type"]).toBeUndefined();
+      expect(init.headers.Authorization).toBe("Bearer t");
+    }
+  });
+});

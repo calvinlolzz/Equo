@@ -203,14 +203,16 @@ async function onMessage(deps: LineWebhookDeps, event: LineEvent): Promise<void>
 }
 
 async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: string, text: string): Promise<void> {
-  const allowed = await consumeLineRateLimit(deps.client, lineUserId);
-  const context = await getLineContext(deps.client, lineUserId);
-  const dict = lineText(context?.locale ?? null);
-
-  if (!allowed) {
-    await safeReply(deps, event.replyToken, [textMessage(dict.rateLimited)]);
+  // Before anything else touches the database: a flooding user must cost one
+  // counter call, not a context lookup per message. The reply is zh-Hant
+  // because the language lives in the context we deliberately did not fetch.
+  if (!(await consumeLineRateLimit(deps.client, lineUserId))) {
+    await safeReply(deps, event.replyToken, [textMessage(lineText(null).rateLimited)]);
     return;
   }
+
+  const context = await getLineContext(deps.client, lineUserId);
+  const dict = lineText(context?.locale ?? null);
 
   if (!context) {
     const command = parseLineCommand(text, { currency: "TWD", categories: [] });
@@ -241,13 +243,13 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
       await handleUnlink(deps, event, dict, lineUserId);
       return;
     case "link":
-      // "或「綁定」" is one of the flow's own triggers (§2 step 1) - LINE's
-      // official flow re-verifies the user regardless of current state, so
-      // this always re-issues a link rather than special-casing "already
-      // linked" here (that case is handled by line_attach_link_request /
-      // line_consume_link_nonce on the DB side - see the plan's §2 edge
-      // cases "Already linked, same pair" and "Re-link").
-      await replyWithLink(deps, event, dict, []);
+      // A context exists only for a LINE id that is already linked, so this
+      // is somebody asking to link something they have already linked. Say so
+      // (switching accounts goes through 解除綁定 first) instead of minting
+      // another link token.
+      await safeReply(deps, event.replyToken, [
+        textMessage(fill(dict.alreadyLinked, { email: maskEmail(context.email) })),
+      ]);
       return;
     case "record":
       await handleRecord(deps, event, dict, lineUserId, context, {
@@ -279,6 +281,8 @@ function errorText(dict: LineDictionary, reason: LineCommandErrorReason, currenc
       return dict.multipleAmounts;
     case "title_too_long":
       return dict.titleTooLong;
+    case "date_not_supported":
+      return dict.dateNotSupported;
   }
 }
 
@@ -407,12 +411,13 @@ async function handleUndo(deps: LineWebhookDeps, event: LineEvent, dict: LineDic
   await safeReply(deps, event.replyToken, [textMessage(text)]);
 }
 
+/**
+ * Deliberately NOT behind the maintenance gate: disconnecting is something a
+ * person must always be able to do (LINE requires it), and it only removes
+ * this feature's own rows - it cannot change the ledger under a migration.
+ * DELETE /api/v1/me/line is exempt for the same reason (see maintenance.ts).
+ */
 async function handleUnlink(deps: LineWebhookDeps, event: LineEvent, dict: LineDictionary, lineUserId: string): Promise<void> {
-  if (await isMaintenanceOn(deps)) {
-    await safeReply(deps, event.replyToken, [textMessage(dict.maintenance)]);
-    return;
-  }
-
   const result = await unlinkLineUser(deps.client, lineUserId);
   await safeReply(deps, event.replyToken, [textMessage(result.unlinked ? dict.unlinked : dict.notLinked)]);
 }

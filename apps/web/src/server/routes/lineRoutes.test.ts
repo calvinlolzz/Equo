@@ -62,6 +62,16 @@ describe("startLineLinkRoute", () => {
     expect(body.error.code).toBe("LINE_LINK_EXPIRED");
   });
 
+  test("410s with LINE_LINK_EXPIRED when another user already claimed the link request", async () => {
+    // Same remedy as an expired token - go back to LINE for a fresh one - so
+    // it shares the code rather than adding one the client would treat alike.
+    const client = makeClient({ line_attach_link_request: { ok: false, reason: "claimed" } });
+    const result = await startLineLinkRoute({ client, verifier, idToken: "user_alice" }, { link_token: VALID_TOKEN });
+
+    expect(result.status).toBe(410);
+    expect((result.body as { error: { code: string } }).error.code).toBe("LINE_LINK_EXPIRED");
+  });
+
   test("200s already_linked:true without a redirect when the pair is already linked", async () => {
     const client = makeClient({ line_attach_link_request: { ok: true, already_linked: true } });
     const result = await startLineLinkRoute({ client, verifier, idToken: "user_alice" }, { link_token: VALID_TOKEN });
