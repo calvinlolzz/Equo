@@ -345,6 +345,9 @@ export function UserDetailPanel({ client, route, onNavigate, role }: PanelProps)
                 加入 {formatDate(detail.user.created_at)}・最後活躍 {describeLastSeen(detail.user.last_seen_at, Date.now())}
                 ・{detail.user.group_count} 個群組・{detail.user.expense_count} 筆支出
               </p>
+              <p className="admin-user-card__meta">
+                LINE：{detail.user.line_linked_at ? `已連結（${formatDate(detail.user.line_linked_at)}）` : "未連結"}
+              </p>
             </div>
             {/* Five buttons in one undifferentiated row, with a red one at each
                 end and 刪除帳號 sitting next to 以他的身分檢視. Grouped by what

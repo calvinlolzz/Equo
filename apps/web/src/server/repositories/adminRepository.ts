@@ -174,6 +174,14 @@ export type AdminUserSummaryRecord = {
   disabled_at: string | null;
   group_count: number;
   expense_count: number;
+  /**
+   * When this account linked a LINE account (line_accounts.linked_at), or
+   * null when it has none. Only populated on the detail load (getUserDetail)
+   * - fetched separately from admin_console_user_detail and merged in
+   * fail-soft, so a line_accounts read hiccup never fails the whole panel.
+   * Absent (not just null) on the list view, which never fetches it.
+   */
+  line_linked_at?: string | null;
 };
 
 export type AdminUserListRecord = {

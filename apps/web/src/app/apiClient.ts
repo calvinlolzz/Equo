@@ -1376,6 +1376,8 @@ export type AdminUserRow = {
   disabled_at: string | null;
   group_count: number;
   expense_count: number;
+  /** Only present on the detail load, never the list. See AdminUserSummaryRecord's doc. */
+  line_linked_at?: string | null;
 };
 
 export type AdminUserListPage = {

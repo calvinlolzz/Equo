@@ -1,3 +1,4 @@
+import { columns, eq, limit as limitQuery, query } from "../db/postgrestClient.js";
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type {
   AdminAccountRecord,
@@ -131,7 +132,22 @@ export function createSupabaseAdminRepository(client: PostgrestClient): AdminRep
       const detail = await client.rpc<AdminUserDetailRecord | null>("admin_console_user_detail", {
         p_user_id: userId,
       });
-      return detail ?? null;
+      if (!detail) return null;
+
+      // Fail-soft: line_accounts is a nice-to-have on this panel, not a
+      // reason to fail the whole detail load. Also keeps the existing
+      // fake-client tests (which don't stub a "line_accounts" select) passing.
+      try {
+        const rows = await client.select<{ linked_at: string }>(
+          "line_accounts",
+          query(columns("linked_at"), eq("user_id", userId), limitQuery(1)),
+        );
+        detail.user.line_linked_at = rows[0]?.linked_at ?? null;
+      } catch {
+        detail.user.line_linked_at = null;
+      }
+
+      return detail;
     },
 
     listGroups(search, limit, offset, filter) {

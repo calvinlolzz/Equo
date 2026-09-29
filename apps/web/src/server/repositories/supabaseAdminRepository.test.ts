@@ -162,6 +162,43 @@ describe("createSupabaseAdminRepository", () => {
     await expect(repository.setGroupArchived(actor, "group_1", true)).resolves.toBeNull();
   });
 
+  test("getUserDetail merges line_accounts.linked_at into user.line_linked_at when a row exists", async () => {
+    const userDetail = { user: { id: "user_1", email: "alice@example.com" }, groups: [] };
+    const client = createFakePostgrest({
+      rpc: () => userDetail,
+      select: (table, queryString) => {
+        expect(table).toBe("line_accounts");
+        expect(queryString).toContain("user_id=eq.user_1");
+        return [{ linked_at: "2026-09-29T00:00:00Z" }];
+      },
+    });
+
+    const detail = await createSupabaseAdminRepository(client).getUserDetail("user_1");
+
+    expect(detail?.user.line_linked_at).toBe("2026-09-29T00:00:00Z");
+  });
+
+  test("getUserDetail sets line_linked_at to null when there is no line_accounts row", async () => {
+    const userDetail = { user: { id: "user_1", email: "alice@example.com" }, groups: [] };
+    const client = createFakePostgrest({ rpc: () => userDetail, select: () => [] });
+
+    const detail = await createSupabaseAdminRepository(client).getUserDetail("user_1");
+
+    expect(detail?.user.line_linked_at).toBeNull();
+  });
+
+  // [MV]: a line_accounts read failure must never fail the whole panel -
+  // it degrades to line_linked_at: null. Remove the try/catch around it and
+  // this goes red.
+  test("getUserDetail is fail-soft when the line_accounts read throws", async () => {
+    const userDetail = { user: { id: "user_1", email: "alice@example.com" }, groups: [] };
+    const client = createFakePostgrest({ rpc: () => userDetail }); // no `select` handler -> throws
+
+    const detail = await createSupabaseAdminRepository(client).getUserDetail("user_1");
+
+    expect(detail?.user.line_linked_at).toBeNull();
+  });
+
   test("paginated log readers forward their search/filter params", async () => {
     const client = makeClient({ total: 0, logs: [] });
     const repository = createSupabaseAdminRepository(client);
