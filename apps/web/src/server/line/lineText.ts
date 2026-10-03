@@ -58,6 +58,46 @@ export type LineDictionary = {
   budgetInvalid: string;
   budgetTooLarge: string;
   budgetAmbiguous: string;
+
+  // Copy for the Flex reply cards (lineCards.ts). Each *Cmd value is a list of
+  // example commands joined by " · " (U+00B7 with spaces); lineText.test.ts
+  // splits on it and parses every example, so a command a card teaches always
+  // does what the card says. Emoji are not prose and live in lineCardTheme.ts.
+  cardExpenseTitle: string;
+  cardIncomeTitle: string;
+  cardDate: string;
+  cardMonthSpent: string;
+  cardMonthIncome: string;
+  cardBudgetOf: string;
+  cardSpentLabel: string;
+  cardIncomeLabel: string;
+  cardNetLabel: string;
+  cardByCategory: string;
+  cardOtherCategories: string;
+  cardNoSpending: string;
+  cardBudgetSetTitle: string;
+  cardBudgetShowTitle: string;
+  cardBudgetUsed: string;
+  cardBudgetHint: string;
+  helpCardTitle: string;
+  helpCardLead: string;
+  helpExpenseTitle: string;
+  helpExpenseCmd: string;
+  helpIncomeTitle: string;
+  helpIncomeCmd: string;
+  helpMonthTitle: string;
+  helpMonthCmd: string;
+  helpBudgetTitle: string;
+  helpBudgetCmd: string;
+  helpUndoTitle: string;
+  helpUndoCmd: string;
+  helpUnlinkTitle: string;
+  helpUnlinkCmd: string;
+  helpCardNote: string;
+  welcomeCardTitle: string;
+  linkCardTitle: string;
+  linkedCardTitle: string;
+  linkedCardHint: string;
 };
 
 const ZH_HANT: LineDictionary = {
@@ -113,6 +153,42 @@ const ZH_HANT: LineDictionary = {
   budgetInvalid: "預算請用大於 0 的金額，例如「預算 15000」。要取消預算請傳「取消預算」。",
   budgetTooLarge: "預算金額太大了，請到 App 裡設定。",
   budgetAmbiguous: "是要設定每月預算嗎？請傳「預算 15000」；要記一筆支出，請換個項目名稱，例如「買預算書 200」。",
+
+  cardExpenseTitle: "已記下支出",
+  cardIncomeTitle: "已記下收入",
+  cardDate: "{month}月{day}日",
+  cardMonthSpent: "本月支出",
+  cardMonthIncome: "本月收入",
+  cardBudgetOf: "預算 {budget}",
+  cardSpentLabel: "支出",
+  cardIncomeLabel: "收入",
+  cardNetLabel: "結餘",
+  cardByCategory: "支出分類",
+  cardOtherCategories: "其餘分類",
+  cardNoSpending: "這個月還沒有支出",
+  cardBudgetSetTitle: "已設定每月預算",
+  cardBudgetShowTitle: "每月預算",
+  cardBudgetUsed: "已用 {percent}%",
+  cardBudgetHint: "傳「預算 20000」修改，傳「取消預算」取消",
+  helpCardTitle: "Equo 記帳小幫手",
+  helpCardLead: "直接傳一句話就能記帳",
+  helpExpenseTitle: "記支出",
+  helpExpenseCmd: "早餐 60 · 午餐 120 餐飲",
+  helpIncomeTitle: "記收入",
+  helpIncomeCmd: "+52000 薪水 · 收入 52000 薪水",
+  helpMonthTitle: "本月支出、收入與預算",
+  helpMonthCmd: "本月",
+  helpBudgetTitle: "設定、查看或取消每月預算",
+  helpBudgetCmd: "預算 15000 · 預算 · 取消預算",
+  helpUndoTitle: "刪除 {minutes} 分鐘內從 LINE 記的最後一筆",
+  helpUndoCmd: "復原",
+  helpUnlinkTitle: "取消與 Equo 帳號的連結",
+  helpUnlinkCmd: "解除綁定",
+  helpCardNote: "日期以台灣時間計算。",
+  welcomeCardTitle: "歡迎使用 Equo 記帳",
+  linkCardTitle: "連結你的 Equo 帳號",
+  linkedCardTitle: "已連結 Equo 帳號",
+  linkedCardHint: "試試傳「早餐 60」記下第一筆，或傳「說明」看所有指令。",
 };
 
 const EN: LineDictionary = {
@@ -171,6 +247,42 @@ const EN: LineDictionary = {
   budgetTooLarge: "That budget is too large — please set it in the app.",
   budgetAmbiguous:
     'Did you mean to set your monthly budget? Send "budget 15000". To record an expense, use a different item name.',
+
+  cardExpenseTitle: "Expense recorded",
+  cardIncomeTitle: "Income recorded",
+  cardDate: "{month}/{day}",
+  cardMonthSpent: "Spent this month",
+  cardMonthIncome: "Income this month",
+  cardBudgetOf: "Budget {budget}",
+  cardSpentLabel: "Spent",
+  cardIncomeLabel: "Income",
+  cardNetLabel: "Net",
+  cardByCategory: "By category",
+  cardOtherCategories: "Other categories",
+  cardNoSpending: "No spending yet this month",
+  cardBudgetSetTitle: "Monthly budget set",
+  cardBudgetShowTitle: "Monthly budget",
+  cardBudgetUsed: "{percent}% used",
+  cardBudgetHint: 'Send "budget 20000" to change it, or "budget off" to remove it',
+  helpCardTitle: "Equo bookkeeping bot",
+  helpCardLead: "Just send a message to record",
+  helpExpenseTitle: "Record an expense",
+  helpExpenseCmd: "breakfast 60 · lunch 120 Food",
+  helpIncomeTitle: "Record income",
+  helpIncomeCmd: "+52000 salary · income 52000 salary",
+  helpMonthTitle: "This month's spending, income and budget",
+  helpMonthCmd: "month",
+  helpBudgetTitle: "Set, view or remove your monthly budget",
+  helpBudgetCmd: "budget 15000 · budget · budget off",
+  helpUndoTitle: "Delete your last LINE entry (within {minutes} minutes)",
+  helpUndoCmd: "undo",
+  helpUnlinkTitle: "Disconnect your Equo account",
+  helpUnlinkCmd: "unlink",
+  helpCardNote: "Dates use Taiwan time.",
+  welcomeCardTitle: "Welcome to Equo",
+  linkCardTitle: "Link your Equo account",
+  linkedCardTitle: "Equo account linked",
+  linkedCardHint: 'Try "breakfast 60" for your first entry, or send "help" for all commands.',
 };
 
 const LINE_TEXT: Record<Locale, LineDictionary> = { "zh-Hant": ZH_HANT, en: EN };

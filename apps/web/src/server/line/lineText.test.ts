@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { fill } from "../push/pushText.js";
 import { parseLineCommand } from "./lineCommand.js";
-import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT, lineText } from "./lineText.js";
+import { type LineDictionary, LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT, lineText } from "./lineText.js";
 
 const SHORT_LIMIT = 20;
 const MEDIUM_LIMIT = 160;
@@ -83,6 +84,106 @@ describe("LINE_TEXT dictionaries", () => {
   });
 });
 
+/**
+ * The copy the Flex reply cards read (lineCards.ts). Listed here, not derived,
+ * so adding or dropping a key is a visible change to this file.
+ */
+const CARD_KEYS = [
+  "cardExpenseTitle",
+  "cardIncomeTitle",
+  "cardDate",
+  "cardMonthSpent",
+  "cardMonthIncome",
+  "cardBudgetOf",
+  "cardSpentLabel",
+  "cardIncomeLabel",
+  "cardNetLabel",
+  "cardByCategory",
+  "cardOtherCategories",
+  "cardNoSpending",
+  "cardBudgetSetTitle",
+  "cardBudgetShowTitle",
+  "cardBudgetUsed",
+  "cardBudgetHint",
+  "helpCardTitle",
+  "helpCardLead",
+  "helpExpenseTitle",
+  "helpExpenseCmd",
+  "helpIncomeTitle",
+  "helpIncomeCmd",
+  "helpMonthTitle",
+  "helpMonthCmd",
+  "helpBudgetTitle",
+  "helpBudgetCmd",
+  "helpUndoTitle",
+  "helpUndoCmd",
+  "helpUnlinkTitle",
+  "helpUnlinkCmd",
+  "helpCardNote",
+  "welcomeCardTitle",
+  "linkCardTitle",
+  "linkedCardTitle",
+  "linkedCardHint",
+] as const satisfies ReadonlyArray<keyof LineDictionary>;
+
+/** The headings of the cards: one line, beside a date or above an amount. (The help rows' titles are sentences.) */
+const CARD_TITLES = [
+  "cardExpenseTitle",
+  "cardIncomeTitle",
+  "cardBudgetSetTitle",
+  "cardBudgetShowTitle",
+  "helpCardTitle",
+  "welcomeCardTitle",
+  "linkCardTitle",
+  "linkedCardTitle",
+] as const satisfies ReadonlyArray<keyof LineDictionary>;
+
+const CARD_PLACEHOLDERS: Partial<Record<keyof LineDictionary, string[]>> = {
+  cardDate: ["month", "day"],
+  cardBudgetOf: ["budget"],
+  cardBudgetUsed: ["percent"],
+  helpUndoTitle: ["minutes"],
+};
+
+describe("Flex card copy", () => {
+  test("is the 35 keys the plan lists, once each", () => {
+    expect(CARD_KEYS).toHaveLength(35);
+    expect(new Set(CARD_KEYS).size).toBe(35);
+  });
+
+  test.each(CARD_KEYS)("%s is real copy in both locales: not empty, no stray whitespace", (key) => {
+    for (const dict of [ZH_HANT, EN]) {
+      expect(dict[key]).not.toBe("");
+      expect(dict[key].trim()).toBe(dict[key]);
+    }
+  });
+
+  // [MV]: rename a placeholder in one locale (or leave one in a key that takes none) and this names it.
+  test.each(CARD_KEYS)("%s carries exactly its own placeholders in both locales", (key) => {
+    const expected = new Set(CARD_PLACEHOLDERS[key] ?? []);
+    expect(placeholders(ZH_HANT[key]), `${key} (zh)`).toEqual(expected);
+    expect(placeholders(EN[key]), `${key} (en)`).toEqual(expected);
+  });
+
+  // [MV]: a longer string wraps onto a line the layout was not drawn for.
+  test.each(CARD_KEYS)("%s is at most 80 characters in both locales", (key) => {
+    expect([...ZH_HANT[key]].length).toBeLessThanOrEqual(80);
+    expect([...EN[key]].length).toBeLessThanOrEqual(80);
+  });
+
+  test.each(CARD_TITLES)("%s is at most 24 characters in both locales", (key) => {
+    expect([...ZH_HANT[key]].length).toBeLessThanOrEqual(24);
+    expect([...EN[key]].length).toBeLessThanOrEqual(24);
+  });
+
+  // The help card's altText and its text fallback are both this string. English is already within a clause of the limit.
+  // [MV]: add a clause to either help string and this goes red.
+  test("the plain help text still fits altText's 400 UTF-16 units with a four-digit undo window", () => {
+    expect(fill(ZH_HANT.help, { minutes: 1440 }).length).toBeLessThanOrEqual(400);
+    expect(fill(EN.help, { minutes: 1440 }).length).toBeLessThanOrEqual(400);
+  });
+});
+
 describe("lineText", () => {
   test("returns zh-Hant for null/undefined/unknown locale", () => {
     expect(lineText(null)).toBe(ZH_HANT);
@@ -96,7 +197,7 @@ describe("lineText", () => {
   });
 });
 
-describe("budget examples in the reply text actually parse", () => {
+describe("command examples in the reply text actually parse", () => {
   const parse = (text: string) => parseLineCommand(text, { currency: "TWD", categories: [] }).type;
 
   // Every command a string teaches must do what the string says it does.
@@ -116,11 +217,54 @@ describe("budget examples in the reply text actually parse", () => {
     ["zh budgetAmbiguous", ZH_HANT.budgetAmbiguous, "預算 15000", "budget_set"],
     ["zh budgetAmbiguous", ZH_HANT.budgetAmbiguous, "買預算書 200", "record"],
     ["en budgetAmbiguous", EN.budgetAmbiguous, "budget 15000", "budget_set"],
+    ["zh cardBudgetHint", ZH_HANT.cardBudgetHint, "預算 20000", "budget_set"],
+    ["zh cardBudgetHint", ZH_HANT.cardBudgetHint, "取消預算", "budget_clear"],
+    ["en cardBudgetHint", EN.cardBudgetHint, "budget 20000", "budget_set"],
+    ["en cardBudgetHint", EN.cardBudgetHint, "budget off", "budget_clear"],
+    ["zh linkedCardHint", ZH_HANT.linkedCardHint, "早餐 60", "record"],
+    ["zh linkedCardHint", ZH_HANT.linkedCardHint, "說明", "help"],
+    ["en linkedCardHint", EN.linkedCardHint, "breakfast 60", "record"],
+    ["en linkedCardHint", EN.linkedCardHint, "help", "help"],
   ];
 
   test.each(cases)("%s teaches %s -> %s", (_label, text, example, type) => {
     expect(text).toContain(example);
     // A quoted example ("預算" / "budget") is checked without its quotes.
     expect(parse(example.replace(/[「」"]/g, ""))).toBe(type);
+  });
+});
+
+describe("the example commands on the help card actually parse", () => {
+  const parse = (text: string) => parseLineCommand(text, { currency: "TWD", categories: [] });
+
+  // What each example must parse to, in the order the card lists them. Income
+  // examples are checked for their kind too: "+52000 薪水" parsing as an expense
+  // would record the wrong sign of money.
+  const TEACHES: Array<[keyof LineDictionary, Array<Record<string, string>>]> = [
+    ["helpExpenseCmd", [{ type: "record", kind: "expense" }, { type: "record", kind: "expense" }]],
+    ["helpIncomeCmd", [{ type: "record", kind: "income" }, { type: "record", kind: "income" }]],
+    ["helpMonthCmd", [{ type: "month" }]],
+    ["helpBudgetCmd", [{ type: "budget_set" }, { type: "budget_show" }, { type: "budget_clear" }]],
+    ["helpUndoCmd", [{ type: "undo" }]],
+    ["helpUnlinkCmd", [{ type: "unlink" }]],
+  ];
+
+  const cases = TEACHES.flatMap(([key, expected]) =>
+    ([["zh-Hant", ZH_HANT], ["en", EN]] as const).map(([locale, dict]) => [locale, key, dict[key], expected] as const),
+  );
+
+  // [MV]: change an example, drop one, or swap the " · " separator and this goes red.
+  test.each(cases)("%s %s: %j", (_locale, _key, value, expected) => {
+    const examples = value.split(" · ");
+    expect(examples).toHaveLength(expected.length);
+    examples.forEach((example, index) => {
+      expect(parse(example), example).toMatchObject(expected[index]);
+    });
+  });
+
+  test("every *Cmd key is covered by the table above", () => {
+    const covered = TEACHES.map(([key]) => key).sort();
+    const all = CARD_KEYS.filter((key) => key.endsWith("Cmd")).sort();
+    expect(covered).toEqual(all);
   });
 });
