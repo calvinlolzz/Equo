@@ -5,8 +5,10 @@ import { sha256Hex } from "./lineCrypto.js";
 /**
  * Typed wrappers around the line_* RPCs from
  * supabase/migrations/20260929090000_line_bot.sql (and, for the budget
- * commands, 20260930090000_line_set_budget.sql). One function per RPC,
- * named to match, so a call site reads like the SQL it triggers.
+ * commands, 20260930090000_line_set_budget.sql, and, for the 「本月」
+ * category breakdown, 20261003090000_line_month_categories.sql). One
+ * function per RPC, named to match, so a call site reads like the SQL it
+ * triggers.
  */
 
 export type LineLedger = {
@@ -91,6 +93,9 @@ export async function unlinkLineForUser(client: PostgrestClient, userId: string)
 
 export type LineMonthTotals = { expense_minor: number; income_minor: number };
 
+/** One row of line_month_summary's per-category breakdown: a category key and its expense total (minor units) for the month. */
+export type LineMonthCategoryTotal = { category: string; expense_minor: number };
+
 export type RecordLineEntryResult =
   | { ok: false; reason: "not_linked" | "account_disabled" | "no_ledger" }
   | {
@@ -147,7 +152,23 @@ export async function undoLastLineEntry(
 
 export type LineMonthSummaryResult =
   | { ok: false; reason: "not_linked" | "account_disabled" | "no_ledger" }
-  | { ok: true; ledger_id: string; currency: string; budget_minor: number | null; month: LineMonthTotals };
+  | {
+      ok: true;
+      ledger_id: string;
+      currency: string;
+      budget_minor: number | null;
+      month: LineMonthTotals;
+      /**
+       * Top expense categories for the month, largest first - at most 5, so
+       * month.expense_minor minus their sum is what 「其餘分類」 shows. Optional on
+       * purpose: ABSENT means "this database predates
+       * 20261003090000_line_month_categories.sql" (the code can ship before
+       * the migration) and is not the same as [] ("no spending") - a caller
+       * must never read a missing list as an empty month. line_set_budget
+       * answers in this same shape without it.
+       */
+      categories?: LineMonthCategoryTotal[];
+    };
 
 export async function lineMonthSummary(
   client: PostgrestClient,

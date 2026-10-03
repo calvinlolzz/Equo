@@ -16,6 +16,7 @@ const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "..", "..", "supabase",
 const botSql = readFileSync(join(MIGRATIONS_DIR, "20260929090000_line_bot.sql"), "utf8");
 const mergeSql = readFileSync(join(MIGRATIONS_DIR, "20260929090100_line_merge_users.sql"), "utf8");
 const budgetSql = readFileSync(join(MIGRATIONS_DIR, "20260930090000_line_set_budget.sql"), "utf8");
+const categoriesSql = readFileSync(join(MIGRATIONS_DIR, "20261003090000_line_month_categories.sql"), "utf8");
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const workflow = readFileSync(join(REPO_ROOT, ".github", "workflows", "db-backup.yml"), "utf8");
 
@@ -42,18 +43,6 @@ describe("line_bot migration", () => {
     for (const table of ["line_accounts", "line_link_requests", "line_bot_entries", "line_undo_events"]) {
       expect(botSql).toContain(`REVOKE ALL ON TABLE "public"."${table}" FROM "anon"`);
       expect(botSql).toContain(`REVOKE ALL ON TABLE "public"."${table}" FROM "authenticated"`);
-    }
-  });
-
-  test("every line_/purge_line_ function revokes PUBLIC", () => {
-    const defined = [...botSql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."((?:line|purge_line)_\w+)"\(([^)]*)\)/g)];
-    expect(defined.length).toBeGreaterThan(0);
-
-    for (const match of defined) {
-      const name = match[1];
-      expect(botSql, `${name} should REVOKE ALL FROM PUBLIC`).toMatch(
-        new RegExp(`REVOKE ALL ON FUNCTION "public"\\."${name}"\\([^)]*\\) FROM PUBLIC`),
-      );
     }
   });
 
@@ -99,6 +88,38 @@ describe("line_bot migration", () => {
     expect(insertCount).toBe(4); // not_linked, nothing_to_undo, already_gone, ok
     for (const result of ["not_linked", "nothing_to_undo", "already_gone", "ok"]) {
       expect(body).toContain(`'${result}'`);
+    }
+  });
+});
+
+/**
+ * A SECURITY DEFINER function is callable by PUBLIC unless that is revoked, and
+ * PostgREST exposes every function it can see under /rpc/ - so each line_ and
+ * purge_line_ function must say, in the migration that creates it, that only
+ * service_role may run it. Checked in every LINE migration, not just the first:
+ * a function added later is exactly the one nobody re-reads.
+ */
+describe("every LINE migration function is callable by service_role only", () => {
+  const LINE_MIGRATIONS: Array<[string, string]> = [
+    ["20260929090000_line_bot.sql", botSql],
+    ["20260930090000_line_set_budget.sql", budgetSql],
+    ["20261003090000_line_month_categories.sql", categoriesSql],
+  ];
+
+  test.each(LINE_MIGRATIONS)("%s revokes PUBLIC, anon and authenticated and grants service_role", (file, sql) => {
+    const defined = [...sql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."((?:line|purge_line)_\w+)"\(([^)]*)\)/g)];
+    expect(defined.length, `${file} should define at least one line_ function`).toBeGreaterThan(0);
+
+    for (const match of defined) {
+      const name = match[1];
+      for (const role of ["PUBLIC", '"anon"', '"authenticated"']) {
+        expect(sql, `${name} should REVOKE ALL FROM ${role}`).toMatch(
+          new RegExp(`REVOKE ALL ON FUNCTION "public"\\."${name}"\\([^)]*\\) FROM ${role}`),
+        );
+      }
+      expect(sql, `${name} should GRANT ALL TO "service_role"`).toMatch(
+        new RegExp(`GRANT ALL ON FUNCTION "public"\\."${name}"\\([^)]*\\) TO "service_role"`),
+      );
     }
   });
 });
@@ -194,5 +215,103 @@ describe("line_set_budget migration", () => {
 
   test("a no-op write does not touch the row", () => {
     expect(body).toContain("is distinct from p_budget_minor");
+  });
+});
+
+/**
+ * Strips `--` line comments and collapses whitespace, so two function bodies
+ * compare by what they do and not by how they are laid out or commented.
+ */
+function normalizeSql(sql: string): string {
+  return sql.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim();
+}
+
+/** One function's definition: from its CREATE OR REPLACE up to (not including) the closing `$$;`. */
+function functionSql(sql: string, name: string): string {
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION "public"."${name}"`);
+  expect(start, `${name} should be defined`).toBeGreaterThan(-1);
+  const end = sql.indexOf("\n$$;", start);
+  expect(end, `${name} should end with $$;`).toBeGreaterThan(start);
+  return sql.slice(start, end);
+}
+
+describe("line_month_categories migration", () => {
+  const helper = functionSql(categoriesSql, "line_ledger_month_categories");
+  const summary = functionSql(categoriesSql, "line_month_summary");
+  const totals = functionSql(botSql, "line_ledger_month_totals");
+
+  test("security posture: definer, pinned search_path, owned by postgres, service_role only - for both functions", () => {
+    expect(helper).toContain("LANGUAGE sql STABLE SECURITY DEFINER");
+    expect(summary).toContain("LANGUAGE plpgsql SECURITY DEFINER");
+    expect(helper).toContain("SET search_path TO 'public'");
+    expect(summary).toContain("SET search_path TO 'public'");
+
+    for (const sig of [
+      '"public"."line_ledger_month_categories"(uuid, text, date, integer)',
+      '"public"."line_month_summary"(text, date)',
+    ]) {
+      expect(categoriesSql).toContain(`ALTER FUNCTION ${sig} OWNER TO postgres`);
+      expect(categoriesSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC`);
+      expect(categoriesSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM "anon"`);
+      expect(categoriesSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM "authenticated"`);
+      expect(categoriesSql).toContain(`GRANT ALL ON FUNCTION ${sig} TO "service_role"`);
+    }
+  });
+
+  // [MV]: loosen or drop any one of these in the helper (or in the totals helper it has to mirror) and this goes red.
+  test.each([
+    "e.group_id = p_group",
+    "e.deleted_at is null",
+    "e.currency = p_currency",
+    "e.expense_date >= date_trunc('month', p_month_start)::date",
+    "e.expense_date < (date_trunc('month', p_month_start) + interval '1 month')::date",
+  ])("filters rows on `%s`, exactly like line_ledger_month_totals", (clause) => {
+    expect(normalizeSql(totals), "line_ledger_month_totals").toContain(clause);
+    expect(normalizeSql(helper), "line_ledger_month_categories").toContain(clause);
+  });
+
+  // [MV]: an income row counted as "spending" would make the breakdown add up to more than the month's expense total.
+  test("counts expenses only", () => {
+    expect(normalizeSql(helper)).toContain("e.kind = 'expense'");
+  });
+
+  // [MV]: the inner order decides WHICH categories survive the limit and how a tie breaks; the clamp keeps a caller-supplied limit in 1..20.
+  test.each([
+    ["the inner order that picks the survivors of the limit", "order by 2 desc, 1 asc"],
+    ["the order of the returned array", "order by c.expense_minor desc, c.category asc"],
+    ["the limit clamped to 1..20 with a default of 5", "least(greatest(coalesce(p_limit, 5), 1), 20)"],
+    ["an empty category reading as general", "coalesce(nullif(e.category, ''), 'general')"],
+    ["zero-total categories dropped", "having coalesce(sum(e.amount_minor), 0) > 0"],
+  ])("the helper has %s", (_what, clause) => {
+    expect(normalizeSql(helper)).toContain(clause);
+  });
+
+  // [MV]: any change to line_month_summary other than the new key - a changed guard, a dropped key, a reordered statement - makes the two normalised bodies differ.
+  test("line_month_summary differs from the line_bot version only by the 'categories' key", () => {
+    const before = normalizeSql(functionSql(botSql, "line_month_summary"));
+    const after = normalizeSql(summary);
+    const added = ", 'categories', line_ledger_month_categories(v_group, v_currency, p_month_start, 5)";
+
+    // Without this the replace below is a no-op on a body that lost the key
+    // altogether, and the comparison would pass for the wrong reason.
+    expect(after).toContain(added);
+    expect(after.replace(added, "")).toBe(before);
+  });
+
+  // [MV]: move the categories out of the final return expression (say, into a variable assigned earlier) and this goes red.
+  test("line_month_summary takes the categories in the same return expression as the month totals, and still has no group parameter", () => {
+    expect(summary).not.toMatch(/p_group\b/);
+
+    const sql = normalizeSql(summary);
+    const finalReturn = sql.lastIndexOf("return jsonb_build_object(");
+    expect(finalReturn).toBeGreaterThan(-1);
+    const tail = sql.slice(finalReturn);
+    expect(tail).toContain("'month', line_ledger_month_totals(");
+    expect(tail).toContain("'categories', line_ledger_month_categories(");
+  });
+
+  test("defines only the helper and line_month_summary - line_record_entry and line_set_budget are left alone", () => {
+    const defined = [...categoriesSql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."(\w+)"/g)].map((m) => m[1]);
+    expect(defined).toEqual(["line_ledger_month_categories", "line_month_summary"]);
   });
 });
