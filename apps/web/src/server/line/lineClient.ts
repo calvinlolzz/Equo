@@ -6,6 +6,8 @@
  * whatever LINE's own error bodies might echo back.
  */
 
+import type { LineMessage } from "./lineFlex.js";
+
 const LINE_API_BASE = "https://api.line.me";
 
 /** A non-2xx response from LINE. The message carries the status only - never the response body. */
@@ -19,7 +21,9 @@ export class LineApiError extends Error {
   }
 }
 
-export type LineMessage = Record<string, unknown>;
+// The message shapes live with the card kit; re-exported so every importer of
+// the client keeps its import. Type-only: the runtime is unchanged.
+export type { LineMessage } from "./lineFlex.js";
 
 export type LineLeaveTarget = { type: "group"; groupId: string } | { type: "room"; roomId: string };
 

@@ -1,5 +1,5 @@
 import { formatAmount } from "../../app/formatAmount.js";
-import type { LineMessage } from "./lineClient.js";
+import type { LineAction, LineMessage, LineQuickReply, LineTemplateMessage, LineTextMessage } from "./lineFlex.js";
 import { fill } from "../push/pushText.js";
 import type { LineDictionary } from "./lineText.js";
 import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js";
@@ -11,16 +11,12 @@ import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js
  * https://developers.line.biz/en/reference/messaging-api/#message-objects
  */
 
-export function textMessage(text: string, quickReply?: LineMessage["quickReply"]): LineMessage {
+export function textMessage(text: string, quickReply?: LineQuickReply): LineTextMessage {
   return quickReply ? { type: "text", text, quickReply } : { type: "text", text };
 }
 
-type QuickReplyAction =
-  | { type: "message"; label: string; text: string }
-  | { type: "uri"; label: string; uri: string };
-
-function quickReply(actions: readonly QuickReplyAction[]) {
-  return { items: actions.map((action) => ({ type: "action", action })) };
+function quickReply(actions: readonly LineAction[]): LineQuickReply {
+  return { items: actions.map((action) => ({ type: "action" as const, action })) };
 }
 
 export function linkPageUrl(appOrigin: string, linkToken: string): string {
@@ -28,7 +24,7 @@ export function linkPageUrl(appOrigin: string, linkToken: string): string {
 }
 
 /** A buttons template carrying one uri action to the /line/link page. */
-export function linkButtonsMessage(dict: LineDictionary, url: string, text?: string): LineMessage {
+export function linkButtonsMessage(dict: LineDictionary, url: string, text?: string): LineTemplateMessage {
   return {
     type: "template",
     altText: dict.linkAltText,
