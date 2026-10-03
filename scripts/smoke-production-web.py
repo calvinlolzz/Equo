@@ -38,6 +38,11 @@ CHECKS = (
     Check("home", "/", 200, "text/html", '<div id="root"></div>'),
     Check("group deep link", "/group/smoke-test", 200, "text/html", '<div id="root"></div>'),
     Check("missing API stays JSON", "/api/v1/unknown", 404, "application/json", '"Unknown API route."'),
+    # The LINE link card's hero image is fetched by LINE's servers. A typo or a
+    # missing file anywhere outside /assets/ would silently come back as the
+    # SPA's index.html (200 text/html); under /assets/ it is a real 404.
+    Check("LINE link hero image", "/assets/line/link-hero-v1.jpg", 200, "image/jpeg", ""),
+    Check("missing asset is a 404, not the SPA", "/assets/line/missing-v0.jpg", 404, "", ""),
 )
 
 HOME_REQUIRED_MARKERS = ("使用 Google 登入", "建立群組", "加入群組", "繼續使用")

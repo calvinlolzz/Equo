@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}
+body{margin:0;width:1024px;height:512px;overflow:hidden;position:relative;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#EEF1F6;
+background:radial-gradient(circle at 12% 10%,rgba(77,227,166,.34),transparent 55%),radial-gradient(circle at 88% 8%,rgba(155,92,255,.30),transparent 55%),radial-gradient(circle at 50% 95%,rgba(61,139,255,.26),transparent 55%),linear-gradient(145deg,#07080D,#10121B 52%,#0B0D14)}
+/* the bottom edge melts into the card body (#12151F) so the hero and body meet without a seam */
+body::after{content:"";position:absolute;left:0;right:0;bottom:0;height:64px;background:linear-gradient(to bottom,rgba(18,21,31,0),#12151F)}
+.brand{position:absolute;left:80px;top:176px;display:flex;align-items:center;gap:30px}
+.brand svg{width:160px;height:160px;display:block}
+.brand b{font-size:112px;line-height:1;font-weight:800;letter-spacing:.03em}
+.mini{position:absolute;left:660px;top:156px;width:300px;height:200px;border-radius:28px;background:#12151F;border:2px solid #262C3F;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.top{display:flex;align-items:center;gap:14px}
+.tile{width:44px;height:44px;border-radius:12px;background:#1B3A33;border:2px solid #2E6B58}
+.lines{flex:1;display:grid;gap:8px}
+.lines i{display:block;height:10px;border-radius:5px;background:#262C3F}
+.bars{margin-top:20px;display:grid;gap:14px}
+.bars i{display:block;height:14px;border-radius:7px;background:#262C3F;position:relative;overflow:hidden}
+.bars i::before{content:"";position:absolute;left:0;top:0;bottom:0;border-radius:7px;width:var(--w);background:var(--c)}
+</style></head><body>
+<div class="brand">
+  <svg viewBox="108 108 296 296"><path d="M233 365 A111 111 0 0 1 233 147" fill="none" stroke="#6de2b8" stroke-width="54" stroke-linecap="round"/><path d="M279 147 A111 111 0 0 1 279 365" fill="none" stroke="#ffd67a" stroke-width="54" stroke-linecap="round"/></svg>
+  <b>Equo</b>
+</div>
+<div class="mini">
+  <div class="top"><div class="tile"></div><div class="lines"><i style="width:78%"></i><i style="width:46%"></i></div></div>
+  <div class="bars"><i style="--w:72%;--c:#4DE3A6"></i><i style="--w:45%;--c:#FFB84D"></i><i style="--w:30%;--c:#BEA0FF"></i></div>
+</div>
+</body></html>
