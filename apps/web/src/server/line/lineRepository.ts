@@ -6,9 +6,10 @@ import { sha256Hex } from "./lineCrypto.js";
  * Typed wrappers around the line_* RPCs from
  * supabase/migrations/20260929090000_line_bot.sql (and, for the budget
  * commands, 20260930090000_line_set_budget.sql, and, for the 「本月」
- * category breakdown, 20261003090000_line_month_categories.sql). One
- * function per RPC, named to match, so a call site reads like the SQL it
- * triggers.
+ * category breakdown, 20261003090000_line_month_categories.sql, and, for the
+ * record card's 編輯/刪除 and the mood card's streak,
+ * 20261101090100_line_entry_actions.sql). One function per RPC, named to
+ * match, so a call site reads like the SQL it triggers.
  */
 
 export type LineLedger = {
@@ -199,6 +200,106 @@ export async function setLineBudget(
     p_line_user_id: lineUserId,
     p_budget_minor: budgetMinor,
     p_month_start: monthStart,
+  });
+}
+
+/**
+ * One entry as the delete flow shows it: the fields of expense_json that the
+ * confirm text needs. The RPCs return the whole expense_json object; extra
+ * keys are simply not part of this contract.
+ */
+export type LineEntrySnapshot = {
+  id: string;
+  title: string;
+  amount_minor: number;
+  currency: string;
+  kind: string;
+  category: string;
+  expense_date: string;
+};
+
+export type LineEntryStatusResult =
+  | { ok: false; reason: "not_linked" | "account_disabled" }
+  | { ok: true; status: "not_found" | "gone" }
+  | { ok: true; status: "live"; edited: boolean; expense: LineEntrySnapshot };
+
+/**
+ * The ask step of the card's 刪除: what would be deleted right now? Read only.
+ * `entryKey` is the LINE event key the entry was recorded under (the key that
+ * line_record_entry stored as expenses.client_request_id = 'line:' || key);
+ * it resolves only inside the sender's own personal ledger, and follows edits
+ * made in the app. `edited` means "the row the card was made for has since
+ * been replaced", so the confirm text can say the entry changed.
+ */
+export async function lineEntryStatus(
+  client: PostgrestClient,
+  lineUserId: string,
+  entryKey: string,
+): Promise<LineEntryStatusResult> {
+  return client.rpc<LineEntryStatusResult>("line_entry_status", {
+    p_line_user_id: lineUserId,
+    p_entry_key: entryKey,
+  });
+}
+
+export type DeleteLineEntryResult =
+  | { ok: false; reason: "not_linked" | "account_disabled" | "not_found" | "already_gone" }
+  | { ok: true; replay: boolean; edited?: boolean; expense: LineEntrySnapshot };
+
+/**
+ * The confirm step of the card's 刪除. `eventId` is the webhook event key of
+ * THIS postback, not the card's: a redelivery of the same 確定刪除 answers
+ * `replay: true` with the same expense instead of "already gone". Raises
+ * LINE_INVALID_ENTRY (an RPC error, not a result) for a key or event id that
+ * is not 8-80 of [A-Za-z0-9:_-].
+ */
+export async function deleteLineEntry(
+  client: PostgrestClient,
+  args: { lineUserId: string; entryKey: string; eventId: string },
+): Promise<DeleteLineEntryResult> {
+  return client.rpc<DeleteLineEntryResult>("line_delete_entry", {
+    p_line_user_id: args.lineUserId,
+    p_entry_key: args.entryKey,
+    p_event_id: args.eventId,
+  });
+}
+
+export type LineStreakResult =
+  | { ok: false; reason: "not_linked" | "account_disabled" | "no_ledger" }
+  | { ok: true; stats: unknown };
+
+/**
+ * The mood card's streak numbers. `stats` is deliberately `unknown`: it is the
+ * raw line_ledger_stats object ({streak_days, week, today_index, month_days,
+ * today_entries, total_entries}) and the caller must validate its shape before
+ * trusting it (the card is optional garnish, never worth a crash). `today` is
+ * the Taiwan calendar date, YYYY-MM-DD.
+ */
+export async function lineStreak(client: PostgrestClient, lineUserId: string, today: string): Promise<LineStreakResult> {
+  return client.rpc<LineStreakResult>("line_streak", {
+    p_line_user_id: lineUserId,
+    p_today: today,
+  });
+}
+
+export type LineEntryResolution =
+  | { status: "not_found" }
+  | { status: "gone" }
+  | { status: "live"; group_id: string; expense_id: string; expense_date: string; edited: boolean };
+
+/**
+ * GET /api/v1/me/line/entries/:key. Takes the SESSION user's id (never a
+ * request parameter): the key is looked up only in that user's personal
+ * ledger, so a link carrying someone else's entry key resolves to not_found.
+ */
+export async function resolveLineEntryForUser(
+  client: PostgrestClient,
+  userId: string,
+  entryKey: string,
+): Promise<LineEntryResolution> {
+  return client.rpc<LineEntryResolution>("line_entry_resolve", {
+    p_user: userId,
+    p_entry_key: entryKey,
   });
 }
 

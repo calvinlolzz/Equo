@@ -18,6 +18,7 @@ const mergeSql = readFileSync(join(MIGRATIONS_DIR, "20260929090100_line_merge_us
 const budgetSql = readFileSync(join(MIGRATIONS_DIR, "20260930090000_line_set_budget.sql"), "utf8");
 const categoriesSql = readFileSync(join(MIGRATIONS_DIR, "20261003090000_line_month_categories.sql"), "utf8");
 const replacedBySql = readFileSync(join(MIGRATIONS_DIR, "20261101090000_expense_replaced_by.sql"), "utf8");
+const entryActionsSql = readFileSync(join(MIGRATIONS_DIR, "20261101090100_line_entry_actions.sql"), "utf8");
 const receiptsSql = readFileSync(join(MIGRATIONS_DIR, "20260826014823_expense_receipts_and_comments.sql"), "utf8");
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const workflow = readFileSync(join(REPO_ROOT, ".github", "workflows", "db-backup.yml"), "utf8");
@@ -106,6 +107,7 @@ describe("every LINE migration function is callable by service_role only", () =>
     ["20260929090000_line_bot.sql", botSql],
     ["20260930090000_line_set_budget.sql", budgetSql],
     ["20261003090000_line_month_categories.sql", categoriesSql],
+    ["20261101090100_line_entry_actions.sql", entryActionsSql],
   ];
 
   test.each(LINE_MIGRATIONS)("%s revokes PUBLIC, anon and authenticated and grants service_role", (file, sql) => {
@@ -403,5 +405,230 @@ describe("expense_replaced_by migration", () => {
     // Nothing of it is executable.
     expect(replacedBySql.split("$unpatch$").length - 1).toBe(2);
     expect(normalizeSql(replacedBySql)).not.toContain("$unpatch$");
+  });
+});
+
+/**
+ * The record card's 編輯/刪除 and the mood card's streak. A card names its
+ * entry by the LINE event key, which line_record_entry stored as
+ * expenses.client_request_id = 'line:' || key. Everything a webhook can reach
+ * resolves that key inside the SENDER's personal ledger only.
+ */
+describe("line_entry_actions migration", () => {
+  const FUNCTIONS = [
+    "line_personal_ledger_id",
+    "line_entry_lookup",
+    "line_entry_resolve",
+    "line_entry_status",
+    "line_delete_entry",
+    "line_ledger_stats",
+    "line_streak",
+  ];
+  const SIGNATURES: Record<string, string> = {
+    line_personal_ledger_id: "(uuid)",
+    line_entry_lookup: "(uuid, text)",
+    line_entry_resolve: "(uuid, text)",
+    line_entry_status: "(text, text)",
+    line_delete_entry: "(text, text, text)",
+    line_ledger_stats: "(uuid, date)",
+    line_streak: "(text, date)",
+  };
+  const KEY_PATTERN = "'^[A-Za-z0-9:_-]{8,80}$'";
+
+  const fn = (name: string) => functionSql(entryActionsSql, name);
+  const body = (name: string) => normalizeSql(fn(name));
+
+  test("defines exactly these seven functions - line_record_entry, line_undo_last and the 復原 tables are left alone", () => {
+    const defined = [...entryActionsSql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."(\w+)"/g)].map((m) => m[1]);
+    expect(defined).toEqual(FUNCTIONS);
+    // 復原 keeps its semantics: a card delete must not touch its bookkeeping.
+    const code = normalizeSql(entryActionsSql);
+    expect(code).not.toContain("line_bot_entries");
+    expect(code).not.toContain("line_undo_events");
+    expect(code).not.toContain("undone_at");
+  });
+
+  test.each(FUNCTIONS)("%s: definer, pinned search_path, owned by postgres, service_role only", (name) => {
+    expect(fn(name)).toContain("SECURITY DEFINER");
+    expect(fn(name)).toContain("SET search_path TO 'public'");
+    const sig = `"public"."${name}"${SIGNATURES[name]}`;
+    expect(entryActionsSql).toContain(`ALTER FUNCTION ${sig} OWNER TO postgres`);
+    for (const role of ["PUBLIC", '"anon"', '"authenticated"']) {
+      expect(entryActionsSql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM ${role}`);
+    }
+    expect(entryActionsSql).toContain(`GRANT ALL ON FUNCTION ${sig} TO "service_role"`);
+  });
+
+  // [MV]: a STABLE function that calls ensure_personal_ledger would WRITE (it creates the ledger) from a read-only context.
+  test("only line_delete_entry is volatile, and no STABLE function calls ensure_personal_ledger", () => {
+    for (const name of FUNCTIONS) {
+      if (name === "line_delete_entry") {
+        expect(fn(name)).not.toContain("STABLE");
+        continue;
+      }
+      expect(fn(name), `${name} should be STABLE`).toMatch(/LANGUAGE (sql|plpgsql) STABLE SECURITY DEFINER/);
+      expect(body(name), `${name} must not create a ledger`).not.toContain("ensure_personal_ledger");
+    }
+  });
+
+  // [MV]: add a p_group (or p_user) parameter to a bot-facing function and a crafted postback could name another ledger.
+  test("the webhook-facing functions take a LINE user id and no group or user id", () => {
+    for (const name of ["line_entry_status", "line_delete_entry", "line_streak"]) {
+      expect(body(name), name).toContain('"p_line_user_id" text');
+      expect(body(name), name).not.toMatch(/\bp_group\b|\bp_user\b/);
+    }
+  });
+
+  test("the web-facing line_entry_resolve takes the session user id, never a LINE id or a group", () => {
+    const sql = body("line_entry_resolve");
+    expect(sql).toContain('"p_user" uuid');
+    expect(sql).not.toMatch(/\bp_group\b|p_line_user_id/);
+    expect(sql).toContain("line_personal_ledger_id(p_user)");
+  });
+
+  test("the personal ledger is found by owner and kind, never a deleted one", () => {
+    const sql = body("line_personal_ledger_id");
+    expect(sql).toContain("g.owner_id = p_user and g.kind = 'personal' and g.deleted_at is null");
+  });
+
+  test("the key pattern is the one line_record_entry enforces on the event id, in lookup and in delete (key and event)", () => {
+    expect(fn("line_entry_lookup")).toContain(`p_entry_key !~ ${KEY_PATTERN}`);
+    expect(fn("line_delete_entry")).toContain(`p_entry_key !~ ${KEY_PATTERN}`);
+    expect(fn("line_delete_entry")).toContain(`p_event_id !~ ${KEY_PATTERN}`);
+    expect(functionSql(botSql, "line_record_entry")).toContain(`p_event_id ~ ${KEY_PATTERN}`);
+    expect(fn("line_delete_entry")).toContain("raise exception 'LINE_INVALID_ENTRY'");
+  });
+
+  describe("line_entry_lookup", () => {
+    const sql = body("line_entry_lookup");
+
+    // [MV]: drop the group filter from the first select and a key resolves in anyone's ledger.
+    test("finds the entry by ledger and the 'line:' client_request_id", () => {
+      expect(sql).toContain("where e.group_id = p_group and e.client_request_id = 'line:' || p_entry_key");
+    });
+
+    // [MV]: drop `and e.group_id = p_group` from the chain walk and a pointer can lead into another ledger.
+    test("every hop of the chain stays inside the ledger", () => {
+      expect(sql).toContain("where e.id = v_next and e.group_id = p_group");
+      expect(sql.split("e.group_id = p_group").length - 1).toBe(2);
+      // A hop that leaves the ledger ends the chain as 'not live', with no id to act on.
+      expect(sql).toContain("jsonb_build_object('expense_id', null, 'live', false, 'edited', true)");
+    });
+
+    // [MV]: remove `v_hops < 50` and a pointer cycle spins forever.
+    test("the chain walk is bounded, and only follows a retired row that has a successor", () => {
+      expect(sql).toContain("while v_deleted is not null and v_next is not null and v_hops < 50 loop");
+    });
+
+    test("answers {expense_id, live, edited}, with edited meaning at least one hop", () => {
+      expect(sql).toContain("jsonb_build_object('expense_id', v_id, 'live', v_deleted is null, 'edited', v_hops > 0)");
+    });
+
+    test("a malformed key or a missing ledger is 'no such entry', not an error", () => {
+      expect(sql).toContain("if p_group is null or p_entry_key is null or p_entry_key !~");
+    });
+  });
+
+  describe("line_delete_entry", () => {
+    const sql = body("line_delete_entry");
+
+    // [MV]: move the replay check below the lookup and a redelivered 確定刪除 finds the entry already gone and answers 'already gone' instead of 'deleted'.
+    test("checks for this event's earlier outcome BEFORE resolving the entry", () => {
+      const replay = sql.indexOf("from client_requests cr");
+      const lookup = sql.indexOf("line_entry_lookup(");
+      expect(replay).toBeGreaterThan(-1);
+      expect(lookup).toBeGreaterThan(-1);
+      expect(replay).toBeLessThan(lookup);
+      expect(sql).toContain("cr.group_id = v_group and cr.client_request_id = 'line:' || p_event_id");
+      expect(sql).toContain("'ok', true, 'replay', true, 'expense', expense_json(v_prior)");
+    });
+
+    // [MV]: drop `for update` and two taps (or a tap racing an app edit) both pass the check.
+    test("locks the target row, then re-checks it, so two taps cannot both delete", () => {
+      const lock = sql.indexOf("for update");
+      expect(lock).toBeGreaterThan(-1);
+      expect(sql).toContain("where e.id = v_target and e.group_id = v_group for update");
+      expect(sql.indexOf("line_entry_lookup(")).toBeLessThan(lock);
+      expect(sql).toContain("if not found or v_target_deleted is not null then");
+      expect(lock).toBeLessThan(sql.indexOf("soft_delete_expense("));
+    });
+
+    test("deletes through soft_delete_expense in the sender's ledger, keyed by this event", () => {
+      expect(sql).toContain("soft_delete_expense(v_group, v_user, v_target, 'line:' || p_event_id)");
+      expect(sql).toContain("v_group := line_personal_ledger_id(v_user)");
+    });
+
+    test("every refusal is a reason, in the vocabulary the TypeScript result type declares", () => {
+      for (const reason of ["not_linked", "account_disabled", "not_found", "already_gone"]) {
+        expect(sql, reason).toContain(`'reason', '${reason}'`);
+      }
+      // An edited-away chain with no live end, or a retired entry, is 'already_gone' - never an exception.
+      expect(sql).toContain("if v_target is null or not (v_found ->> 'live')::boolean then");
+    });
+
+    test("reports whether the card's row had been edited, so the caller can say so", () => {
+      expect(sql).toContain("'edited', (v_found ->> 'edited')::boolean");
+    });
+  });
+
+  describe("line_entry_status and line_entry_resolve", () => {
+    test("status is read only and returns the CURRENT expense, not the card's", () => {
+      const sql = body("line_entry_status");
+      expect(sql).toContain("line_entry_lookup(line_personal_ledger_id(v_user), p_entry_key)");
+      expect(sql).toContain("'expense', expense_json((v_found ->> 'expense_id')::uuid)");
+      expect(sql).not.toMatch(/\b(insert|update|delete)\b/);
+    });
+
+    test("status refuses an unlinked or disabled account before looking anything up", () => {
+      const sql = body("line_entry_status");
+      expect(sql.indexOf("'not_linked'")).toBeLessThan(sql.indexOf("line_entry_lookup("));
+      expect(sql.indexOf("'account_disabled'")).toBeLessThan(sql.indexOf("line_entry_lookup("));
+    });
+
+    test("resolve answers not_found / gone / live, and only a live entry reveals ids", () => {
+      const sql = body("line_entry_resolve");
+      expect(sql).toContain("jsonb_build_object('status', 'not_found')");
+      expect(sql).toContain("jsonb_build_object('status', 'gone')");
+      expect(sql.indexOf("'gone'")).toBeLessThan(sql.indexOf("'group_id'"));
+      expect(sql).not.toMatch(/\b(insert|update|delete)\b/);
+    });
+  });
+
+  describe("line_ledger_stats and line_streak", () => {
+    const stats = body("line_ledger_stats");
+
+    // [MV]: drop any one and the card counts rows it should not (someone else's, deleted, a transfer, a future-dated one).
+    test.each([
+      "e.group_id = p_group",
+      "e.deleted_at is null",
+      "e.kind in ('expense', 'income')",
+      "e.expense_date <= p_today",
+    ])("counts only rows with `%s`", (clause) => {
+      expect(stats).toContain(clause);
+    });
+
+    test("the streak is the run of consecutive days ending today (none today = 0)", () => {
+      expect(stats).toContain("row_number() over (order by d desc) as rn");
+      expect(stats).toContain("count(*) from ranked r where r.d = p_today - (r.rn - 1)::integer");
+    });
+
+    test("looks back 400 days at most, and the week starts on Monday (ISO)", () => {
+      expect(stats).toContain("l.expense_date > p_today - 400");
+      expect(stats).toContain("date_trunc('week', p_today)::date + g.i");
+      expect(stats).toContain("extract(isodow from p_today)::integer - 1");
+    });
+
+    test("returns the six keys the TypeScript side parses", () => {
+      for (const key of ["streak_days", "week", "today_index", "month_days", "today_entries", "total_entries"]) {
+        expect(stats, key).toContain(`'${key}'`);
+      }
+    });
+
+    test("line_streak wraps it for the sender's ledger and never creates one", () => {
+      const sql = body("line_streak");
+      expect(sql).toContain("'ok', true, 'stats', line_ledger_stats(v_group, p_today)");
+      expect(sql).toContain("'reason', 'no_ledger'");
+      expect(sql).toContain("v_group := line_personal_ledger_id(v_user)");
+    });
   });
 });
