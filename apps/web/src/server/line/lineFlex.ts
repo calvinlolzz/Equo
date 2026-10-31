@@ -40,7 +40,15 @@ export type LineUriAction = { type: "uri"; label: string; uri: string };
  */
 export type LineMessageAction = { type: "message"; label: string; text: string };
 
-export type LineAction = LineUriAction | LineMessageAction;
+/**
+ * Sends `data` to the webhook as a postback event (and, with `displayText`,
+ * shows that text in the chat as if the user had typed it). Not a message: it
+ * reaches the bot only as an event whose data linePostback.ts parses. A card
+ * may hold one only for the delete ASK; see lineFlexValidator.ts.
+ */
+export type LinePostbackAction = { type: "postback"; label: string; data: string; displayText?: string };
+
+export type LineAction = LineUriAction | LineMessageAction | LinePostbackAction;
 
 export type LineQuickReply = { items: Array<{ type: "action"; action: LineAction }> };
 
@@ -59,7 +67,7 @@ export type FlexSeparator = { type: "separator"; color: string; margin?: FlexLen
 
 export type FlexButton = {
   type: "button";
-  action: LineUriAction;
+  action: LineUriAction | LinePostbackAction;
   style?: "primary" | "secondary" | "link";
   color?: string;
   height?: "sm" | "md";
@@ -140,6 +148,9 @@ const ALT_TEXT_MAX = 400;
 /** Labels are counted in grapheme clusters, which never outnumber UTF-16 units - capping the units caps both. */
 const LABEL_MAX = 20;
 
+/** A postback action's displayText is capped at 300 by LINE. */
+const DISPLAY_TEXT_MAX = 300;
+
 function isBlank(value: string): boolean {
   return value.trim() === "";
 }
@@ -215,15 +226,45 @@ export function separator(color: string, margin?: FlexLength): FlexSeparator {
 export function uriButton(
   label: string,
   uri: string,
-  options: { color: string; style?: FlexButton["style"]; height?: FlexButton["height"] },
+  options: { color: string; style?: FlexButton["style"]; height?: FlexButton["height"]; flex?: number },
 ): FlexButton {
-  return {
+  return compact<FlexButton>({
     type: "button",
     style: options.style ?? "primary",
     color: options.color,
     height: options.height ?? "sm",
+    flex: options.flex,
     action: { type: "uri", label: clampLabel(label), uri },
-  };
+  });
+}
+
+/**
+ * A button that sends a postback. Same colour rules as uriButton. `data` goes
+ * out exactly as given (cutting it would turn it into a different postback;
+ * the validator refuses one over 300), `displayText` is what the chat shows
+ * when it is tapped and is left off when blank - LINE refuses an empty one.
+ */
+export function postbackButton(
+  label: string,
+  data: string,
+  options: {
+    color: string;
+    style?: FlexButton["style"];
+    height?: FlexButton["height"];
+    flex?: number;
+    displayText?: string;
+  },
+): FlexButton {
+  const displayText = options.displayText === undefined || isBlank(options.displayText) ? undefined : truncate(options.displayText, DISPLAY_TEXT_MAX);
+
+  return compact<FlexButton>({
+    type: "button",
+    style: options.style ?? "primary",
+    color: options.color,
+    height: options.height ?? "sm",
+    flex: options.flex,
+    action: compact<LinePostbackAction>({ type: "postback", label: clampLabel(label), data, displayText }),
+  });
 }
 
 export function heroImage(url: string, aspectRatio: FlexAspectRatio, background: string): FlexImage {

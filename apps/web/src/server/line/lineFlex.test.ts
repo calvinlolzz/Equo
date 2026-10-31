@@ -6,6 +6,7 @@ import {
   hbox,
   heroImage,
   lineAltText,
+  postbackButton,
   progressBar,
   separator,
   text,
@@ -150,6 +151,40 @@ describe("separator, uriButton and heroImage", () => {
   test("uriButton clamps its label to LINE's 20", () => {
     expect(uriButton("a".repeat(30), "https://example.com/a", { color: "#0E8460" }).action.label).toBe(`${"a".repeat(19)}…`);
     expect(uriButton("", "https://example.com/a", { color: "#0E8460" }).action.label).toBe("—");
+  });
+
+  test("uriButton passes a flex through, and has none otherwise", () => {
+    expect(uriButton("x", "https://example.com/a", { color: "#0E8460", flex: 2 })).toMatchObject({ flex: 2 });
+    expect("flex" in uriButton("x", "https://example.com/a", { color: "#0E8460" })).toBe(false);
+  });
+
+  test("postbackButton is a small button with a postback action, the data untouched", () => {
+    const data = "v=1&a=del&k=01J0000000000000000000000A";
+    expect(postbackButton("刪除", data, { color: "#FF6B6B", style: "link", flex: 1, displayText: "刪除這筆" })).toEqual({
+      type: "button",
+      style: "link",
+      color: "#FF6B6B",
+      height: "sm",
+      flex: 1,
+      action: { type: "postback", label: "刪除", data, displayText: "刪除這筆" },
+    });
+  });
+
+  test("postbackButton has no flex and no displayText unless given, and a blank displayText is left off", () => {
+    const plain = postbackButton("x", "v=1&a=delno", { color: "#FF6B6B" });
+    expect(plain).toMatchObject({ style: "primary", height: "sm", action: { type: "postback", label: "x", data: "v=1&a=delno" } });
+    expect("flex" in plain).toBe(false);
+    expect("displayText" in plain.action).toBe(false);
+    expect("displayText" in postbackButton("x", "v=1&a=delno", { color: "#FF6B6B", displayText: "  " }).action).toBe(false);
+  });
+
+  test("postbackButton clamps its label to 20 and its displayText to 300", () => {
+    const button = postbackButton("a".repeat(30), "v=1&a=delno", { color: "#FF6B6B", displayText: "b".repeat(400) });
+    expect(button.action.label).toBe(`${"a".repeat(19)}…`);
+    const displayText = (button.action as { displayText?: string }).displayText!;
+    expect(displayText.length).toBe(300);
+    expect(displayText.endsWith("…")).toBe(true);
+    expect(postbackButton("", "v=1&a=delno", { color: "#FF6B6B" }).action.label).toBe("—");
   });
 
   test("heroImage fills the width and crops to the aspect ratio", () => {

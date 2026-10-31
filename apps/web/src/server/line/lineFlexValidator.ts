@@ -1,4 +1,5 @@
-import type { LineAction, LineFlexMessage, LineMessage, LineUriAction } from "./lineFlex.js";
+import type { LineAction, LineFlexMessage, LineMessage, LinePostbackAction, LineUriAction } from "./lineFlex.js";
+import { type LinePostback, parseLinePostback } from "./linePostback.js";
 
 /**
  * A test-only checker for LINE reply messages (the same convention as
@@ -12,8 +13,11 @@ import type { LineAction, LineFlexMessage, LineMessage, LineUriAction } from "./
  * refuses anything the cards deliberately avoid - carousels, spans, fillers,
  * gradients, absolute positioning, bubble sizes that fall back on old
  * clients - and anything that could write on the user's behalf from inside a
- * card (only uri actions are allowed there; the one place a message action is
- * allowed, 復原, is a quick reply). It also refuses reliance on defaults: LINE
+ * card. A card may open a URL, or send ONE postback: the delete ASK, which
+ * only answers with a question (the confirm and cancel postbacks, and the
+ * message action 復原, live in quick replies only, which vanish with the next
+ * message). A template may only open a URL. Every postback anywhere must be
+ * data linePostback.ts can parse. It also refuses reliance on defaults: LINE
  * clients disagree about padding, spacing and colour, so a box with no
  * `spacing`, a text with no `color`, or a block with no background fails.
  *
@@ -85,6 +89,7 @@ const KEYS = {
   image: ["type", "url", "size", "aspectRatio", "aspectMode", "backgroundColor"],
   uriAction: ["type", "label", "uri"],
   messageAction: ["type", "label", "text"],
+  postbackAction: ["type", "label", "data", "displayText"],
   quickReply: ["items"],
   quickReplyItem: ["type", "action"],
 } as const;
@@ -154,9 +159,19 @@ function checkOptional(node: Rec, key: string, path: string, out: Problems, chec
   if (node[key] !== undefined) check(node[key], `${path}.${key}`);
 }
 
-type ActionKind = "uri" | "message";
+type ActionKind = "uri" | "message" | "postback";
 
-function validateAction(node: unknown, path: string, out: Problems, allowed: readonly ActionKind[], where: string): void {
+/** Which postbacks a place may hold; undefined means any the grammar knows. */
+type PostbackActions = ReadonlyArray<LinePostback["action"]>;
+
+function validateAction(
+  node: unknown,
+  path: string,
+  out: Problems,
+  allowed: readonly ActionKind[],
+  where: string,
+  postbacks?: PostbackActions,
+): void {
   if (!isRecord(node)) {
     out.add(path, "must be an action object");
     return;
@@ -175,8 +190,25 @@ function validateAction(node: unknown, path: string, out: Problems, allowed: rea
     checkKeys(node, KEYS.messageAction, path, out);
     checkString(node.label, 1, 20, `${path}.label`, out);
     checkString(node.text, 1, 300, `${path}.text`, out);
+  } else if (node.type === "postback") {
+    if (!allowed.includes("postback")) {
+      out.add(`${path}.type`, `a postback action is not allowed in ${where}`);
+      return;
+    }
+    checkKeys(node, KEYS.postbackAction, path, out);
+    checkString(node.label, 1, 20, `${path}.label`, out);
+    checkString(node.data, 1, 300, `${path}.data`, out);
+    checkOptional(node, "displayText", path, out, (v, p) => checkString(v, 1, 300, p, out));
+
+    // A postback is only as safe as what its data can ask for: the closed grammar, and in a card only the delete ask.
+    const parsed = typeof node.data === "string" ? parseLinePostback(node.data) : null;
+    if (typeof node.data === "string" && parsed === null) {
+      out.add(`${path}.data`, "is not data the bot's postback grammar knows (linePostback.ts)");
+    } else if (parsed !== null && postbacks !== undefined && !postbacks.includes(parsed.action)) {
+      out.add(`${path}.data`, `is a ${parsed.action} postback, which ${where} may not hold (only ${postbacks.join(", ")})`);
+    }
   } else {
-    out.add(`${path}.type`, `unsupported action type ${JSON.stringify(node.type)} (only uri${allowed.includes("message") ? " and message" : ""})`);
+    out.add(`${path}.type`, `unsupported action type ${JSON.stringify(node.type)} (only ${allowed.join(", ")})`);
   }
 }
 
@@ -202,7 +234,7 @@ function validateQuickReply(node: unknown, path: string, out: Problems): void {
     }
     checkKeys(item, KEYS.quickReplyItem, itemPath, out);
     if (item.type !== "action") out.add(`${itemPath}.type`, 'must be "action"');
-    validateAction(item.action, `${itemPath}.action`, out, ["uri", "message"], "a quick reply");
+    validateAction(item.action, `${itemPath}.action`, out, ["uri", "message", "postback"], "a quick reply");
   });
 }
 
@@ -226,8 +258,8 @@ function validateText(node: Rec, path: string, out: Problems): void {
 
 function validateButton(node: Rec, path: string, out: Problems): void {
   checkKeys(node, KEYS.button, path, out);
-  // Inside a card an action may only open a URL: this is what keeps 復原 (and any other write) out of reach of a stray tap.
-  validateAction(node.action, `${path}.action`, out, ["uri"], "a card");
+  // Inside a card an action may open a URL or ask to delete - nothing that writes, so 復原 and the delete CONFIRM stay out of reach of a stray tap.
+  validateAction(node.action, `${path}.action`, out, ["uri", "postback"], "a card", ["delete_ask"]);
   checkOptional(node, "style", path, out, (v, p) => checkOneOf(v, new Set(["primary", "secondary", "link"]), p, out));
   checkOptional(node, "color", path, out, (v, p) => checkColor(v, p, out));
   checkOptional(node, "height", path, out, (v, p) => checkOneOf(v, new Set(["sm", "md"]), p, out));
@@ -475,7 +507,13 @@ export function lineReplyProblems(messages: unknown): string[] {
     return out.list;
   }
   if (messages.length < 1 || messages.length > 5) out.add("messages", `must hold 1-5 messages, holds ${messages.length}`);
-  messages.forEach((message, index) => validateMessage(message, `messages[${index}]`, out));
+  messages.forEach((message, index) => {
+    validateMessage(message, `messages[${index}]`, out);
+    // LINE removes the quick reply of a message when the account sends another one after it, so only the last message's is ever seen.
+    if (index < messages.length - 1 && isRecord(message) && message.quickReply !== undefined) {
+      out.add(`messages[${index}].quickReply`, "is on a message that is not the last: LINE removes it when the next message arrives, so it belongs on the last one");
+    }
+  });
   return out.list;
 }
 
@@ -525,6 +563,11 @@ export function actionsOf(message: LineMessage): LineAction[] {
   const found: LineAction[] = [];
   collectActions(message.type === "flex" ? message.contents : message.template, found);
   return found;
+}
+
+/** The postback actions inside a card (never the quick reply's), depth-first. */
+export function postbacksOf(message: LineMessage): LinePostbackAction[] {
+  return actionsOf(message).filter((action): action is LinePostbackAction => action.type === "postback");
 }
 
 export function uriActionsOf(message: LineMessage): LineUriAction[] {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { bubble, flexMessage, hbox, heroImage, progressBar, separator, text, uriButton, vbox } from "./lineFlex.js";
+import { bubble, flexMessage, hbox, heroImage, postbackButton, progressBar, separator, text, uriButton, vbox } from "./lineFlex.js";
 import type { LineFlexMessage, LineMessage } from "./lineFlex.js";
+import { encodeLinePostback } from "./linePostback.js";
 import {
   actionsOf,
   assertValidFlexMessage,
@@ -9,6 +10,7 @@ import {
   lineMessageProblems,
   lineReplyProblems,
   plainTextOf,
+  postbacksOf,
   uriActionsOf,
 } from "./lineFlexValidator.js";
 
@@ -17,6 +19,10 @@ const INK = "#EEF1F6";
 const HAIRLINE = "#262C3F";
 const HERO_URL = "https://equo-mu.vercel.app/assets/line/link-hero-v1.jpg";
 const LEDGER_URL = "https://equo-mu.vercel.app/group/g1?openExternalBrowser=1";
+const KEY = "01J0000000000000000000000A";
+const ASK = encodeLinePostback({ action: "delete_ask", entryKey: KEY });
+const CONFIRM = encodeLinePostback({ action: "delete_confirm", entryKey: KEY });
+const CANCEL = encodeLinePostback({ action: "delete_cancel" });
 
 /**
  * A card that uses every component the validator knows. The body children are
@@ -37,7 +43,13 @@ function validCard(): LineFlexMessage {
         ],
         { paddingAll: "20px" },
       ),
-      footer: vbox([uriButton("開啟帳本", LEDGER_URL, { color: "#0E8460" })], { paddingAll: "12px" }),
+      footer: vbox(
+        [
+          uriButton("開啟帳本", LEDGER_URL, { color: "#0E8460" }),
+          postbackButton("刪除", ASK, { color: "#FF6B6B", style: "link", flex: 1, displayText: "刪除這筆" }),
+        ],
+        { paddingAll: "12px" },
+      ),
       background: BG,
       footerSeparator: HAIRLINE,
     }),
@@ -48,6 +60,12 @@ function validCard(): LineFlexMessage {
       ],
     },
   );
+}
+
+/** The same card without its quick reply - what a card that is not the last message of a reply looks like. */
+function validCardNoQuickReply(): LineFlexMessage {
+  const { quickReply: _quickReply, ...rest } = validCard();
+  return rest;
 }
 
 /** The link fallback: a buttons template. */
@@ -90,7 +108,7 @@ describe("the valid cards", () => {
   test("so does the link template, a text message and a reply made of them", () => {
     expect(lineMessageProblems(validTemplate())).toEqual([]);
     expect(lineMessageProblems({ type: "text", text: "hi" })).toEqual([]);
-    expect(lineReplyProblems([{ type: "text", text: "hi" }, validCard(), validTemplate()])).toEqual([]);
+    expect(lineReplyProblems([{ type: "text", text: "hi" }, validCardNoQuickReply(), validTemplate()])).toEqual([]);
   });
 
   test("an emoji (a valid surrogate pair) is not a lone surrogate", () => {
@@ -132,6 +150,17 @@ describe("a reply", () => {
   test("names the message that is wrong", () => {
     const problems = lineReplyProblems([{ type: "text", text: "ok" }, { type: "text", text: "" }]);
     expect(problems).toEqual([expect.stringContaining("messages[1].text")]);
+  });
+
+  // [MV]: LINE removes a quick reply when the account sends another message after it.
+  test("a quick reply belongs on the last message only", () => {
+    const withQuickReply = validCard();
+    expect(lineReplyProblems([withQuickReply])).toEqual([]);
+    expect(lineReplyProblems([validCardNoQuickReply(), withQuickReply])).toEqual([]);
+    expect(lineReplyProblems([withQuickReply, { type: "text", text: "after" }])).toEqual([
+      expect.stringMatching(/messages\[0\]\.quickReply.*not the last/),
+    ]);
+    expect(lineReplyProblems([withQuickReply, validCardNoQuickReply(), withQuickReply]).length).toBe(1);
   });
 
   // [MV]: this is the guard against a LineCard wrapper reaching the client.
@@ -178,6 +207,7 @@ describe("text and template messages", () => {
     ["no template actions", (m) => (m.template.actions = []), /actions.*1-4/],
     ["five template actions", (m) => (m.template.actions = Array.from({ length: 5 }, () => m.template.actions[0])), /actions.*1-4/],
     ["a message action in a template", (m) => (m.template.actions = [{ type: "message", label: "x", text: "復原" }]), /message action is not allowed in a template/],
+    ["a postback action in a template", (m) => (m.template.actions = [{ type: "postback", label: "x", data: ASK }]), /postback action is not allowed in a template/],
     ["an empty altText on a template", (m) => (m.altText = ""), /altText.*1-400/],
     ["a 401-unit altText on a template", (m) => (m.altText = "a".repeat(401)), /altText.*1-400/],
     ["an unknown template key", (m) => (m.template.title = "x"), /title.*not a known property/],
@@ -411,7 +441,7 @@ describe("actions", () => {
   // [MV]: this is what keeps 復原 - or any write - out of reach of a stray tap on a card.
   expectReported([
     ["a message action on a card button", (c) => (button(c).action = { type: "message", label: "復原", text: "復原" }), /message action is not allowed in a card/],
-    ["a postback action", (c) => (button(c).action = { type: "postback", label: "x", data: "a=b" }), /unsupported action type "postback"/],
+    ["an unsupported action type", (c) => (button(c).action = { type: "datetimepicker", label: "x", data: "a=b" }), /unsupported action type "datetimepicker"/],
     ["a button with no action", (c) => delete button(c).action, /action.*must be an action object/],
     ["an empty label", (c) => (button(c).action.label = ""), /label.*1-20/],
     ["a 21-unit label", (c) => (button(c).action.label = "a".repeat(21)), /label.*1-20/],
@@ -423,6 +453,30 @@ describe("actions", () => {
     ["a bad button style", (c) => (button(c).style = "ghost"), /style.*primary\|secondary\|link/],
     ["a bad button height", (c) => (button(c).height = "lg"), /height.*sm\|md/],
   ]);
+
+  const ask = (c: Loose) => c.contents.footer.contents[1];
+
+  // [MV]: a card may send the delete ASK and nothing else; the confirm and cancel postbacks are quick-reply only.
+  expectReported([
+    ["a delete_confirm postback in a card", (c) => (ask(c).action.data = CONFIRM), /delete_confirm postback, which a card may not hold \(only delete_ask\)/],
+    ["a delete_cancel postback in a card", (c) => (ask(c).action.data = CANCEL), /delete_cancel postback, which a card may not hold/],
+    ["postback data with an extra parameter", (c) => (ask(c).action.data = `${ASK}&x=1`), /not data the bot's postback grammar knows/],
+    ["postback data with an unknown action", (c) => (ask(c).action.data = `v=1&a=pay&k=${KEY}`), /not data the bot's postback grammar knows/],
+    ["postback data that is not the grammar at all", (c) => (ask(c).action.data = "a=b"), /not data the bot's postback grammar knows/],
+    ["postback data over 300 units", (c) => (ask(c).action.data = `${ASK}${"a".repeat(300)}`), /data.*1-300/],
+    ["empty postback data", (c) => (ask(c).action.data = ""), /data.*1-300/],
+    ["a postback with no data", (c) => delete ask(c).action.data, /data.*must be a string/],
+    ["a postback displayText over 300 units", (c) => (ask(c).action.displayText = "a".repeat(301)), /displayText.*1-300/],
+    ["an empty postback displayText", (c) => (ask(c).action.displayText = ""), /displayText.*1-300/],
+    ["a postback label over 20", (c) => (ask(c).action.label = "a".repeat(21)), /label.*1-20/],
+    ["a postback with a typo'd key", (c) => (ask(c).action.text = "x"), /text.*not a known property/],
+  ]);
+
+  test("a delete_ask postback is accepted in a card, with or without a displayText", () => {
+    expect(lineMessageProblems(validCard())).toEqual([]);
+    expect(problemsAfter((c) => delete ask(c).action.displayText)).toEqual([]);
+    expect(problemsAfter((c) => (ask(c).action.displayText = "a".repeat(300)))).toEqual([]);
+  });
 
   test("a 20-unit label, a 1000-character uri and the line:/tel:/http: schemes are accepted", () => {
     expect(problemsAfter((c) => (button(c).action.label = "a".repeat(20)))).toEqual([]);
@@ -450,7 +504,8 @@ describe("a quick reply", () => {
     ["a message action with 301 characters", (c) => (first(c).action.text = "a".repeat(301)), /text.*1-300/],
     ["a message action label over 20", (c) => (first(c).action.label = "a".repeat(21)), /label.*1-20/],
     ["a typo'd key on a message action", (c) => (first(c).action.txt = "x"), /txt.*not a known property/],
-    ["a postback in a quick reply", (c) => (first(c).action = { type: "postback", label: "x", data: "a" }), /unsupported action type "postback"/],
+    ["a postback in a quick reply whose data is not the grammar", (c) => (first(c).action = { type: "postback", label: "x", data: "a" }), /not data the bot's postback grammar knows/],
+    ["a postback in a quick reply with a typo'd key", (c) => (first(c).action = { type: "postback", label: "x", data: CANCEL, text: "x" }), /text.*not a known property/],
   ]);
 
   test("13 items is the limit", () => {
@@ -460,6 +515,13 @@ describe("a quick reply", () => {
   test("a quick reply may hold a message action (that is where 復原 lives) and a uri action", () => {
     expect(lineMessageProblems(validCard())).toEqual([]);
     expect(validCard().quickReply?.items.map((item) => item.action.type)).toEqual(["message", "uri"]);
+  });
+
+  // [MV]: the confirm and cancel postbacks live here, and only here.
+  test("a quick reply may hold the delete confirm and cancel postbacks - and the ask", () => {
+    for (const data of [CONFIRM, CANCEL, ASK]) {
+      expect(problemsAfter((c) => (first(c).action = { type: "postback", label: "確定刪除", data, displayText: "確定刪除" })), data).toEqual([]);
+    }
   });
 });
 
@@ -505,7 +567,7 @@ describe("the assert helpers", () => {
   });
 
   test("assertValidLineReply checks the count and each message", () => {
-    expect(() => assertValidLineReply([validCard(), validTemplate()])).not.toThrow();
+    expect(() => assertValidLineReply([validCardNoQuickReply(), validTemplate()])).not.toThrow();
     expect(() => assertValidLineReply([])).toThrow(/1-5 messages/);
     expect(() => assertValidLineReply([{ type: "text", text: "" }])).toThrow(/messages\[0\]\.text/);
   });
@@ -524,8 +586,20 @@ describe("plainTextOf, actionsOf and uriActionsOf", () => {
     expect(plainTextOf(validTemplate())).toBe("連結 Equo 帳號");
   });
 
-  test("actionsOf finds the card's button action and leaves the quick reply out", () => {
-    expect(actionsOf(validCard())).toEqual([{ type: "uri", label: "開啟帳本", uri: LEDGER_URL }]);
+  test("actionsOf finds the card's button actions and leaves the quick reply out", () => {
+    expect(actionsOf(validCard())).toEqual([
+      { type: "uri", label: "開啟帳本", uri: LEDGER_URL },
+      { type: "postback", label: "刪除", data: ASK, displayText: "刪除這筆" },
+    ]);
+  });
+
+  test("postbacksOf keeps only the postback actions of the card, never the quick reply's", () => {
+    expect(postbacksOf(validCard())).toEqual([{ type: "postback", label: "刪除", data: ASK, displayText: "刪除這筆" }]);
+    const card: Loose = structuredClone(validCard());
+    card.quickReply.items.push({ type: "action", action: { type: "postback", label: "取消", data: CANCEL } });
+    expect(postbacksOf(card)).toHaveLength(1);
+    expect(postbacksOf(validTemplate())).toEqual([]);
+    expect(postbacksOf({ type: "text", text: "hi" })).toEqual([]);
   });
 
   // [MV]: if the quick reply leaked in, "no card action may write" would trip over 復原.
@@ -538,7 +612,7 @@ describe("plainTextOf, actionsOf and uriActionsOf", () => {
     const card: Loose = structuredClone(validCard());
     card.contents.body.contents[2].contents[0].action = { type: "message", label: "x", text: "復原" };
     card.contents.body.action = { type: "uri", label: "y", uri: "https://x.test/y" };
-    expect(actionsOf(card).map((action) => action.label).sort()).toEqual(["x", "y", "開啟帳本"]);
+    expect(actionsOf(card).map((action) => action.label).sort()).toEqual(["x", "y", "刪除", "開啟帳本"]);
     expect(actionsOf(validTemplate())).toEqual([{ type: "uri", label: "連結 Equo 帳號", uri: LEDGER_URL }]);
   });
 
