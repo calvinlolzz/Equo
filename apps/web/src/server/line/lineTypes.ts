@@ -37,6 +37,8 @@ export type LineEvent = {
   message?: LineMessage;
   link?: { result: "ok" | "failed" | string; nonce?: string };
   follow?: { isUnblocked?: boolean };
+  /** A tapped postback action; `data` is whatever the button carried and is parsed by linePostback.ts, never trusted. */
+  postback?: { data?: string; params?: Record<string, string> };
 };
 
 const KNOWN_TYPES = new Set([

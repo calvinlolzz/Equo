@@ -3,13 +3,16 @@ import { DEFAULT_CATALOG } from "../../app/catalog.js";
 import { fill } from "../push/pushText.js";
 import { categoryDisplay } from "./lineCardTheme.js";
 import { type LineFlexMessage, type LineMessage, type LineQuickReply, bubble, flexMessage, text, vbox } from "./lineFlex.js";
-import { lineMessageProblems } from "./lineFlexValidator.js";
+import { lineMessageProblems, lineReplyProblems, postbacksOf, uriActionsOf } from "./lineFlexValidator.js";
+import { encodeLinePostback, parseLinePostback } from "./linePostback.js";
 import {
   type LineCard,
   type LineOutgoing,
   budgetClearedReply,
   budgetReply,
   cardOrFallback,
+  deleteConfirmReply,
+  deleteResultReply,
   fallbackMessages,
   helpReply,
   isLineCard,
@@ -21,6 +24,7 @@ import {
   standardQuickReply,
   textMessage,
   wireMessages,
+  withQuickReply,
 } from "./lineMessages.js";
 import { lineLinks } from "./lineLinks.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
@@ -270,6 +274,8 @@ function asCard(reply: LineOutgoing): LineCard {
   return reply as LineCard;
 }
 
+const ENTRY_KEY = "msg:4711000000001";
+
 /** Labels of a quick reply, in order. */
 function labelsOf(quickReply: LineQuickReply | undefined): string[] {
   return (quickReply?.items ?? []).map((item) => item.action.label);
@@ -288,9 +294,17 @@ describe("recordedReply", () => {
     budgetMinor: 1_500_000,
     month: { expense_minor: 606_000, income_minor: 0 },
     dateKey: "2026-09-21",
+    entryKey: ENTRY_KEY,
     links: LINKS,
     ...overrides,
   });
+
+  // The reply is a list so the shortcuts have a "last message" to sit on; today it is the card alone.
+  const recordCardOf = (dict: typeof ZH_HANT, args: Parameters<typeof recordedReply>[1]): LineCard => {
+    const reply = recordedReply(dict, args);
+    expect(reply).toHaveLength(1);
+    return asCard(reply[0]);
+  };
 
   // [MV]: change any card altText and the literal below goes red.
   test.each([
@@ -349,7 +363,7 @@ describe("recordedReply", () => {
       "Recorded income: Salary $52,000 (Salary)\nIncome this month: $52,000",
     ],
   ])("%s: the card's altText and the text fallback are today's plain text", (_label, dict, locale, overrides, expected) => {
-    const reply = asCard(recordedReply(dict, recordArgs(locale, overrides)));
+    const reply = recordCardOf(dict, recordArgs(locale, overrides));
 
     expect(reply.name).toBe("record");
     expect(reply.message?.altText).toBe(expected);
@@ -360,7 +374,7 @@ describe("recordedReply", () => {
 
   // [MV]: drop the quick reply from the card, or from the fallback, and this goes red.
   test("the undo, month, records and analysis quick replies sit under the card and under the fallback alike", () => {
-    const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant")));
+    const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
 
     expect(labelsOf(reply.message?.quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
     expect(reply.message?.quickReply?.items[0].action).toEqual({ type: "message", label: "復原", text: "復原" });
@@ -370,12 +384,12 @@ describe("recordedReply", () => {
   });
 
   test("the card shows the date the entry was recorded under, in the dictionary's own format", () => {
-    expect(JSON.stringify(asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant"))).message)).toContain("9月21日");
-    expect(JSON.stringify(asCard(recordedReply(EN, recordArgs("en"))).message)).toContain("9/21");
+    expect(JSON.stringify(recordCardOf(ZH_HANT, recordArgs("zh-Hant")).message)).toContain("9月21日");
+    expect(JSON.stringify(recordCardOf(EN, recordArgs("en")).message)).toContain("9/21");
   });
 
   test("a date key that is not a date draws a dash instead of a broken date", () => {
-    const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant", { dateKey: "not a date" })));
+    const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant", { dateKey: "not a date" }));
     expect(lineMessageProblems(reply.message)).toEqual([]);
     expect(JSON.stringify(reply.message)).not.toContain("NaN");
   });
@@ -384,13 +398,205 @@ describe("recordedReply", () => {
   test("a card that cannot be built is still a reply: today's text, with the same quick replies", () => {
     faults.recordCard = true;
 
-    const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant")));
+    const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
     const [wire] = wireMessages([reply]);
 
     expect(reply.message).toBeNull();
     expect(wire).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
     expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
     expect(errorSpy.mock.calls).toEqual([["[line] card build failed (record): recordCard exploded"]]);
+  });
+
+  describe("the footer buttons and where the shortcuts sit", () => {
+    // [MV]: point 編輯 at the ledger home, or at another key, and this goes red.
+    test("編輯 opens the entry by its key; 刪除 asks to delete that same key - nothing else is in the card", () => {
+      const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
+
+      expect(uriActionsOf(reply.message as LineFlexMessage)).toEqual([
+        { type: "uri", label: "編輯", uri: `${ORIGIN}/group/ledger_1?entry=${encodeURIComponent(ENTRY_KEY)}&openExternalBrowser=1` },
+      ]);
+      const postbacks = postbacksOf(reply.message as LineFlexMessage);
+      expect(postbacks).toHaveLength(1);
+      expect(postbacks[0]).toMatchObject({ type: "postback", label: "刪除", displayText: "刪除這筆" });
+      expect(parseLinePostback(postbacks[0].data)).toEqual({ action: "delete_ask", entryKey: ENTRY_KEY });
+    });
+
+    // [MV]: put a delete_confirm on the card and the user could delete with one tap, no question asked.
+    test("the card can only ever ASK: its single postback is delete_ask, never the confirm", () => {
+      const reply = recordCardOf(EN, recordArgs("en"));
+      for (const postback of postbacksOf(reply.message as LineFlexMessage)) {
+        expect(parseLinePostback(postback.data)?.action).toBe("delete_ask");
+      }
+    });
+
+    // [MV]: a plain-text fallback with a postback in it is a button that cannot be honoured.
+    test("the text fallback carries no buttons at all - and so no postback it cannot honour", () => {
+      faults.recordCard = true;
+      const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
+
+      expect(reply.message).toBeNull();
+      expect(reply.fallback).toHaveLength(1);
+      const wire = wireMessages([reply]);
+      expect(JSON.stringify(wire)).not.toContain("postback");
+      expect(JSON.stringify(wire)).not.toContain("delete_ask");
+    });
+
+    // [MV]: leave the quick reply off the last message and LINE removes it as soon as the next message goes out.
+    test("the quick reply is on the last message of the reply, and the whole reply passes the reply-level check", () => {
+      const reply = recordedReply(ZH_HANT, recordArgs("zh-Hant"));
+      expect(lineReplyProblems(wireMessages(reply))).toEqual([]);
+      expect(labelsOf((wireMessages(reply).at(-1) as { quickReply?: LineQuickReply }).quickReply)).toEqual([
+        "復原",
+        "本月",
+        "明細",
+        "分析",
+      ]);
+    });
+  });
+});
+
+describe("withQuickReply", () => {
+  const QR: LineQuickReply = {
+    items: [{ type: "action", action: { type: "message", label: "好", text: "好" } }],
+  };
+  const OLD: LineQuickReply = {
+    items: [{ type: "action", action: { type: "message", label: "舊", text: "舊" } }],
+  };
+
+  test("an empty reply stays empty", () => {
+    expect(withQuickReply([], QR)).toEqual([]);
+  });
+
+  // [MV]: apply it to every item and LINE drops all but the last.
+  test("goes on the last message only; the ones before are left exactly as they were", () => {
+    const head = textMessage("one");
+    const middle = card(flex("two"), [textMessage("two")]);
+    const out = withQuickReply([head, middle, textMessage("three")], QR);
+
+    expect(out).toHaveLength(3);
+    expect(out[0]).toEqual(head);
+    expect(out[1]).toEqual(middle);
+    expect((out[2] as { quickReply?: LineQuickReply }).quickReply).toEqual(QR);
+  });
+
+  test("replaces a quick reply the last message already had, and does not mutate its input", () => {
+    const last = textMessage("x", OLD);
+    const out = withQuickReply([last], QR);
+
+    expect((out[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(QR);
+    expect(last.quickReply).toEqual(OLD);
+  });
+
+  // [MV]: forget the fallback and a LINE 400 turns the shortcuts into nothing.
+  test("a card gets it on its Flex message AND on the last message of its fallback", () => {
+    const fallback = [textMessage("a"), textMessage("b")];
+    const out = withQuickReply([card(flex("alt"), fallback)], QR);
+    const only = out[0] as LineCard;
+
+    expect(only.message?.quickReply).toEqual(QR);
+    expect((only.fallback[0] as { quickReply?: unknown }).quickReply).toBeUndefined();
+    expect((only.fallback[1] as { quickReply?: LineQuickReply }).quickReply).toEqual(QR);
+    expect(fallback.every((m) => (m as { quickReply?: unknown }).quickReply === undefined)).toBe(true);
+  });
+
+  test("a card that could not be built (no Flex message) still puts it on its fallback", () => {
+    const out = withQuickReply([card(null, [textMessage("only text")])], QR);
+    const only = out[0] as LineCard;
+
+    expect(only.message).toBeNull();
+    expect((only.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(QR);
+  });
+});
+
+describe("deleteConfirmReply", () => {
+  const confirmArgs = (overrides: Partial<Parameters<typeof deleteConfirmReply>[1]> = {}) => ({
+    title: "早餐",
+    amountMinor: 6000,
+    currency: "TWD",
+    edited: false,
+    entryKey: ENTRY_KEY,
+    ...overrides,
+  });
+
+  test("asks about the entry by name and amount, in the dictionary's words", () => {
+    expect(deleteConfirmReply(ZH_HANT, confirmArgs()).text).toBe("確定刪除『早餐 $60』？");
+    expect(deleteConfirmReply(EN, confirmArgs({ title: "Breakfast" })).text).toBe('Delete "Breakfast $60"?');
+  });
+
+  // [MV]: ignore `edited` and a person is asked about an entry that no longer is what the card showed, without being told.
+  test("says so when the entry was edited in the app since the card was made", () => {
+    expect(deleteConfirmReply(ZH_HANT, confirmArgs({ edited: true, title: "午餐", amountMinor: 12000 })).text).toBe(
+      "這筆在 App 裡改過了，現在是『午餐 $120』。確定刪除？",
+    );
+    expect(deleteConfirmReply(EN, confirmArgs({ edited: true, title: "Lunch", amountMinor: 12000 })).text).toBe(
+      'This entry was edited in the app and is now "Lunch $120". Delete it?',
+    );
+  });
+
+  // [MV]: send the wrong key in the confirm and the tap would delete something else (or nothing).
+  test("offers exactly two answers: 確定刪除 for THIS key, then 取消", () => {
+    const reply = deleteConfirmReply(ZH_HANT, confirmArgs());
+    const [yes, no] = (reply.quickReply?.items ?? []).map((item) => item.action);
+
+    expect(reply.quickReply?.items).toHaveLength(2);
+    expect(yes).toEqual({
+      type: "postback",
+      label: "確定刪除",
+      data: encodeLinePostback({ action: "delete_confirm", entryKey: ENTRY_KEY }),
+      displayText: "確定刪除",
+    });
+    expect(no).toEqual({
+      type: "postback",
+      label: "取消",
+      data: encodeLinePostback({ action: "delete_cancel" }),
+      displayText: "取消",
+    });
+  });
+
+  test("English labels are Delete and Cancel", () => {
+    const labels = labelsOf(deleteConfirmReply(EN, confirmArgs()).quickReply);
+    expect(labels).toEqual(["Delete", "Cancel"]);
+  });
+
+  test("the whole reply passes the validator in both locales", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      expect(lineReplyProblems(wireMessages([deleteConfirmReply(dict, confirmArgs({ edited: true }))]))).toEqual([]);
+    }
+  });
+
+  test("a long title still gives a message LINE accepts", () => {
+    const reply = deleteConfirmReply(ZH_HANT, confirmArgs({ title: "長".repeat(500) }));
+    expect(lineReplyProblems(wireMessages([reply]))).toEqual([]);
+  });
+});
+
+describe("deleteResultReply", () => {
+  test.each([
+    ["deleted", ZH_HANT, { kind: "deleted" as const, title: "早餐", amountMinor: 6000, currency: "TWD" }, "已刪除：早餐 $60"],
+    ["deleted (en)", EN, { kind: "deleted" as const, title: "Breakfast", amountMinor: 6000, currency: "TWD" }, "Deleted: Breakfast $60"],
+    ["cancelled", ZH_HANT, { kind: "cancelled" as const }, "好的，沒有刪除。"],
+    ["already_gone", ZH_HANT, { kind: "already_gone" as const }, "這筆已經刪除了。"],
+    ["not_found", ZH_HANT, { kind: "not_found" as const }, "找不到這筆記錄，可能是用其他 Equo 帳號記的，或已經不在帳本裡了。"],
+    ["expired", ZH_HANT, { kind: "expired" as const }, "這個按鈕已經失效了，請重新操作一次。"],
+    ["expired (en)", EN, { kind: "expired" as const }, "That button no longer works. Please try again."],
+  ])("%s: the text, with the standard quick reply under it", (_label, dict, outcome, expected) => {
+    const reply = deleteResultReply(dict, LINKS, outcome);
+
+    expect(reply.text).toBe(expected);
+    expect(labelsOf(reply.quickReply)).toEqual(labelsOf(standardQuickReply(dict, LINKS)));
+    expect(lineReplyProblems(wireMessages([reply]))).toEqual([]);
+  });
+
+  test("without links (no ledger known) there are still shortcuts, just no links", () => {
+    const reply = deleteResultReply(ZH_HANT, null, { kind: "cancelled" });
+    expect(reply.quickReply).toEqual(standardQuickReply(ZH_HANT, null));
+    expect(JSON.stringify(reply.quickReply)).not.toContain("http");
+  });
+
+  test("an answer never carries a postback: nothing here can start another delete", () => {
+    for (const kind of ["cancelled", "already_gone", "not_found", "expired"] as const) {
+      expect(JSON.stringify(deleteResultReply(ZH_HANT, LINKS, { kind }))).not.toContain("postback");
+    }
   });
 });
 

@@ -22,6 +22,7 @@ import type {
   LineTextMessage,
 } from "./lineFlex.js";
 import type { LineLinks } from "./lineLinks.js";
+import { encodeLinePostback } from "./linePostback.js";
 import type { LineDictionary } from "./lineText.js";
 import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js";
 
@@ -81,6 +82,26 @@ export function cardOrFallback(name: LineCardName, build: () => LineFlexMessage,
     console.error(`[line] card build failed (${name}): ${redactForLog(message)}`);
     return { kind: "card", name, message: null, fallback };
   }
+}
+
+/**
+ * Puts `quickReply` on the LAST message of a reply, and only there: LINE
+ * removes a quick reply when the account sends another message after it, so one
+ * on any earlier message would never be seen. A card gets it twice - on its
+ * Flex message and on the last message of its plain fallback - so the same
+ * shortcuts are there whichever way the reply goes out. The one place a reply
+ * decides where the shortcuts go: adding a message to the end of a reply moves
+ * them with it.
+ */
+export function withQuickReply(items: readonly LineOutgoing[], quickReply: LineQuickReply): LineOutgoing[] {
+  const last = items.at(-1);
+  if (!last) return [];
+  const head = items.slice(0, -1);
+
+  if (!isLineCard(last)) return [...head, { ...last, quickReply }];
+
+  const fallback = last.fallback.length === 0 ? [] : [...last.fallback.slice(0, -1), { ...last.fallback[last.fallback.length - 1], quickReply }];
+  return [...head, { ...last, message: last.message ? { ...last.message, quickReply } : null, fallback }];
 }
 
 /** The messages to put on the wire: a card as its Flex message (or, when it did not build, its fallback), anything else untouched. */
@@ -210,10 +231,13 @@ function recordedText(
 }
 
 /**
- * The reply for a successful record (expense or income): a card, with the
- * undo/month/records/analysis quick replies under it. `dateKey` is the Taiwan-time
- * date the entry was recorded under (the same value sent as p_expense_date).
- * If LINE refuses the card, the same quick replies go under today's text.
+ * The reply for a successful record (expense or income): the record card, with
+ * 編輯 and 刪除 in its footer, and the undo/month/records/analysis quick reply
+ * under the last message. `dateKey` is the Taiwan-time date the entry was
+ * recorded under (the same value sent as p_expense_date); `entryKey` is the
+ * event key it was recorded under, which both footer buttons name. If LINE
+ * refuses the card, the same shortcuts go under today's text - which has no
+ * buttons, so nothing in the fallback can send a postback.
  */
 export function recordedReply(
   dict: LineDictionary,
@@ -226,13 +250,13 @@ export function recordedReply(
     budgetMinor: number | null;
     month: LineMonthTotals;
     dateKey: string;
+    entryKey: string;
     links: LineLinks;
   },
-): LineOutgoing {
+): LineOutgoing[] {
   const altText = recordedText(dict, { ...args, categoryLabel: args.category.label });
-  const qr = recordQuickReply(dict, args.links);
 
-  return cardOrFallback(
+  const record = cardOrFallback(
     "record",
     () =>
       recordCard(dict, {
@@ -245,10 +269,13 @@ export function recordedReply(
         month: args.month,
         dateText: recordDateText(dict, args.dateKey),
         altText,
-        quickReply: qr,
+        editUri: args.links.entry(args.entryKey),
+        deleteData: encodeLinePostback({ action: "delete_ask", entryKey: args.entryKey }),
       }),
-    [textMessage(altText, qr)],
+    [textMessage(altText)],
   );
+
+  return withQuickReply([record], recordQuickReply(dict, args.links));
 }
 
 /**
@@ -340,6 +367,66 @@ export function budgetReply(
 /** The reply to 「取消預算」. */
 export function budgetClearedReply(dict: LineDictionary, args: { links: LineLinks }): LineMessage {
   return textMessage(dict.budgetCleared, standardQuickReply(dict, args.links));
+}
+
+function entryAmountText(entry: { amountMinor: number; currency: string }): string {
+  return formatAmount(entry.amountMinor, entry.currency);
+}
+
+/**
+ * The question after a tap on 刪除: what is about to go, and the two ways to
+ * answer. Plain text on purpose - a card is not worth building for a question
+ * - and the answers are quick replies, which vanish with the next message.
+ * `title` and the amount are the entry as it is NOW; `edited` says it has been
+ * changed in the app since the card was made.
+ */
+export function deleteConfirmReply(
+  dict: LineDictionary,
+  args: { title: string; amountMinor: number; currency: string; edited: boolean; entryKey: string },
+): LineTextMessage {
+  const body = fill(args.edited ? dict.deleteConfirmEdited : dict.deleteConfirm, {
+    title: args.title,
+    amount: entryAmountText(args),
+  });
+
+  return textMessage(
+    body,
+    quickReply([
+      {
+        type: "postback",
+        label: dict.deleteConfirmLabel,
+        data: encodeLinePostback({ action: "delete_confirm", entryKey: args.entryKey }),
+        displayText: dict.deleteConfirmLabel,
+      },
+      {
+        type: "postback",
+        label: dict.deleteCancelLabel,
+        data: encodeLinePostback({ action: "delete_cancel" }),
+        displayText: dict.deleteCancelLabel,
+      },
+    ]),
+  );
+}
+
+/** How an ask or a confirm ended, other than "here is the question". */
+export type DeleteOutcome =
+  | { kind: "deleted"; title: string; amountMinor: number; currency: string }
+  | { kind: "cancelled" | "already_gone" | "not_found" | "expired" };
+
+/** The answer to 確定刪除 / 取消 / a dead button, with the standard quick reply under it. */
+export function deleteResultReply(dict: LineDictionary, links: LineLinks | null, outcome: DeleteOutcome): LineTextMessage {
+  const text =
+    outcome.kind === "deleted"
+      ? fill(dict.deleted, { title: outcome.title, amount: entryAmountText(outcome) })
+      : outcome.kind === "cancelled"
+        ? dict.deleteCancelled
+        : outcome.kind === "already_gone"
+          ? dict.deleteAlreadyGone
+          : outcome.kind === "not_found"
+            ? dict.deleteNotFound
+            : dict.postbackExpired;
+
+  return textMessage(text, standardQuickReply(dict, links));
 }
 
 /** The plain-text help: also the help card's altText and its fallback. */

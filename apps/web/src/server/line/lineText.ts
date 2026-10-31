@@ -53,6 +53,18 @@ export type LineDictionary = {
   analysisLabel: string;
   helpLabel: string;
   helpText: string;
+  editLabel: string;
+  deleteLabel: string;
+  deleteDisplayText: string;
+  deleteConfirm: string;
+  deleteConfirmEdited: string;
+  deleteConfirmLabel: string;
+  deleteCancelLabel: string;
+  deleted: string;
+  deleteCancelled: string;
+  deleteAlreadyGone: string;
+  deleteNotFound: string;
+  postbackExpired: string;
   budgetSet: string;
   budgetShow: string;
   budgetRemainingLeft: string;
@@ -126,7 +138,7 @@ const ZH_HANT: LineDictionary = {
   budgetOverLine: "\n超出預算 {over}",
   undone: "已刪除：{title} {amount}",
   undoNothing: "沒有可以復原的記錄。只能復原 {minutes} 分鐘內從 LINE 記下的記錄。",
-  undoAlreadyGone: "上一筆已經在 App 裡修改或刪除了，請到 App 查看。",
+  undoAlreadyGone: "上一筆已經被修改或刪除了。",
   help: "Equo 記帳小幫手指令：\n・記支出：早餐 60、60 早餐、午餐 120 餐飲\n・記收入：+52000 薪水、收入 52000 薪水\n・本月：本月支出、收入與預算\n・預算：傳「預算 15000」設定或修改每月預算，「預算」查看，「取消預算」取消\n・復原：刪除 {minutes} 分鐘內從 LINE 記的最後一筆\n・解除綁定：取消與 Equo 帳號的連結\n日期以台灣時間計算。",
   notUnderstood: "看不懂這句話。記帳請傳「項目 金額」，例如「早餐 60」；傳「說明」看所有指令。",
   multipleAmounts: "一次只能記一筆，這句有好幾個金額。請分開傳，例如「午餐 120」。",
@@ -152,6 +164,18 @@ const ZH_HANT: LineDictionary = {
   analysisLabel: "分析",
   helpLabel: "說明",
   helpText: "說明",
+  editLabel: "編輯",
+  deleteLabel: "刪除",
+  deleteDisplayText: "刪除這筆",
+  deleteConfirm: "確定刪除『{title} {amount}』？",
+  deleteConfirmEdited: "這筆在 App 裡改過了，現在是『{title} {amount}』。確定刪除？",
+  deleteConfirmLabel: "確定刪除",
+  deleteCancelLabel: "取消",
+  deleted: "已刪除：{title} {amount}",
+  deleteCancelled: "好的，沒有刪除。",
+  deleteAlreadyGone: "這筆已經刪除了。",
+  deleteNotFound: "找不到這筆記錄，可能是用其他 Equo 帳號記的，或已經不在帳本裡了。",
+  postbackExpired: "這個按鈕已經失效了，請重新操作一次。",
   budgetSet: "每月預算已設為 {budget}。\n本月已花 {spent}，{remaining}",
   budgetShow: "每月預算 {budget}\n本月已花 {spent}，{remaining}",
   budgetRemainingLeft: "還剩 {left}",
@@ -222,7 +246,7 @@ const EN: LineDictionary = {
   budgetOverLine: "\nOver budget by {over}",
   undone: "Deleted: {title} {amount}",
   undoNothing: "Nothing to undo. Only entries recorded from LINE in the last {minutes} minutes can be undone.",
-  undoAlreadyGone: "That entry was already edited or deleted in the app.",
+  undoAlreadyGone: "That entry was already edited or deleted.",
   help:
     'Equo bot commands:\n• Expense: breakfast 60, 60 breakfast, lunch 120 Food\n• Income: +52000 salary, income 52000 salary\n• month: this month\'s spending, income and budget\n• budget 15000: set or change your monthly budget ("budget" to view, "budget off" to remove)\n• undo: delete the last entry recorded from LINE in the past {minutes} minutes\n• unlink: disconnect your Equo account\nDates use Taiwan time.',
   notUnderstood: 'I didn\'t get that. To record, send "item amount", e.g. "breakfast 60". Send "help" for all commands.',
@@ -249,6 +273,18 @@ const EN: LineDictionary = {
   analysisLabel: "Insights",
   helpLabel: "Help",
   helpText: "help",
+  editLabel: "Edit",
+  deleteLabel: "Delete",
+  deleteDisplayText: "Delete this entry",
+  deleteConfirm: 'Delete "{title} {amount}"?',
+  deleteConfirmEdited: 'This entry was edited in the app and is now "{title} {amount}". Delete it?',
+  deleteConfirmLabel: "Delete",
+  deleteCancelLabel: "Cancel",
+  deleted: "Deleted: {title} {amount}",
+  deleteCancelled: "OK, nothing was deleted.",
+  deleteAlreadyGone: "That entry has already been deleted.",
+  deleteNotFound: "Couldn't find that entry. It may belong to another Equo account, or it's no longer in your ledger.",
+  postbackExpired: "That button no longer works. Please try again.",
   budgetSet: "Monthly budget set to {budget}.\nSpent this month: {spent}, {remaining}",
   budgetShow: "Monthly budget: {budget}\nSpent this month: {spent}, {remaining}",
   budgetRemainingLeft: "{left} left",

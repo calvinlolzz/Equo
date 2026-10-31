@@ -224,6 +224,76 @@ describe("the quick-reply texts send the command their label names", () => {
   });
 });
 
+describe("the delete flow's copy", () => {
+  const DELETE_KEYS = [
+    "editLabel",
+    "deleteLabel",
+    "deleteDisplayText",
+    "deleteConfirm",
+    "deleteConfirmEdited",
+    "deleteConfirmLabel",
+    "deleteCancelLabel",
+    "deleted",
+    "deleteCancelled",
+    "deleteAlreadyGone",
+    "deleteNotFound",
+    "postbackExpired",
+  ] as const;
+
+  test.each(DELETE_KEYS)("%s is real copy in both locales: not empty, no stray whitespace", (key) => {
+    for (const dict of [ZH_HANT, EN]) {
+      expect(dict[key].trim(), key).toBe(dict[key]);
+      expect(dict[key], key).not.toBe("");
+    }
+  });
+
+  // [MV]: drop {amount} from the confirm and a person is asked to delete something without being told how much.
+  test.each([
+    ["deleteConfirm", ["title", "amount"]],
+    ["deleteConfirmEdited", ["title", "amount"]],
+    ["deleted", ["title", "amount"]],
+    ["editLabel", []],
+    ["deleteLabel", []],
+    ["deleteDisplayText", []],
+    ["deleteConfirmLabel", []],
+    ["deleteCancelLabel", []],
+    ["deleteCancelled", []],
+    ["deleteAlreadyGone", []],
+    ["deleteNotFound", []],
+    ["postbackExpired", []],
+  ] as const)("%s carries exactly its own placeholders in both locales", (key, expected) => {
+    for (const dict of [ZH_HANT, EN]) expect(placeholders(dict[key]), key).toEqual(new Set(expected));
+  });
+
+  // Button labels and quick-reply labels are limited to 20 characters by LINE; the question and the answers are plain text messages.
+  test.each(["editLabel", "deleteLabel", "deleteConfirmLabel", "deleteCancelLabel"] as const)("%s fits a button / quick-reply label (20)", (key) => {
+    for (const dict of [ZH_HANT, EN]) expect(dict[key].length, key).toBeLessThanOrEqual(SHORT_LIMIT);
+  });
+
+  test.each(["deleteConfirm", "deleteConfirmEdited", "deleted", "deleteCancelled", "deleteAlreadyGone", "deleteNotFound", "postbackExpired"] as const)(
+    "%s is at most 160 characters before the title is filled in",
+    (key) => {
+      for (const dict of [ZH_HANT, EN]) expect(dict[key].length, key).toBeLessThanOrEqual(MEDIUM_LIMIT);
+    },
+  );
+
+  test("the words are the plan's own", () => {
+    expect([ZH_HANT.editLabel, ZH_HANT.deleteLabel, ZH_HANT.deleteDisplayText]).toEqual(["編輯", "刪除", "刪除這筆"]);
+    expect([EN.editLabel, EN.deleteLabel, EN.deleteDisplayText]).toEqual(["Edit", "Delete", "Delete this entry"]);
+    expect([ZH_HANT.deleteConfirmLabel, ZH_HANT.deleteCancelLabel]).toEqual(["確定刪除", "取消"]);
+    expect([EN.deleteConfirmLabel, EN.deleteCancelLabel]).toEqual(["Delete", "Cancel"]);
+    expect(ZH_HANT.deleteConfirm).toBe("確定刪除『{title} {amount}』？");
+    expect(ZH_HANT.deleted).toBe("已刪除：{title} {amount}");
+  });
+
+  // 復原 now reaches an entry that was changed in the app OR by this very 刪除; the old text said "in the app".
+  // [MV]: put the old sentence back and this goes red.
+  test("undoAlreadyGone no longer claims the app did it", () => {
+    expect(ZH_HANT.undoAlreadyGone).toBe("上一筆已經被修改或刪除了。");
+    expect(EN.undoAlreadyGone).toBe("That entry was already edited or deleted.");
+  });
+});
+
 describe("command examples in the reply text actually parse", () => {
   const parse = (text: string) => parseLineCommand(text, { currency: "TWD", categories: [] }).type;
 

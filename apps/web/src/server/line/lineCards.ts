@@ -20,6 +20,7 @@ import {
   flexMessage,
   hbox,
   heroImage,
+  postbackButton,
   progressBar,
   separator,
   text,
@@ -244,8 +245,13 @@ function emojiTile(emoji: string, color: string, size: number): FlexBox {
  * The reply to a recorded expense or income: what was written down, then where
  * this month stands - and, for an expense in a ledger with a budget, how much
  * of the budget that is. The date is the one the entry was recorded under
- * (Taiwan time), already formatted; the 復原 button is a quick reply under the
- * card, never a button in it.
+ * (Taiwan time), already formatted.
+ *
+ * The footer holds two buttons: 編輯, a filled link that opens the entry in the
+ * app (`editUri`), and 刪除, a quieter coral text button that only ASKS
+ * (`deleteData` is the delete_ask postback - the confirmation, with its own
+ * 確定刪除, is a message of its own). 復原 and the other shortcuts are a quick
+ * reply the caller puts on the last message of the reply, never on this card.
  */
 export function recordCard(
   dict: LineDictionary,
@@ -259,7 +265,8 @@ export function recordCard(
     month: LineMonthTotals;
     dateText: string;
     altText: string;
-    quickReply: LineQuickReply;
+    editUri: string;
+    deleteData: string;
   },
 ): LineFlexMessage {
   const income = args.kind === "income";
@@ -312,7 +319,24 @@ export function recordCard(
     );
   }
 
-  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }), args.quickReply);
+  const footer = hbox(
+    [
+      uriButton(dict.editLabel, args.editUri, { color: CARD.buttonBg, style: "primary", height: "sm", flex: 2 }),
+      postbackButton(dict.deleteLabel, args.deleteData, {
+        color: CARD.coral,
+        style: "link",
+        height: "sm",
+        flex: 1,
+        displayText: dict.deleteDisplayText,
+      }),
+    ],
+    { paddingAll: "12px", spacing: "md", alignItems: "center" },
+  );
+
+  return flexMessage(
+    args.altText,
+    bubble({ body: cardBody(content), footer, background: CARD.bg, footerSeparator: CARD.hairline }),
+  );
 }
 
 /** One category's expense total for the month, with the label, colour and emoji already resolved. */

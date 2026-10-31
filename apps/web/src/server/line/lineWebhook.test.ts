@@ -7,7 +7,8 @@ import { resetSiteNoticeCache } from "../http/maintenance.js";
 import { fill } from "../push/pushText.js";
 import { LineApiError, type LineClient, type LineMessage } from "./lineClient.js";
 import { sha256Hex } from "./lineCrypto.js";
-import { actionsOf, lineReplyProblems, plainTextOf, uriActionsOf } from "./lineFlexValidator.js";
+import { actionsOf, lineReplyProblems, plainTextOf, postbacksOf, uriActionsOf } from "./lineFlexValidator.js";
+import { encodeLinePostback, parseLinePostback } from "./linePostback.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 import { handleLineWebhook, type LineWebhookDeps } from "./lineWebhook.js";
 
@@ -124,6 +125,17 @@ const LINKED_CONTEXT = {
   categories: DEFAULT_CATALOG.categories,
 };
 
+/** What the delete RPCs say the entry is: expense_json, of which the bot reads only title / amount / currency. */
+const ENTRY_SNAPSHOT = {
+  id: "exp_1",
+  title: "早餐",
+  amount_minor: 6000,
+  currency: "TWD",
+  kind: "expense",
+  category: "food",
+  expense_date: "2026-09-21",
+};
+
 type RpcHandler = (args: Record<string, unknown>) => unknown;
 
 function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {}) {
@@ -184,6 +196,8 @@ function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {
       replay: false,
       expense: { id: "exp_undo", title: "早餐", amount_minor: 6000, currency: "TWD" },
     }),
+    line_entry_status: () => ({ ok: true, status: "live", edited: false, expense: ENTRY_SNAPSHOT }),
+    line_delete_entry: () => ({ ok: true, replay: false, expense: ENTRY_SNAPSHOT }),
   };
 
   const merged = { ...defaults, ...overrides };
@@ -1347,7 +1361,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
   });
 
   // [MV]: put a 復原 message button in any card and the validator's uri-only rule and this test both go red.
-  test("no card carries an action that writes: every action inside a flex message opens a URL, and 復原 appears only as a quick reply", async () => {
+  test("no card carries an action that writes: every action opens a URL - except the record card's 刪除, which only ASKS - and 復原 appears only as a quick reply", async () => {
     const { client } = createLineFakeClient({
       line_context: () => LINKED_CONTEXT,
       line_month_summary: () => ({
@@ -1370,14 +1384,21 @@ describe("handleLineWebhook - record, month and budget cards", () => {
     expect(cards).toHaveLength(6);
     for (const card of cards) {
       expect(JSON.stringify(actionsOf(card))).not.toContain("復原");
-      for (const action of actionsOf(card)) expect(action.type).toBe("uri");
+      for (const action of actionsOf(card)) {
+        if (action.type === "postback") {
+          expect(parseLinePostback(action.data)?.action).toBe("delete_ask");
+          continue;
+        }
+        expect(action.type).toBe("uri");
+      }
       // The help card teaches the word 復原 as text; no other card has any reason to say it.
       if (!cardTexts(card).includes(ZH_HANT.helpCardTitle)) {
         expect(JSON.stringify((card as { contents: unknown }).contents)).not.toContain("復原");
       }
     }
-    // ... and the one place it does appear is under the record cards.
+    // ... and the one place it does appear is under the record cards - which are also the only cards with a postback, one each.
     expect(cards.filter((card) => labelsOf(card).includes("復原"))).toHaveLength(2);
+    expect(cards.map((card) => postbacksOf(card).length)).toEqual([1, 1, 0, 0, 0, 0]);
   });
 
   describe("when LINE refuses the card", () => {
@@ -1830,5 +1851,459 @@ describe("handleLineWebhook - the quick reply under each reply", () => {
     const line = fakeLineClient();
     await send(deps(client, line.client), [messageEvent({ text: "早餐 60" })]);
     expect(lastReply(line)[0].quickReply).toBeUndefined();
+  });
+});
+
+describe("handleLineWebhook - the record card's 編輯 / 刪除 and the delete flow", () => {
+  const KEY = "01J0000000000000000000000X";
+  const CONFIRM_EVENT = "01J0000000000000000000000Q";
+  const ASK_DATA = encodeLinePostback({ action: "delete_ask", entryKey: KEY });
+  const CONFIRM_DATA = encodeLinePostback({ action: "delete_confirm", entryKey: KEY });
+  const CANCEL_DATA = encodeLinePostback({ action: "delete_cancel" });
+  const STANDARD = ["本月", "明細", "分析", "說明"];
+  const MAINTENANCE_ON = () => ({
+    banner: { message: "", level: "info", ends_at: null, active: false },
+    maintenance: { enabled: true, message: "" },
+  });
+
+  function postbackEvent(
+    opts: {
+      data?: unknown;
+      webhookEventId?: string | null;
+      userId?: string;
+      replyToken?: string;
+      sourceType?: "user" | "group" | "room";
+      mode?: string;
+      params?: Record<string, string>;
+    } = {},
+  ) {
+    return {
+      type: "postback",
+      mode: opts.mode ?? "active",
+      timestamp: 1790000000000,
+      ...(opts.webhookEventId === null ? {} : { webhookEventId: opts.webhookEventId ?? CONFIRM_EVENT }),
+      deliveryContext: { isRedelivery: false },
+      replyToken: opts.replyToken ?? "rt-pb",
+      source:
+        opts.sourceType === "group"
+          ? { type: "group", groupId: "G1", userId: opts.userId ?? LINE_USER_ID }
+          : opts.sourceType === "room"
+            ? { type: "room", roomId: "R1", userId: opts.userId ?? LINE_USER_ID }
+            : { type: "user", userId: opts.userId ?? LINE_USER_ID },
+      postback: { data: opts.data, ...(opts.params ? { params: opts.params } : {}) },
+    };
+  }
+
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const dateDeps = (client: FakePostgrest, line: LineClient): LineWebhookDeps => ({ ...deps(client, line), now: () => 1790000000000 });
+  const labels = (message: LineMessage | undefined) => (message?.quickReply?.items ?? []).map((item) => item.action.label);
+  const rpcNames = (client: FakePostgrest) =>
+    client.calls.filter((c): c is Extract<typeof c, { op: "rpc" }> => c.op === "rpc").map((c) => c.fn);
+  const deleteRpcs = (client: FakePostgrest) => rpcNames(client).filter((fn) => fn === "line_entry_status" || fn === "line_delete_entry");
+
+  /** One postback in, everything that came out. The maintenance flag is cached for 30 s, so each call starts clean. */
+  async function tap(
+    data: unknown,
+    overrides: Partial<Record<string, RpcHandler>> = {},
+    options: { context?: unknown; event?: Parameters<typeof postbackEvent>[0] } = {},
+  ) {
+    resetSiteNoticeCache();
+    const { client } = createLineFakeClient({
+      line_context: () => ("context" in options ? options.context : LINKED_CONTEXT),
+      ...overrides,
+    });
+    const line = fakeLineClient();
+    await send(dateDeps(client, line.client), [postbackEvent({ ...options.event, data })]);
+    return { client, line, messages: line.calls.reply.at(-1)?.messages ?? [] };
+  }
+
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  describe("the record card", () => {
+    const record = async (eventOpts: Parameters<typeof messageEvent>[0] = {}, messageId = "1") => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+      const event = messageEvent({ text: "早餐 60", ...eventOpts });
+      await send(dateDeps(client, line.client), [{ ...event, message: { ...event.message, id: messageId } }]);
+      return { client, line, message: line.calls.reply[0].messages[0] };
+    };
+
+    // [MV]: 編輯 pointing at another key, or 刪除 naming one, and this goes red.
+    test("its 編輯 opens THE entry that was recorded and its 刪除 asks to delete THAT entry - one key for all three", async () => {
+      const { client, message } = await record();
+      const recordedAs = client.rpcCall("line_record_entry")?.args.p_event_id;
+
+      expect(recordedAs).toBe(KEY);
+      expect(uriActionsOf(message)).toEqual([
+        { type: "uri", label: "編輯", uri: `${APP_ORIGIN}/group/ledger_1?entry=${KEY}&openExternalBrowser=1` },
+      ]);
+      const postbacks = postbacksOf(message);
+      expect(postbacks).toHaveLength(1);
+      expect(postbacks[0]).toMatchObject({ label: "刪除", displayText: "刪除這筆" });
+      expect(parseLinePostback(postbacks[0].data)).toEqual({ action: "delete_ask", entryKey: recordedAs });
+    });
+
+    test("when LINE's event has no usable id the key is the message id, in the card and in the record alike", async () => {
+      const { client, message } = await record({ webhookEventId: "short" }, "4711000000001");
+
+      expect(client.rpcCall("line_record_entry")?.args.p_event_id).toBe("msg:4711000000001");
+      expect(uriActionsOf(message)[0].uri).toBe(`${APP_ORIGIN}/group/ledger_1?entry=msg%3A4711000000001&openExternalBrowser=1`);
+      expect(parseLinePostback(postbacksOf(message)[0].data)).toEqual({ action: "delete_ask", entryKey: "msg:4711000000001" });
+    });
+
+    // The key must fit the 8-80 grammar to be a button at all; one that cannot costs the buttons, never the record.
+    test("a key too short to be a button (never a real LINE id) still records, as plain text with the same shortcuts", async () => {
+      const { client, message } = await record({ webhookEventId: "short" }, "1");
+
+      expect(client.rpcCall("line_record_entry")?.args.p_event_id).toBe("msg:1");
+      expect(message.type).toBe("text");
+      expect(JSON.stringify(message)).not.toContain("postback");
+      expect(labels(message)).toEqual(["復原", "本月", "明細", "分析"]);
+    });
+
+    // [MV]: a postback in the text fallback is a button nobody can tap - and one that would be handled if they could.
+    test("when LINE refuses the card, the text that goes out has the same shortcuts and no postback at all", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient({ failStatuses: [400] });
+      await send(dateDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      expect(line.calls.reply).toHaveLength(2);
+      const [first, retry] = line.calls.reply;
+      expect(first.messages[0].type).toBe("flex");
+      expect(retry.replyToken).toBe(first.replyToken);
+      expect(retry.messages).toHaveLength(1);
+      expect(retry.messages[0].type).toBe("text");
+      expect(JSON.stringify(retry.messages)).not.toContain("postback");
+      expect(labels(retry.messages[0])).toEqual(["復原", "本月", "明細", "分析"]);
+    });
+
+    // [MV]: the shortcuts sit on the one message of the reply, so LINE keeps them.
+    test("the shortcuts are on the last (here: only) message of the record reply", async () => {
+      const { line } = await record();
+      const messages = line.calls.reply[0].messages;
+      expect(messages.slice(0, -1).every((m) => m.quickReply === undefined)).toBe(true);
+      expect(labels(messages.at(-1))).toEqual(["復原", "本月", "明細", "分析"]);
+    });
+  });
+
+  describe("asking (the card's 刪除)", () => {
+    // [MV]: if the ask deleted, the entry would be gone before the person said yes.
+    test("looks the entry up for the sender, writes nothing, and asks with 確定刪除 / 取消 for that same key", async () => {
+      const { client, messages, line } = await tap(ASK_DATA);
+
+      expect(deleteRpcs(client)).toEqual(["line_entry_status"]);
+      expect(client.rpcCall("line_entry_status")?.args).toEqual({ p_line_user_id: LINE_USER_ID, p_entry_key: KEY });
+      expect(line.calls.reply).toHaveLength(1);
+      expect(line.calls.reply[0].replyToken).toBe("rt-pb");
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ type: "text", text: "確定刪除『早餐 $60』？" });
+
+      expect(messages[0].quickReply?.items.map((item) => item.action)).toEqual([
+        { type: "postback", label: "確定刪除", data: CONFIRM_DATA, displayText: "確定刪除" },
+        { type: "postback", label: "取消", data: CANCEL_DATA, displayText: "取消" },
+      ]);
+    });
+
+    test("an entry edited in the app since the card was made says so, with what it is now", async () => {
+      const { messages } = await tap(ASK_DATA, {
+        line_entry_status: () => ({
+          ok: true,
+          status: "live",
+          edited: true,
+          expense: { ...ENTRY_SNAPSHOT, title: "午餐", amount_minor: 12000 },
+        }),
+      });
+      expect(messages[0]).toMatchObject({ text: "這筆在 App 裡改過了，現在是『午餐 $120』。確定刪除？" });
+      expect(labels(messages[0])).toEqual(["確定刪除", "取消"]);
+    });
+
+    test("an entry that is already deleted, or never was this person's, is said so - with the standard shortcuts and no confirm", async () => {
+      const gone = await tap(ASK_DATA, { line_entry_status: () => ({ ok: true, status: "gone" }) });
+      expect(gone.messages[0]).toMatchObject({ type: "text", text: ZH_HANT.deleteAlreadyGone });
+      expect(labels(gone.messages[0])).toEqual(STANDARD);
+
+      const missing = await tap(ASK_DATA, { line_entry_status: () => ({ ok: true, status: "not_found" }) });
+      expect(missing.messages[0]).toMatchObject({ type: "text", text: ZH_HANT.deleteNotFound });
+      expect(labels(missing.messages[0])).toEqual(STANDARD);
+      expect(JSON.stringify(missing.messages)).not.toContain("postback");
+    });
+
+    test("an English account is asked in English", async () => {
+      const { messages } = await tap(
+        ASK_DATA,
+        { line_entry_status: () => ({ ok: true, status: "live", edited: false, expense: { ...ENTRY_SNAPSHOT, title: "Breakfast" } }) },
+        { context: { ...LINKED_CONTEXT, locale: "en" } },
+      );
+      expect(messages[0]).toMatchObject({ text: 'Delete "Breakfast $60"?' });
+      expect(labels(messages[0])).toEqual(["Delete", "Cancel"]);
+    });
+
+    test("an account that stopped being linked, or was disabled, between the card and the tap gets the answer any message would", async () => {
+      const unlinked = await tap(ASK_DATA, { line_entry_status: () => ({ ok: false, reason: "not_linked" }) });
+      expect(unlinked.line.calls.issueLinkToken).toEqual([LINE_USER_ID]);
+
+      const disabled = await tap(ASK_DATA, { line_entry_status: () => ({ ok: false, reason: "account_disabled" }) });
+      expect(disabled.messages[0]).toMatchObject({ type: "text", text: ZH_HANT.accountDisabled });
+    });
+  });
+
+  describe("confirming (確定刪除)", () => {
+    // [MV]: key the delete on the CARD's event instead of this tap's and a redelivery cannot be told from a second delete.
+    test("deletes the entry the data names, for the sender, keyed on THIS tap's event id", async () => {
+      const { client, messages } = await tap(CONFIRM_DATA);
+
+      expect(deleteRpcs(client)).toEqual(["line_delete_entry"]);
+      expect(client.rpcCall("line_delete_entry")?.args).toEqual({
+        p_line_user_id: LINE_USER_ID,
+        p_entry_key: KEY,
+        p_event_id: CONFIRM_EVENT,
+      });
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ type: "text", text: "已刪除：早餐 $60" });
+      expect(labels(messages[0])).toEqual(STANDARD);
+      expect(JSON.stringify(messages)).not.toContain("postback");
+    });
+
+    test("LINE delivering the same tap twice: both deliveries use one event id and both are answered 已刪除", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_delete_entry: (args) => ({ ok: true, replay: args.p_event_id === CONFIRM_EVENT && seen++ > 0, expense: ENTRY_SNAPSHOT }),
+      });
+      let seen = 0;
+      const line = fakeLineClient();
+      const d = dateDeps(client, line.client);
+
+      await send(d, [postbackEvent({ data: CONFIRM_DATA })]);
+      await send(d, [postbackEvent({ data: CONFIRM_DATA })]);
+
+      const eventIds = client.calls.filter((c) => c.op === "rpc" && c.fn === "line_delete_entry").map((c) => (c as { args: Record<string, unknown> }).args.p_event_id);
+      expect(eventIds).toEqual([CONFIRM_EVENT, CONFIRM_EVENT]);
+      expect(line.calls.reply.map((call) => plainTextOf(call.messages[0]))).toEqual(["已刪除：早餐 $60", "已刪除：早餐 $60"]);
+    });
+
+    test("an entry someone already deleted, or one that is not this person's, is told so", async () => {
+      const gone = await tap(CONFIRM_DATA, { line_delete_entry: () => ({ ok: false, reason: "already_gone" }) });
+      expect(gone.messages[0]).toMatchObject({ text: ZH_HANT.deleteAlreadyGone });
+      expect(labels(gone.messages[0])).toEqual(STANDARD);
+
+      const missing = await tap(CONFIRM_DATA, { line_delete_entry: () => ({ ok: false, reason: "not_found" }) });
+      expect(missing.messages[0]).toMatchObject({ text: ZH_HANT.deleteNotFound });
+    });
+
+    test("not linked / disabled answers as any other message would", async () => {
+      const unlinked = await tap(CONFIRM_DATA, { line_delete_entry: () => ({ ok: false, reason: "not_linked" }) });
+      expect(unlinked.line.calls.issueLinkToken).toEqual([LINE_USER_ID]);
+
+      const disabled = await tap(CONFIRM_DATA, { line_delete_entry: () => ({ ok: false, reason: "account_disabled" }) });
+      expect(disabled.messages[0]).toMatchObject({ text: ZH_HANT.accountDisabled });
+    });
+
+    // [MV]: without the check a tap with no event key would be sent to the database with a made-up one.
+    test("a tap with no usable event id deletes nothing and says something went wrong", async () => {
+      const { client, messages } = await tap(CONFIRM_DATA, {}, { event: { webhookEventId: null } });
+
+      expect(deleteRpcs(client)).toEqual([]);
+      expect(messages[0]).toMatchObject({ type: "text", text: ZH_HANT.genericError });
+    });
+
+    test("an English account is told in English", async () => {
+      const { messages } = await tap(
+        CONFIRM_DATA,
+        { line_delete_entry: () => ({ ok: true, replay: false, expense: { ...ENTRY_SNAPSHOT, title: "Breakfast" } }) },
+        { context: { ...LINKED_CONTEXT, locale: "en" } },
+      );
+      expect(messages[0]).toMatchObject({ text: "Deleted: Breakfast $60" });
+    });
+  });
+
+  describe("cancelling (取消)", () => {
+    // [MV]: if cancel reached the database it would be a way to write by saying no.
+    test("makes no call to the database and says nothing was deleted", async () => {
+      const { client, messages } = await tap(CANCEL_DATA);
+
+      expect(deleteRpcs(client)).toEqual([]);
+      expect(messages[0]).toMatchObject({ type: "text", text: ZH_HANT.deleteCancelled });
+      expect(labels(messages[0])).toEqual(STANDARD);
+    });
+  });
+
+  describe("maintenance", () => {
+    // [MV]: take the gate off the ask or the confirm and a person in maintenance is led to (or through) a write.
+    test("blocks the ask and the confirm - no database call, the maintenance text - but not the cancel", async () => {
+      const ask = await tap(ASK_DATA, { site_notice_settings: MAINTENANCE_ON });
+      expect(deleteRpcs(ask.client)).toEqual([]);
+      expect(ask.messages[0]).toMatchObject({ type: "text", text: ZH_HANT.maintenance });
+      expect(ask.messages[0].quickReply).toBeUndefined();
+
+      const confirm = await tap(CONFIRM_DATA, { site_notice_settings: MAINTENANCE_ON });
+      expect(deleteRpcs(confirm.client)).toEqual([]);
+      expect(confirm.messages[0]).toMatchObject({ type: "text", text: ZH_HANT.maintenance });
+
+      const cancel = await tap(CANCEL_DATA, { site_notice_settings: MAINTENANCE_ON });
+      expect(cancel.messages[0]).toMatchObject({ type: "text", text: ZH_HANT.deleteCancelled });
+    });
+  });
+
+  describe("who may tap", () => {
+    test("an unlinked user gets the link card and nothing is looked up", async () => {
+      const { client, line } = await tap(ASK_DATA, {}, { context: null });
+
+      expect(deleteRpcs(client)).toEqual([]);
+      expect(line.calls.issueLinkToken).toEqual([LINE_USER_ID]);
+      expect(line.calls.reply).toHaveLength(1);
+    });
+
+    test("a disabled account is told so and nothing is looked up", async () => {
+      for (const data of [ASK_DATA, CONFIRM_DATA]) {
+        const { client, messages } = await tap(data, {}, { context: { ...LINKED_CONTEXT, disabled: true } });
+        expect(deleteRpcs(client)).toEqual([]);
+        expect(messages[0]).toMatchObject({ text: ZH_HANT.accountDisabled });
+      }
+    });
+
+    test("a rate-limited sender is told to slow down and nothing is looked up", async () => {
+      const { client, messages } = await tap(CONFIRM_DATA, { consume_rate_limit: () => ({ allowed: false, retry_after: 5 }) });
+      expect(deleteRpcs(client)).toEqual([]);
+      expect(messages[0]).toMatchObject({ text: ZH_HANT.rateLimited });
+    });
+
+    // [MV]: answer a group's postback and the bot starts talking in groups.
+    test.each(["group", "room"] as const)("a postback from a %s is ignored: no reply, no database call", async (sourceType) => {
+      const { client, line } = await tap(CONFIRM_DATA, {}, { event: { sourceType } });
+      expect(line.calls.reply).toEqual([]);
+      expect(deleteRpcs(client)).toEqual([]);
+      expect(rpcNames(client)).toEqual([]);
+    });
+
+    test("a postback in standby mode is ignored", async () => {
+      const { client, line } = await tap(CONFIRM_DATA, {}, { event: { mode: "standby" } });
+      expect(line.calls.reply).toEqual([]);
+      expect(rpcNames(client)).toEqual([]);
+    });
+
+    // [MV]: read the user from the data or params and one person's button deletes another's entry.
+    test("whose entry it is comes only from who tapped: the data has no user, and a params userId is not read", async () => {
+      const other = "Uffffffffffffffffffffffffffffffff";
+      const { client } = await tap(ASK_DATA, {}, { event: { params: { userId: other } } });
+
+      expect(client.rpcCall("line_entry_status")?.args.p_line_user_id).toBe(LINE_USER_ID);
+      expect(JSON.stringify(client.calls)).not.toContain(other);
+
+      const smuggled = await tap(`${ASK_DATA}&u=${other}`);
+      expect(deleteRpcs(smuggled.client)).toEqual([]);
+    });
+  });
+
+  describe("data that is not ours", () => {
+    const BAD: Array<[string, unknown]> = [
+      ["missing", undefined],
+      ["empty", ""],
+      ["not a string", 42],
+      ["garbage", "hello"],
+      ["another version", "v=2&a=del&k=01J0000000000000000000000X"],
+      ["an unknown action", "v=1&a=pay&k=01J0000000000000000000000X"],
+      ["a key that is too short", "v=1&a=delok&k=abc"],
+      ["a key with a path in it", "v=1&a=delok&k=..%2F..%2Fetc"],
+      ["a trailing extra parameter", `${CONFIRM_DATA}&x=1`],
+      ["a long string", `v=1&a=delok&k=${"a".repeat(400)}`],
+    ];
+
+    // [MV]: handle unknown data as a delete and anything could be sent to the database.
+    test.each(BAD)("%s is answered 'that button no longer works': no database call, nothing of it logged", async (_name, data) => {
+      const { client, messages } = await tap(data);
+
+      expect(deleteRpcs(client)).toEqual([]);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ type: "text", text: ZH_HANT.postbackExpired });
+      expect(labels(messages[0])).toEqual(STANDARD);
+      expect(warnSpy.mock.calls).toEqual([["[line] postback ignored (unknown data)"]]);
+      if (typeof data === "string" && data.length > 3) expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(data);
+    });
+
+    test("an English account is told in English", async () => {
+      const { messages } = await tap("hello", {}, { context: { ...LINKED_CONTEXT, locale: "en" } });
+      expect(messages[0]).toMatchObject({ text: EN.postbackExpired });
+    });
+  });
+
+  describe("when something throws", () => {
+    // [MV]: a thrown RPC must reach the same catch every other event goes through, with no ids in the log.
+    test("a failing database call is answered with the generic error and logs no user id, key or data", async () => {
+      for (const data of [ASK_DATA, CONFIRM_DATA]) {
+        errorSpy.mockClear();
+        const { messages } = await tap(data, {
+          line_entry_status: () => {
+            throw new Error("db is down");
+          },
+          line_delete_entry: () => {
+            throw new Error("db is down");
+          },
+        });
+
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatchObject({ type: "text", text: ZH_HANT.genericError });
+        const logged = JSON.stringify(errorSpy.mock.calls);
+        expect(logged).toContain("db is down");
+        expect(logged).not.toContain(LINE_USER_ID);
+        expect(logged).not.toContain(KEY);
+        expect(logged).not.toContain(data);
+      }
+    });
+
+    test("a postback that throws does not stop the events after it in the same delivery", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_entry_status: () => {
+          throw new Error("boom");
+        },
+      });
+      const line = fakeLineClient();
+
+      await send(dateDeps(client, line.client), [
+        postbackEvent({ data: ASK_DATA, replyToken: "rt-a" }),
+        messageEvent({ text: "早餐 60", replyToken: "rt-b" }),
+      ]);
+
+      expect(line.calls.reply.map((call) => call.replyToken)).toEqual(["rt-a", "rt-b"]);
+      expect(client.rpcCall("line_record_entry")).toBeDefined();
+    });
+  });
+
+  describe("the whole round trip", () => {
+    // [MV]: the button, the question and the answer must carry one key from the record to the delete.
+    test("record -> tap 刪除 on the card -> tap 確定刪除 -> the delete RPC gets the key the record was written under", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+      const d = dateDeps(client, line.client);
+
+      await send(d, [messageEvent({ text: "早餐 60", webhookEventId: "01J0000000000000000000000R" })]);
+      const askData = postbacksOf(line.calls.reply[0].messages[0])[0].data;
+
+      await send(d, [postbackEvent({ data: askData, webhookEventId: "01J0000000000000000000000S" })]);
+      const confirmData = (line.calls.reply[1].messages[0].quickReply?.items[0].action as { data: string }).data;
+
+      await send(d, [postbackEvent({ data: confirmData, webhookEventId: "01J0000000000000000000000T" })]);
+
+      expect(client.rpcCall("line_record_entry")?.args.p_event_id).toBe("01J0000000000000000000000R");
+      expect(client.rpcCall("line_entry_status")?.args.p_entry_key).toBe("01J0000000000000000000000R");
+      expect(client.rpcCall("line_delete_entry")?.args).toEqual({
+        p_line_user_id: LINE_USER_ID,
+        p_entry_key: "01J0000000000000000000000R",
+        p_event_id: "01J0000000000000000000000T",
+      });
+      expect(plainTextOf(line.calls.reply[2].messages[0])).toBe("已刪除：早餐 $60");
+    });
   });
 });

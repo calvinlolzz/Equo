@@ -15,7 +15,8 @@ import {
   recordCard,
 } from "./lineCards.js";
 import type { FlexBox, LineFlexMessage, LineQuickReply } from "./lineFlex.js";
-import { actionsOf, assertValidFlexMessage, lineMessageProblems } from "./lineFlexValidator.js";
+import { actionsOf, assertValidFlexMessage, lineMessageProblems, postbacksOf, uriActionsOf } from "./lineFlexValidator.js";
+import { encodeLinePostback, parseLinePostback } from "./linePostback.js";
 import { type LineDictionary, LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 
 type Node = Record<string, unknown>;
@@ -187,6 +188,9 @@ const QUICK_REPLY: LineQuickReply = {
   items: [{ type: "action", action: { type: "message", label: "復原", text: "復原" } }],
 };
 const LEDGER_URI = "https://equo-mu.vercel.app/group/ledger_1?openExternalBrowser=1";
+const ENTRY_KEY = "01J0000000000000000000000A";
+const EDIT_URI = `https://equo-mu.vercel.app/group/ledger_1?entry=${ENTRY_KEY}&openExternalBrowser=1`;
+const DELETE_DATA = encodeLinePostback({ action: "delete_ask", entryKey: ENTRY_KEY });
 
 /** The emoji the cards draw, as escapes so a test reads the same in any editor. */
 const FOOD_EMOJI = "\u{1F371}";
@@ -253,7 +257,8 @@ describe("recordCard", () => {
     month: { expense_minor: 6000, income_minor: 0 },
     dateText: "9月21日",
     altText: "alt",
-    quickReply: QUICK_REPLY,
+    editUri: EDIT_URI,
+    deleteData: DELETE_DATA,
     ...overrides,
   });
   const build = (overrides: Partial<RecordArgs> = {}, dict: LineDictionary = ZH_HANT) =>
@@ -301,10 +306,60 @@ describe("recordCard", () => {
     }
   });
 
-  test("carries the altText and quick reply it was given", () => {
+  // [MV]: put the shortcuts back on the card and they would sit under it even when another message follows - LINE would remove them.
+  test("carries the altText it was given and no quick reply: the caller puts that on the last message", () => {
     const message = build({ altText: "the plain text" });
     expect(message.altText).toBe("the plain text");
-    expect(message.quickReply).toBe(QUICK_REPLY);
+    expect(message.quickReply).toBeUndefined();
+  });
+
+  describe("the footer", () => {
+    const footerButtons = (message: LineFlexMessage) => (message.contents.footer?.contents ?? []) as unknown as Node[];
+
+    test("is a row of exactly two buttons: 編輯 (a link to the entry) then 刪除 (the delete ask)", () => {
+      const message = build();
+
+      expect(uriActionsOf(message)).toEqual([{ type: "uri", label: "編輯", uri: EDIT_URI }]);
+      expect(postbacksOf(message)).toEqual([{ type: "postback", label: "刪除", data: DELETE_DATA, displayText: "刪除這筆" }]);
+      expect(actionsOf(message).map((action) => action.type)).toEqual(["uri", "postback"]);
+      expect(footerButtons(message).map((node) => node.type)).toEqual(["button", "button"]);
+      expect(message.contents.footer).toMatchObject({ layout: "horizontal", paddingAll: "12px", spacing: "md", alignItems: "center" });
+    });
+
+    // [MV]: style the delete button primary or mint and a tap that only asks looks like the main action.
+    test("編輯 is the filled green button; 刪除 is a quieter coral text button a third of the width", () => {
+      const [edit, del] = footerButtons(build());
+
+      expect(edit).toMatchObject({ style: "primary", color: CARD.buttonBg, height: "sm", flex: 2 });
+      expect(del).toMatchObject({ style: "link", color: CARD.coral, height: "sm", flex: 1 });
+      expect(del.style).not.toBe("primary");
+      expect(del.color).not.toBe(CARD.mint);
+      expect(del.color).not.toBe(CARD.buttonBg);
+    });
+
+    // [MV]: the card may only ever send the ASK; the confirm is a quick reply on a message of its own.
+    test("the postback data is the delete ASK for the entry, in the grammar's own spelling", () => {
+      const [postback] = postbacksOf(build());
+      expect(parseLinePostback(postback.data)).toEqual({ action: "delete_ask", entryKey: ENTRY_KEY });
+      expect(postback.data.length).toBeLessThanOrEqual(300);
+    });
+
+    test("is separated from the body by the hairline and sits on the card background", () => {
+      const message = build();
+      expect(message.contents.styles.footer).toEqual({ backgroundColor: CARD.bg, separator: true, separatorColor: CARD.hairline });
+    });
+
+    test("the labels come from the dictionary: English reads Edit / Delete", () => {
+      const message = build({}, EN);
+      expect(uriActionsOf(message)[0].label).toBe("Edit");
+      expect(postbacksOf(message)[0]).toMatchObject({ label: "Delete", displayText: "Delete this entry" });
+    });
+
+    test("the same card, with the footer, passes the validator for both kinds and both locales", () => {
+      for (const [, dict] of LOCALES) {
+        for (const kind of ["expense", "income"] as const) expect(lineMessageProblems(build({ kind }, dict)), kind).toEqual([]);
+      }
+    });
   });
 
   test("an expense with no budget: heading, date, tile, title, label, amount, month row - and no bar", () => {
@@ -450,10 +505,11 @@ describe("recordCard", () => {
     ]);
   });
 
-  test("never has a button or an action: 復原 is a quick reply, not something on the card", () => {
+  // [MV]: a 復原 button in the card, or any action beyond 編輯 and the delete ASK, and this goes red.
+  test("the only actions are 編輯 and the delete ask: 復原 is a quick reply, not something on the card", () => {
     for (const kind of ["expense", "income"] as const) {
       const message = build({ kind, budgetMinor: 1_500_000 });
-      expect(actionsOf(message)).toEqual([]);
+      expect(actionsOf(message).map((action) => action.label)).toEqual(["編輯", "刪除"]);
       expect(JSON.stringify(message.contents)).not.toContain("復原");
     }
   });

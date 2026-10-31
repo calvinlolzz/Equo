@@ -13,6 +13,8 @@ import {
   type LineOutgoing,
   budgetClearedReply,
   budgetReply,
+  deleteConfirmReply,
+  deleteResultReply,
   fallbackMessages,
   helpReply,
   isLineCard,
@@ -26,11 +28,15 @@ import {
   textMessage,
   wireMessages,
 } from "./lineMessages.js";
+import { parseLinePostback } from "./linePostback.js";
 import {
   type LineContext,
+  type LineEntrySnapshot,
   consumeLineRateLimit,
   consumeLinkNonce,
+  deleteLineEntry,
   getLineContext,
+  lineEntryStatus,
   lineMonthSummary,
   recordLineEntry,
   registerLinkToken,
@@ -113,6 +119,8 @@ async function dispatch(deps: LineWebhookDeps, event: LineEvent): Promise<void> 
       return onAccountLink(deps, event);
     case "message":
       return onMessage(deps, event);
+    case "postback":
+      return onPostback(deps, event);
     default:
       return;
   }
@@ -429,7 +437,7 @@ async function handleRecord(
     return;
   }
 
-  const message = recordedReply(dict, {
+  const messages = recordedReply(dict, {
     kind: command.kind,
     title: command.title,
     amountMinor: command.amountMinor,
@@ -438,9 +446,10 @@ async function handleRecord(
     budgetMinor: result.budget_minor,
     month: result.month,
     dateKey,
+    entryKey: eventKey,
     links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
   });
-  await safeReply(deps, event.replyToken, [message]);
+  await safeReply(deps, event.replyToken, messages);
 }
 
 /**
@@ -599,6 +608,156 @@ async function handleUndo(
     amount: formatAmount(expense.amount_minor ?? 0, expense.currency ?? "TWD"),
   });
   await safeReply(deps, event.replyToken, [textMessage(text, standardFor(deps, dict, context))]);
+}
+
+/**
+ * A tapped postback: the record card's 刪除 (which only asks), and the 確定刪除
+ * / 取消 quick replies that answer the question. Everything about who is
+ * asking is decided exactly as for a message - a user chat, under the same
+ * per-user rate limit, linked and not disabled - and what the data asks for is
+ * decided by linePostback.ts's closed grammar. The data carries an entry key
+ * and nothing else: which ledger it is looked up in is always the sender's own.
+ */
+async function onPostback(deps: LineWebhookDeps, event: LineEvent): Promise<void> {
+  if (event.source?.type !== "user" || !event.source.userId) return;
+  const lineUserId = event.source.userId;
+
+  if (!(await consumeLineRateLimit(deps.client, lineUserId))) {
+    await safeReply(deps, event.replyToken, [textMessage(lineText(null).rateLimited)]);
+    return;
+  }
+
+  const context = await getLineContext(deps.client, lineUserId);
+  const dict = lineText(context?.locale ?? null);
+
+  if (!context) {
+    await replyWithLink(deps, event, dict);
+    return;
+  }
+
+  if (context.disabled) {
+    await safeReply(deps, event.replyToken, [textMessage(dict.accountDisabled)]);
+    return;
+  }
+
+  const links = linksFor(deps, context.ledger?.id);
+  const postback = parseLinePostback(event.postback?.data);
+  if (!postback) {
+    // Nothing of the data in the log: it is not ours to trust, and a key in it is an identifier.
+    console.warn("[line] postback ignored (unknown data)");
+    await safeReply(deps, event.replyToken, [deleteResultReply(dict, links, { kind: "expired" })]);
+    return;
+  }
+
+  switch (postback.action) {
+    case "delete_ask":
+      await handleDeleteAsk(deps, event, dict, lineUserId, links, postback.entryKey);
+      return;
+    case "delete_confirm":
+      await handleDeleteConfirm(deps, event, dict, lineUserId, links, postback.entryKey);
+      return;
+    case "delete_cancel":
+      // No gate and no database: taking back a question changes nothing, so it works in maintenance too.
+      await safeReply(deps, event.replyToken, [deleteResultReply(dict, links, { kind: "cancelled" })]);
+      return;
+  }
+}
+
+/** The title and amount of an entry as the confirm and result texts show them; whatever the database did not say is blank / zero. */
+function entryFacts(expense: Partial<LineEntrySnapshot>): { title: string; amountMinor: number; currency: string } {
+  return {
+    title: typeof expense.title === "string" ? expense.title : "",
+    amountMinor: typeof expense.amount_minor === "number" ? expense.amount_minor : 0,
+    currency: typeof expense.currency === "string" ? expense.currency : "TWD",
+  };
+}
+
+/** A delete RPC answered "this is not your account any more": say what the reply to any other message would say. */
+async function replyToUnusableAccount(
+  deps: LineWebhookDeps,
+  event: LineEvent,
+  dict: LineDictionary,
+  reason: "not_linked" | "account_disabled",
+): Promise<void> {
+  if (reason === "account_disabled") {
+    await safeReply(deps, event.replyToken, [textMessage(dict.accountDisabled)]);
+    return;
+  }
+  await replyWithLink(deps, event, dict);
+}
+
+/**
+ * Step one of deleting from a card: look at what the key names right now and
+ * ASK. Nothing is written. Behind the maintenance gate like every write step,
+ * so a person in maintenance is not led to a confirm they cannot use.
+ */
+async function handleDeleteAsk(
+  deps: LineWebhookDeps,
+  event: LineEvent,
+  dict: LineDictionary,
+  lineUserId: string,
+  links: LineLinks | null,
+  entryKey: string,
+): Promise<void> {
+  if (await isMaintenanceOn(deps)) {
+    await safeReply(deps, event.replyToken, [textMessage(dict.maintenance)]);
+    return;
+  }
+
+  const status = await lineEntryStatus(deps.client, lineUserId, entryKey);
+  if (!status.ok) {
+    await replyToUnusableAccount(deps, event, dict, status.reason);
+    return;
+  }
+
+  if (status.status !== "live") {
+    await safeReply(deps, event.replyToken, [
+      deleteResultReply(dict, links, { kind: status.status === "gone" ? "already_gone" : "not_found" }),
+    ]);
+    return;
+  }
+
+  await safeReply(deps, event.replyToken, [
+    deleteConfirmReply(dict, { ...entryFacts(status.expense), edited: status.edited === true, entryKey }),
+  ]);
+}
+
+/**
+ * Step two: 確定刪除. The write is keyed on THIS event's key, so LINE delivering
+ * the same tap twice gets the same answer (line_delete_entry's replay branch)
+ * instead of "already deleted". Gated by maintenance; if the event has no
+ * usable key nothing is written, as for a record.
+ */
+async function handleDeleteConfirm(
+  deps: LineWebhookDeps,
+  event: LineEvent,
+  dict: LineDictionary,
+  lineUserId: string,
+  links: LineLinks | null,
+  entryKey: string,
+): Promise<void> {
+  if (await isMaintenanceOn(deps)) {
+    await safeReply(deps, event.replyToken, [textMessage(dict.maintenance)]);
+    return;
+  }
+
+  const eventKey = lineEventKey(event);
+  if (!eventKey) {
+    await safeReply(deps, event.replyToken, [textMessage(dict.genericError)]);
+    return;
+  }
+
+  const result = await deleteLineEntry(deps.client, { lineUserId, entryKey, eventId: eventKey });
+  if (!result.ok) {
+    if (result.reason === "not_linked" || result.reason === "account_disabled") {
+      await replyToUnusableAccount(deps, event, dict, result.reason);
+      return;
+    }
+    await safeReply(deps, event.replyToken, [deleteResultReply(dict, links, { kind: result.reason })]);
+    return;
+  }
+
+  await safeReply(deps, event.replyToken, [deleteResultReply(dict, links, { kind: "deleted", ...entryFacts(result.expense) })]);
 }
 
 /**
