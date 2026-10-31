@@ -170,6 +170,9 @@ describe("text and template messages", () => {
 
   const templateCases: Case[] = [
     ["a template that is not buttons", (m) => (m.template.type = "carousel"), /only a "buttons" template/],
+    // [MV]: a template that is not an object must be reported, not waved through.
+    ["a template that is a string", (m) => (m.template = "buttons"), /template.*must be an object/],
+    ["a template that is null", (m) => (m.template = null), /template.*must be an object/],
     ["template text of 161 units", (m) => (m.template.text = "a".repeat(161)), /template\.text.*1-160/],
     ["empty template text", (m) => (m.template.text = ""), /template\.text.*1-160/],
     ["no template actions", (m) => (m.template.actions = []), /actions.*1-4/],
@@ -212,6 +215,9 @@ describe("the flex message itself", () => {
 describe("the bubble", () => {
   expectReported([
     ["a carousel", (c) => (c.contents.type = "carousel"), /carousel/],
+    // [MV]: a flex message whose contents are not an object must be reported, not waved through.
+    ["contents that are a string, not a bubble", (c) => (c.contents = "bubble"), /contents.*must be a bubble object/],
+    ["contents that are null", (c) => (c.contents = null), /contents.*must be a bubble object/],
     ["a bubble with no type", (c) => delete c.contents.type, /type.*must be "bubble"/],
     ["size deca", (c) => (c.contents.size = "deca"), /size.*deca.*forbidden/],
     ["size hecto", (c) => (c.contents.size = "hecto"), /size.*hecto.*forbidden/],
@@ -436,6 +442,9 @@ describe("a quick reply", () => {
     ["a quickReply that is not an object", (c) => (c.quickReply = []), /quickReply.*must be an object/],
     ["a typo'd key on the quickReply", (c) => (c.quickReply.item = []), /item.*not a known property/],
     ["an item of another type", (c) => (first(c).type = "button"), /items\[0\]\.type.*"action"/],
+    // [MV]: an item that is not an object must be reported, not waved through.
+    ["an item that is a string", (c) => (c.quickReply.items[0] = "action"), /items\[0\].*must be an object/],
+    ["an item that is null", (c) => (c.quickReply.items[1] = null), /items\[1\].*must be an object/],
     ["an item with an imageUrl", (c) => (first(c).imageUrl = "https://x.test/i.png"), /imageUrl.*not a known property/],
     ["a message action with empty text", (c) => (first(c).action.text = ""), /text.*1-300/],
     ["a message action with 301 characters", (c) => (first(c).action.text = "a".repeat(301)), /text.*1-300/],
