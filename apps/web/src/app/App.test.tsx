@@ -915,6 +915,21 @@ describe("a personal ledger", () => {
     owner_member_id: "member_alice",
   });
 
+  /**
+   * The ledger's "this month" is read off the real clock (currentMonthKey), so
+   * a fixture that has to land in it is dated from the clock too - a literal
+   * date stops being "this month" the day the calendar turns. It is built from
+   * Date directly, not from currentMonthKey(), so a broken currentMonthKey
+   * cannot drag the fixture along with the app. The 1st exists in every month
+   * and is never a future date; `hour` (local time) only orders rows that share
+   * it - a higher hour is newer.
+   */
+  function inThisMonth(hour = 3): Pick<ExpenseSummary, "expense_date" | "created_at"> {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return { expense_date: `${month}-01`, created_at: new Date(now.getFullYear(), now.getMonth(), 1, hour).toISOString() };
+  }
+
   function ledgerExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
     return {
       id: "expense_1",
@@ -924,8 +939,7 @@ describe("a personal ledger", () => {
       category: "food",
       amount_minor: 12000,
       currency: "TWD",
-      expense_date: "2026-09-10",
-      created_at: "2026-09-10T03:00:00.000Z",
+      ...inThisMonth(),
       version: 1,
       client_request_id: "seed_ledger_1",
       expense_payments: [{ payer_member_id: "member_alice", amount_minor: 12000, currency: "TWD" }],
@@ -1046,10 +1060,10 @@ describe("a personal ledger", () => {
     // coverage can only flip to "complete" by length, never by an oldest-row
     // month check - see personalLedger.ts's ledgerMonthCoverage.
     const rows = [
-      ledgerExpense({ id: "expense_1", amount_minor: 1000, expense_date: "2026-09-10", created_at: "2026-09-10T03:00:00.000Z" }),
-      ledgerExpense({ id: "expense_2", amount_minor: 2000, expense_date: "2026-09-09", created_at: "2026-09-09T03:00:00.000Z" }),
-      ledgerExpense({ id: "expense_3", amount_minor: 3000, expense_date: "2026-09-08", created_at: "2026-09-08T03:00:00.000Z" }),
-      ledgerExpense({ id: "expense_4", amount_minor: 4000, expense_date: "2026-09-07", created_at: "2026-09-07T03:00:00.000Z" }),
+      ledgerExpense({ id: "expense_1", amount_minor: 1000, ...inThisMonth(4) }),
+      ledgerExpense({ id: "expense_2", amount_minor: 2000, ...inThisMonth(3) }),
+      ledgerExpense({ id: "expense_3", amount_minor: 3000, ...inThisMonth(2) }),
+      ledgerExpense({ id: "expense_4", amount_minor: 4000, ...inThisMonth(1) }),
     ];
     const expensesRoute = "GET /groups/group_ledger/expenses";
     const api = fakeApi([
