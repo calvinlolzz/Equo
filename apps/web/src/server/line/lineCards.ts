@@ -1,16 +1,30 @@
+import { formatAmount, formatSigned } from "../../app/formatAmount.js";
 import { fill } from "../push/pushText.js";
-import { CARD, tint } from "./lineCardTheme.js";
+import {
+  CARD,
+  type LineCategoryDisplay,
+  amountTextSize,
+  barPercent,
+  budgetTone,
+  tint,
+  toneColor,
+  usedPercent,
+} from "./lineCardTheme.js";
 import {
   type FlexBox,
   type FlexComponent,
   type LineFlexMessage,
+  type LineQuickReply,
   bubble,
   flexMessage,
   hbox,
+  progressBar,
   separator,
   text,
+  uriButton,
   vbox,
 } from "./lineFlex.js";
+import type { LineMonthTotals } from "./lineRepository.js";
 import type { LineDictionary } from "./lineText.js";
 
 /**
@@ -128,4 +142,377 @@ export function helpCard(dict: LineDictionary, args: { minutes: number; altText:
   ];
 
   return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }));
+}
+
+/** "本月（2026 年 9 月）" - the month heading shared by the plain text and the month card. */
+export function monthLabelText(dict: LineDictionary, year: number, month: number): string {
+  return fill(dict.monthLabel, { year, month, month2: String(month).padStart(2, "0") });
+}
+
+/** "還剩 $9,000" / "已超出 $5,000" - what is left of the budget, shared by every budget line in text and cards. */
+export function budgetRemainingText(dict: LineDictionary, currency: string, budgetMinor: number, spentMinor: number): string {
+  const left = budgetMinor - spentMinor;
+  if (left >= 0) return fill(dict.budgetRemainingLeft, { left: formatAmount(left, currency) });
+  return fill(dict.budgetRemainingOver, { over: formatAmount(Math.abs(left), currency) });
+}
+
+/** A ledger has a budget only when it is a positive number; 0, null and a missing one all mean "none". */
+function hasBudget(budgetMinor: number | null): budgetMinor is number {
+  return typeof budgetMinor === "number" && budgetMinor > 0;
+}
+
+/** "label ........ value": the label takes the slack, the value keeps its own width and sits at the end. */
+function labelValueRow(label: string, value: string, valueColor: string): FlexBox {
+  return hbox(
+    [
+      text(label, { size: "xs", color: CARD.muted, flex: 1 }),
+      text(value, { size: "sm", weight: "bold", color: valueColor, flex: 0, align: "end" }),
+    ],
+    { margin: "lg", alignItems: "center" },
+  );
+}
+
+/**
+ * The line under a budget bar: something on the left ("預算 $15,000", "已用 40%")
+ * and how much is left, or over, on the right in the colour of the bar.
+ */
+function budgetCaption(
+  dict: LineDictionary,
+  args: { left: string; currency: string; budgetMinor: number; spentMinor: number },
+): FlexBox {
+  const tone = toneColor(budgetTone(args.spentMinor, args.budgetMinor));
+  return hbox(
+    [
+      text(args.left, { size: "xs", color: CARD.muted, flex: 1 }),
+      text(budgetRemainingText(dict, args.currency, args.budgetMinor, args.spentMinor), {
+        size: "xs",
+        weight: "bold",
+        color: tone,
+        flex: 0,
+        align: "end",
+      }),
+    ],
+    { margin: "sm" },
+  );
+}
+
+/** The bar and caption a record or month card shows when the ledger has a budget. */
+function budgetProgress(
+  dict: LineDictionary,
+  args: { currency: string; budgetMinor: number; spentMinor: number; barHeight: number },
+): FlexComponent[] {
+  const fillColor = toneColor(budgetTone(args.spentMinor, args.budgetMinor));
+  return [
+    progressBar(barPercent(args.spentMinor, args.budgetMinor), {
+      fill: fillColor,
+      track: CARD.hairline,
+      height: args.barHeight,
+      margin: "md",
+    }),
+    budgetCaption(dict, {
+      left: fill(dict.cardBudgetOf, { budget: formatAmount(args.budgetMinor, args.currency) }),
+      currency: args.currency,
+      budgetMinor: args.budgetMinor,
+      spentMinor: args.spentMinor,
+    }),
+  ];
+}
+
+/** A rounded square holding one emoji, tinted from `color`. */
+function emojiTile(emoji: string, color: string, size: number): FlexBox {
+  return vbox([text(emoji, { size: "xl", color: CARD.text, align: "center" })], {
+    width: `${size}px`,
+    height: `${size}px`,
+    cornerRadius: "12px",
+    backgroundColor: tint(color),
+    flex: 0,
+    justifyContent: "center",
+    alignItems: "center",
+  });
+}
+
+/**
+ * The reply to a recorded expense or income: what was written down, then where
+ * this month stands - and, for an expense in a ledger with a budget, how much
+ * of the budget that is. The date is the one the entry was recorded under
+ * (Taiwan time), already formatted; the 復原 button is a quick reply under the
+ * card, never a button in it.
+ */
+export function recordCard(
+  dict: LineDictionary,
+  args: {
+    kind: "expense" | "income";
+    title: string;
+    amountMinor: number;
+    currency: string;
+    category: LineCategoryDisplay;
+    budgetMinor: number | null;
+    month: LineMonthTotals;
+    dateText: string;
+    altText: string;
+    quickReply: LineQuickReply;
+  },
+): LineFlexMessage {
+  const income = args.kind === "income";
+  const amountText = income ? formatSigned(args.amountMinor, args.currency) : formatAmount(args.amountMinor, args.currency);
+  const monthLabel = income ? dict.cardMonthIncome : dict.cardMonthSpent;
+  const monthValue = formatAmount(income ? args.month.income_minor : args.month.expense_minor, args.currency);
+
+  const content: FlexComponent[] = [
+    hbox([
+      text(income ? dict.cardIncomeTitle : dict.cardExpenseTitle, {
+        size: "xs",
+        weight: "bold",
+        color: income ? CARD.mint : CARD.muted,
+        flex: 1,
+      }),
+      text(args.dateText, { size: "xs", color: CARD.muted, flex: 0, align: "end" }),
+    ]),
+    hbox(
+      [
+        emojiTile(args.category.emoji, args.category.color, 44),
+        vbox(
+          [
+            text(args.title, { size: "md", weight: "bold", color: CARD.text, wrap: true, maxLines: 2 }),
+            text(args.category.label, { size: "xs", color: CARD.muted, margin: "xs" }),
+          ],
+          { flex: 1 },
+        ),
+      ],
+      { margin: "lg", spacing: "md", alignItems: "center" },
+    ),
+    text(amountText, {
+      size: amountTextSize(amountText),
+      weight: "bold",
+      color: income ? CARD.mint : CARD.text,
+      margin: "lg",
+      wrap: true,
+    }),
+    separator(CARD.hairline, "lg"),
+    labelValueRow(monthLabel, monthValue, income ? CARD.mint : CARD.text),
+  ];
+
+  if (!income && hasBudget(args.budgetMinor)) {
+    content.push(
+      ...budgetProgress(dict, {
+        currency: args.currency,
+        budgetMinor: args.budgetMinor,
+        spentMinor: args.month.expense_minor,
+        barHeight: 6,
+      }),
+    );
+  }
+
+  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }), args.quickReply);
+}
+
+/** One category's expense total for the month, with the label, colour and emoji already resolved. */
+export type MonthCategory = { category: LineCategoryDisplay; amountMinor: number };
+
+/** The most category rows the month card shows; the rest are folded into one 「其餘分類」 row. */
+const MONTH_CATEGORY_ROWS = 5;
+
+/** A small raised tile: a muted label over a bold value. Two sit side by side on the month card. */
+function statTile(label: string, value: string, color: string): FlexBox {
+  return vbox(
+    [
+      text(label, { size: "xs", color: CARD.muted }),
+      text(value, { size: "sm", weight: "bold", color, margin: "xs", wrap: true }),
+    ],
+    { flex: 1, backgroundColor: CARD.raised, cornerRadius: "10px", paddingAll: "12px" },
+  );
+}
+
+/** A category line with its share of the month's spending as a thin bar. */
+function breakdownRow(args: {
+  emoji: string;
+  label: string;
+  amount: string;
+  labelColor: string;
+  amountColor: string;
+  percent: number;
+  barColor: string;
+}): FlexBox {
+  return vbox(
+    [
+      hbox(
+        [
+          text(args.emoji, { size: "sm", color: CARD.text, flex: 0 }),
+          text(args.label, { size: "sm", color: args.labelColor, flex: 1 }),
+          text(args.amount, { size: "sm", weight: "bold", color: args.amountColor, flex: 0, align: "end" }),
+        ],
+        { spacing: "sm", alignItems: "center" },
+      ),
+      progressBar(args.percent, { fill: args.barColor, track: CARD.hairline, height: 4, margin: "sm" }),
+    ],
+    { margin: "md" },
+  );
+}
+
+function byAmountThenKey(a: MonthCategory, b: MonthCategory): number {
+  if (a.amountMinor !== b.amountMinor) return b.amountMinor - a.amountMinor;
+  if (a.category.key === b.category.key) return 0;
+  return a.category.key < b.category.key ? -1 : 1;
+}
+
+/**
+ * The by-category part of the month card, or nothing at all.
+ *
+ * `categories === undefined` means the database did not say (it predates the
+ * breakdown), which is not the same as "no spending" and must not read as it:
+ * the section is left out. An empty list for a month with no spending says so;
+ * an empty list for a month that does have spending is data in transit, and
+ * says nothing rather than something false.
+ *
+ * Rows are the positive finite amounts, largest first (ties by key, so the
+ * order never shuffles), at most five. Whatever the month spent beyond them is
+ * one more row, 「其餘分類」, so the rows always add up to the headline figure.
+ */
+function categorySection(
+  dict: LineDictionary,
+  args: { currency: string; expenseMinor: number; categories: readonly MonthCategory[] | undefined },
+): FlexComponent[] {
+  if (args.categories === undefined) return [];
+
+  const rows = args.categories
+    .filter((row) => Number.isFinite(row.amountMinor) && row.amountMinor > 0)
+    .sort(byAmountThenKey)
+    .slice(0, MONTH_CATEGORY_ROWS);
+
+  if (rows.length === 0) {
+    if (args.expenseMinor !== 0) return [];
+    return [separator(CARD.hairline, "lg"), text(dict.cardNoSpending, { size: "sm", color: CARD.muted, margin: "lg", wrap: true })];
+  }
+
+  const others = Math.max(0, args.expenseMinor - rows.reduce((sum, row) => sum + row.amountMinor, 0));
+  const section: FlexComponent[] = [
+    separator(CARD.hairline, "lg"),
+    text(dict.cardByCategory, { size: "xs", weight: "bold", color: CARD.muted, margin: "lg" }),
+    ...rows.map((row) =>
+      breakdownRow({
+        emoji: row.category.emoji,
+        label: row.category.label,
+        amount: formatAmount(row.amountMinor, args.currency),
+        labelColor: CARD.text,
+        amountColor: CARD.text,
+        percent: barPercent(row.amountMinor, args.expenseMinor),
+        barColor: row.category.color,
+      }),
+    ),
+  ];
+
+  if (others > 0) {
+    section.push(
+      breakdownRow({
+        emoji: "\u{2795}",
+        label: dict.cardOtherCategories,
+        amount: formatAmount(others, args.currency),
+        labelColor: CARD.muted,
+        amountColor: CARD.muted,
+        percent: barPercent(others, args.expenseMinor),
+        barColor: CARD.muted,
+      }),
+    );
+  }
+
+  return section;
+}
+
+/**
+ * 「本月」: the month's spending as the headline, its budget if there is one,
+ * income and net beside each other, and where the money went. The footer's
+ * button opens the ledger (the same link the quick reply carries).
+ */
+export function monthCard(
+  dict: LineDictionary,
+  args: {
+    year: number;
+    month: number;
+    currency: string;
+    budgetMinor: number | null;
+    totals: LineMonthTotals;
+    categories: readonly MonthCategory[] | undefined;
+    ledgerUri: string;
+    altText: string;
+    quickReply: LineQuickReply;
+  },
+): LineFlexMessage {
+  const { expense_minor: expense, income_minor: income } = args.totals;
+  const net = income - expense;
+  const spentText = formatAmount(expense, args.currency);
+
+  const content: FlexComponent[] = [
+    text(monthLabelText(dict, args.year, args.month), { size: "xs", weight: "bold", color: CARD.muted }),
+    text(dict.cardSpentLabel, { size: "xs", color: CARD.muted, margin: "lg" }),
+    text(spentText, { size: amountTextSize(spentText), weight: "bold", color: CARD.text, margin: "xs", wrap: true }),
+  ];
+
+  if (hasBudget(args.budgetMinor)) {
+    content.push(
+      ...budgetProgress(dict, { currency: args.currency, budgetMinor: args.budgetMinor, spentMinor: expense, barHeight: 8 }),
+    );
+  }
+
+  content.push(
+    hbox(
+      [
+        statTile(dict.cardIncomeLabel, formatAmount(income, args.currency), income > 0 ? CARD.mint : CARD.text),
+        statTile(dict.cardNetLabel, formatSigned(net, args.currency), net > 0 ? CARD.mint : net < 0 ? CARD.coral : CARD.text),
+      ],
+      { margin: "lg", spacing: "md" },
+    ),
+    ...categorySection(dict, { currency: args.currency, expenseMinor: expense, categories: args.categories }),
+  );
+
+  const footer = vbox(
+    [uriButton(dict.openLedgerLabel, args.ledgerUri, { color: CARD.buttonBg, style: "primary", height: "sm" })],
+    { paddingAll: "12px" },
+  );
+
+  return flexMessage(
+    args.altText,
+    bubble({ body: cardBody(content), footer, background: CARD.bg, footerSeparator: CARD.hairline }),
+    args.quickReply,
+  );
+}
+
+/**
+ * 「預算」 and 「預算 N」: the budget as the headline, how much of it this month
+ * has used, and how to change or remove it. Only for a ledger that has one -
+ * with none, the reply stays the plain "how to set one" text.
+ */
+export function budgetCard(
+  dict: LineDictionary,
+  args: {
+    mode: "set" | "show";
+    currency: string;
+    budgetMinor: number;
+    spentMinor: number;
+    altText: string;
+    quickReply: LineQuickReply;
+  },
+): LineFlexMessage {
+  const budgetText = formatAmount(args.budgetMinor, args.currency);
+  const tone = toneColor(budgetTone(args.spentMinor, args.budgetMinor));
+
+  const content: FlexComponent[] = [
+    text(args.mode === "set" ? dict.cardBudgetSetTitle : dict.cardBudgetShowTitle, {
+      size: "xs",
+      weight: "bold",
+      color: args.mode === "set" ? CARD.mint : CARD.muted,
+    }),
+    text(budgetText, { size: amountTextSize(budgetText), weight: "bold", color: CARD.text, margin: "sm", wrap: true }),
+    progressBar(barPercent(args.spentMinor, args.budgetMinor), { fill: tone, track: CARD.hairline, height: 10, margin: "lg" }),
+    budgetCaption(dict, {
+      left: fill(dict.cardBudgetUsed, { percent: usedPercent(args.spentMinor, args.budgetMinor) }),
+      currency: args.currency,
+      budgetMinor: args.budgetMinor,
+      spentMinor: args.spentMinor,
+    }),
+    labelValueRow(dict.cardMonthSpent, formatAmount(args.spentMinor, args.currency), CARD.text),
+    separator(CARD.hairline, "lg"),
+    text(dict.cardBudgetHint, { size: "xs", color: CARD.muted, margin: "lg", wrap: true }),
+  ];
+
+  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }), args.quickReply);
 }

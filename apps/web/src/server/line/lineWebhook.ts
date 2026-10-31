@@ -1,9 +1,10 @@
 import { formatAmount } from "../../app/formatAmount.js";
-import { EN } from "../../app/i18n/en.js";
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import { loadSiteNotice } from "../http/maintenance.js";
 import { fill } from "../push/pushText.js";
 import { LineApiError, type LineClient } from "./lineClient.js";
+import { categoryDisplay } from "./lineCardTheme.js";
+import type { MonthCategory } from "./lineCards.js";
 import { lineUserTag, redactForLog, sha256Hex, verifyLineSignature } from "./lineCrypto.js";
 import { type LineCommandErrorReason, parseLineCommand } from "./lineCommand.js";
 import { lineDateKey, lineMonthStart } from "./lineDates.js";
@@ -281,7 +282,7 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
       await safeReply(deps, event.replyToken, [helpReply(dict, LINE_UNDO_WINDOW_MINUTES)]);
       return;
     case "month":
-      await handleMonth(deps, event, dict, lineUserId);
+      await handleMonth(deps, event, dict, lineUserId, context);
       return;
     case "budget_show":
       await handleBudgetShow(deps, event, dict, lineUserId);
@@ -348,15 +349,6 @@ function errorText(dict: LineDictionary, reason: LineCommandErrorReason, currenc
   }
 }
 
-/** The category label in replies: the live catalog's label for zh, or EN's own label (falling back to the catalog one) for en. */
-function categoryLabelFor(key: string, context: LineContext, locale: string): string {
-  const catalogLabel = context.categories.find((c) => c.key === key)?.label ?? key;
-  if (locale === "en") {
-    return (EN.categories as Record<string, string>)[key] ?? catalogLabel;
-  }
-  return catalogLabel;
-}
-
 async function isMaintenanceOn(deps: LineWebhookDeps): Promise<boolean> {
   const notice = await loadSiteNotice(deps.client, deps.now?.() ?? Date.now());
   return notice.maintenance.enabled;
@@ -406,17 +398,42 @@ async function handleRecord(
     kind: command.kind,
     title: command.title,
     amountMinor: command.amountMinor,
-    categoryLabel: categoryLabelFor(command.category, context, context.locale),
+    category: categoryDisplay(command.category, context.categories, context.locale),
     currency: result.currency,
     budgetMinor: result.budget_minor,
     month: result.month,
+    dateKey,
     ledgerId: result.ledger_id,
     appOrigin: deps.appOrigin,
   });
   await safeReply(deps, event.replyToken, [message]);
 }
 
-async function handleMonth(deps: LineWebhookDeps, event: LineEvent, dict: LineDictionary, lineUserId: string): Promise<void> {
+/**
+ * line_month_summary's per-category totals as the month card wants them:
+ * labelled the way the plain replies always labelled a category. Undefined -
+ * not an empty list - when the database sent no breakdown at all (it predates
+ * the column), because the card must not mistake "unknown" for "no spending".
+ * An entry that is not a category total is skipped rather than trusted.
+ */
+function monthCategoriesFor(raw: unknown, context: LineContext): MonthCategory[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+
+  return raw.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const { category, expense_minor: amountMinor } = entry as { category?: unknown; expense_minor?: unknown };
+    if (typeof category !== "string" || typeof amountMinor !== "number") return [];
+    return [{ category: categoryDisplay(category, context.categories, context.locale), amountMinor }];
+  });
+}
+
+async function handleMonth(
+  deps: LineWebhookDeps,
+  event: LineEvent,
+  dict: LineDictionary,
+  lineUserId: string,
+  context: LineContext,
+): Promise<void> {
   const now = deps.now?.() ?? Date.now();
   const monthStart = lineMonthStart(lineDateKey(now));
 
@@ -435,6 +452,7 @@ async function handleMonth(deps: LineWebhookDeps, event: LineEvent, dict: LineDi
     currency: result.currency,
     budgetMinor: result.budget_minor,
     month_totals: result.month,
+    categories: monthCategoriesFor(result.categories, context),
     ledgerId: result.ledger_id,
     appOrigin: deps.appOrigin,
   });

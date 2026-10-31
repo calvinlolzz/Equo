@@ -1,6 +1,15 @@
 import { formatAmount } from "../../app/formatAmount.js";
 import { fill } from "../push/pushText.js";
-import { helpCard } from "./lineCards.js";
+import type { LineCategoryDisplay } from "./lineCardTheme.js";
+import {
+  type MonthCategory,
+  budgetCard,
+  budgetRemainingText,
+  helpCard,
+  monthCard,
+  monthLabelText,
+  recordCard,
+} from "./lineCards.js";
 import { redactForLog } from "./lineCrypto.js";
 import type {
   LineAction,
@@ -144,8 +153,15 @@ function budgetLine(dict: LineDictionary, currency: string, budgetMinor: number 
   return fill(dict.budgetOverLine, { over: formatAmount(Math.abs(left), currency) });
 }
 
-/** The reply for a successful record (expense or income), with the undo/month/open-ledger quick replies. */
-export function recordedReply(
+/** "2026-09-21" -> "9月21日" / "9/21" in the dictionary's own format; empty when the key is not a date (the card then shows a dash). */
+function recordDateText(dict: LineDictionary, dateKey: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return "";
+  return fill(dict.cardDate, { month: Number(match[2]), day: Number(match[3]) });
+}
+
+/** The plain text of a recorded entry: also the record card's altText and its fallback. */
+function recordedText(
   dict: LineDictionary,
   args: {
     kind: "expense" | "income";
@@ -155,65 +171,119 @@ export function recordedReply(
     currency: string;
     budgetMinor: number | null;
     month: LineMonthTotals;
+  },
+): string {
+  const amount = formatAmount(args.amountMinor, args.currency);
+  return args.kind === "expense"
+    ? fill(dict.recordedExpense, {
+        title: args.title,
+        amount,
+        category: args.categoryLabel,
+        spent: formatAmount(args.month.expense_minor, args.currency),
+        budget: budgetSuffix(dict, args.currency, args.budgetMinor, args.month.expense_minor),
+      })
+    : fill(dict.recordedIncome, {
+        title: args.title,
+        amount,
+        category: args.categoryLabel,
+        income: formatAmount(args.month.income_minor, args.currency),
+      });
+}
+
+/**
+ * The reply for a successful record (expense or income): a card, with the
+ * undo/month/open-ledger quick replies under it. `dateKey` is the Taiwan-time
+ * date the entry was recorded under (the same value sent as p_expense_date).
+ * If LINE refuses the card, the same quick replies go under today's text.
+ */
+export function recordedReply(
+  dict: LineDictionary,
+  args: {
+    kind: "expense" | "income";
+    title: string;
+    amountMinor: number;
+    category: LineCategoryDisplay;
+    currency: string;
+    budgetMinor: number | null;
+    month: LineMonthTotals;
+    dateKey: string;
     ledgerId: string;
     appOrigin: string;
   },
-): LineMessage {
-  const amount = formatAmount(args.amountMinor, args.currency);
-  const text =
-    args.kind === "expense"
-      ? fill(dict.recordedExpense, {
-          title: args.title,
-          amount,
-          category: args.categoryLabel,
-          spent: formatAmount(args.month.expense_minor, args.currency),
-          budget: budgetSuffix(dict, args.currency, args.budgetMinor, args.month.expense_minor),
-        })
-      : fill(dict.recordedIncome, {
-          title: args.title,
-          amount,
-          category: args.categoryLabel,
-          income: formatAmount(args.month.income_minor, args.currency),
-        });
+): LineOutgoing {
+  const altText = recordedText(dict, { ...args, categoryLabel: args.category.label });
+  const qr = recordQuickReply(dict, args.appOrigin, args.ledgerId);
 
-  return textMessage(text, recordQuickReply(dict, args.appOrigin, args.ledgerId));
+  return cardOrFallback(
+    "record",
+    () =>
+      recordCard(dict, {
+        kind: args.kind,
+        title: args.title,
+        amountMinor: args.amountMinor,
+        currency: args.currency,
+        category: args.category,
+        budgetMinor: args.budgetMinor,
+        month: args.month,
+        dateText: recordDateText(dict, args.dateKey),
+        altText,
+        quickReply: qr,
+      }),
+    [textMessage(altText, qr)],
+  );
 }
 
-/** The "本月" summary reply. */
+/**
+ * The "本月" summary reply. `categories` is the month's top expense categories
+ * (already labelled), or undefined when the database did not return a
+ * breakdown - the card then has no by-category section rather than a wrong one.
+ */
 export function monthReply(
   dict: LineDictionary,
-  args: { year: number; month: number; currency: string; budgetMinor: number | null; month_totals: LineMonthTotals; ledgerId: string; appOrigin: string },
-): LineMessage {
-  const monthLabel = fill(dict.monthLabel, {
-    year: args.year,
-    month: args.month,
-    month2: String(args.month).padStart(2, "0"),
-  });
-
+  args: {
+    year: number;
+    month: number;
+    currency: string;
+    budgetMinor: number | null;
+    month_totals: LineMonthTotals;
+    categories?: readonly MonthCategory[];
+    ledgerId: string;
+    appOrigin: string;
+  },
+): LineOutgoing {
   const spent = formatAmount(args.month_totals.expense_minor, args.currency);
   const income = formatAmount(args.month_totals.income_minor, args.currency);
   const net = formatAmount(args.month_totals.income_minor - args.month_totals.expense_minor, args.currency);
 
-  const body =
-    fill(dict.monthSummary, { month: monthLabel, spent, income, net }) +
+  const altText =
+    fill(dict.monthSummary, { month: monthLabelText(dict, args.year, args.month), spent, income, net }) +
     budgetLine(dict, args.currency, args.budgetMinor, args.month_totals.expense_minor);
 
-  return textMessage(
-    body,
-    quickReply([{ type: "uri", label: dict.openLedgerLabel, uri: ledgerUri(args.appOrigin, args.ledgerId) }]),
+  const link = ledgerUri(args.appOrigin, args.ledgerId);
+  const qr = quickReply([{ type: "uri", label: dict.openLedgerLabel, uri: link }]);
+
+  return cardOrFallback(
+    "month",
+    () =>
+      monthCard(dict, {
+        year: args.year,
+        month: args.month,
+        currency: args.currency,
+        budgetMinor: args.budgetMinor,
+        totals: args.month_totals,
+        categories: args.categories,
+        ledgerUri: link,
+        altText,
+        quickReply: qr,
+      }),
+    [textMessage(altText, qr)],
   );
 }
 
-/** "還剩 {left}" / "已超出 {over}" for the budget replies. */
-function budgetRemaining(dict: LineDictionary, currency: string, budgetMinor: number, spentMinor: number): string {
-  const left = budgetMinor - spentMinor;
-  if (left >= 0) return fill(dict.budgetRemainingLeft, { left: formatAmount(left, currency) });
-  return fill(dict.budgetRemainingOver, { over: formatAmount(Math.abs(left), currency) });
-}
-
 /**
- * The reply to viewing ("show") or just having set ("set") the monthly budget.
- * A ledger with no budget gets the "how to set one" text in either mode.
+ * The reply to viewing ("show") or just having set ("set") the monthly budget:
+ * a card. A ledger with no budget gets the "how to set one" text in either
+ * mode, as a plain message - there is nothing to draw.
  */
 export function budgetReply(
   dict: LineDictionary,
@@ -225,16 +295,30 @@ export function budgetReply(
     ledgerId: string;
     appOrigin: string;
   },
-): LineMessage {
+): LineOutgoing {
   const qr = budgetQuickReply(dict, args.appOrigin, args.ledgerId);
-  if (args.budgetMinor === null || args.budgetMinor <= 0) return textMessage(dict.budgetNone, qr);
+  const { budgetMinor } = args;
+  if (budgetMinor === null || budgetMinor <= 0) return textMessage(dict.budgetNone, qr);
 
-  const text = fill(args.mode === "set" ? dict.budgetSet : dict.budgetShow, {
-    budget: formatAmount(args.budgetMinor, args.currency),
+  const altText = fill(args.mode === "set" ? dict.budgetSet : dict.budgetShow, {
+    budget: formatAmount(budgetMinor, args.currency),
     spent: formatAmount(args.spentMinor, args.currency),
-    remaining: budgetRemaining(dict, args.currency, args.budgetMinor, args.spentMinor),
+    remaining: budgetRemainingText(dict, args.currency, budgetMinor, args.spentMinor),
   });
-  return textMessage(text, qr);
+
+  return cardOrFallback(
+    "budget",
+    () =>
+      budgetCard(dict, {
+        mode: args.mode,
+        currency: args.currency,
+        budgetMinor,
+        spentMinor: args.spentMinor,
+        altText,
+        quickReply: qr,
+      }),
+    [textMessage(altText, qr)],
+  );
 }
 
 /** The reply to 「取消預算」. */

@@ -1,14 +1,29 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { DEFAULT_CATALOG } from "../../app/catalog.js";
+import { EN as EN_APP } from "../../app/i18n/en.js";
 import { createFakePostgrest, type FakePostgrest } from "../db/fakePostgrest.js";
 import { resetSiteNoticeCache } from "../http/maintenance.js";
 import { fill } from "../push/pushText.js";
 import { LineApiError, type LineClient, type LineMessage } from "./lineClient.js";
 import { sha256Hex } from "./lineCrypto.js";
-import { lineReplyProblems, plainTextOf, uriActionsOf } from "./lineFlexValidator.js";
+import { actionsOf, lineReplyProblems, plainTextOf, uriActionsOf } from "./lineFlexValidator.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 import { handleLineWebhook, type LineWebhookDeps } from "./lineWebhook.js";
+
+// lineCards.ts is mocked only so a test can make the record card's builder
+// throw on cue; every other card, and every other export, is the real thing.
+const cardFaults = vi.hoisted(() => ({ recordCard: false }));
+vi.mock("./lineCards.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lineCards.js")>();
+  return {
+    ...actual,
+    recordCard: (...args: Parameters<typeof actual.recordCard>) => {
+      if (cardFaults.recordCard) throw new Error("recordCard exploded");
+      return actual.recordCard(...args);
+    },
+  };
+});
 
 const SECRET = "test_channel_secret";
 const APP_ORIGIN = "https://equo-mu.vercel.app";
@@ -193,12 +208,13 @@ function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {
 let replyProblems: string[] = [];
 
 /**
- * `failStatuses` makes the first N reply attempts fail with that HTTP status,
- * in order (a LineApiError, as the real client throws). Every attempt is
+ * `failStatuses` makes reply attempts fail with that HTTP status, in order (a
+ * LineApiError, as the real client throws; null lets that attempt through).
+ * Every attempt is
  * recorded in `calls.reply` first, failed or not, so a test sees what was
  * sent and in what order - including the retry.
  */
-function fakeLineClient(options: { failStatuses?: number[] } = {}) {
+function fakeLineClient(options: { failStatuses?: Array<number | null> } = {}) {
   const calls: {
     reply: Array<{ replyToken: string; messages: LineMessage[] }>;
     issueLinkToken: string[];
@@ -211,8 +227,9 @@ function fakeLineClient(options: { failStatuses?: number[] } = {}) {
     async reply(replyToken, messages) {
       calls.reply.push({ replyToken, messages });
       for (const problem of lineReplyProblems(messages)) replyProblems.push(`${problem} (reply ${calls.reply.length})`);
+      // null = let this attempt through; an empty queue lets it through too.
       const status = failStatuses.shift();
-      if (status !== undefined) throw new LineApiError(status);
+      if (typeof status === "number") throw new LineApiError(status);
     },
     async issueLinkToken(userId) {
       calls.issueLinkToken.push(userId);
@@ -233,6 +250,7 @@ function deps(client: FakePostgrest, line: LineClient): LineWebhookDeps {
 beforeEach(() => {
   resetSiteNoticeCache();
   replyProblems = [];
+  cardFaults.recordCard = false;
 });
 
 afterEach(() => {
@@ -528,8 +546,7 @@ describe("handleLineWebhook - review fixes", () => {
     const body = webhookBody(events);
     return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
   };
-  const textOf = (line: ReturnType<typeof fakeLineClient>) =>
-    (line.calls.reply.at(-1)!.messages[0] as { text: string }).text;
+  const textOf = (line: ReturnType<typeof fakeLineClient>) => plainTextOf(line.calls.reply.at(-1)!.messages[0]);
 
   // [MV]: the rate limit is the first database call, ahead of the context lookup.
   test("a rate-limited message never reaches line_context, and is answered in zh-Hant", async () => {
@@ -643,11 +660,17 @@ describe("handleLineWebhook - budget commands", () => {
     const body = webhookBody(events);
     return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
   };
-  const messageOf = (line: ReturnType<typeof fakeLineClient>) =>
-    line.calls.reply.at(-1)!.messages[0] as {
-      text: string;
-      quickReply?: { items: Array<{ action: { type: string; label: string; uri?: string } }> };
+  // `text` is what a person reading the notification sees - a text message's
+  // text, or a card's altText - so these tests hold for either shape.
+  const messageOf = (line: ReturnType<typeof fakeLineClient>) => {
+    const message = line.calls.reply.at(-1)!.messages[0];
+    return {
+      text: plainTextOf(message),
+      quickReply: message.quickReply as
+        | { items: Array<{ action: { type: string; label: string; uri?: string } }> }
+        | undefined,
     };
+  };
   const rpcCalls = (client: FakePostgrest, fn: string) =>
     client.calls.filter((c): c is Extract<typeof c, { op: "rpc" }> => c.op === "rpc" && c.fn === fn);
   const maintenanceOn = () => ({
@@ -786,7 +809,7 @@ describe("handleLineWebhook - budget commands", () => {
     expect(calls).toHaveLength(2);
     expect(calls[1].args).toEqual(calls[0].args);
     expect(line.calls.reply).toHaveLength(2);
-    expect(messageOf(line).text).toBe((line.calls.reply[0].messages[0] as { text: string }).text);
+    expect(line.calls.reply[1].messages).toEqual(line.calls.reply[0].messages);
   });
 
   test("a missing ledger answers noLedger", async () => {
@@ -985,5 +1008,409 @@ describe("handleLineWebhook - a card LINE refuses falls back to text", () => {
     expect(second.messages.map((message) => message.type)).toEqual(["text", "template"]);
     expect(second.messages[1]).toBe(first.messages[1]);
     expect(plainTextOf(second.messages[0])).toBe(HELP_TEXT);
+  });
+});
+
+describe("handleLineWebhook - record, month and budget cards", () => {
+  // 2026-09 in Taiwan time, so the month passed to the RPCs is 2026-09-01.
+  const cardDeps = (client: FakePostgrest, line: LineClient): LineWebhookDeps => ({
+    ...deps(client, line),
+    now: () => 1790000000000,
+  });
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const lastMessage = (line: ReturnType<typeof fakeLineClient>) => line.calls.reply.at(-1)!.messages[0];
+  const labelsOf = (message: LineMessage) => (message.quickReply?.items ?? []).map((item) => item.action.label);
+  const cardTexts = (message: LineMessage): string[] => {
+    const found: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) node.forEach(walk);
+      else if (typeof node === "object" && node !== null) {
+        const record = node as Record<string, unknown>;
+        if (record.type === "text") found.push(record.text as string);
+        Object.values(record).forEach(walk);
+      }
+    };
+    if (message.type === "flex") walk(message.contents);
+    return found;
+  };
+
+  /** A record result with a budget, so the month figures are not just this entry's amount. */
+  const recordWithBudget = (month: { expense_minor: number; income_minor: number }) => (args: Record<string, unknown>) => ({
+    ok: true,
+    replay: false,
+    expense: {
+      id: "exp_1",
+      title: args.p_title,
+      kind: args.p_kind,
+      category: args.p_category,
+      amount_minor: args.p_amount_minor,
+      currency: "TWD",
+      expense_date: args.p_expense_date,
+    },
+    ledger_id: "ledger_1",
+    currency: "TWD",
+    budget_minor: 1_500_000,
+    month,
+  });
+
+  describe("record", () => {
+    // [MV]: change a card's altText, or drop the record quick reply, and this goes red.
+    test("an expense is a card whose altText is today's text, with exactly 復原 / 本月 / 開啟帳本 under it", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      expect(line.calls.reply).toHaveLength(1);
+      expect(line.calls.reply[0].messages).toHaveLength(1);
+      const message = lastMessage(line);
+      expect(message.type).toBe("flex");
+      expect(plainTextOf(message)).toBe("已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940");
+      expect(labelsOf(message)).toEqual(["復原", "本月", "開啟帳本"]);
+      // The date on the card is the date the entry was recorded under.
+      expect(cardTexts(message)).toContain("9月21日");
+      expect(client.rpcCall("line_record_entry")?.args.p_expense_date).toBe("2026-09-21");
+    });
+
+    test("an income is a card too, in the dictionary's words for income", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_record_entry: recordWithBudget({ expense_minor: 0, income_minor: 5_200_000 }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "+52000 薪水" })]);
+
+      const message = lastMessage(line);
+      expect(message.type).toBe("flex");
+      expect(plainTextOf(message)).toBe("已記下收入：薪水 $52,000（薪資）\n本月收入 $52,000");
+      expect(cardTexts(message)).toContain("+$52,000");
+      expect(labelsOf(message)).toEqual(["復原", "本月", "開啟帳本"]);
+    });
+
+    test("an English-locale user's category reads in English on the card and in the altText", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => ({ ...LINKED_CONTEXT, locale: "en" }),
+        line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "breakfast 60" })]);
+
+      const message = lastMessage(line);
+      expect(plainTextOf(message)).toBe("Recorded expense: breakfast $60 (Food)\nSpent this month: $6,060, $8,940 left in budget");
+      expect(cardTexts(message)).toContain("Food");
+      expect(cardTexts(message)).not.toContain("餐飲");
+    });
+
+    test("an admin-renamed catalog label wins in zh, and a category colour LINE would reject is tamed", async () => {
+      const categories = DEFAULT_CATALOG.categories.map((category) =>
+        category.key === "food" ? { ...category, label: "吃吃喝喝", color: "red" } : category,
+      );
+      const { client } = createLineFakeClient({ line_context: () => ({ ...LINKED_CONTEXT, categories }) });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      // The afterEach validator would fail the test if "red" reached the card.
+      const message = lastMessage(line);
+      expect(plainTextOf(message)).toContain("（吃吃喝喝）");
+      expect(cardTexts(message)).toContain("吃吃喝喝");
+    });
+
+    // [MV]: remove the cardOrFallback try/catch and the saved entry is answered with genericError.
+    test("a card that cannot be built still answers the saved entry with its plain text and quick replies", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      cardFaults.recordCard = true;
+      try {
+        const { client } = createLineFakeClient({
+          line_context: () => LINKED_CONTEXT,
+          line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
+        });
+        const line = fakeLineClient();
+
+        const result = await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+        expect(result.status).toBe(200);
+        expect(client.rpcCall("line_record_entry")).toBeDefined();
+        expect(line.calls.reply).toHaveLength(1);
+        const message = lastMessage(line);
+        expect(message).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
+        expect(labelsOf(message)).toEqual(["復原", "本月", "開啟帳本"]);
+        expect(plainTextOf(message)).not.toBe(ZH_HANT.genericError);
+        expect(errorSpy.mock.calls.map((call) => call.join(" "))).toEqual(["[line] card build failed (record): recordCard exploded"]);
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("本月", () => {
+    const FIXTURE_CATEGORIES = [
+      { category: "shopping", expense_minor: 50000 },
+      { category: "food", expense_minor: 30000 },
+      { category: "transport", expense_minor: 30000 },
+      { category: "health", expense_minor: 5000 },
+      { category: "general", expense_minor: 4500 },
+    ];
+    const summary = (extra: Record<string, unknown>, month = { expense_minor: 126_500, income_minor: 0 }) => () => ({
+      ok: true,
+      ledger_id: "ledger_1",
+      currency: "TWD",
+      budget_minor: 1_500_000,
+      month,
+      ...extra,
+    });
+    const label = (key: string, locale = "zh-Hant") =>
+      locale === "en"
+        ? (EN_APP.categories as Record<string, string>)[key]
+        : DEFAULT_CATALOG.categories.find((category) => category.key === key)!.label;
+
+    test("a card with the month's figures, its categories largest first, and the rest folded into 其餘分類", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_month_summary: summary({ categories: FIXTURE_CATEGORIES }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "本月" })]);
+
+      const message = lastMessage(line);
+      expect(message.type).toBe("flex");
+      expect(plainTextOf(message)).toBe("本月（2026 年 9 月）\n支出 $1,265\n收入 $0\n結餘 $-1,265\n預算剩餘 $13,735");
+      const texts = cardTexts(message);
+      const rows = ["shopping", "food", "transport", "health", "general"].map((key) => label(key));
+      const positions = rows.map((row) => texts.indexOf(row));
+      expect(positions.every((position) => position > 0)).toBe(true);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+      expect(texts).toContain("其餘分類");
+      expect(texts[texts.indexOf("其餘分類") + 1]).toBe("$70");
+      expect(labelsOf(message)).toEqual(["開啟帳本"]);
+      // The footer button opens the same ledger the quick reply does.
+      expect(uriActionsOf(message).map((action) => action.uri)).toEqual([
+        "https://equo-mu.vercel.app/group/ledger_1?openExternalBrowser=1",
+      ]);
+    });
+
+    // [MV]: pass no context into handleMonth and the categories are labelled with the zh catalog for an English user.
+    test("an English-locale user sees the categories in English", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => ({ ...LINKED_CONTEXT, locale: "en" }),
+        line_month_summary: summary({ categories: FIXTURE_CATEGORIES }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "month" })]);
+
+      const texts = cardTexts(lastMessage(line));
+      expect(texts).toContain("Food");
+      expect(texts).toContain("Shopping");
+      expect(texts).toContain("Other categories");
+      expect(texts).not.toContain("餐飲");
+    });
+
+    test("a database that returns no breakdown gets a card with no by-category section, and no claim of no spending", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_month_summary: summary({}, { expense_minor: 0, income_minor: 0 }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "本月" })]);
+
+      const message = lastMessage(line);
+      expect(message.type).toBe("flex");
+      expect(cardTexts(message)).not.toContain(ZH_HANT.cardByCategory);
+      expect(cardTexts(message)).not.toContain(ZH_HANT.cardNoSpending);
+    });
+
+    test("an empty breakdown for an empty month says so", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_month_summary: summary({ categories: [] }, { expense_minor: 0, income_minor: 0 }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "本月" })]);
+
+      expect(cardTexts(lastMessage(line))).toContain(ZH_HANT.cardNoSpending);
+    });
+
+    test("a breakdown made of junk is skipped entry by entry and never fails the reply", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_month_summary: summary({
+          categories: [null, "food", { category: 7, expense_minor: 5 }, { category: "food", expense_minor: "5" }, { category: "food", expense_minor: 30000 }],
+        }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "本月" })]);
+
+      const message = lastMessage(line);
+      expect(message.type).toBe("flex");
+      expect(cardTexts(message)).toContain(label("food"));
+    });
+
+    test("a breakdown that is not a list at all is treated as absent", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_month_summary: summary({ categories: { food: 1 } }),
+      });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "本月" })]);
+
+      expect(lastMessage(line).type).toBe("flex");
+      expect(cardTexts(lastMessage(line))).not.toContain(ZH_HANT.cardByCategory);
+    });
+  });
+
+  describe("預算", () => {
+    test("setting a budget is a card; the altText is today's text and the quick replies are 本月 / 開啟帳本", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "預算 15000" })]);
+
+      const message = lastMessage(line);
+      expect(message.type).toBe("flex");
+      expect(plainTextOf(message)).toBe("每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000");
+      expect(labelsOf(message)).toEqual(["本月", "開啟帳本"]);
+      expect(cardTexts(message)).toContain(ZH_HANT.cardBudgetSetTitle);
+    });
+
+    test("viewing a budget is a card; with none it is the plain how-to text", async () => {
+      let budget: number | null = 1_500_000;
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_month_summary: () => ({
+          ok: true,
+          ledger_id: "ledger_1",
+          currency: "TWD",
+          budget_minor: budget,
+          month: { expense_minor: 600_000, income_minor: 0 },
+        }),
+      });
+      const line = fakeLineClient();
+      const d = cardDeps(client, line.client);
+
+      await send(d, [messageEvent({ text: "預算" })]);
+      expect(lastMessage(line).type).toBe("flex");
+      expect(cardTexts(lastMessage(line))).toContain(ZH_HANT.cardBudgetShowTitle);
+
+      budget = null;
+      await send(d, [messageEvent({ text: "預算" })]);
+      expect(lastMessage(line)).toMatchObject({ type: "text", text: ZH_HANT.budgetNone });
+    });
+
+    test("「取消預算」 stays a plain text", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "取消預算" })]);
+
+      expect(lastMessage(line)).toMatchObject({ type: "text", text: ZH_HANT.budgetCleared });
+    });
+  });
+
+  // [MV]: put a 復原 message button in any card and the validator's uri-only rule and this test both go red.
+  test("no card carries an action that writes: every action inside a flex message opens a URL, and 復原 appears only as a quick reply", async () => {
+    const { client } = createLineFakeClient({
+      line_context: () => LINKED_CONTEXT,
+      line_month_summary: () => ({
+        ok: true,
+        ledger_id: "ledger_1",
+        currency: "TWD",
+        budget_minor: 1_500_000,
+        month: { expense_minor: 126_500, income_minor: 5_200_000 },
+        categories: [{ category: "food", expense_minor: 30000 }],
+      }),
+    });
+    const line = fakeLineClient();
+    const d = cardDeps(client, line.client);
+
+    for (const [index, text] of ["早餐 60", "+52000 薪水", "本月", "預算", "預算 15000", "說明"].entries()) {
+      await send(d, [messageEvent({ text, webhookEventId: `01J000000000000000000000${index}` })]);
+    }
+
+    const cards = line.calls.reply.flatMap((call) => call.messages).filter((message) => message.type === "flex");
+    expect(cards).toHaveLength(6);
+    for (const card of cards) {
+      expect(JSON.stringify(actionsOf(card))).not.toContain("復原");
+      for (const action of actionsOf(card)) expect(action.type).toBe("uri");
+      // The help card teaches the word 復原 as text; no other card has any reason to say it.
+      if (!cardTexts(card).includes(ZH_HANT.helpCardTitle)) {
+        expect(JSON.stringify((card as { contents: unknown }).contents)).not.toContain("復原");
+      }
+    }
+    // ... and the one place it does appear is under the record cards.
+    expect(cards.filter((card) => labelsOf(card).includes("復原"))).toHaveLength(2);
+  });
+
+  describe("when LINE refuses the card", () => {
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+    const logged = () => [...errorSpy.mock.calls, ...warnSpy.mock.calls].map((call) => call.join(" ")).join("\n");
+
+    // [MV]: drop the quick reply from the fallback and the buttons under the plain reply disappear.
+    test("the entry is already saved; the resend is today's text with the very same quick replies, and the log has no title", async () => {
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
+      });
+      const line = fakeLineClient({ failStatuses: [400] });
+
+      const result = await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60", replyToken: "rt-secret" })]);
+
+      expect(result.status).toBe(200);
+      expect(client.calls.filter((call) => call.op === "rpc" && call.fn === "line_record_entry")).toHaveLength(1);
+      expect(line.calls.reply).toHaveLength(2);
+      const [first, second] = line.calls.reply;
+      expect(first.messages[0].type).toBe("flex");
+      expect(second.replyToken).toBe("rt-secret");
+      expect(second.messages).toEqual([
+        {
+          type: "text",
+          text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940",
+          quickReply: first.messages[0].quickReply,
+        },
+      ]);
+      expect(labelsOf(second.messages[0])).toEqual(["復原", "本月", "開啟帳本"]);
+
+      expect(logged()).toContain("[line] flex reply rejected (status 400; cards: record), resending as text");
+      expect(logged()).toContain("[line] text fallback delivered (cards: record)");
+      expect(logged()).not.toContain("早餐");
+      expect(logged()).not.toContain("rt-secret");
+      expect(logged()).not.toContain(LINE_USER_ID);
+    });
+
+    test("the month card falls back to the month text, and the budget card to the budget text", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient({ failStatuses: [400, null, 400] });
+
+      await send(cardDeps(client, line.client), [messageEvent({ text: "本月" })]);
+      await send(cardDeps(client, line.client), [messageEvent({ text: "預算 15000", webhookEventId: "01J0000000000000000000000Q" })]);
+
+      // reply 1: month card refused; 2: month text; 3: budget card refused; 4: budget text.
+      expect(line.calls.reply.map((call) => call.messages[0].type)).toEqual(["flex", "text", "flex", "text"]);
+      expect(labelsOf(line.calls.reply[1].messages[0])).toEqual(["開啟帳本"]);
+      expect(plainTextOf(line.calls.reply[3].messages[0])).toBe("每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000");
+      expect(labelsOf(line.calls.reply[3].messages[0])).toEqual(["本月", "開啟帳本"]);
+    });
   });
 });

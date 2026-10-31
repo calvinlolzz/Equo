@@ -1,14 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { DEFAULT_CATALOG } from "../../app/catalog.js";
 import { fill } from "../push/pushText.js";
+import { categoryDisplay } from "./lineCardTheme.js";
 import { type LineFlexMessage, type LineMessage, type LineQuickReply, bubble, flexMessage, text, vbox } from "./lineFlex.js";
 import { lineMessageProblems } from "./lineFlexValidator.js";
 import {
   type LineCard,
   type LineOutgoing,
+  budgetClearedReply,
+  budgetReply,
   cardOrFallback,
   fallbackMessages,
   helpReply,
   isLineCard,
+  monthReply,
+  recordedReply,
   textMessage,
   wireMessages,
 } from "./lineMessages.js";
@@ -16,7 +22,7 @@ import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js"
 
 // lineCards.ts is mocked only to be able to make a card builder throw on cue;
 // everything else about it is the real module.
-const faults = vi.hoisted(() => ({ helpCard: false }));
+const faults = vi.hoisted(() => ({ helpCard: false, recordCard: false, monthCard: false, budgetCard: false }));
 vi.mock("./lineCards.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lineCards.js")>();
   return {
@@ -24,6 +30,18 @@ vi.mock("./lineCards.js", async (importOriginal) => {
     helpCard: (...args: Parameters<typeof actual.helpCard>) => {
       if (faults.helpCard) throw new Error("helpCard exploded");
       return actual.helpCard(...args);
+    },
+    recordCard: (...args: Parameters<typeof actual.recordCard>) => {
+      if (faults.recordCard) throw new Error("recordCard exploded");
+      return actual.recordCard(...args);
+    },
+    monthCard: (...args: Parameters<typeof actual.monthCard>) => {
+      if (faults.monthCard) throw new Error("monthCard exploded");
+      return actual.monthCard(...args);
+    },
+    budgetCard: (...args: Parameters<typeof actual.budgetCard>) => {
+      if (faults.budgetCard) throw new Error("budgetCard exploded");
+      return actual.budgetCard(...args);
     },
   };
 });
@@ -43,7 +61,7 @@ function card(message: LineFlexMessage | null, fallback: LineMessage[]): LineCar
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
-  faults.helpCard = false;
+  Object.assign(faults, { helpCard: false, recordCard: false, monthCard: false, budgetCard: false });
   errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 afterEach(() => {
@@ -194,5 +212,282 @@ describe("helpReply", () => {
 
     expect(wireMessages([reply])).toEqual([{ type: "text", text: fill(ZH_HANT.help, { minutes: 30 }) }]);
     expect(errorSpy.mock.calls).toEqual([["[line] card build failed (help): helpCard exploded"]]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Record, month and budget replies
+// ---------------------------------------------------------------------------
+
+const ORIGIN = "https://equo-mu.vercel.app";
+const LEDGER = `${ORIGIN}/group/ledger_1?openExternalBrowser=1`;
+
+function asCard(reply: LineOutgoing): LineCard {
+  expect(isLineCard(reply)).toBe(true);
+  return reply as LineCard;
+}
+
+/** Labels of a quick reply, in order. */
+function labelsOf(quickReply: LineQuickReply | undefined): string[] {
+  return (quickReply?.items ?? []).map((item) => item.action.label);
+}
+
+describe("recordedReply", () => {
+  const recordArgs = (
+    locale: "zh-Hant" | "en",
+    overrides: Partial<Parameters<typeof recordedReply>[1]> = {},
+  ): Parameters<typeof recordedReply>[1] => ({
+    kind: "expense",
+    title: locale === "en" ? "Breakfast" : "早餐",
+    amountMinor: 6000,
+    category: categoryDisplay("food", DEFAULT_CATALOG.categories, locale),
+    currency: "TWD",
+    budgetMinor: 1_500_000,
+    month: { expense_minor: 606_000, income_minor: 0 },
+    dateKey: "2026-09-21",
+    ledgerId: "ledger_1",
+    appOrigin: ORIGIN,
+    ...overrides,
+  });
+
+  // [MV]: change any card altText and the literal below goes red.
+  test.each([
+    [
+      "zh expense with budget left",
+      ZH_HANT,
+      "zh-Hant" as const,
+      {},
+      "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940",
+    ],
+    [
+      "zh expense over budget",
+      ZH_HANT,
+      "zh-Hant" as const,
+      { month: { expense_minor: 2_006_000, income_minor: 0 } },
+      "已記下支出：早餐 $60（餐飲）\n本月支出 $20,060，已超出預算 $5,060",
+    ],
+    [
+      "zh expense without a budget",
+      ZH_HANT,
+      "zh-Hant" as const,
+      { budgetMinor: null, month: { expense_minor: 6000, income_minor: 0 } },
+      "已記下支出：早餐 $60（餐飲）\n本月支出 $60",
+    ],
+    [
+      "zh income",
+      ZH_HANT,
+      "zh-Hant" as const,
+      {
+        kind: "income" as const,
+        title: "薪水",
+        amountMinor: 5_200_000,
+        category: categoryDisplay("salary", DEFAULT_CATALOG.categories, "zh-Hant"),
+        month: { expense_minor: 0, income_minor: 5_200_000 },
+      },
+      "已記下收入：薪水 $52,000（薪資）\n本月收入 $52,000",
+    ],
+    [
+      "en expense with budget left",
+      EN,
+      "en" as const,
+      {},
+      "Recorded expense: Breakfast $60 (Food)\nSpent this month: $6,060, $8,940 left in budget",
+    ],
+    [
+      "en income",
+      EN,
+      "en" as const,
+      {
+        kind: "income" as const,
+        title: "Salary",
+        amountMinor: 5_200_000,
+        category: categoryDisplay("salary", DEFAULT_CATALOG.categories, "en"),
+        month: { expense_minor: 0, income_minor: 5_200_000 },
+      },
+      "Recorded income: Salary $52,000 (Salary)\nIncome this month: $52,000",
+    ],
+  ])("%s: the card's altText and the text fallback are today's plain text", (_label, dict, locale, overrides, expected) => {
+    const reply = asCard(recordedReply(dict, recordArgs(locale, overrides)));
+
+    expect(reply.name).toBe("record");
+    expect(reply.message?.altText).toBe(expected);
+    expect(reply.fallback).toHaveLength(1);
+    expect(reply.fallback[0]).toMatchObject({ type: "text", text: expected });
+    expect(lineMessageProblems(reply.message)).toEqual([]);
+  });
+
+  // [MV]: drop the quick reply from the card, or from the fallback, and this goes red.
+  test("the undo, month and open-ledger quick replies sit under the card and under the fallback alike", () => {
+    const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant")));
+
+    expect(labelsOf(reply.message?.quickReply)).toEqual(["復原", "本月", "開啟帳本"]);
+    expect(reply.message?.quickReply?.items[0].action).toEqual({ type: "message", label: "復原", text: "復原" });
+    expect(reply.message?.quickReply?.items[2].action).toEqual({ type: "uri", label: "開啟帳本", uri: LEDGER });
+    expect((reply.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(reply.message?.quickReply);
+  });
+
+  test("the card shows the date the entry was recorded under, in the dictionary's own format", () => {
+    expect(JSON.stringify(asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant"))).message)).toContain("9月21日");
+    expect(JSON.stringify(asCard(recordedReply(EN, recordArgs("en"))).message)).toContain("9/21");
+  });
+
+  test("a date key that is not a date draws a dash instead of a broken date", () => {
+    const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant", { dateKey: "not a date" })));
+    expect(lineMessageProblems(reply.message)).toEqual([]);
+    expect(JSON.stringify(reply.message)).not.toContain("NaN");
+  });
+
+  // [MV]: remove the try/catch in cardOrFallback and a throwing builder takes the reply down with it.
+  test("a card that cannot be built is still a reply: today's text, with the same quick replies", () => {
+    faults.recordCard = true;
+
+    const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant")));
+    const [wire] = wireMessages([reply]);
+
+    expect(reply.message).toBeNull();
+    expect(wire).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "開啟帳本"]);
+    expect(errorSpy.mock.calls).toEqual([["[line] card build failed (record): recordCard exploded"]]);
+  });
+});
+
+describe("monthReply", () => {
+  const monthArgs = (overrides: Partial<Parameters<typeof monthReply>[1]> = {}): Parameters<typeof monthReply>[1] => ({
+    year: 2026,
+    month: 9,
+    currency: "TWD",
+    budgetMinor: 1_500_000,
+    month_totals: { expense_minor: 606_000, income_minor: 5_200_000 },
+    ledgerId: "ledger_1",
+    appOrigin: ORIGIN,
+    ...overrides,
+  });
+
+  test.each([
+    [
+      "zh with a budget",
+      ZH_HANT,
+      {},
+      "本月（2026 年 9 月）\n支出 $6,060\n收入 $52,000\n結餘 $45,940\n預算剩餘 $8,940",
+    ],
+    [
+      "zh over budget",
+      ZH_HANT,
+      { budgetMinor: 500_000 },
+      "本月（2026 年 9 月）\n支出 $6,060\n收入 $52,000\n結餘 $45,940\n超出預算 $1,060",
+    ],
+    [
+      "zh without a budget",
+      ZH_HANT,
+      { budgetMinor: null },
+      "本月（2026 年 9 月）\n支出 $6,060\n收入 $52,000\n結餘 $45,940",
+    ],
+    [
+      "zh empty month",
+      ZH_HANT,
+      { budgetMinor: null, month_totals: { expense_minor: 0, income_minor: 0 } },
+      "本月（2026 年 9 月）\n支出 $0\n收入 $0\n結餘 $0",
+    ],
+    [
+      "en with a budget",
+      EN,
+      {},
+      "This month (2026-09)\nSpent $6,060\nIncome $52,000\nNet $45,940\nBudget left $8,940",
+    ],
+  ])("%s: the card's altText and the text fallback are today's plain text", (_label, dict, overrides, expected) => {
+    const reply = asCard(monthReply(dict, monthArgs(overrides)));
+
+    expect(reply.name).toBe("month");
+    expect(reply.message?.altText).toBe(expected);
+    expect(reply.fallback).toEqual([{ type: "text", text: expected, quickReply: reply.message?.quickReply }]);
+    expect(lineMessageProblems(reply.message)).toEqual([]);
+  });
+
+  test("the only quick reply is 開啟帳本, under the card and under the fallback", () => {
+    const reply = asCard(monthReply(ZH_HANT, monthArgs()));
+    expect(reply.message?.quickReply?.items).toEqual([
+      { type: "action", action: { type: "uri", label: "開啟帳本", uri: LEDGER } },
+    ]);
+    expect((reply.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(reply.message?.quickReply);
+  });
+
+  test("passes the breakdown through; without one the card has no by-category section", () => {
+    const food = { category: categoryDisplay("food", DEFAULT_CATALOG.categories, "zh-Hant"), amountMinor: 300_000 };
+
+    const withRows = JSON.stringify(asCard(monthReply(ZH_HANT, monthArgs({ categories: [food] }))).message);
+    const without = JSON.stringify(asCard(monthReply(ZH_HANT, monthArgs())).message);
+
+    expect(withRows).toContain(food.category.label);
+    expect(withRows).toContain(ZH_HANT.cardByCategory);
+    expect(without).not.toContain(ZH_HANT.cardByCategory);
+    expect(without).not.toContain(ZH_HANT.cardNoSpending);
+  });
+
+  test("a card that cannot be built is still a reply: today's text with 開啟帳本", () => {
+    faults.monthCard = true;
+
+    const reply = asCard(monthReply(ZH_HANT, monthArgs()));
+    const [wire] = wireMessages([reply]);
+
+    expect(reply.message).toBeNull();
+    expect(wire).toMatchObject({ type: "text" });
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["開啟帳本"]);
+    expect(errorSpy.mock.calls).toEqual([["[line] card build failed (month): monthCard exploded"]]);
+  });
+});
+
+describe("budgetReply", () => {
+  const budgetArgs = (overrides: Partial<Parameters<typeof budgetReply>[1]> = {}): Parameters<typeof budgetReply>[1] => ({
+    mode: "set",
+    currency: "TWD",
+    budgetMinor: 1_500_000,
+    spentMinor: 600_000,
+    ledgerId: "ledger_1",
+    appOrigin: ORIGIN,
+    ...overrides,
+  });
+
+  test.each([
+    ["zh set", ZH_HANT, {}, "每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000"],
+    ["zh show", ZH_HANT, { mode: "show" as const }, "每月預算 $15,000\n本月已花 $6,000，還剩 $9,000"],
+    ["zh over", ZH_HANT, { spentMinor: 2_000_000 }, "每月預算已設為 $15,000。\n本月已花 $20,000，已超出 $5,000"],
+    ["en set", EN, {}, "Monthly budget set to $15,000.\nSpent this month: $6,000, $9,000 left"],
+    ["en show", EN, { mode: "show" as const }, "Monthly budget: $15,000\nSpent this month: $6,000, $9,000 left"],
+  ])("%s: the card's altText and the text fallback are today's plain text", (_label, dict, overrides, expected) => {
+    const reply = asCard(budgetReply(dict, budgetArgs(overrides)));
+
+    expect(reply.name).toBe("budget");
+    expect(reply.message?.altText).toBe(expected);
+    expect(reply.fallback).toEqual([{ type: "text", text: expected, quickReply: reply.message?.quickReply }]);
+    expect(lineMessageProblems(reply.message)).toEqual([]);
+  });
+
+  test("quick replies are 本月 and 開啟帳本 - no 復原", () => {
+    const reply = asCard(budgetReply(ZH_HANT, budgetArgs()));
+    expect(labelsOf(reply.message?.quickReply)).toEqual(["本月", "開啟帳本"]);
+  });
+
+  // [MV]: a budget of 0 or none has nothing to draw; it stays the "how to set one" text.
+  test.each([null, 0])("a budget of %s is the plain how-to-set-one text, not a card", (budgetMinor) => {
+    const reply = budgetReply(ZH_HANT, budgetArgs({ budgetMinor }));
+
+    expect(isLineCard(reply)).toBe(false);
+    expect(reply).toMatchObject({ type: "text", text: ZH_HANT.budgetNone });
+    expect(labelsOf((reply as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "開啟帳本"]);
+  });
+
+  test("a card that cannot be built is still a reply: today's text with the same quick replies", () => {
+    faults.budgetCard = true;
+
+    const [wire] = wireMessages([budgetReply(ZH_HANT, budgetArgs())]);
+
+    expect(wire).toMatchObject({ type: "text", text: "每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000" });
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "開啟帳本"]);
+  });
+
+  test("「取消預算」 stays a plain text message", () => {
+    const reply = budgetClearedReply(ZH_HANT, { ledgerId: "ledger_1", appOrigin: ORIGIN });
+    expect(isLineCard(reply)).toBe(false);
+    expect(reply).toMatchObject({ type: "text", text: ZH_HANT.budgetCleared });
   });
 });
