@@ -49,6 +49,10 @@ export type LineDictionary = {
   monthButtonLabel: string;
   monthText: string;
   openLedgerLabel: string;
+  recordsLabel: string;
+  analysisLabel: string;
+  helpLabel: string;
+  helpText: string;
   budgetSet: string;
   budgetShow: string;
   budgetRemainingLeft: string;
@@ -144,6 +148,10 @@ const ZH_HANT: LineDictionary = {
   monthButtonLabel: "本月",
   monthText: "本月",
   openLedgerLabel: "開啟帳本",
+  recordsLabel: "明細",
+  analysisLabel: "分析",
+  helpLabel: "說明",
+  helpText: "說明",
   budgetSet: "每月預算已設為 {budget}。\n本月已花 {spent}，{remaining}",
   budgetShow: "每月預算 {budget}\n本月已花 {spent}，{remaining}",
   budgetRemainingLeft: "還剩 {left}",
@@ -237,6 +245,10 @@ const EN: LineDictionary = {
   monthButtonLabel: "This month",
   monthText: "month",
   openLedgerLabel: "Open ledger",
+  recordsLabel: "Records",
+  analysisLabel: "Insights",
+  helpLabel: "Help",
+  helpText: "help",
   budgetSet: "Monthly budget set to {budget}.\nSpent this month: {spent}, {remaining}",
   budgetShow: "Monthly budget: {budget}\nSpent this month: {spent}, {remaining}",
   budgetRemainingLeft: "{left} left",

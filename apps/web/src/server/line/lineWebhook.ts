@@ -8,6 +8,7 @@ import type { MonthCategory } from "./lineCards.js";
 import { lineUserTag, redactForLog, sha256Hex, verifyLineSignature } from "./lineCrypto.js";
 import { type LineCommandErrorReason, parseLineCommand } from "./lineCommand.js";
 import { lineDateKey, lineMonthStart } from "./lineDates.js";
+import { type LineLinks, lineLinks } from "./lineLinks.js";
 import {
   type LineOutgoing,
   budgetClearedReply,
@@ -21,6 +22,7 @@ import {
   maskEmail,
   monthReply,
   recordedReply,
+  standardQuickReply,
   textMessage,
   wireMessages,
 } from "./lineMessages.js";
@@ -159,6 +161,21 @@ async function safeReply(deps: LineWebhookDeps, replyToken: string | undefined, 
   }
 }
 
+/** The links for a ledger, or null when the user has none yet. */
+function linksFor(deps: LineWebhookDeps, ledgerId: string | null | undefined): LineLinks | null {
+  return ledgerId ? lineLinks({ appOrigin: deps.appOrigin, ledgerId }) : null;
+}
+
+/** The quick reply most replies to a linked user carry (本月 · 明細 · 分析 · 說明); see standardQuickReply. */
+function standardFor(
+  deps: LineWebhookDeps,
+  dict: LineDictionary,
+  context: LineContext,
+  omit?: ReadonlyArray<"month" | "help">,
+) {
+  return standardQuickReply(dict, linksFor(deps, context.ledger?.id), omit);
+}
+
 /** Issues a fresh link token and registers its hash, or null on any failure (LINE API error, RPC failure). */
 async function issueLink(deps: LineWebhookDeps, lineUserId: string): Promise<string | null> {
   try {
@@ -224,7 +241,7 @@ async function onFollow(deps: LineWebhookDeps, event: LineEvent): Promise<void> 
   if (context && !context.disabled) {
     // Already linked - most likely a re-follow after unblocking, whose link
     // is kept (see the plan's §2 edge cases). No link button needed.
-    await safeReply(deps, event.replyToken, [textMessage(dict.welcomeBack)]);
+    await safeReply(deps, event.replyToken, [textMessage(dict.welcomeBack, standardFor(deps, dict, context))]);
     return;
   }
 
@@ -277,6 +294,7 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
 
   if (!context) {
     const command = parseLineCommand(text, { currency: "TWD", categories: [] });
+    // No quick reply on the help card here: the link card follows it, and a quick reply belongs on the last message.
     const before = command.type === "help" ? [helpReply(dict, LINE_UNDO_WINDOW_MINUTES)] : [];
     await replyWithLink(deps, event, dict, { before });
     return;
@@ -292,7 +310,9 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
 
   switch (command.type) {
     case "help":
-      await safeReply(deps, event.replyToken, [helpReply(dict, LINE_UNDO_WINDOW_MINUTES)]);
+      await safeReply(deps, event.replyToken, [
+        helpReply(dict, LINE_UNDO_WINDOW_MINUTES, standardFor(deps, dict, context, ["help"])),
+      ]);
       return;
     case "month":
       await handleMonth(deps, event, dict, lineUserId, context);
@@ -307,7 +327,7 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
       await handleBudgetWrite(deps, event, dict, lineUserId, null);
       return;
     case "undo":
-      await handleUndo(deps, event, dict, lineUserId);
+      await handleUndo(deps, event, dict, lineUserId, context);
       return;
     case "unlink":
       await handleUnlink(deps, event, dict, lineUserId);
@@ -318,7 +338,7 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
       // (switching accounts goes through 解除綁定 first) instead of minting
       // another link token.
       await safeReply(deps, event.replyToken, [
-        textMessage(fill(dict.alreadyLinked, { email: maskEmail(context.email) })),
+        textMessage(fill(dict.alreadyLinked, { email: maskEmail(context.email) }), standardFor(deps, dict, context)),
       ]);
       return;
     case "record":
@@ -330,7 +350,9 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
       });
       return;
     case "error":
-      await safeReply(deps, event.replyToken, [textMessage(errorText(dict, command.reason, currency))]);
+      await safeReply(deps, event.replyToken, [
+        textMessage(errorText(dict, command.reason, currency), standardFor(deps, dict, context)),
+      ]);
       return;
   }
 }
@@ -416,8 +438,7 @@ async function handleRecord(
     budgetMinor: result.budget_minor,
     month: result.month,
     dateKey,
-    ledgerId: result.ledger_id,
-    appOrigin: deps.appOrigin,
+    links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
   });
   await safeReply(deps, event.replyToken, [message]);
 }
@@ -466,8 +487,7 @@ async function handleMonth(
     budgetMinor: result.budget_minor,
     month_totals: result.month,
     categories: monthCategoriesFor(result.categories, context),
-    ledgerId: result.ledger_id,
-    appOrigin: deps.appOrigin,
+    links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
   });
   await safeReply(deps, event.replyToken, [message]);
 }
@@ -490,8 +510,7 @@ async function handleBudgetShow(deps: LineWebhookDeps, event: LineEvent, dict: L
     currency: result.currency,
     budgetMinor: result.budget_minor,
     spentMinor: result.month.expense_minor,
-    ledgerId: result.ledger_id,
-    appOrigin: deps.appOrigin,
+    links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
   });
   await safeReply(deps, event.replyToken, [message]);
 }
@@ -528,21 +547,27 @@ async function handleBudgetWrite(
     return;
   }
 
+  const links = lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id });
   const message =
     budgetMinor === null
-      ? budgetClearedReply(dict, { ledgerId: result.ledger_id, appOrigin: deps.appOrigin })
+      ? budgetClearedReply(dict, { links })
       : budgetReply(dict, {
           mode: "set",
           currency: result.currency,
           budgetMinor: result.budget_minor,
           spentMinor: result.month.expense_minor,
-          ledgerId: result.ledger_id,
-          appOrigin: deps.appOrigin,
+          links,
         });
   await safeReply(deps, event.replyToken, [message]);
 }
 
-async function handleUndo(deps: LineWebhookDeps, event: LineEvent, dict: LineDictionary, lineUserId: string): Promise<void> {
+async function handleUndo(
+  deps: LineWebhookDeps,
+  event: LineEvent,
+  dict: LineDictionary,
+  lineUserId: string,
+  context: LineContext,
+): Promise<void> {
   if (await isMaintenanceOn(deps)) {
     await safeReply(deps, event.replyToken, [textMessage(dict.maintenance)]);
     return;
@@ -562,7 +587,9 @@ async function handleUndo(deps: LineWebhookDeps, event: LineEvent, dict: LineDic
         : result.reason === "already_gone"
           ? dict.undoAlreadyGone
           : dict.genericError;
-    await safeReply(deps, event.replyToken, [textMessage(text)]);
+    // genericError is a failure, not an answer: no shortcuts under it.
+    const quickReply = result.reason === "nothing_to_undo" || result.reason === "already_gone" ? standardFor(deps, dict, context) : undefined;
+    await safeReply(deps, event.replyToken, [textMessage(text, quickReply)]);
     return;
   }
 
@@ -571,7 +598,7 @@ async function handleUndo(deps: LineWebhookDeps, event: LineEvent, dict: LineDic
     title: expense.title ?? "",
     amount: formatAmount(expense.amount_minor ?? 0, expense.currency ?? "TWD"),
   });
-  await safeReply(deps, event.replyToken, [textMessage(text)]);
+  await safeReply(deps, event.replyToken, [textMessage(text, standardFor(deps, dict, context))]);
 }
 
 /**

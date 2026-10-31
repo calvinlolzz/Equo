@@ -699,8 +699,9 @@ describe("handleLineWebhook - budget commands", () => {
     expect(message.text).toContain("$15,000");
     expect(message.text).toContain("$6,000");
     expect(message.text).toContain("還剩 $9,000");
-    expect(message.quickReply?.items.map((i) => i.action.label)).toEqual(["本月", "開啟帳本"]);
-    expect(message.quickReply?.items[1].action.uri).toContain("/group/ledger_1");
+    expect(message.quickReply?.items.map((i) => i.action.label)).toEqual(["本月", "明細", "分析", "說明"]);
+    expect(message.quickReply?.items[1].action.uri).toBe("https://equo-mu.vercel.app/group/ledger_1?view=records&openExternalBrowser=1");
+    expect(message.quickReply?.items[2].action.uri).toBe("https://equo-mu.vercel.app/group/ledger_1?view=analysis&openExternalBrowser=1");
   });
 
   test("over budget says how far over", async () => {
@@ -868,7 +869,7 @@ describe("handleLineWebhook - help card", () => {
     return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
   };
 
-  test("a linked user's 說明 gets one help card whose altText is the plain help text, with no quick reply", async () => {
+  test("a linked user's 說明 gets one help card whose altText is the plain help text, with the quick reply minus 說明", async () => {
     const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
     const line = fakeLineClient();
 
@@ -879,9 +880,9 @@ describe("handleLineWebhook - help card", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].type).toBe("flex");
     expect(plainTextOf(messages[0])).toBe(fill(ZH_HANT.help, { minutes: 30 }));
-    expect(messages[0].quickReply).toBeUndefined();
+    expect(messages[0].quickReply?.items.map((item) => item.action.label)).toEqual(["本月", "明細", "分析"]);
     // Nothing on the card can be tapped: an example command that sent itself would record real data.
-    expect(JSON.stringify(messages[0])).not.toContain('"action"');
+    expect(JSON.stringify((messages[0] as { contents: unknown }).contents)).not.toContain('"action"');
   });
 
   test("an English-locale user gets the English help card", async () => {
@@ -908,6 +909,8 @@ describe("handleLineWebhook - help card", () => {
     expect(plainTextOf(messages[0])).toBe(fill(ZH_HANT.help, { minutes: 30 }));
     expect(plainTextOf(messages[1])).toBe(ZH_HANT.linkAltText);
     expect(uriActionsOf(messages[1])[0].uri).toContain("openExternalBrowser=1");
+    // The link card follows, so no quick reply on either: it would be removed at once.
+    expect(messages.map((message) => message.quickReply)).toEqual([undefined, undefined]);
   });
 });
 
@@ -942,7 +945,8 @@ describe("handleLineWebhook - a card LINE refuses falls back to text", () => {
     expect(line.calls.reply).toHaveLength(2);
     expect(line.calls.reply[0].messages.map((message) => message.type)).toEqual(["flex"]);
     expect(line.calls.reply[1].replyToken).toBe("rt-help");
-    expect(line.calls.reply[1].messages).toEqual([{ type: "text", text: HELP_TEXT }]);
+    expect(line.calls.reply[1].messages).toEqual([{ type: "text", text: HELP_TEXT, quickReply: line.calls.reply[0].messages[0].quickReply }]);
+    expect(line.calls.reply[1].messages[0].quickReply?.items).toHaveLength(3);
 
     expect(logged(errorSpy)).toEqual(["[line] flex reply rejected (status 400; cards: help), resending as text"]);
     expect(logged(warnSpy)).toEqual(["[line] text fallback delivered (cards: help)"]);
@@ -1080,7 +1084,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
 
   describe("record", () => {
     // [MV]: change a card's altText, or drop the record quick reply, and this goes red.
-    test("an expense is a card whose altText is today's text, with exactly 復原 / 本月 / 開啟帳本 under it", async () => {
+    test("an expense is a card whose altText is today's text, with exactly 復原 / 本月 / 明細 / 分析 under it", async () => {
       const { client } = createLineFakeClient({
         line_context: () => LINKED_CONTEXT,
         line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
@@ -1094,7 +1098,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       const message = lastMessage(line);
       expect(message.type).toBe("flex");
       expect(plainTextOf(message)).toBe("已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940");
-      expect(labelsOf(message)).toEqual(["復原", "本月", "開啟帳本"]);
+      expect(labelsOf(message)).toEqual(["復原", "本月", "明細", "分析"]);
       // The date on the card is the date the entry was recorded under.
       expect(cardTexts(message)).toContain("9月21日");
       expect(client.rpcCall("line_record_entry")?.args.p_expense_date).toBe("2026-09-21");
@@ -1113,7 +1117,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       expect(message.type).toBe("flex");
       expect(plainTextOf(message)).toBe("已記下收入：薪水 $52,000（薪資）\n本月收入 $52,000");
       expect(cardTexts(message)).toContain("+$52,000");
-      expect(labelsOf(message)).toEqual(["復原", "本月", "開啟帳本"]);
+      expect(labelsOf(message)).toEqual(["復原", "本月", "明細", "分析"]);
     });
 
     test("an English-locale user's category reads in English on the card and in the altText", async () => {
@@ -1164,7 +1168,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
         expect(line.calls.reply).toHaveLength(1);
         const message = lastMessage(line);
         expect(message).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
-        expect(labelsOf(message)).toEqual(["復原", "本月", "開啟帳本"]);
+        expect(labelsOf(message)).toEqual(["復原", "本月", "明細", "分析"]);
         expect(plainTextOf(message)).not.toBe(ZH_HANT.genericError);
         expect(errorSpy.mock.calls.map((call) => call.join(" "))).toEqual(["[line] card build failed (record): recordCard exploded"]);
       } finally {
@@ -1213,8 +1217,8 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       expect([...positions].sort((a, b) => a - b)).toEqual(positions);
       expect(texts).toContain("其餘分類");
       expect(texts[texts.indexOf("其餘分類") + 1]).toBe("$70");
-      expect(labelsOf(message)).toEqual(["開啟帳本"]);
-      // The footer button opens the same ledger the quick reply does.
+      expect(labelsOf(message)).toEqual(["明細", "分析", "說明"]);
+      // The footer button still opens the ledger itself.
       expect(uriActionsOf(message).map((action) => action.uri)).toEqual([
         "https://equo-mu.vercel.app/group/ledger_1?openExternalBrowser=1",
       ]);
@@ -1295,7 +1299,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
   });
 
   describe("預算", () => {
-    test("setting a budget is a card; the altText is today's text and the quick replies are 本月 / 開啟帳本", async () => {
+    test("setting a budget is a card; the altText is today's text and the quick replies are the standard four", async () => {
       const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
       const line = fakeLineClient();
 
@@ -1304,7 +1308,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       const message = lastMessage(line);
       expect(message.type).toBe("flex");
       expect(plainTextOf(message)).toBe("每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000");
-      expect(labelsOf(message)).toEqual(["本月", "開啟帳本"]);
+      expect(labelsOf(message)).toEqual(["本月", "明細", "分析", "說明"]);
       expect(cardTexts(message)).toContain(ZH_HANT.cardBudgetSetTitle);
     });
 
@@ -1412,7 +1416,7 @@ describe("handleLineWebhook - record, month and budget cards", () => {
           quickReply: first.messages[0].quickReply,
         },
       ]);
-      expect(labelsOf(second.messages[0])).toEqual(["復原", "本月", "開啟帳本"]);
+      expect(labelsOf(second.messages[0])).toEqual(["復原", "本月", "明細", "分析"]);
 
       expect(logged()).toContain("[line] flex reply rejected (status 400; cards: record), resending as text");
       expect(logged()).toContain("[line] text fallback delivered (cards: record)");
@@ -1430,9 +1434,9 @@ describe("handleLineWebhook - record, month and budget cards", () => {
 
       // reply 1: month card refused; 2: month text; 3: budget card refused; 4: budget text.
       expect(line.calls.reply.map((call) => call.messages[0].type)).toEqual(["flex", "text", "flex", "text"]);
-      expect(labelsOf(line.calls.reply[1].messages[0])).toEqual(["開啟帳本"]);
+      expect(labelsOf(line.calls.reply[1].messages[0])).toEqual(["明細", "分析", "說明"]);
       expect(plainTextOf(line.calls.reply[3].messages[0])).toBe("每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000");
-      expect(labelsOf(line.calls.reply[3].messages[0])).toEqual(["本月", "開啟帳本"]);
+      expect(labelsOf(line.calls.reply[3].messages[0])).toEqual(["本月", "明細", "分析", "說明"]);
     });
 
     // [MV]: drop the `message !== null` filter in safeReply and this reply is sent twice, identical both times.
@@ -1557,7 +1561,9 @@ describe("handleLineWebhook - welcome, link and linked cards", () => {
 
       await send(deps(client, line.client), [followEvent()]);
 
-      expect(lastMessages(line)).toEqual([{ type: "text", text: ZH_HANT.welcomeBack }]);
+      expect(lastMessages(line)).toHaveLength(1);
+      expect(lastMessages(line)[0]).toMatchObject({ type: "text", text: ZH_HANT.welcomeBack });
+      expect(lastMessages(line)[0].quickReply?.items.map((item) => item.action.label)).toEqual(["本月", "明細", "分析", "說明"]);
       expect(line.calls.issueLinkToken).toHaveLength(0);
     });
 
@@ -1712,8 +1718,117 @@ describe("handleLineWebhook - welcome, link and linked cards", () => {
       await send(deps(client, line.client), [accountLinkEvent()]);
 
       expect(line.calls.reply).toHaveLength(2);
-      expect(line.calls.reply[1].messages).toEqual([{ type: "text", text: fill(ZH_HANT.linked, { email: "al***@example.com" }) }]);
+      expect(line.calls.reply[1].messages).toEqual([
+        { type: "text", text: fill(ZH_HANT.linked, { email: "al***@example.com" }), quickReply: line.calls.reply[0].messages[0].quickReply },
+      ]);
+      expect(line.calls.reply[1].messages[0].quickReply?.items.map((item) => item.action.label)).toEqual(["本月", "說明"]);
       expect(JSON.stringify([errorSpy.mock.calls, warnSpy.mock.calls])).not.toContain("alice");
     });
+  });
+});
+
+describe("handleLineWebhook - the quick reply under each reply", () => {
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const dateDeps = (client: FakePostgrest, line: LineClient): LineWebhookDeps => ({ ...deps(client, line), now: () => 1790000000000 });
+  const lastReply = (line: ReturnType<typeof fakeLineClient>) => line.calls.reply.at(-1)!.messages;
+  const labels = (message: LineMessage | undefined) => (message?.quickReply?.items ?? []).map((item) => item.action.label);
+  const RECORDS = "https://equo-mu.vercel.app/group/ledger_1?view=records&openExternalBrowser=1";
+  const ANALYSIS = "https://equo-mu.vercel.app/group/ledger_1?view=analysis&openExternalBrowser=1";
+  const STANDARD = ["本月", "明細", "分析", "說明"];
+
+  async function replyTo(text: string, overrides: Partial<Record<string, (args: Record<string, unknown>) => unknown>> = {}, context: unknown = LINKED_CONTEXT) {
+    resetSiteNoticeCache(); // the maintenance flag is cached for 30 seconds, across the calls of one test
+    const { client } = createLineFakeClient({ line_context: () => context, ...overrides });
+    const line = fakeLineClient();
+    await send(dateDeps(client, line.client), [messageEvent({ text })]);
+    return lastReply(line);
+  }
+
+  // [MV]: the table of the plan's §4.4, one row per reply.
+  test.each([
+    ["a parse error (notUnderstood)", "亂七八糟", ZH_HANT.notUnderstood],
+    ["a missing title", "60", ZH_HANT.missingTitle],
+    ["a budget with nothing set", "預算", ZH_HANT.budgetNone],
+    ["a cleared budget", "取消預算", ZH_HANT.budgetCleared],
+    ["an already-linked reminder", "綁定", undefined],
+  ])("%s carries the standard quick reply", async (_name, text, expectedText) => {
+    const messages = await replyTo(text, {
+      line_month_summary: () => ({ ok: true, ledger_id: "ledger_1", currency: "TWD", budget_minor: null, month: { expense_minor: 0, income_minor: 0 } }),
+    });
+
+    expect(messages).toHaveLength(1);
+    expect(labels(messages[0])).toEqual(STANDARD);
+    if (expectedText !== undefined) expect(plainTextOf(messages[0])).toBe(expectedText);
+    expect(messages[0].quickReply?.items[1].action).toMatchObject({ type: "uri", uri: RECORDS });
+    expect(messages[0].quickReply?.items[2].action).toMatchObject({ type: "uri", uri: ANALYSIS });
+  });
+
+  test("the undo results (undone, nothing to undo, already gone) carry the standard quick reply; a failure does not", async () => {
+    const undone = await replyTo("復原");
+    expect(labels(undone[0])).toEqual(STANDARD);
+
+    const nothing = await replyTo("復原", { line_undo_last: () => ({ ok: false, reason: "nothing_to_undo" }) });
+    expect(plainTextOf(nothing[0])).toContain("沒有可以復原");
+    expect(labels(nothing[0])).toEqual(STANDARD);
+
+    const gone = await replyTo("復原", { line_undo_last: () => ({ ok: false, reason: "already_gone" }) });
+    expect(plainTextOf(gone[0])).toBe(ZH_HANT.undoAlreadyGone);
+    expect(labels(gone[0])).toEqual(STANDARD);
+
+    const failed = await replyTo("復原", { line_undo_last: () => ({ ok: false, reason: "not_linked" }) });
+    expect(plainTextOf(failed[0])).toBe(ZH_HANT.genericError);
+    expect(failed[0].quickReply).toBeUndefined();
+  });
+
+  test("a linked user with no ledger yet gets 本月 and 說明 but no links", async () => {
+    const messages = await replyTo("亂七八糟", {}, { ...LINKED_CONTEXT, ledger: null });
+    expect(labels(messages[0])).toEqual(["本月", "說明"]);
+  });
+
+  test("English labels and texts for an English account", async () => {
+    const messages = await replyTo("asdf qwer", {}, { ...LINKED_CONTEXT, locale: "en" });
+    expect(labels(messages[0])).toEqual(["This month", "Records", "Insights", "Help"]);
+    expect(messages[0].quickReply?.items.map((item) => item.action)).toMatchObject([
+      { type: "message", text: "month" },
+      { type: "uri", uri: RECORDS },
+      { type: "uri", uri: ANALYSIS },
+      { type: "message", text: "help" },
+    ]);
+  });
+
+  test("replies that are not answers carry no quick reply: maintenance, rate limit, disabled account, generic error, unlink", async () => {
+    const maintenance = await replyTo("早餐 60", {
+      site_notice_settings: () => ({
+        banner: { message: "", level: "info", ends_at: null, active: false },
+        maintenance: { enabled: true, message: "" },
+      }),
+    });
+    expect(maintenance[0].quickReply).toBeUndefined();
+
+    const rateLimited = await replyTo("早餐 60", { consume_rate_limit: () => ({ allowed: false, retry_after: 5 }) });
+    expect(rateLimited[0].quickReply).toBeUndefined();
+
+    const disabled = await replyTo("早餐 60", {}, { ...LINKED_CONTEXT, disabled: true });
+    expect(disabled[0].quickReply).toBeUndefined();
+
+    const broken = await replyTo("早餐 60", {
+      line_record_entry: () => ({ ok: false, reason: "failed" }),
+    });
+    expect(plainTextOf(broken[0])).toBe(ZH_HANT.genericError);
+    expect(broken[0].quickReply).toBeUndefined();
+
+    const unlinked = await replyTo("解除綁定");
+    expect(plainTextOf(unlinked[0])).toBe(ZH_HANT.unlinked);
+    expect(unlinked[0].quickReply).toBeUndefined();
+  });
+
+  test("an unlinked user's link card carries none either", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+    await send(deps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+    expect(lastReply(line)[0].quickReply).toBeUndefined();
   });
 });

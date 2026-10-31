@@ -135,9 +135,13 @@ function helpRow(dict: LineDictionary, minutes: number, row: HelpRow): FlexBox {
 /**
  * 「說明」: every command on one card, one row each. A single bubble, not a
  * carousel - a carousel hides rows behind horizontal scrolling - and no
- * buttons or quick replies: there is nothing here to tap.
+ * buttons in it: there is nothing on the card to tap. The quick reply under it
+ * (the other commands) is the caller's, and absent for somebody not yet linked.
  */
-export function helpCard(dict: LineDictionary, args: { minutes: number; altText: string }): LineFlexMessage {
+export function helpCard(
+  dict: LineDictionary,
+  args: { minutes: number; altText: string; quickReply?: LineQuickReply },
+): LineFlexMessage {
   const content: FlexComponent[] = [
     text(dict.helpCardTitle, { size: "lg", weight: "bold", color: CARD.text, wrap: true }),
     text(dict.helpCardLead, { size: "xs", color: CARD.muted, margin: "xs", wrap: true }),
@@ -146,7 +150,7 @@ export function helpCard(dict: LineDictionary, args: { minutes: number; altText:
     text(dict.helpCardNote, { size: "xs", color: CARD.muted, margin: "xl", wrap: true }),
   ];
 
-  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }));
+  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }), args.quickReply);
 }
 
 /** "本月（2026 年 9 月）" - the month heading shared by the plain text and the month card. */
@@ -439,7 +443,7 @@ export function monthCard(
     categories: readonly MonthCategory[] | undefined;
     ledgerUri: string;
     altText: string;
-    quickReply: LineQuickReply;
+    quickReply?: LineQuickReply;
   },
 ): LineFlexMessage {
   const { expense_minor: expense, income_minor: income } = args.totals;
@@ -494,7 +498,7 @@ export function budgetCard(
     budgetMinor: number;
     spentMinor: number;
     altText: string;
-    quickReply: LineQuickReply;
+    quickReply?: LineQuickReply;
   },
 ): LineFlexMessage {
   const budgetText = formatAmount(args.budgetMinor, args.currency);
@@ -563,7 +567,10 @@ export function linkCard(
  * (lineMessages.maskEmail): this card is shown in a chat that may be read over
  * a shoulder, and the full address never needs to appear in it.
  */
-export function linkedCard(dict: LineDictionary, args: { maskedEmail: string; altText: string }): LineFlexMessage {
+export function linkedCard(
+  dict: LineDictionary,
+  args: { maskedEmail: string; altText: string; quickReply?: LineQuickReply },
+): LineFlexMessage {
   const content: FlexComponent[] = [
     hbox(
       [
@@ -582,5 +589,5 @@ export function linkedCard(dict: LineDictionary, args: { maskedEmail: string; al
     text(dict.linkedCardHint, { size: "sm", color: CARD.text, margin: "lg", wrap: true }),
   ];
 
-  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }));
+  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }), args.quickReply);
 }

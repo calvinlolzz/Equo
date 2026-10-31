@@ -21,6 +21,7 @@ import type {
   LineTemplateMessage,
   LineTextMessage,
 } from "./lineFlex.js";
+import type { LineLinks } from "./lineLinks.js";
 import type { LineDictionary } from "./lineText.js";
 import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js";
 
@@ -121,23 +122,39 @@ export function maskEmail(email: string): string {
   return `${local.slice(0, 2)}***@${domain}`;
 }
 
-function ledgerUri(appOrigin: string, ledgerId: string): string {
-  return `${appOrigin}/group/${ledgerId}?openExternalBrowser=1`;
-}
-
-function recordQuickReply(dict: LineDictionary, appOrigin: string, ledgerId: string) {
+/**
+ * The quick reply under a record: 復原 · 本月 · 明細 · 分析. 復原 and 本月 keep
+ * the first two places they always had.
+ */
+export function recordQuickReply(dict: LineDictionary, links: LineLinks): LineQuickReply {
   return quickReply([
     { type: "message", label: dict.undoLabel, text: dict.undoText },
     { type: "message", label: dict.monthButtonLabel, text: dict.monthText },
-    { type: "uri", label: dict.openLedgerLabel, uri: ledgerUri(appOrigin, ledgerId) },
+    { type: "uri", label: dict.recordsLabel, uri: links.records },
+    { type: "uri", label: dict.analysisLabel, uri: links.analysis },
   ]);
 }
 
-function budgetQuickReply(dict: LineDictionary, appOrigin: string, ledgerId: string) {
-  return quickReply([
-    { type: "message", label: dict.monthButtonLabel, text: dict.monthText },
-    { type: "uri", label: dict.openLedgerLabel, uri: ledgerUri(appOrigin, ledgerId) },
-  ]);
+/**
+ * The quick reply most replies to a linked user carry: 本月 · 明細 · 分析 · 說明.
+ * `omit` leaves out the item for the very reply that answers it (the month card
+ * has no 本月, the help card no 說明). With no `links` - a linked user whose
+ * personal ledger does not exist yet - the two links are left out. Undefined
+ * only when nothing is left.
+ */
+export function standardQuickReply(
+  dict: LineDictionary,
+  links: LineLinks | null,
+  omit: ReadonlyArray<"month" | "help"> = [],
+): LineQuickReply | undefined {
+  const actions: LineAction[] = [];
+  if (!omit.includes("month")) actions.push({ type: "message", label: dict.monthButtonLabel, text: dict.monthText });
+  if (links) {
+    actions.push({ type: "uri", label: dict.recordsLabel, uri: links.records });
+    actions.push({ type: "uri", label: dict.analysisLabel, uri: links.analysis });
+  }
+  if (!omit.includes("help")) actions.push({ type: "message", label: dict.helpLabel, text: dict.helpText });
+  return actions.length === 0 ? undefined : quickReply(actions);
 }
 
 /** The suffix appended to "本月支出 {spent}" when the ledger has a budget set. Empty string when it doesn't. */
@@ -194,7 +211,7 @@ function recordedText(
 
 /**
  * The reply for a successful record (expense or income): a card, with the
- * undo/month/open-ledger quick replies under it. `dateKey` is the Taiwan-time
+ * undo/month/records/analysis quick replies under it. `dateKey` is the Taiwan-time
  * date the entry was recorded under (the same value sent as p_expense_date).
  * If LINE refuses the card, the same quick replies go under today's text.
  */
@@ -209,12 +226,11 @@ export function recordedReply(
     budgetMinor: number | null;
     month: LineMonthTotals;
     dateKey: string;
-    ledgerId: string;
-    appOrigin: string;
+    links: LineLinks;
   },
 ): LineOutgoing {
   const altText = recordedText(dict, { ...args, categoryLabel: args.category.label });
-  const qr = recordQuickReply(dict, args.appOrigin, args.ledgerId);
+  const qr = recordQuickReply(dict, args.links);
 
   return cardOrFallback(
     "record",
@@ -249,8 +265,7 @@ export function monthReply(
     budgetMinor: number | null;
     month_totals: LineMonthTotals;
     categories?: readonly MonthCategory[];
-    ledgerId: string;
-    appOrigin: string;
+    links: LineLinks;
   },
 ): LineOutgoing {
   const spent = formatAmount(args.month_totals.expense_minor, args.currency);
@@ -261,8 +276,8 @@ export function monthReply(
     fill(dict.monthSummary, { month: monthLabelText(dict, args.year, args.month), spent, income, net }) +
     budgetLine(dict, args.currency, args.budgetMinor, args.month_totals.expense_minor);
 
-  const link = ledgerUri(args.appOrigin, args.ledgerId);
-  const qr = quickReply([{ type: "uri", label: dict.openLedgerLabel, uri: link }]);
+  const link = args.links.ledger;
+  const qr = standardQuickReply(dict, args.links, ["month"]);
 
   return cardOrFallback(
     "month",
@@ -294,11 +309,10 @@ export function budgetReply(
     currency: string;
     budgetMinor: number | null;
     spentMinor: number;
-    ledgerId: string;
-    appOrigin: string;
+    links: LineLinks;
   },
 ): LineOutgoing {
-  const qr = budgetQuickReply(dict, args.appOrigin, args.ledgerId);
+  const qr = standardQuickReply(dict, args.links);
   const { budgetMinor } = args;
   if (budgetMinor === null || budgetMinor <= 0) return textMessage(dict.budgetNone, qr);
 
@@ -324,8 +338,8 @@ export function budgetReply(
 }
 
 /** The reply to 「取消預算」. */
-export function budgetClearedReply(dict: LineDictionary, args: { ledgerId: string; appOrigin: string }): LineMessage {
-  return textMessage(dict.budgetCleared, budgetQuickReply(dict, args.appOrigin, args.ledgerId));
+export function budgetClearedReply(dict: LineDictionary, args: { links: LineLinks }): LineMessage {
+  return textMessage(dict.budgetCleared, standardQuickReply(dict, args.links));
 }
 
 /** The plain-text help: also the help card's altText and its fallback. */
@@ -333,13 +347,18 @@ function helpText(dict: LineDictionary, undoWindowMinutes: number): string {
   return fill(dict.help, { minutes: undoWindowMinutes });
 }
 
-/** 「說明」: the help card, or the same list as plain text if LINE refuses it. */
-export function helpReply(dict: LineDictionary, undoWindowMinutes: number): LineOutgoing {
+/**
+ * 「說明」: the help card, or the same list as plain text if LINE refuses it.
+ * `quickReply` goes under the card and under the text alike; leave it out when
+ * another message follows (the link card, for somebody not linked yet) - a
+ * quick reply belongs on the last message of a reply.
+ */
+export function helpReply(dict: LineDictionary, undoWindowMinutes: number, quickReply?: LineQuickReply): LineOutgoing {
   const plain = helpText(dict, undoWindowMinutes);
   return cardOrFallback(
     "help",
-    () => helpCard(dict, { minutes: undoWindowMinutes, altText: plain }),
-    [textMessage(plain)],
+    () => helpCard(dict, { minutes: undoWindowMinutes, altText: plain, quickReply }),
+    [textMessage(plain, quickReply)],
   );
 }
 
@@ -376,10 +395,19 @@ export function linkReply(
   );
 }
 
-/** The confirmation after linking: a card with the masked address, or today's one-line text. */
+/**
+ * The confirmation after linking: a card with the masked address, or today's
+ * one-line text. The webhook event that links does not say which ledger the
+ * account has, so the quick reply under it has no links - just 本月 and 說明.
+ */
 export function linkedReply(dict: LineDictionary, args: { maskedEmail: string }): LineOutgoing {
   const altText = fill(dict.linked, { email: args.maskedEmail });
-  return cardOrFallback("linked", () => linkedCard(dict, { maskedEmail: args.maskedEmail, altText }), [textMessage(altText)]);
+  const qr = standardQuickReply(dict, null);
+  return cardOrFallback(
+    "linked",
+    () => linkedCard(dict, { maskedEmail: args.maskedEmail, altText, quickReply: qr }),
+    [textMessage(altText, qr)],
+  );
 }
 
 /** Re-exported for callers that need the raw shape without the totals. */

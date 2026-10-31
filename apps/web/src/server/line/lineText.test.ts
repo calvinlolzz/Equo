@@ -62,7 +62,7 @@ describe("LINE_TEXT dictionaries", () => {
     expect([...EN[key]].length).toBeLessThanOrEqual(MEDIUM_LIMIT);
   });
 
-  test.each(["linkButton", "undoLabel", "monthButtonLabel", "openLedgerLabel"] as const)(
+  test.each(["linkButton", "undoLabel", "monthButtonLabel", "openLedgerLabel", "recordsLabel", "analysisLabel", "helpLabel"] as const)(
     "%s is at most 20 characters in both locales (quick-reply label limit)",
     (key) => {
       expect([...ZH_HANT[key]].length).toBeLessThanOrEqual(SHORT_LIMIT);
@@ -194,6 +194,33 @@ describe("lineText", () => {
   test("returns the matching dictionary for a known locale", () => {
     expect(lineText("en")).toBe(EN);
     expect(lineText("zh-Hant")).toBe(ZH_HANT);
+  });
+});
+
+describe("the quick-reply texts send the command their label names", () => {
+  const parse = (text: string) => parseLineCommand(text, { currency: "TWD", categories: [] }).type;
+
+  // A message-action quick reply sends its text as the user. If that text stopped parsing to its command, the button would record an entry or answer "I didn't get that".
+  // [MV]: change helpText, monthText or undoText in one locale and this goes red.
+  test.each([
+    ["zh-Hant", ZH_HANT],
+    ["en", EN],
+  ] as const)("%s: undoText, monthText and helpText parse to undo, month and help", (_locale, dict) => {
+    expect(parse(dict.undoText)).toBe("undo");
+    expect(parse(dict.monthText)).toBe("month");
+    expect(parse(dict.helpText)).toBe("help");
+  });
+
+  test("the new labels and the help text are real copy, with no placeholders", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      for (const key of ["recordsLabel", "analysisLabel", "helpLabel", "helpText"] as const) {
+        expect(dict[key].trim(), key).toBe(dict[key]);
+        expect(dict[key], key).not.toBe("");
+        expect(placeholders(dict[key]), key).toEqual(new Set());
+      }
+    }
+    expect([ZH_HANT.recordsLabel, ZH_HANT.analysisLabel, ZH_HANT.helpLabel, ZH_HANT.helpText]).toEqual(["明細", "分析", "說明", "說明"]);
+    expect([EN.recordsLabel, EN.analysisLabel, EN.helpLabel, EN.helpText]).toEqual(["Records", "Insights", "Help", "help"]);
   });
 });
 

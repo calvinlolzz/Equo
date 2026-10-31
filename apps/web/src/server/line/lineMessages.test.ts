@@ -17,9 +17,12 @@ import {
   linkedReply,
   monthReply,
   recordedReply,
+  recordQuickReply,
+  standardQuickReply,
   textMessage,
   wireMessages,
 } from "./lineMessages.js";
+import { lineLinks } from "./lineLinks.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 
 // lineCards.ts is mocked only to be able to make a card builder throw on cue;
@@ -228,6 +231,19 @@ describe("helpReply", () => {
     }
   });
 
+  test("a quick reply given to it goes under the card and under the fallback, and none by default", () => {
+    const qr = standardQuickReply(ZH_HANT, LINKS, ["help"]);
+    const reply = helpReply(ZH_HANT, 30, qr);
+    expect(isLineCard(reply)).toBe(true);
+    if (!isLineCard(reply)) return;
+
+    expect(labelsOf(reply.message?.quickReply)).toEqual(["本月", "明細", "分析"]);
+    expect(reply.fallback).toEqual([{ type: "text", text: fill(ZH_HANT.help, { minutes: 30 }), quickReply: qr }]);
+    expect(lineMessageProblems(reply.message)).toEqual([]);
+    // Nothing on the card itself can be tapped.
+    expect(JSON.stringify(reply.message?.contents)).not.toContain('"action"');
+  });
+
   // [MV]: a card builder that throws must cost nothing but the card.
   test("when the card cannot be built the user still gets the help, as plain text", () => {
     faults.helpCard = true;
@@ -244,7 +260,10 @@ describe("helpReply", () => {
 // ---------------------------------------------------------------------------
 
 const ORIGIN = "https://equo-mu.vercel.app";
+const LINKS = lineLinks({ appOrigin: ORIGIN, ledgerId: "ledger_1" });
 const LEDGER = `${ORIGIN}/group/ledger_1?openExternalBrowser=1`;
+const RECORDS = `${ORIGIN}/group/ledger_1?view=records&openExternalBrowser=1`;
+const ANALYSIS = `${ORIGIN}/group/ledger_1?view=analysis&openExternalBrowser=1`;
 
 function asCard(reply: LineOutgoing): LineCard {
   expect(isLineCard(reply)).toBe(true);
@@ -269,8 +288,7 @@ describe("recordedReply", () => {
     budgetMinor: 1_500_000,
     month: { expense_minor: 606_000, income_minor: 0 },
     dateKey: "2026-09-21",
-    ledgerId: "ledger_1",
-    appOrigin: ORIGIN,
+    links: LINKS,
     ...overrides,
   });
 
@@ -341,12 +359,13 @@ describe("recordedReply", () => {
   });
 
   // [MV]: drop the quick reply from the card, or from the fallback, and this goes red.
-  test("the undo, month and open-ledger quick replies sit under the card and under the fallback alike", () => {
+  test("the undo, month, records and analysis quick replies sit under the card and under the fallback alike", () => {
     const reply = asCard(recordedReply(ZH_HANT, recordArgs("zh-Hant")));
 
-    expect(labelsOf(reply.message?.quickReply)).toEqual(["復原", "本月", "開啟帳本"]);
+    expect(labelsOf(reply.message?.quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
     expect(reply.message?.quickReply?.items[0].action).toEqual({ type: "message", label: "復原", text: "復原" });
-    expect(reply.message?.quickReply?.items[2].action).toEqual({ type: "uri", label: "開啟帳本", uri: LEDGER });
+    expect(reply.message?.quickReply?.items[2].action).toEqual({ type: "uri", label: "明細", uri: RECORDS });
+    expect(reply.message?.quickReply?.items[3].action).toEqual({ type: "uri", label: "分析", uri: ANALYSIS });
     expect((reply.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(reply.message?.quickReply);
   });
 
@@ -370,7 +389,7 @@ describe("recordedReply", () => {
 
     expect(reply.message).toBeNull();
     expect(wire).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
-    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "開啟帳本"]);
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
     expect(errorSpy.mock.calls).toEqual([["[line] card build failed (record): recordCard exploded"]]);
   });
 });
@@ -382,8 +401,7 @@ describe("monthReply", () => {
     currency: "TWD",
     budgetMinor: 1_500_000,
     month_totals: { expense_minor: 606_000, income_minor: 5_200_000 },
-    ledgerId: "ledger_1",
-    appOrigin: ORIGIN,
+    links: LINKS,
     ...overrides,
   });
 
@@ -427,12 +445,19 @@ describe("monthReply", () => {
     expect(lineMessageProblems(reply.message)).toEqual([]);
   });
 
-  test("the only quick reply is 開啟帳本, under the card and under the fallback", () => {
+  // [MV]: put 本月 back and the month card offers the very thing it just answered.
+  test("the quick reply is 明細 / 分析 / 說明 (no 本月), under the card and under the fallback", () => {
     const reply = asCard(monthReply(ZH_HANT, monthArgs()));
     expect(reply.message?.quickReply?.items).toEqual([
-      { type: "action", action: { type: "uri", label: "開啟帳本", uri: LEDGER } },
+      { type: "action", action: { type: "uri", label: "明細", uri: RECORDS } },
+      { type: "action", action: { type: "uri", label: "分析", uri: ANALYSIS } },
+      { type: "action", action: { type: "message", label: "說明", text: "說明" } },
     ]);
     expect((reply.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(reply.message?.quickReply);
+  });
+
+  test("the footer button still opens the ledger", () => {
+    expect(JSON.stringify(asCard(monthReply(ZH_HANT, monthArgs())).message?.contents.footer)).toContain(LEDGER);
   });
 
   test("passes the breakdown through; without one the card has no by-category section", () => {
@@ -447,7 +472,7 @@ describe("monthReply", () => {
     expect(without).not.toContain(ZH_HANT.cardNoSpending);
   });
 
-  test("a card that cannot be built is still a reply: today's text with 開啟帳本", () => {
+  test("a card that cannot be built is still a reply: today's text with the same quick reply", () => {
     faults.monthCard = true;
 
     const reply = asCard(monthReply(ZH_HANT, monthArgs()));
@@ -455,7 +480,7 @@ describe("monthReply", () => {
 
     expect(reply.message).toBeNull();
     expect(wire).toMatchObject({ type: "text" });
-    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["開啟帳本"]);
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["明細", "分析", "說明"]);
     expect(errorSpy.mock.calls).toEqual([["[line] card build failed (month): monthCard exploded"]]);
   });
 });
@@ -466,8 +491,7 @@ describe("budgetReply", () => {
     currency: "TWD",
     budgetMinor: 1_500_000,
     spentMinor: 600_000,
-    ledgerId: "ledger_1",
-    appOrigin: ORIGIN,
+    links: LINKS,
     ...overrides,
   });
 
@@ -486,9 +510,9 @@ describe("budgetReply", () => {
     expect(lineMessageProblems(reply.message)).toEqual([]);
   });
 
-  test("quick replies are 本月 and 開啟帳本 - no 復原", () => {
+  test("quick replies are the standard four - no 復原", () => {
     const reply = asCard(budgetReply(ZH_HANT, budgetArgs()));
-    expect(labelsOf(reply.message?.quickReply)).toEqual(["本月", "開啟帳本"]);
+    expect(labelsOf(reply.message?.quickReply)).toEqual(["本月", "明細", "分析", "說明"]);
   });
 
   // [MV]: a budget of 0 or none has nothing to draw; it stays the "how to set one" text.
@@ -497,7 +521,7 @@ describe("budgetReply", () => {
 
     expect(isLineCard(reply)).toBe(false);
     expect(reply).toMatchObject({ type: "text", text: ZH_HANT.budgetNone });
-    expect(labelsOf((reply as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "開啟帳本"]);
+    expect(labelsOf((reply as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "明細", "分析", "說明"]);
   });
 
   test("a card that cannot be built is still a reply: today's text with the same quick replies", () => {
@@ -506,13 +530,14 @@ describe("budgetReply", () => {
     const [wire] = wireMessages([budgetReply(ZH_HANT, budgetArgs())]);
 
     expect(wire).toMatchObject({ type: "text", text: "每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000" });
-    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "開啟帳本"]);
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "明細", "分析", "說明"]);
   });
 
-  test("「取消預算」 stays a plain text message", () => {
-    const reply = budgetClearedReply(ZH_HANT, { ledgerId: "ledger_1", appOrigin: ORIGIN });
+  test("「取消預算」 stays a plain text message, with the standard quick reply", () => {
+    const reply = budgetClearedReply(ZH_HANT, { links: LINKS });
     expect(isLineCard(reply)).toBe(false);
     expect(reply).toMatchObject({ type: "text", text: ZH_HANT.budgetCleared });
+    expect(labelsOf((reply as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "明細", "分析", "說明"]);
   });
 });
 
@@ -599,7 +624,9 @@ describe("linkedReply", () => {
 
       expect(reply.name).toBe("linked");
       expect(reply.message?.altText).toBe(expected);
-      expect(reply.fallback).toEqual([{ type: "text", text: expected }]);
+      // No ledger id in an accountLink event: the shortcuts are the two commands, not the two links.
+      expect(labelsOf(reply.message?.quickReply)).toEqual([dict.monthButtonLabel, dict.helpLabel]);
+      expect(reply.fallback).toEqual([{ type: "text", text: expected, quickReply: reply.message?.quickReply }]);
       expect(lineMessageProblems(reply.message)).toEqual([]);
     }
   });
@@ -609,6 +636,70 @@ describe("linkedReply", () => {
 
     const [wire] = wireMessages([linkedReply(ZH_HANT, { maskedEmail: "al***@example.com" })]);
 
-    expect(wire).toEqual({ type: "text", text: fill(ZH_HANT.linked, { email: "al***@example.com" }) });
+    expect(wire).toMatchObject({ type: "text", text: fill(ZH_HANT.linked, { email: "al***@example.com" }) });
+    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["本月", "說明"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The quick-reply builders
+// ---------------------------------------------------------------------------
+
+describe("recordQuickReply", () => {
+  test("is 復原 · 本月 · 明細 · 分析 in that order, in both languages", () => {
+    expect(recordQuickReply(ZH_HANT, LINKS).items.map((item) => item.action)).toEqual([
+      { type: "message", label: "復原", text: "復原" },
+      { type: "message", label: "本月", text: "本月" },
+      { type: "uri", label: "明細", uri: RECORDS },
+      { type: "uri", label: "分析", uri: ANALYSIS },
+    ]);
+    expect(recordQuickReply(EN, LINKS).items.map((item) => item.action)).toEqual([
+      { type: "message", label: "Undo", text: "undo" },
+      { type: "message", label: "This month", text: "month" },
+      { type: "uri", label: "Records", uri: RECORDS },
+      { type: "uri", label: "Insights", uri: ANALYSIS },
+    ]);
+  });
+});
+
+describe("standardQuickReply", () => {
+  const items = (qr: LineQuickReply | undefined) => (qr?.items ?? []).map((item) => item.action);
+
+  // [MV]: reorder, drop or rename one and the table in the plan's §4.4 no longer holds.
+  test("is 本月 · 明細 · 分析 · 說明, the two links pointing at records and analysis", () => {
+    expect(items(standardQuickReply(ZH_HANT, LINKS))).toEqual([
+      { type: "message", label: "本月", text: "本月" },
+      { type: "uri", label: "明細", uri: RECORDS },
+      { type: "uri", label: "分析", uri: ANALYSIS },
+      { type: "message", label: "說明", text: "說明" },
+    ]);
+    expect(items(standardQuickReply(EN, LINKS))).toEqual([
+      { type: "message", label: "This month", text: "month" },
+      { type: "uri", label: "Records", uri: RECORDS },
+      { type: "uri", label: "Insights", uri: ANALYSIS },
+      { type: "message", label: "Help", text: "help" },
+    ]);
+  });
+
+  test("leaves out what it is told to omit - the month card has no 本月, the help card no 說明", () => {
+    expect(items(standardQuickReply(ZH_HANT, LINKS, ["month"])).map((action) => action.label)).toEqual(["明細", "分析", "說明"]);
+    expect(items(standardQuickReply(ZH_HANT, LINKS, ["help"])).map((action) => action.label)).toEqual(["本月", "明細", "分析"]);
+  });
+
+  test("with no ledger the two links are left out, not pointed at nothing", () => {
+    expect(items(standardQuickReply(ZH_HANT, null)).map((action) => action.label)).toEqual(["本月", "說明"]);
+    expect(items(standardQuickReply(ZH_HANT, null, ["month"])).map((action) => action.label)).toEqual(["說明"]);
+  });
+
+  test("is undefined when nothing is left", () => {
+    expect(standardQuickReply(ZH_HANT, null, ["month", "help"])).toBeUndefined();
+  });
+
+  test("every item is a valid quick reply item in both languages: at most 13, labels at most 20", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      for (const qr of [standardQuickReply(dict, LINKS), recordQuickReply(dict, LINKS)]) {
+        expect(lineMessageProblems({ type: "text", text: "x", quickReply: qr })).toEqual([]);
+      }
+    }
   });
 });
