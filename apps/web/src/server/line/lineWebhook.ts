@@ -15,8 +15,9 @@ import {
   fallbackMessages,
   helpReply,
   isLineCard,
-  linkButtonsMessage,
   linkPageUrl,
+  linkReply,
+  linkedReply,
   maskEmail,
   monthReply,
   recordedReply,
@@ -171,23 +172,34 @@ async function issueLink(deps: LineWebhookDeps, lineUserId: string): Promise<str
   }
 }
 
-/** Sends `leading` plus a link-buttons template (or, on failure to issue one, `linkUnavailable`). */
+/**
+ * Replies with the link card: `before` first (the help card, for an unlinked
+ * user who asked for help), then a card with the button to the link page - its
+ * `heading` and a `lead` sentence of context are the caller's. When no link
+ * could be issued there is no button to draw, so it is `lead` (if any) and
+ * `linkUnavailable` as plain text, as it always was.
+ */
 async function replyWithLink(
   deps: LineWebhookDeps,
   event: LineEvent,
   dict: LineDictionary,
-  leading: LineOutgoing[],
+  options: { heading?: string; lead?: string; before?: LineOutgoing[] } = {},
 ): Promise<void> {
   const lineUserId = event.source?.userId;
   if (!lineUserId) return;
 
+  const before = options.before ?? [];
   const url = await issueLink(deps, lineUserId);
   if (!url) {
-    await safeReply(deps, event.replyToken, [...leading, textMessage(dict.linkUnavailable)]);
+    const lead = options.lead ? [textMessage(options.lead)] : [];
+    await safeReply(deps, event.replyToken, [...before, ...lead, textMessage(dict.linkUnavailable)]);
     return;
   }
 
-  await safeReply(deps, event.replyToken, [...leading, linkButtonsMessage(dict, url)]);
+  await safeReply(deps, event.replyToken, [
+    ...before,
+    linkReply(dict, { url, appOrigin: deps.appOrigin, heading: options.heading, lead: options.lead }),
+  ]);
 }
 
 async function onJoin(deps: LineWebhookDeps, event: LineEvent): Promise<void> {
@@ -216,7 +228,7 @@ async function onFollow(deps: LineWebhookDeps, event: LineEvent): Promise<void> 
   }
 
   const greeting = event.follow?.isUnblocked ? dict.welcomeBack : dict.welcome;
-  await replyWithLink(deps, event, dict, [textMessage(greeting)]);
+  await replyWithLink(deps, event, dict, { heading: dict.welcomeCardTitle, lead: greeting });
 }
 
 async function onAccountLink(deps: LineWebhookDeps, event: LineEvent): Promise<void> {
@@ -229,11 +241,11 @@ async function onAccountLink(deps: LineWebhookDeps, event: LineEvent): Promise<v
   const dict = lineText(result.ok ? result.locale : null);
 
   if (!result.ok) {
-    await replyWithLink(deps, event, dict, [textMessage(dict.linkFailed)]);
+    await replyWithLink(deps, event, dict, { lead: dict.linkFailed });
     return;
   }
 
-  await safeReply(deps, event.replyToken, [textMessage(fill(dict.linked, { email: maskEmail(result.email) }))]);
+  await safeReply(deps, event.replyToken, [linkedReply(dict, { maskedEmail: maskEmail(result.email) })]);
 }
 
 async function onMessage(deps: LineWebhookDeps, event: LineEvent): Promise<void> {
@@ -264,8 +276,8 @@ async function onText(deps: LineWebhookDeps, event: LineEvent, lineUserId: strin
 
   if (!context) {
     const command = parseLineCommand(text, { currency: "TWD", categories: [] });
-    const leading = command.type === "help" ? [helpReply(dict, LINE_UNDO_WINDOW_MINUTES)] : [];
-    await replyWithLink(deps, event, dict, leading);
+    const before = command.type === "help" ? [helpReply(dict, LINE_UNDO_WINDOW_MINUTES)] : [];
+    await replyWithLink(deps, event, dict, { before });
     return;
   }
 

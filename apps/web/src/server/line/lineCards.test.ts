@@ -8,6 +8,8 @@ import {
   budgetCard,
   budgetRemainingText,
   helpCard,
+  linkCard,
+  linkedCard,
   monthCard,
   monthLabelText,
   recordCard,
@@ -819,5 +821,136 @@ describe("budgetCard", () => {
     expect(budgetRemainingText(ZH_HANT, "TWD", 1_500_000, 1_500_000)).toBe("還剩 $0");
     expect(budgetRemainingText(ZH_HANT, "TWD", 1_500_000, 2_000_000)).toBe("已超出 $5,000");
     expect(budgetRemainingText(EN, "TWD", 1_500_000, 2_000_000)).toBe("$5,000 over");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Link and linked cards
+// ---------------------------------------------------------------------------
+
+describe("linkCard", () => {
+  type LinkArgs = Parameters<typeof linkCard>[1];
+  const URL = "https://equo-mu.vercel.app/line/link?linkToken=abc123&openExternalBrowser=1";
+  const HERO = "https://equo-mu.vercel.app/assets/line/link-hero-v1.jpg";
+  const linkArgs = (overrides: Partial<LinkArgs> = {}): LinkArgs => ({
+    heading: ZH_HANT.linkCardTitle,
+    lead: undefined,
+    url: URL,
+    heroUrl: HERO,
+    altText: ZH_HANT.linkAltText,
+    ...overrides,
+  });
+  const build = (overrides: Partial<LinkArgs> = {}, dict: LineDictionary = ZH_HANT) =>
+    linkCard(dict, linkArgs(overrides));
+
+  test("every heading x lead x hero x locale is a card LINE accepts", () => {
+    for (const [, dict] of LOCALES) {
+      for (const heading of [dict.welcomeCardTitle, dict.linkCardTitle]) {
+        for (const lead of [undefined, dict.welcome, dict.welcomeBack, dict.linkFailed, "長".repeat(80)]) {
+          for (const heroUrl of [HERO, null]) {
+            const message = build({ heading, lead, heroUrl, altText: lead ?? dict.linkAltText }, dict);
+            expect(lineMessageProblems(message), `${heading} / ${lead?.slice(0, 6)} / ${heroUrl}`).toEqual([]);
+          }
+        }
+      }
+    }
+  });
+
+  test("carries the altText it was given and has no quick reply", () => {
+    const message = build({ altText: "plain greeting" });
+    expect(message.altText).toBe("plain greeting");
+    expect(message.quickReply).toBeUndefined();
+  });
+
+  test("without a lead: the heading, then the standing prompt", () => {
+    const message = build();
+    expect(textsOf(message)).toEqual([ZH_HANT.linkCardTitle, ZH_HANT.linkPrompt]);
+    expect(textNode(message, ZH_HANT.linkCardTitle)).toMatchObject({ size: "lg", weight: "bold", color: CARD.text, wrap: true });
+    expect(textNode(message, ZH_HANT.linkPrompt)).toMatchObject({ size: "xs", color: CARD.muted, wrap: true, margin: "md" });
+  });
+
+  test("with a lead: the heading, the lead in body colour, then the prompt", () => {
+    const message = build({ heading: ZH_HANT.welcomeCardTitle, lead: ZH_HANT.welcome });
+    expect(textsOf(message)).toEqual([ZH_HANT.welcomeCardTitle, ZH_HANT.welcome, ZH_HANT.linkPrompt]);
+    expect(textNode(message, ZH_HANT.welcome)).toMatchObject({ size: "sm", color: CARD.text, wrap: true, margin: "md" });
+  });
+
+  // [MV]: let a non-https origin through and LINE is asked to fetch an image it never will.
+  test("with a hero url: a full-width 2:1 cover banner on the card background, and no brand strip", () => {
+    const message = build();
+
+    expect(message.contents.hero).toEqual({
+      type: "image",
+      url: HERO,
+      size: "full",
+      aspectRatio: "2:1",
+      aspectMode: "cover",
+      backgroundColor: CARD.bg,
+    });
+    expect(message.contents.styles.hero).toEqual({ backgroundColor: CARD.bg });
+    expect(message.contents.body.paddingAll).toBe("0px");
+    expect(message.contents.body.contents).toHaveLength(1);
+    expect(message.contents.body.contents[0]).toMatchObject({ type: "box", paddingAll: "20px" });
+  });
+
+  test("without one: no hero at all, and the brand strip stands in", () => {
+    const message = build({ heroUrl: null });
+
+    expect(message.contents.hero).toBeUndefined();
+    expect(message.contents.styles).not.toHaveProperty("hero");
+    expect(message.contents.body.contents[0]).toEqual(brandStrip());
+    expect(message.contents.body.contents).toHaveLength(2);
+  });
+
+  test("the footer is one primary button to the link page, in the button green and not in mint", () => {
+    const message = build();
+
+    expect(message.contents.footer).toMatchObject({ paddingAll: "16px", paddingTop: "0px", layout: "vertical" });
+    expect(message.contents.styles.footer).toEqual({ backgroundColor: CARD.bg });
+    expect(actionsOf(message)).toEqual([{ type: "uri", label: ZH_HANT.linkButton, uri: URL }]);
+    const [button] = nodesWhere(message, (node) => node.type === "button");
+    expect(button).toMatchObject({ style: "primary", color: CARD.buttonBg, height: "md" });
+    expect(CARD.buttonBg).not.toBe(CARD.mint);
+  });
+
+  test("English dictionary", () => {
+    const message = build({ heading: EN.welcomeCardTitle, lead: EN.welcome, altText: EN.welcome }, EN);
+    expect(textsOf(message)).toEqual([EN.welcomeCardTitle, EN.welcome, EN.linkPrompt]);
+    expect(actionsOf(message)[0]).toMatchObject({ label: "Link Equo account" });
+  });
+});
+
+describe("linkedCard", () => {
+  const build = (dict: LineDictionary = ZH_HANT, maskedEmail = "al***@example.com") =>
+    linkedCard(dict, { maskedEmail, altText: fill(dict.linked, { email: maskedEmail }) });
+
+  test("is a card LINE accepts in both locales, with a short or a very long address", () => {
+    for (const [, dict] of LOCALES) {
+      for (const email of ["a***@b.co", "al***@example.com", `al***@${"long".repeat(40)}.example.com`]) {
+        expect(lineMessageProblems(build(dict, email)), email).toEqual([]);
+      }
+    }
+  });
+
+  test("a mint check tile, the title over the masked address, a rule, and the hint", () => {
+    const message = build();
+
+    expect(textsOf(message)).toEqual(["\u{2705}", ZH_HANT.linkedCardTitle, "al***@example.com", ZH_HANT.linkedCardHint]);
+    const [tile] = nodesWhere(message, (node) => node.width === "44px");
+    expect(tile).toMatchObject({ height: "44px", cornerRadius: "12px", backgroundColor: tint(CARD.mint) });
+    expect(textNode(message, ZH_HANT.linkedCardTitle)).toMatchObject({ size: "md", weight: "bold", color: CARD.text });
+    expect(textNode(message, "al***@example.com")).toMatchObject({ size: "xs", color: CARD.muted });
+    expect(textNode(message, ZH_HANT.linkedCardHint)).toMatchObject({ size: "sm", color: CARD.text, wrap: true });
+  });
+
+  test("carries the altText it was given, has no quick reply, and nothing to tap", () => {
+    const message = linkedCard(ZH_HANT, { maskedEmail: "al***@example.com", altText: "plain" });
+    expect(message.altText).toBe("plain");
+    expect(message.quickReply).toBeUndefined();
+    expect(actionsOf(message)).toEqual([]);
+  });
+
+  test("English dictionary", () => {
+    expect(textsOf(build(EN))).toEqual(["\u{2705}", EN.linkedCardTitle, "al***@example.com", EN.linkedCardHint]);
   });
 });

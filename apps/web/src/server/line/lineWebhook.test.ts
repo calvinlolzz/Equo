@@ -214,7 +214,7 @@ let replyProblems: string[] = [];
  * recorded in `calls.reply` first, failed or not, so a test sees what was
  * sent and in what order - including the retry.
  */
-function fakeLineClient(options: { failStatuses?: Array<number | null> } = {}) {
+function fakeLineClient(options: { failStatuses?: Array<number | null>; issueLinkTokenFails?: boolean } = {}) {
   const calls: {
     reply: Array<{ replyToken: string; messages: LineMessage[] }>;
     issueLinkToken: string[];
@@ -233,6 +233,7 @@ function fakeLineClient(options: { failStatuses?: Array<number | null> } = {}) {
     },
     async issueLinkToken(userId) {
       calls.issueLinkToken.push(userId);
+      if (options.issueLinkTokenFails) throw new Error("LINE is down");
       return issuedToken;
     },
     async leave(target) {
@@ -418,10 +419,12 @@ describe("handleLineWebhook - linking", () => {
     }
 
     const lastReply = line.calls.reply.at(-1)!;
-    const templateMessage = lastReply.messages.find((m) => (m as { type: string }).type === "template") as {
-      template: { actions: Array<{ uri: string }> };
-    };
-    expect(templateMessage.template.actions[0].uri).toContain("openExternalBrowser=1");
+    const card = lastReply.messages.find((m) => m.type === "flex");
+    expect(card).toBeDefined();
+    const uris = uriActionsOf(card!).map((action) => action.uri);
+    expect(uris).toHaveLength(1);
+    expect(uris[0]).toContain("openExternalBrowser=1");
+    expect(uris[0]).toContain("linkToken=linktoken123");
   });
 
   // [MV]: same guard as above, for the nonce this time.
@@ -898,8 +901,9 @@ describe("handleLineWebhook - help card", () => {
 
     expect(line.calls.reply).toHaveLength(1);
     const { messages } = line.calls.reply[0];
-    expect(messages.map((message) => message.type)).toEqual(["flex", "template"]);
+    expect(messages.map((message) => message.type)).toEqual(["flex", "flex"]);
     expect(plainTextOf(messages[0])).toBe(fill(ZH_HANT.help, { minutes: 30 }));
+    expect(plainTextOf(messages[1])).toBe(ZH_HANT.linkAltText);
     expect(uriActionsOf(messages[1])[0].uri).toContain("openExternalBrowser=1");
   });
 });
@@ -996,7 +1000,7 @@ describe("handleLineWebhook - a card LINE refuses falls back to text", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  test("a reply that mixes a card with plain messages resends all of it, the plain messages untouched", async () => {
+  test("a reply of two cards resends both as the plain messages they replaced: the help text, then the link buttons", async () => {
     const { client } = createLineFakeClient();
     const line = fakeLineClient({ failStatuses: [400] });
 
@@ -1004,10 +1008,25 @@ describe("handleLineWebhook - a card LINE refuses falls back to text", () => {
 
     expect(line.calls.reply).toHaveLength(2);
     const [first, second] = line.calls.reply;
-    expect(first.messages.map((message) => message.type)).toEqual(["flex", "template"]);
+    expect(first.messages.map((message) => message.type)).toEqual(["flex", "flex"]);
     expect(second.messages.map((message) => message.type)).toEqual(["text", "template"]);
-    expect(second.messages[1]).toBe(first.messages[1]);
     expect(plainTextOf(second.messages[0])).toBe(HELP_TEXT);
+    // The link button survives the fallback, to the same place.
+    expect(uriActionsOf(second.messages[1])).toEqual(uriActionsOf(first.messages[1]));
+    expect(uriActionsOf(second.messages[1])).toHaveLength(1);
+  });
+
+  test("a plain message sharing the reply with a card goes out untouched on the resend", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient({ failStatuses: [400], issueLinkTokenFails: true });
+
+    await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+    expect(line.calls.reply).toHaveLength(2);
+    const [first, second] = line.calls.reply;
+    expect(first.messages.map((message) => message.type)).toEqual(["flex", "text"]);
+    expect(second.messages).toEqual([{ type: "text", text: HELP_TEXT }, { type: "text", text: ZH_HANT.linkUnavailable }]);
+    expect(second.messages[1]).toEqual(first.messages[1]);
   });
 });
 
@@ -1411,6 +1430,250 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       expect(labelsOf(line.calls.reply[1].messages[0])).toEqual(["開啟帳本"]);
       expect(plainTextOf(line.calls.reply[3].messages[0])).toBe("每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000");
       expect(labelsOf(line.calls.reply[3].messages[0])).toEqual(["本月", "開啟帳本"]);
+    });
+  });
+});
+
+describe("handleLineWebhook - welcome, link and linked cards", () => {
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const followEvent = (opts: { isUnblocked?: boolean; replyToken?: string } = {}) => ({
+    type: "follow",
+    mode: "active",
+    timestamp: 1790000000000,
+    webhookEventId: "01J0000000000000000000000F",
+    replyToken: opts.replyToken ?? "rt4",
+    source: { type: "user", userId: LINE_USER_ID },
+    follow: { isUnblocked: opts.isUnblocked ?? false },
+  });
+  const textsOfCard = (message: LineMessage): string[] => {
+    const found: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) node.forEach(walk);
+      else if (typeof node === "object" && node !== null) {
+        const record = node as Record<string, unknown>;
+        if (record.type === "text") found.push(record.text as string);
+        Object.values(record).forEach(walk);
+      }
+    };
+    if (message.type === "flex") walk(message.contents);
+    return found;
+  };
+  const heroOf = (message: LineMessage) => (message.type === "flex" ? message.contents.hero : undefined);
+  const lastMessages = (line: ReturnType<typeof fakeLineClient>) => line.calls.reply.at(-1)!.messages;
+
+  describe("following", () => {
+    // [MV]: the card replaces TWO messages with one; the fallback must put both back.
+    test("an unlinked follower gets ONE card: welcome title, the greeting, the banner and the link button", async () => {
+      const { client } = createLineFakeClient();
+      const line = fakeLineClient();
+      line.setIssuedToken("linktoken123");
+
+      await send(deps(client, line.client), [followEvent()]);
+
+      expect(line.calls.reply).toHaveLength(1);
+      const messages = lastMessages(line);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].type).toBe("flex");
+      expect(plainTextOf(messages[0])).toBe(ZH_HANT.welcome);
+      expect(messages[0].quickReply).toBeUndefined();
+
+      const texts = textsOfCard(messages[0]);
+      expect(texts).toEqual([ZH_HANT.welcomeCardTitle, ZH_HANT.welcome, ZH_HANT.linkPrompt]);
+      expect(heroOf(messages[0])).toMatchObject({ url: `${APP_ORIGIN}/assets/line/link-hero-v1.jpg` });
+
+      const uris = uriActionsOf(messages[0]).map((action) => action.uri);
+      expect(uris).toHaveLength(1);
+      expect(uris[0]).toContain("/line/link?linkToken=linktoken123");
+      expect(uris[0]).toContain("openExternalBrowser=1");
+    });
+
+    test("re-following after an unblock, still not linked, leads with welcomeBack", async () => {
+      const { client } = createLineFakeClient();
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [followEvent({ isUnblocked: true })]);
+
+      expect(lastMessages(line)).toHaveLength(1);
+      expect(plainTextOf(lastMessages(line)[0])).toBe(ZH_HANT.welcomeBack);
+      expect(textsOfCard(lastMessages(line)[0])).toContain(ZH_HANT.welcomeCardTitle);
+    });
+
+    test("a disabled English account that follows gets the English welcome card", async () => {
+      const { client } = createLineFakeClient({ line_context: () => ({ ...LINKED_CONTEXT, disabled: true, locale: "en" }) });
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [followEvent()]);
+
+      expect(plainTextOf(lastMessages(line)[0])).toBe(EN.welcome);
+      expect(textsOfCard(lastMessages(line)[0])).toEqual([EN.welcomeCardTitle, EN.welcome, EN.linkPrompt]);
+    });
+
+    test("an already-linked follower is told welcome back in plain text, and no link is issued", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [followEvent()]);
+
+      expect(lastMessages(line)).toEqual([{ type: "text", text: ZH_HANT.welcomeBack }]);
+      expect(line.calls.issueLinkToken).toHaveLength(0);
+    });
+
+    test("when no link can be issued there is no button to draw: the greeting, then linkUnavailable, as plain text", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const { client } = createLineFakeClient();
+        const line = fakeLineClient({ issueLinkTokenFails: true });
+
+        await send(deps(client, line.client), [followEvent()]);
+
+        expect(lastMessages(line)).toEqual([
+          { type: "text", text: ZH_HANT.welcome },
+          { type: "text", text: ZH_HANT.linkUnavailable },
+        ]);
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+  });
+
+  describe("an unlinked user's message", () => {
+    test("gets the standalone link card: the link title, no greeting lead, the altText is the link title", async () => {
+      const { client } = createLineFakeClient();
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      const messages = lastMessages(line);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].type).toBe("flex");
+      expect(plainTextOf(messages[0])).toBe(ZH_HANT.linkAltText);
+      expect(textsOfCard(messages[0])).toEqual([ZH_HANT.linkCardTitle, ZH_HANT.linkPrompt]);
+      expect(uriActionsOf(messages[0])).toHaveLength(1);
+    });
+
+    test("asking for help gets the help card and then the link card, in that order", async () => {
+      const { client } = createLineFakeClient();
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+      const messages = lastMessages(line);
+      expect(messages.map((message) => plainTextOf(message))).toEqual([fill(ZH_HANT.help, { minutes: 30 }), ZH_HANT.linkAltText]);
+      expect(messages.map((message) => message.type)).toEqual(["flex", "flex"]);
+    });
+  });
+
+  describe("linking from the link page", () => {
+    // [MV]: put the raw address on the card and this goes red.
+    test("accountLink ok sends the linked card; only the masked address ever appears", async () => {
+      const { client } = createLineFakeClient({
+        line_consume_link_nonce: () => ({ ok: true, replay: false, email: "alice@example.com", locale: "zh-Hant" }),
+      });
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [accountLinkEvent()]);
+
+      const messages = lastMessages(line);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].type).toBe("flex");
+      expect(plainTextOf(messages[0])).toBe(fill(ZH_HANT.linked, { email: "al***@example.com" }));
+      expect(textsOfCard(messages[0])).toContain("al***@example.com");
+      expect(JSON.stringify(messages)).not.toContain("alice@example.com");
+      expect(JSON.stringify(messages)).toContain(ZH_HANT.linkedCardTitle);
+    });
+
+    test("an English account gets the English linked card", async () => {
+      const { client } = createLineFakeClient({
+        line_consume_link_nonce: () => ({ ok: true, replay: false, email: "alice@example.com", locale: "en" }),
+      });
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [accountLinkEvent()]);
+
+      expect(plainTextOf(lastMessages(line)[0])).toBe(fill(EN.linked, { email: "al***@example.com" }));
+      expect(textsOfCard(lastMessages(line)[0])).toEqual(expect.arrayContaining([EN.linkedCardTitle, EN.linkedCardHint]));
+    });
+
+    test("a nonce that does not check out gets the link card again, led by linkFailed", async () => {
+      const { client } = createLineFakeClient({ line_consume_link_nonce: () => ({ ok: false, reason: "expired" }) });
+      const line = fakeLineClient();
+
+      await send(deps(client, line.client), [accountLinkEvent()]);
+
+      const messages = lastMessages(line);
+      expect(messages).toHaveLength(1);
+      expect(messages[0].type).toBe("flex");
+      expect(plainTextOf(messages[0])).toBe(ZH_HANT.linkFailed);
+      expect(textsOfCard(messages[0])).toEqual([ZH_HANT.linkCardTitle, ZH_HANT.linkFailed, ZH_HANT.linkPrompt]);
+      expect(uriActionsOf(messages[0])).toHaveLength(1);
+    });
+  });
+
+  describe("when LINE refuses the card", () => {
+    let errorSpy: ReturnType<typeof vi.spyOn>;
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    // [MV]: give the link card a plain-text fallback and the person is left with no way to link.
+    test("the link card's fallback is the buttons template, opening the very same link", async () => {
+      const { client } = createLineFakeClient();
+      const line = fakeLineClient({ failStatuses: [400] });
+      line.setIssuedToken("linktoken123");
+
+      await send(deps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      expect(line.calls.reply).toHaveLength(2);
+      const [first, second] = line.calls.reply;
+      expect(first.messages.map((message) => message.type)).toEqual(["flex"]);
+      expect(second.messages).toHaveLength(1);
+      const template = second.messages[0];
+      expect(template.type).toBe("template");
+      expect(template).toMatchObject({
+        altText: ZH_HANT.linkAltText,
+        template: { type: "buttons", text: ZH_HANT.linkPrompt },
+      });
+      expect(uriActionsOf(template).map((action) => action.uri)).toEqual(uriActionsOf(first.messages[0]).map((action) => action.uri));
+      expect(uriActionsOf(template)[0].uri).toContain("openExternalBrowser=1");
+      expect(errorSpy.mock.calls.map((call) => call.join(" "))).toEqual([
+        "[line] flex reply rejected (status 400; cards: link), resending as text",
+      ]);
+      expect(warnSpy.mock.calls.map((call) => call.join(" "))).toEqual(["[line] text fallback delivered (cards: link)"]);
+    });
+
+    test("the welcome card's fallback is today's pair: the greeting as text, then the buttons template", async () => {
+      const { client } = createLineFakeClient();
+      const line = fakeLineClient({ failStatuses: [400] });
+
+      await send(deps(client, line.client), [followEvent()]);
+
+      const [first, second] = line.calls.reply;
+      expect(first.messages.map((message) => message.type)).toEqual(["flex"]);
+      expect(second.messages.map((message) => message.type)).toEqual(["text", "template"]);
+      expect(second.messages[0]).toEqual({ type: "text", text: ZH_HANT.welcome });
+      expect(uriActionsOf(second.messages[1])).toEqual(uriActionsOf(first.messages[0]));
+    });
+
+    test("the linked card's fallback is today's one-line confirmation", async () => {
+      const { client } = createLineFakeClient({
+        line_consume_link_nonce: () => ({ ok: true, replay: false, email: "alice@example.com", locale: "zh-Hant" }),
+      });
+      const line = fakeLineClient({ failStatuses: [400] });
+
+      await send(deps(client, line.client), [accountLinkEvent()]);
+
+      expect(line.calls.reply).toHaveLength(2);
+      expect(line.calls.reply[1].messages).toEqual([{ type: "text", text: fill(ZH_HANT.linked, { email: "al***@example.com" }) }]);
+      expect(JSON.stringify([errorSpy.mock.calls, warnSpy.mock.calls])).not.toContain("alice");
     });
   });
 });

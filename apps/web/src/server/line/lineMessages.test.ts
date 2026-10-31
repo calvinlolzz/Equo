@@ -13,6 +13,8 @@ import {
   fallbackMessages,
   helpReply,
   isLineCard,
+  linkReply,
+  linkedReply,
   monthReply,
   recordedReply,
   textMessage,
@@ -22,7 +24,14 @@ import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js"
 
 // lineCards.ts is mocked only to be able to make a card builder throw on cue;
 // everything else about it is the real module.
-const faults = vi.hoisted(() => ({ helpCard: false, recordCard: false, monthCard: false, budgetCard: false }));
+const faults = vi.hoisted(() => ({
+  helpCard: false,
+  recordCard: false,
+  monthCard: false,
+  budgetCard: false,
+  linkCard: false,
+  linkedCard: false,
+}));
 vi.mock("./lineCards.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lineCards.js")>();
   return {
@@ -43,6 +52,14 @@ vi.mock("./lineCards.js", async (importOriginal) => {
       if (faults.budgetCard) throw new Error("budgetCard exploded");
       return actual.budgetCard(...args);
     },
+    linkCard: (...args: Parameters<typeof actual.linkCard>) => {
+      if (faults.linkCard) throw new Error("linkCard exploded");
+      return actual.linkCard(...args);
+    },
+    linkedCard: (...args: Parameters<typeof actual.linkedCard>) => {
+      if (faults.linkedCard) throw new Error("linkedCard exploded");
+      return actual.linkedCard(...args);
+    },
   };
 });
 
@@ -61,7 +78,14 @@ function card(message: LineFlexMessage | null, fallback: LineMessage[]): LineCar
 
 let errorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
-  Object.assign(faults, { helpCard: false, recordCard: false, monthCard: false, budgetCard: false });
+  Object.assign(faults, {
+    helpCard: false,
+    recordCard: false,
+    monthCard: false,
+    budgetCard: false,
+    linkCard: false,
+    linkedCard: false,
+  });
   errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 afterEach(() => {
@@ -489,5 +513,102 @@ describe("budgetReply", () => {
     const reply = budgetClearedReply(ZH_HANT, { ledgerId: "ledger_1", appOrigin: ORIGIN });
     expect(isLineCard(reply)).toBe(false);
     expect(reply).toMatchObject({ type: "text", text: ZH_HANT.budgetCleared });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Link and linked replies
+// ---------------------------------------------------------------------------
+
+describe("linkReply", () => {
+  const URL = "https://equo-mu.vercel.app/line/link?linkToken=abc123&openExternalBrowser=1";
+  const linkArgs = (overrides: Partial<Parameters<typeof linkReply>[1]> = {}): Parameters<typeof linkReply>[1] => ({
+    url: URL,
+    appOrigin: ORIGIN,
+    ...overrides,
+  });
+  /** Exactly what the bot sent before cards: the buttons template, nothing added. */
+  const buttons = (dict: typeof ZH_HANT) => ({
+    type: "template",
+    altText: dict.linkAltText,
+    template: { type: "buttons", text: dict.linkPrompt, actions: [{ type: "uri", label: dict.linkButton, uri: URL }] },
+  });
+
+  // [MV]: give the link card a plain text(altText) fallback and the link button is gone from it.
+  test("without a lead, the fallback is the buttons template and nothing else, and the altText is the link prompt title", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      const reply = asCard(linkReply(dict, linkArgs()));
+
+      expect(reply.name).toBe("link");
+      expect(reply.message?.altText).toBe(dict.linkAltText);
+      expect(reply.fallback).toEqual([buttons(dict)]);
+      expect(lineMessageProblems(reply.message)).toEqual([]);
+      expect(reply.message?.quickReply).toBeUndefined();
+    }
+  });
+
+  test("with a lead, the altText is the lead and the fallback is the lead as text, then the buttons - today's reply, byte for byte", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      const reply = asCard(linkReply(dict, linkArgs({ lead: dict.welcome, heading: dict.welcomeCardTitle })));
+
+      expect(reply.message?.altText).toBe(dict.welcome);
+      expect(reply.fallback).toEqual([{ type: "text", text: dict.welcome }, buttons(dict)]);
+      expect(JSON.stringify(reply.message)).toContain(dict.welcomeCardTitle);
+      expect(lineMessageProblems(reply.message)).toEqual([]);
+    }
+  });
+
+  test("the heading defaults to 'link your account'", () => {
+    const text = JSON.stringify(asCard(linkReply(ZH_HANT, linkArgs())).message);
+    expect(text).toContain(ZH_HANT.linkCardTitle);
+    expect(text).not.toContain(ZH_HANT.welcomeCardTitle);
+  });
+
+  test("the card and the fallback open the very same URL", () => {
+    const reply = asCard(linkReply(ZH_HANT, linkArgs()));
+    const cardUri = JSON.stringify(reply.message).match(/"uri":"([^"]+)"/)?.[1];
+    expect(cardUri).toBe(URL);
+    expect(JSON.stringify(reply.fallback)).toContain(URL);
+  });
+
+  // [MV]: send an http origin's banner and LINE is asked to fetch an image over a scheme it refuses.
+  test("the banner is the versioned hero asset for an https origin, and absent for http", () => {
+    const https = asCard(linkReply(ZH_HANT, linkArgs()));
+    expect(https.message?.contents.hero).toMatchObject({ url: `${ORIGIN}/assets/line/link-hero-v1.jpg` });
+
+    const http = asCard(linkReply(ZH_HANT, linkArgs({ appOrigin: "http://localhost:5173" })));
+    expect(http.message?.contents.hero).toBeUndefined();
+    expect(lineMessageProblems(http.message)).toEqual([]);
+  });
+
+  test("a card that cannot be built still gives the person their link, as today's messages", () => {
+    faults.linkCard = true;
+
+    const reply = linkReply(ZH_HANT, linkArgs({ lead: ZH_HANT.welcome }));
+
+    expect(wireMessages([reply])).toEqual([{ type: "text", text: ZH_HANT.welcome }, buttons(ZH_HANT)]);
+    expect(errorSpy.mock.calls).toEqual([["[line] card build failed (link): linkCard exploded"]]);
+  });
+});
+
+describe("linkedReply", () => {
+  test("the altText and the fallback are today's one-line text, with the masked address", () => {
+    for (const dict of [ZH_HANT, EN]) {
+      const reply = asCard(linkedReply(dict, { maskedEmail: "al***@example.com" }));
+      const expected = fill(dict.linked, { email: "al***@example.com" });
+
+      expect(reply.name).toBe("linked");
+      expect(reply.message?.altText).toBe(expected);
+      expect(reply.fallback).toEqual([{ type: "text", text: expected }]);
+      expect(lineMessageProblems(reply.message)).toEqual([]);
+    }
+  });
+
+  test("a card that cannot be built is still a confirmation, as today's text", () => {
+    faults.linkedCard = true;
+
+    const [wire] = wireMessages([linkedReply(ZH_HANT, { maskedEmail: "al***@example.com" })]);
+
+    expect(wire).toEqual({ type: "text", text: fill(ZH_HANT.linked, { email: "al***@example.com" }) });
   });
 });

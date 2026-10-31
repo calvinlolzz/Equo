@@ -2,6 +2,7 @@ import { formatAmount, formatSigned } from "../../app/formatAmount.js";
 import { fill } from "../push/pushText.js";
 import {
   CARD,
+  LINK_HERO_ASPECT,
   type LineCategoryDisplay,
   amountTextSize,
   barPercent,
@@ -18,6 +19,7 @@ import {
   bubble,
   flexMessage,
   hbox,
+  heroImage,
   progressBar,
   separator,
   text,
@@ -58,12 +60,14 @@ export function brandStrip(): FlexBox {
 }
 
 /**
- * The body every card without a hero shares: the brand strip flush to the top,
- * then the content inset by 20px. The outer box has no padding of its own so
- * the strip can run edge to edge.
+ * The body every card shares: the brand strip flush to the top, then the
+ * content inset by 20px. The outer box has no padding of its own so the strip
+ * can run edge to edge. A card with a hero image has no strip (the picture is
+ * the brand), so it passes `strip: false` and gets the inset content alone.
  */
-export function cardBody(contents: FlexComponent[]): FlexBox {
-  return vbox([brandStrip(), vbox(contents, { paddingAll: "20px" })], { paddingAll: "0px" });
+export function cardBody(contents: FlexComponent[], options: { strip?: boolean } = {}): FlexBox {
+  const inset = vbox(contents, { paddingAll: "20px" });
+  return vbox(options.strip === false ? [inset] : [brandStrip(), inset], { paddingAll: "0px" });
 }
 
 type HelpRow = {
@@ -515,4 +519,67 @@ export function budgetCard(
   ];
 
   return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }), args.quickReply);
+}
+
+/**
+ * The welcome and link card: the one way in for somebody who has not linked an
+ * Equo account, so the button is the point. `heading` is the title ("welcome"
+ * on a follow, "link your account" otherwise), `lead` an optional sentence of
+ * context above the standing prompt (the greeting, or "that link expired").
+ *
+ * `heroUrl` is the banner picture or null - null for a non-https origin, which
+ * LINE cannot fetch from - and a card with a banner has no brand strip.
+ * `url` is the link page exactly as lineMessages.linkPageUrl made it, with
+ * openExternalBrowser=1 so the button leaves LINE's in-app browser. The button
+ * fill is not mint: LINE draws its label white, which mint cannot carry.
+ */
+export function linkCard(
+  dict: LineDictionary,
+  args: { heading: string; lead: string | undefined; url: string; heroUrl: string | null; altText: string },
+): LineFlexMessage {
+  const content: FlexComponent[] = [text(args.heading, { size: "lg", weight: "bold", color: CARD.text, wrap: true })];
+  if (args.lead) content.push(text(args.lead, { size: "sm", color: CARD.text, margin: "md", wrap: true }));
+  content.push(text(dict.linkPrompt, { size: "xs", color: CARD.muted, margin: "md", wrap: true }));
+
+  const footer = vbox([uriButton(dict.linkButton, args.url, { color: CARD.buttonBg, style: "primary", height: "md" })], {
+    paddingAll: "16px",
+    paddingTop: "0px",
+  });
+
+  return flexMessage(
+    args.altText,
+    bubble({
+      hero: args.heroUrl ? heroImage(args.heroUrl, LINK_HERO_ASPECT, CARD.bg) : undefined,
+      body: cardBody(content, { strip: args.heroUrl === null }),
+      footer,
+      background: CARD.bg,
+    }),
+  );
+}
+
+/**
+ * The confirmation after linking. `maskedEmail` is already masked
+ * (lineMessages.maskEmail): this card is shown in a chat that may be read over
+ * a shoulder, and the full address never needs to appear in it.
+ */
+export function linkedCard(dict: LineDictionary, args: { maskedEmail: string; altText: string }): LineFlexMessage {
+  const content: FlexComponent[] = [
+    hbox(
+      [
+        emojiTile("\u{2705}", CARD.mint, 44),
+        vbox(
+          [
+            text(dict.linkedCardTitle, { size: "md", weight: "bold", color: CARD.text, wrap: true }),
+            text(args.maskedEmail, { size: "xs", color: CARD.muted, margin: "xs", wrap: true }),
+          ],
+          { flex: 1 },
+        ),
+      ],
+      { spacing: "md", alignItems: "center" },
+    ),
+    separator(CARD.hairline, "lg"),
+    text(dict.linkedCardHint, { size: "sm", color: CARD.text, margin: "lg", wrap: true }),
+  ];
+
+  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }));
 }

@@ -1,11 +1,13 @@
 import { formatAmount } from "../../app/formatAmount.js";
 import { fill } from "../push/pushText.js";
-import type { LineCategoryDisplay } from "./lineCardTheme.js";
+import { type LineCategoryDisplay, linkHeroUrl } from "./lineCardTheme.js";
 import {
   type MonthCategory,
   budgetCard,
   budgetRemainingText,
   helpCard,
+  linkCard,
+  linkedCard,
   monthCard,
   monthLabelText,
   recordCard,
@@ -339,6 +341,45 @@ export function helpReply(dict: LineDictionary, undoWindowMinutes: number): Line
     () => helpCard(dict, { minutes: undoWindowMinutes, altText: plain }),
     [textMessage(plain)],
   );
+}
+
+/**
+ * The welcome / link card with its button to the link page. If LINE refuses
+ * the card (or it cannot be built), what goes out instead is exactly what the
+ * bot sent before cards: the `lead` as a text message when there is one, then
+ * the buttons template - the link button must survive any fallback, which is
+ * why this is not a bare text(altText).
+ *
+ * `heading` defaults to the "link your account" title; `lead` is a sentence of
+ * context (the greeting, "that link expired"). The banner is skipped for an
+ * origin that is not https, which LINE cannot fetch an image from.
+ */
+export function linkReply(
+  dict: LineDictionary,
+  args: { url: string; appOrigin: string; heading?: string; lead?: string },
+): LineOutgoing {
+  const altText = args.lead ?? dict.linkAltText;
+  const button = linkButtonsMessage(dict, args.url);
+  const fallback: LineMessage[] = args.lead ? [textMessage(args.lead), button] : [button];
+
+  return cardOrFallback(
+    "link",
+    () =>
+      linkCard(dict, {
+        heading: args.heading ?? dict.linkCardTitle,
+        lead: args.lead,
+        url: args.url,
+        heroUrl: linkHeroUrl(args.appOrigin),
+        altText,
+      }),
+    fallback,
+  );
+}
+
+/** The confirmation after linking: a card with the masked address, or today's one-line text. */
+export function linkedReply(dict: LineDictionary, args: { maskedEmail: string }): LineOutgoing {
+  const altText = fill(dict.linked, { email: args.maskedEmail });
+  return cardOrFallback("linked", () => linkedCard(dict, { maskedEmail: args.maskedEmail, altText }), [textMessage(altText)]);
 }
 
 /** Re-exported for callers that need the raw shape without the totals. */
