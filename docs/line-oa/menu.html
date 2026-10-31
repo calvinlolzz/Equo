@@ -1,19 +1,25 @@
-<!doctype html><html><head><style>
-body{margin:0;width:2500px;height:1686px;overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#EEF1F6;
-background:radial-gradient(circle at 10% 8%,rgba(77,227,166,.18),transparent 50%),radial-gradient(circle at 92% 6%,rgba(155,92,255,.18),transparent 50%),radial-gradient(circle at 50% 100%,rgba(61,139,255,.16),transparent 55%),linear-gradient(145deg,#07080D,#10121B 52%,#0B0D14)}
-.grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr}
-.t{position:relative;display:grid;place-content:center;justify-items:center;gap:30px;text-align:center}
-.t::after{content:"";position:absolute;inset:28px;border-radius:56px;background:rgba(16,19,26,.8);border:4px solid #1C2030;z-index:-1}
-.hl::after{background:linear-gradient(120deg,rgba(77,227,166,.22),rgba(61,139,255,.22)),rgba(16,19,26,.85);border-color:rgba(77,227,166,.45)}
-.ic{width:170px;height:170px;border-radius:50px;display:grid;place-items:center;background:var(--bg)}
-.ic svg{width:108px;height:108px;stroke:var(--c);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-h2{margin:0;font-size:104px;font-weight:800;letter-spacing:.03em;white-space:nowrap}
-p{margin:0;font-size:52px;font-weight:600;color:rgba(238,241,246,.62);white-space:nowrap}
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}
+body{margin:0;width:2500px;height:1686px;overflow:hidden;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;color:#F4F6FA;
+background:radial-gradient(circle at 8% 6%,rgba(77,227,166,.22),transparent 46%),radial-gradient(circle at 94% 4%,rgba(155,92,255,.22),transparent 46%),radial-gradient(circle at 50% 104%,rgba(61,139,255,.22),transparent 50%),linear-gradient(145deg,#07080D,#10121B 52%,#0A0C13)}
+.grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;padding:22px;gap:22px}
+.t{position:relative;border-radius:72px;overflow:hidden;display:grid;place-content:center;justify-items:center;gap:34px;text-align:center;
+background:radial-gradient(130% 90% at 0% 0%,rgba(var(--c),.36),transparent 62%),radial-gradient(90% 70% at 100% 100%,rgba(var(--c),.16),transparent 70%),linear-gradient(160deg,#171B29,#0F121B);
+border:4px solid rgba(var(--c),.45);box-shadow:inset 0 3px 0 rgba(255,255,255,.08)}
+.ic{width:310px;height:310px;border-radius:50%;display:grid;place-items:center;
+background:radial-gradient(circle at 32% 24%,rgba(var(--c),.70),rgba(var(--c),.22) 72%);
+border:4px solid rgba(var(--c),.65);box-shadow:0 0 120px rgba(var(--c),.55),inset 0 5px 0 rgba(255,255,255,.2)}
+.ic svg{width:176px;height:176px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+.brand{border:4px solid transparent;background:radial-gradient(130% 90% at 0% 0%,rgba(77,227,166,.34),transparent 62%),radial-gradient(90% 70% at 100% 100%,rgba(61,139,255,.30),transparent 70%),linear-gradient(160deg,#17202b,#0F121B) padding-box,linear-gradient(135deg,#4DE3A6,#3D8BFF) border-box}
+.brand .ic{background:radial-gradient(circle at 30% 25%,#1d4a3c,#0b1411 78%);border:4px solid rgba(77,227,166,.7);box-shadow:0 0 130px rgba(77,227,166,.45),inset 0 5px 0 rgba(255,255,255,.14)}
+.brand .ic svg{stroke:none;width:176px;height:176px;filter:none}
+h2{margin:0;font-size:128px;line-height:1.05;font-weight:800;letter-spacing:.02em;white-space:nowrap}
+p{margin:0;font-size:66px;line-height:1.1;font-weight:600;color:rgba(244,246,250,.76);white-space:nowrap}
 </style></head><body><div class="grid">
-<div class="t" style="--c:#4DE3A6;--bg:rgba(77,227,166,.14)"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></div><h2>本月收支</h2><p>支出・收入・預算</p></div>
-<div class="t" style="--c:#4DE3A6;--bg:rgba(77,227,166,.14)"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8"/><path d="M8 12h8"/></svg></div><h2>記收入</h2><p>傳「收入 金額 項目」</p></div>
-<div class="t hl" style="--c:#4DE3A6;--bg:rgba(77,227,166,.18)"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 3h7v7"/><path d="M10 14L21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg></div><h2>開啟 Equo</h2><p>看明細、改帳、分帳</p></div>
-<div class="t" style="--c:#FFB84D;--bg:rgba(255,184,77,.14)"><div class="ic"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></div><h2>復原上一筆</h2><p>30 分鐘內從 LINE 記的</p></div>
-<div class="t" style="--c:#BEA0FF;--bg:rgba(155,92,255,.18)"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17.5h.01"/></svg></div><h2>使用說明</h2><p>記帳範例與所有指令</p></div>
-<div class="t" style="--c:#7FB2FF;--bg:rgba(61,139,255,.16)"><div class="ic"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></div><h2>連結帳號</h2><p>第一次使用請先連結</p></div>
+<div class="t" style="--c:91,155,255"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div><h2>本月收支</h2><p>支出・收入・預算</p></div>
+<div class="t" style="--c:77,227,166"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l4 4 4-4"/><path d="M12 8v8"/></svg></div><h2>記收入</h2><p>收入 金額 項目</p></div>
+<div class="t brand" style="--c:77,227,166"><div class="ic"><svg viewBox="108 108 296 296"><path d="M233 365 A111 111 0 0 1 233 147" fill="none" stroke="#6de2b8" stroke-width="54" stroke-linecap="round"/><path d="M279 147 A111 111 0 0 1 279 365" fill="none" stroke="#ffd67a" stroke-width="54" stroke-linecap="round"/></svg></div><h2>開啟 Equo</h2><p>明細・改帳・分帳</p></div>
+<div class="t" style="--c:255,184,77"><div class="ic"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></div><h2>復原上一筆</h2><p>30 分鐘內有效</p></div>
+<div class="t" style="--c:179,146,255"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></div><h2>使用說明</h2><p>範例與所有指令</p></div>
+<div class="t" style="--c:92,203,240"><div class="ic"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div><h2>連結帳號</h2><p>第一次先連結</p></div>
 </div></body></html>
