@@ -506,9 +506,27 @@ https://equo-mu.vercel.app/api/v1/health
 
 `line_accounts`（綁定，帳號刪除時 `ON DELETE CASCADE` 帶走）、`line_link_requests`（只存 link token 與 nonce 的**雜湊**，1 天後清）、`line_bot_entries`（事件 id → 帳目，供復原用，90 天）、`line_undo_events`（每次復原嘗試的結果，讓**重送的復原**永遠得到原本的答案，不會刪到之後才記的新帳，只留 2 天，解除綁定時一併刪除）。清理掛在每晚 workflow 的保留步驟（第 2 節）。帳號合併（`admin_console_merge_users`）會**刪掉**被併掉那個帳號的綁定，不搬給目標帳號。
 
+### 回覆卡片（Flex）
+
+記帳、「本月」、「預算」（查看）、「說明」、加好友／請連結帳號、綁定成功這六種回覆是 **Flex 卡片**（極光深色，程式在 `apps/web/src/server/line/lineCards.ts`），其餘維持純文字：「復原」、取消預算、各種錯誤與維護訊息，以及沒設預算時的「預算」。**「復原」只出現在 Quick Reply 按鈕上，卡片裡不放。** 每張卡片的 `altText` 就是原本那句純文字（通知列、聊天列表預覽、不支援 Flex 的舊版 LINE 看到的都是它），所以文案的單一來源仍是 `lineText.ts`。
+
+LINE 對不喜歡的 Flex 訊息只回一個沒有內文的 `400`，所以沒辦法事前保證每張卡片都被收。處理方式是**自動退回純文字**：回覆含 Flex 卡片而被 LINE 以 400 拒絕時，`safeReply` 會用同一個 reply token **再送一次**卡片原本取代的純文字（連結卡片退回的是「原本的文字＋按鈕範本」，所以仍然有按鈕可以點）。只有「400」且「至少一張卡片是以 Flex 送出」才會重送；純文字的 400，或 401／429／5xx／逾時都不重送，照舊只記一行 `reply failed`。另外，**組卡片的程式丟例外也不會讓已存好的帳變成錯誤訊息**：該張卡片直接改用純文字（log 見下表第三行）。
+
+Vercel runtime logs（Logs 搜尋框）可 grep 的三種字串：
+
+| 搜尋字串 | 等級 | 意思 | 該怎麼辦 |
+|---|---|---|---|
+| `flex reply rejected` | error | LINE 回 400 拒絕卡片，括號內是被拒的卡片名稱（`record`／`month`／`budget`／`help`／`link`／`linked`），下一步會重送純文字 | 偶發一兩筆可忽略；**同一個卡片名稱持續出現**就是卡片 JSON 有問題（或 LINE 改了規格），去對 `lineFlexValidator.ts` 的規則 |
+| `text fallback` | warn：`text fallback delivered`；error：`text fallback failed: …` | 重送純文字成功（使用者沒察覺，只是看到舊樣式）／連純文字也失敗（回覆整則丟失，帳已寫入；通常是 reply token 逾時，LINE 的 reply token 很短命） | `failed` 比 `delivered` 嚴重，但帳不會因此遺失 |
+| `card build failed` | error | 組卡片時程式丟例外，括號內是卡片名稱；該張卡片已改成純文字送出 | 這是程式 bug，要修；使用者端看起來只是樣式變回純文字 |
+
+這三種 log 只有狀態碼（400）與上面那六個固定的卡片名稱，**不含**標題、金額、reply token、link token、email 或 LINE user id；其中 `failed`／`build failed` 後面接的是已過 `redactForLog` 的錯誤訊息。上線後第一週看一下 `flex reply rejected` 有沒有出現，沒有就代表卡片在真機上都被收了。
+
+**連結卡片的橫幅圖**：`apps/web/public/assets/line/link-hero-v1.jpg`（1024×512，語言中性：品牌符號、字標、一張小儀表板；原稿 `docs/line-oa/link-hero.html`，用 `docs/line-oa/render.mjs` 輸出）。卡片引用的網址是 `${APP_ORIGIN}/assets/line/link-hero-v1.jpg`，**只有 `APP_ORIGIN` 是 https 才會放橫幅**（LINE 只抓 https 圖片；本機 http 開發環境的卡片沒有橫幅，這是預期的）。放在 `/assets/` 底下是刻意的：SPA 的 catch-all rewrite 排除這個前綴，所以打錯檔名是真的 404，不會被回成 200 的 `index.html`。**檔名帶版本號是因為 `vercel.json` 把 `/assets/*` 設成 immutable、快取一年**：想換圖不能覆蓋 `link-hero-v1.jpg`（LINE 與瀏覽器都不會重抓），要存成 `link-hero-v2.jpg`，同步改 `lineCardTheme.ts` 的 `LINK_HERO_PATH`、`render.mjs` 的輸出檔名與 `scripts/smoke-production-web.py` 裡的檢查路徑，再重新部署。正式站冒煙腳本（`scripts/smoke-production-web.py`）會檢查橫幅是 `image/jpeg`、旁邊一個不存在的檔案是 404；橫幅真的 404 時卡片仍會送出，只是 LINE 在那個位置顯示空白。
+
 ### 不會出現在 log 的東西
 
-訊息內容、reply token、link token、nonce、email、原始 LINE user id。log 只有 `lineUserTag`（雜湊前綴）與 HTTP 狀態碼。
+訊息內容、reply token、link token、nonce、email、原始 LINE user id。log 只有 `lineUserTag`（雜湊前綴）、HTTP 狀態碼，以及回覆卡片的固定名稱（見上一節）。
 
 ### 上線前
 

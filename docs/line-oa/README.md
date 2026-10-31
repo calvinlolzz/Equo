@@ -7,6 +7,7 @@
 | `avatar.jpg` | 大頭貼（LINE 會裁成圓形，logo 置中留白） | 1024×1024 | OA Manager → 帳號設定 → 編輯基本檔案（改後 1 小時內不能再改） |
 | `cover.jpg` | 基本檔案背景圖（裁切框約 2:1） | 1600×800 | 同上 |
 | `richmenu.jpg` | 圖文選單，大尺寸 3×2 版型 | 2500×1686 | OA Manager → 聊天室相關 → 圖文選單 |
+| `link-hero.html` → `apps/web/public/assets/line/link-hero-v1.jpg` | 加好友／請連結帳號那張回覆卡片的橫幅（語言中性，2:1 cover） | 1024×512 | **不上傳 OA Manager**：`render.mjs` 直接輸出到 App 的 `public/assets/line/`，隨部署上線，網址 `/assets/line/link-hero-v1.jpg`；`/assets/*` 快取一年，換圖要改檔名（`-v2`），見 `docs/OPERATIONS.md` 第 18 節「回覆卡片」 |
 
 狀態消息：「傳「早餐 60」就記好一筆帳」（上限 20 字）。
 
