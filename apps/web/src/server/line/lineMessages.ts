@@ -1,6 +1,15 @@
 import { formatAmount } from "../../app/formatAmount.js";
-import type { LineAction, LineMessage, LineQuickReply, LineTemplateMessage, LineTextMessage } from "./lineFlex.js";
 import { fill } from "../push/pushText.js";
+import { helpCard } from "./lineCards.js";
+import { redactForLog } from "./lineCrypto.js";
+import type {
+  LineAction,
+  LineFlexMessage,
+  LineMessage,
+  LineQuickReply,
+  LineTemplateMessage,
+  LineTextMessage,
+} from "./lineFlex.js";
 import type { LineDictionary } from "./lineText.js";
 import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js";
 
@@ -13,6 +22,63 @@ import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js
 
 export function textMessage(text: string, quickReply?: LineQuickReply): LineTextMessage {
   return quickReply ? { type: "text", text, quickReply } : { type: "text", text };
+}
+
+/** The closed set of card names. They are the only thing about a card that reaches a log line. */
+export type LineCardName = "record" | "month" | "budget" | "help" | "link" | "linked";
+
+/**
+ * A Flex card together with what to send if LINE refuses it. `fallback` is
+ * exactly the plain reply this card replaced - same text, same quick reply,
+ * same link button - so the worst a rejected card can do is look like the bot
+ * did yesterday. `message` is null when building the card threw; the wire then
+ * carries the fallback straight away.
+ *
+ * This is NOT a LINE message (it has no `type`), and LineMessage no longer
+ * lets it pose as one: it cannot be passed to LineClient.reply, only to
+ * wireMessages / fallbackMessages, which turn it into real messages.
+ */
+export type LineCard = {
+  kind: "card";
+  name: LineCardName;
+  message: LineFlexMessage | null;
+  fallback: LineMessage[];
+};
+
+/** What a handler hands to safeReply: plain messages and cards, in the order they are shown. */
+export type LineOutgoing = LineMessage | LineCard;
+
+export function isLineCard(item: LineOutgoing): item is LineCard {
+  return "kind" in item && item.kind === "card";
+}
+
+/**
+ * Builds a card, or - if the builder throws - falls back to `fallback` and
+ * says so in the log. A rendering bug must never cost the user the reply to
+ * something that already happened (an entry saved, a budget set): the card is
+ * decoration, so its failure is logged and swallowed.
+ *
+ * The log line carries the card's name and the error message, redacted for a
+ * LINE user id. It never carries the card's content.
+ */
+export function cardOrFallback(name: LineCardName, build: () => LineFlexMessage, fallback: LineMessage[]): LineCard {
+  try {
+    return { kind: "card", name, message: build(), fallback };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[line] card build failed (${name}): ${redactForLog(message)}`);
+    return { kind: "card", name, message: null, fallback };
+  }
+}
+
+/** The messages to put on the wire: a card as its Flex message (or, when it did not build, its fallback), anything else untouched. */
+export function wireMessages(items: readonly LineOutgoing[]): LineMessage[] {
+  return items.flatMap((item) => (isLineCard(item) ? (item.message ? [item.message] : item.fallback) : [item]));
+}
+
+/** What to send when LINE refuses the cards: every card as its plain fallback, anything else untouched. */
+export function fallbackMessages(items: readonly LineOutgoing[]): LineMessage[] {
+  return items.flatMap((item) => (isLineCard(item) ? item.fallback : [item]));
 }
 
 function quickReply(actions: readonly LineAction[]): LineQuickReply {
@@ -176,8 +242,19 @@ export function budgetClearedReply(dict: LineDictionary, args: { ledgerId: strin
   return textMessage(dict.budgetCleared, budgetQuickReply(dict, args.appOrigin, args.ledgerId));
 }
 
-export function helpReply(dict: LineDictionary, undoWindowMinutes: number): LineMessage {
-  return textMessage(fill(dict.help, { minutes: undoWindowMinutes }));
+/** The plain-text help: also the help card's altText and its fallback. */
+function helpText(dict: LineDictionary, undoWindowMinutes: number): string {
+  return fill(dict.help, { minutes: undoWindowMinutes });
+}
+
+/** 「說明」: the help card, or the same list as plain text if LINE refuses it. */
+export function helpReply(dict: LineDictionary, undoWindowMinutes: number): LineOutgoing {
+  const plain = helpText(dict, undoWindowMinutes);
+  return cardOrFallback(
+    "help",
+    () => helpCard(dict, { minutes: undoWindowMinutes, altText: plain }),
+    [textMessage(plain)],
+  );
 }
 
 /** Re-exported for callers that need the raw shape without the totals. */

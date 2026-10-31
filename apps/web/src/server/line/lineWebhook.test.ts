@@ -1,11 +1,13 @@
 import { createHmac } from "node:crypto";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { DEFAULT_CATALOG } from "../../app/catalog.js";
 import { createFakePostgrest, type FakePostgrest } from "../db/fakePostgrest.js";
 import { resetSiteNoticeCache } from "../http/maintenance.js";
-import type { LineClient, LineMessage } from "./lineClient.js";
+import { fill } from "../push/pushText.js";
+import { LineApiError, type LineClient, type LineMessage } from "./lineClient.js";
 import { sha256Hex } from "./lineCrypto.js";
-import { LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
+import { lineReplyProblems, plainTextOf, uriActionsOf } from "./lineFlexValidator.js";
+import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 import { handleLineWebhook, type LineWebhookDeps } from "./lineWebhook.js";
 
 const SECRET = "test_channel_secret";
@@ -182,17 +184,35 @@ function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {
   return { client, state };
 }
 
-function fakeLineClient() {
+/**
+ * Everything LINE would have refused, found by the validator on every reply
+ * any fake client in this file received. LINE answers a bad message with a
+ * bare 400, so "the test passed" must also mean "LINE would have accepted
+ * it" - afterEach below turns a non-empty list into a failure.
+ */
+let replyProblems: string[] = [];
+
+/**
+ * `failStatuses` makes the first N reply attempts fail with that HTTP status,
+ * in order (a LineApiError, as the real client throws). Every attempt is
+ * recorded in `calls.reply` first, failed or not, so a test sees what was
+ * sent and in what order - including the retry.
+ */
+function fakeLineClient(options: { failStatuses?: number[] } = {}) {
   const calls: {
     reply: Array<{ replyToken: string; messages: LineMessage[] }>;
     issueLinkToken: string[];
     leave: Array<{ type: "group" | "room"; groupId?: string; roomId?: string }>;
   } = { reply: [], issueLinkToken: [], leave: [] };
   let issuedToken = "faketoken123";
+  const failStatuses = [...(options.failStatuses ?? [])];
 
   const client: LineClient = {
     async reply(replyToken, messages) {
       calls.reply.push({ replyToken, messages });
+      for (const problem of lineReplyProblems(messages)) replyProblems.push(`${problem} (reply ${calls.reply.length})`);
+      const status = failStatuses.shift();
+      if (status !== undefined) throw new LineApiError(status);
     },
     async issueLinkToken(userId) {
       calls.issueLinkToken.push(userId);
@@ -212,6 +232,11 @@ function deps(client: FakePostgrest, line: LineClient): LineWebhookDeps {
 
 beforeEach(() => {
   resetSiteNoticeCache();
+  replyProblems = [];
+});
+
+afterEach(() => {
+  expect(replyProblems, "a reply LINE would have refused").toEqual([]);
 });
 
 describe("handleLineWebhook - signature and framing", () => {
@@ -805,5 +830,160 @@ describe("handleLineWebhook - budget commands", () => {
 
     expect(messageOf(line).text.startsWith("Monthly budget set to")).toBe(true);
     expect(messageOf(line).text).toContain("$9,000 left");
+  });
+});
+
+describe("handleLineWebhook - help card", () => {
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+
+  test("a linked user's 說明 gets one help card whose altText is the plain help text, with no quick reply", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+    expect(line.calls.reply).toHaveLength(1);
+    const { messages } = line.calls.reply[0];
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe("flex");
+    expect(plainTextOf(messages[0])).toBe(fill(ZH_HANT.help, { minutes: 30 }));
+    expect(messages[0].quickReply).toBeUndefined();
+    // Nothing on the card can be tapped: an example command that sent itself would record real data.
+    expect(JSON.stringify(messages[0])).not.toContain('"action"');
+  });
+
+  test("an English-locale user gets the English help card", async () => {
+    const { client } = createLineFakeClient({ line_context: () => ({ ...LINKED_CONTEXT, locale: "en" }) });
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "help" })]);
+
+    const [message] = line.calls.reply[0].messages;
+    expect(message.type).toBe("flex");
+    expect(plainTextOf(message)).toBe(fill(EN.help, { minutes: 30 }));
+    expect(JSON.stringify(message)).toContain(EN.helpCardTitle);
+  });
+
+  test("an unlinked user asking for help gets the help card, then the link button, in one reply", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient();
+
+    await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+    expect(line.calls.reply).toHaveLength(1);
+    const { messages } = line.calls.reply[0];
+    expect(messages.map((message) => message.type)).toEqual(["flex", "template"]);
+    expect(plainTextOf(messages[0])).toBe(fill(ZH_HANT.help, { minutes: 30 }));
+    expect(uriActionsOf(messages[1])[0].uri).toContain("openExternalBrowser=1");
+  });
+});
+
+describe("handleLineWebhook - a card LINE refuses falls back to text", () => {
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const HELP_TEXT = fill(ZH_HANT.help, { minutes: 30 });
+
+  // Silenced and inspected: these tests make the bot log on purpose.
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+  const logged = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.map((call) => call.join(" "));
+
+  // [MV]: remove the retry and there is no second call.
+  test("a 400 resends the same reply once, as the plain text the card replaced, on the same token", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient({ failStatuses: [400] });
+
+    const result = await send(deps(client, line.client), [messageEvent({ text: "說明", replyToken: "rt-help" })]);
+
+    expect(result.status).toBe(200);
+    expect(line.calls.reply).toHaveLength(2);
+    expect(line.calls.reply[0].messages.map((message) => message.type)).toEqual(["flex"]);
+    expect(line.calls.reply[1].replyToken).toBe("rt-help");
+    expect(line.calls.reply[1].messages).toEqual([{ type: "text", text: HELP_TEXT }]);
+
+    expect(logged(errorSpy)).toEqual(["[line] flex reply rejected (status 400; cards: help), resending as text"]);
+    expect(logged(warnSpy)).toEqual(["[line] text fallback delivered (cards: help)"]);
+  });
+
+  // [MV]: put the message text, the reply token or the user id into either log line and this goes red.
+  test("the log lines carry no message text, reply token, user id or reply content", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient({ failStatuses: [400] });
+
+    await send(deps(client, line.client), [messageEvent({ text: "說明", replyToken: "rt-secret-token" })]);
+
+    const all = [...logged(errorSpy), ...logged(warnSpy)].join("\n");
+    expect(all).not.toContain("rt-secret-token");
+    expect(all).not.toContain(LINE_USER_ID);
+    expect(all).not.toContain("說明");
+    expect(all).not.toContain("Equo 記帳小幫手");
+    expect(all).not.toContain("alice");
+  });
+
+  // [MV]: retry on any status and the 500 gets a second call.
+  test("a 500 is not a card problem: one call, no retry, the usual reply-failed log", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient({ failStatuses: [500] });
+
+    const result = await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+    expect(result.status).toBe(200);
+    expect(line.calls.reply).toHaveLength(1);
+    expect(logged(errorSpy)).toEqual(["[line] reply failed: LINE API request failed with status 500"]);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  // [MV]: retry without checking that a card was sent and a refused text reply gets a pointless second call.
+  test("a 400 on a plain text reply is not retried", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient({ failStatuses: [400] });
+
+    const result = await send(deps(client, line.client), [messageEvent({ text: "解除綁定" })]);
+
+    expect(result.status).toBe(200);
+    expect(line.calls.reply).toHaveLength(1);
+    expect(logged(errorSpy)).toEqual(["[line] reply failed: LINE API request failed with status 400"]);
+  });
+
+  test("when the text fallback is refused too, nothing escapes: 200, both attempts made, the failure logged", async () => {
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient({ failStatuses: [400, 400] });
+
+    const result = await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+    expect(result.status).toBe(200);
+    expect(line.calls.reply).toHaveLength(2);
+    expect(logged(errorSpy)).toEqual([
+      "[line] flex reply rejected (status 400; cards: help), resending as text",
+      "[line] text fallback failed: LINE API request failed with status 400",
+    ]);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test("a reply that mixes a card with plain messages resends all of it, the plain messages untouched", async () => {
+    const { client } = createLineFakeClient();
+    const line = fakeLineClient({ failStatuses: [400] });
+
+    await send(deps(client, line.client), [messageEvent({ text: "說明" })]);
+
+    expect(line.calls.reply).toHaveLength(2);
+    const [first, second] = line.calls.reply;
+    expect(first.messages.map((message) => message.type)).toEqual(["flex", "template"]);
+    expect(second.messages.map((message) => message.type)).toEqual(["text", "template"]);
+    expect(second.messages[1]).toBe(first.messages[1]);
+    expect(plainTextOf(second.messages[0])).toBe(HELP_TEXT);
   });
 });

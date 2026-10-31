@@ -3,20 +3,24 @@ import { EN } from "../../app/i18n/en.js";
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import { loadSiteNotice } from "../http/maintenance.js";
 import { fill } from "../push/pushText.js";
-import type { LineClient, LineMessage } from "./lineClient.js";
+import { LineApiError, type LineClient } from "./lineClient.js";
 import { lineUserTag, redactForLog, sha256Hex, verifyLineSignature } from "./lineCrypto.js";
 import { type LineCommandErrorReason, parseLineCommand } from "./lineCommand.js";
 import { lineDateKey, lineMonthStart } from "./lineDates.js";
 import {
+  type LineOutgoing,
   budgetClearedReply,
   budgetReply,
+  fallbackMessages,
   helpReply,
+  isLineCard,
   linkButtonsMessage,
   linkPageUrl,
   maskEmail,
   monthReply,
   recordedReply,
   textMessage,
+  wireMessages,
 } from "./lineMessages.js";
 import {
   type LineContext,
@@ -110,13 +114,45 @@ async function dispatch(deps: LineWebhookDeps, event: LineEvent): Promise<void> 
   }
 }
 
-async function safeReply(deps: LineWebhookDeps, replyToken: string | undefined, messages: LineMessage[]): Promise<void> {
+/**
+ * Sends a reply and never throws - a failed reply must not undo the work the
+ * event already did (an entry saved is saved whatever LINE says next).
+ *
+ * Cards are the one place a reply can fail for a reason that is ours: LINE
+ * answers a Flex message it dislikes with a bare 400. When that happens and at
+ * least one card went out as a Flex message, the same reply is sent once more
+ * as the plain text the cards replaced. A 400 on text alone, or any other
+ * status (LINE down, a timeout, 401/429/5xx), is not a card problem and is
+ * not retried: a second call would only add latency to a reply that is
+ * failing anyway.
+ *
+ * The log lines carry the status and the closed set of card names, never the
+ * reply token, the message text, a title or a user id.
+ */
+async function safeReply(deps: LineWebhookDeps, replyToken: string | undefined, items: readonly LineOutgoing[]): Promise<void> {
   if (!replyToken) return;
+
   try {
-    await deps.line.reply(replyToken, messages);
+    await deps.line.reply(replyToken, wireMessages(items));
+    return;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[line] reply failed: ${redactForLog(message)}`);
+    const sentCards = items.filter(isLineCard).filter((item) => item.message !== null);
+    if (!(error instanceof LineApiError && error.status === 400 && sentCards.length > 0)) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[line] reply failed: ${redactForLog(message)}`);
+      return;
+    }
+
+    const names = sentCards.map((item) => item.name).join(", ");
+    console.error(`[line] flex reply rejected (status 400; cards: ${names}), resending as text`);
+
+    try {
+      await deps.line.reply(replyToken, fallbackMessages(items));
+      console.warn(`[line] text fallback delivered (cards: ${names})`);
+    } catch (fallbackError) {
+      const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      console.error(`[line] text fallback failed: ${redactForLog(message)}`);
+    }
   }
 }
 
@@ -139,7 +175,7 @@ async function replyWithLink(
   deps: LineWebhookDeps,
   event: LineEvent,
   dict: LineDictionary,
-  leading: LineMessage[],
+  leading: LineOutgoing[],
 ): Promise<void> {
   const lineUserId = event.source?.userId;
   if (!lineUserId) return;
