@@ -104,7 +104,12 @@ import {
   adminSetReceiptScanSettingsRoute,
 } from "../routes/adminRoutes.js";
 import { deleteMyAccountRoute } from "../routes/accountRoutes.js";
-import { getMyLineLinkRoute, startLineLinkRoute, unlinkMyLineRoute } from "../routes/lineRoutes.js";
+import {
+  getMyLineEntryRoute,
+  getMyLineLinkRoute,
+  startLineLinkRoute,
+  unlinkMyLineRoute,
+} from "../routes/lineRoutes.js";
 import { exchangeRatesRoute } from "../routes/exchangeRateRoutes.js";
 import { pushPublicKeyRoute, subscribePushRoute, unsubscribePushRoute } from "../routes/pushRoutes.js";
 import { sendNudgeRoute } from "../routes/nudgeRoutes.js";
@@ -882,6 +887,15 @@ export function createHttpRuntime(options: RuntimeOptions) {
         return "headers" in result && result.headers
           ? { ...response, headers: { ...response.headers, ...result.headers } }
           : response;
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/me\/line\/entries\/([^/]+)$/,
+      label: "GET /api/v1/me/line/entries/:key",
+      async handle(request, match) {
+        const result = await getMyLineEntryRoute(routeOptions(options, request), match[1]);
+        return jsonResponse(result.status, result.body);
       },
     },
     {

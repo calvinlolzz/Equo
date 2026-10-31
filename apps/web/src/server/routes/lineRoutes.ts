@@ -3,11 +3,17 @@ import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { LOCALES, type Locale } from "../../app/i18n/locale.js";
 import { createLinkNonce, sha256Hex } from "../line/lineCrypto.js";
-import { attachLinkRequest, getLineLinkForUser, unlinkLineForUser } from "../line/lineRepository.js";
+import {
+  attachLinkRequest,
+  getLineLinkForUser,
+  resolveLineEntryForUser,
+  unlinkLineForUser,
+} from "../line/lineRepository.js";
 
 /**
- * The three /api/v1/me/line routes: check link status, start a link (from
- * /line/link), and unlink (from the profile page). Session-authenticated,
+ * The /api/v1/me/line routes: check link status, start a link (from
+ * /line/link), unlink (from the profile page), and resolve an entry key from a
+ * bot card's link (/me/line/entries/:key). Session-authenticated,
  * same RouteOptions/buildAuthContext pattern as accountRoutes.ts.
  *
  * Nothing here talks to LINE's API - issuing the linkToken itself is the
@@ -23,6 +29,13 @@ type RouteOptions = {
 };
 
 const LINK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,256}$/;
+
+/**
+ * An entry key is the LINE event id a card was recorded under. Same check as
+ * line_entry_lookup (SQL) and app/lineIntent.ts's LINE_ENTRY_KEY_PATTERN; this
+ * is a copy because server code cannot import app/ modules (ESM `.js` rule).
+ */
+const ENTRY_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,80}$/;
 
 function malformedRequest(message: string) {
   return {
@@ -120,4 +133,34 @@ export async function unlinkMyLineRoute(options: RouteOptions) {
   const result = await unlinkLineForUser(options.client, auth.context.user.id);
 
   return { ok: true as const, status: 200, body: { ok: true, unlinked: result.unlinked } };
+}
+
+/**
+ * GET /api/v1/me/line/entries/:key - where the entry behind a bot card's 編輯
+ * link lives now: `live` (with the row and ledger to open, edits followed),
+ * `gone` (deleted) or `not_found`. A read, so maintenance does not block it.
+ *
+ * The key is looked up only in the SESSION user's own personal ledger. Nothing
+ * from the request names a user or a group, so a link carrying somebody
+ * else's key can only ever answer not_found.
+ */
+export async function getMyLineEntryRoute(options: RouteOptions, rawKey: string) {
+  let key: string;
+  try {
+    key = decodeURIComponent(rawKey);
+  } catch {
+    return malformedRequest("entry key is not valid.");
+  }
+  if (!ENTRY_KEY_PATTERN.test(key)) {
+    return malformedRequest("entry key is not valid.");
+  }
+
+  const auth = await buildAuthContext(options);
+  if (auth.ok === false) {
+    return { ok: false as const, status: 401, body: auth.error };
+  }
+
+  const resolution = await resolveLineEntryForUser(options.client, auth.context.user.id, key);
+
+  return { ok: true as const, status: 200, body: resolution };
 }

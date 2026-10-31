@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createFakePostgrest } from "../db/fakePostgrest.js";
 import { sha256Hex } from "../line/lineCrypto.js";
-import { getMyLineLinkRoute, startLineLinkRoute, unlinkMyLineRoute } from "./lineRoutes.js";
+import { getMyLineEntryRoute, getMyLineLinkRoute, startLineLinkRoute, unlinkMyLineRoute } from "./lineRoutes.js";
 
 const verifier = async (idToken: string) => ({
   auth_user_id: idToken,
@@ -189,5 +189,74 @@ describe("unlinkMyLineRoute", () => {
     expect(result.status).toBe(200);
     expect(result.ok && result.body).toEqual({ ok: true, unlinked: true });
     expect(client.rpcCall("line_unlink_user")?.args).toEqual({ p_user: "user_alice" });
+  });
+});
+
+describe("getMyLineEntryRoute", () => {
+  const KEY = "msg:1234567890";
+  const LIVE = {
+    status: "live",
+    group_id: "ledger_alice",
+    expense_id: "expense_1",
+    expense_date: "2026-11-01",
+    edited: false,
+  };
+
+  test("401s an unauthenticated caller without calling the RPC", async () => {
+    const client = makeClient({ line_entry_resolve: LIVE });
+    const result = await getMyLineEntryRoute({ client, verifier: unauthenticatedVerifier, idToken: "" }, KEY);
+
+    expect(result.status).toBe(401);
+    expect(client.rpcCall("line_entry_resolve")).toBeUndefined();
+  });
+
+  // [MV]: the lookup is by the SESSION user. The RPC has no group parameter at
+  // all, and the user id is the authenticated caller's - never anything that
+  // came from the request.
+  test("resolves against the authenticated caller's own id and nothing else", async () => {
+    const client = makeClient({ line_entry_resolve: LIVE });
+    const result = await getMyLineEntryRoute({ client, verifier, idToken: "user_alice" }, KEY);
+
+    expect(result.status).toBe(200);
+    expect(result.ok && result.body).toEqual(LIVE);
+    expect(client.rpcCall("line_entry_resolve")?.args).toEqual({ p_user: "user_alice", p_entry_key: KEY });
+  });
+
+  test("passes gone and not_found through as 200s", async () => {
+    for (const status of ["gone", "not_found"]) {
+      const client = makeClient({ line_entry_resolve: { status } });
+      const result = await getMyLineEntryRoute({ client, verifier, idToken: "user_alice" }, KEY);
+
+      expect(result.status).toBe(200);
+      expect(result.ok && result.body).toEqual({ status });
+    }
+  });
+
+  test("decodes the key before looking it up (a ':' arrives as %3A)", async () => {
+    const client = makeClient({ line_entry_resolve: LIVE });
+    await getMyLineEntryRoute({ client, verifier, idToken: "user_alice" }, "msg%3A1234567890");
+
+    expect(client.rpcCall("line_entry_resolve")?.args.p_entry_key).toBe("msg:1234567890");
+  });
+
+  test("400s a key that does not match the pattern, before authenticating or calling the RPC", async () => {
+    const tooShort = "a".repeat(7);
+    const tooLong = "a".repeat(81);
+    for (const key of [tooShort, tooLong, "has space 12345", "semi;colon12345", "%E0%A4%A", "..%2F..%2Fadmin12", "ab%2Fcd1234567", "dot.1234567890"]) {
+      const client = makeClient({ line_entry_resolve: LIVE });
+      const result = await getMyLineEntryRoute({ client, verifier, idToken: "user_alice" }, key);
+
+      expect(result.status, key).toBe(400);
+      expect((result.body as { issues: Array<{ code: string }> }).issues[0].code).toBe("MALFORMED_REQUEST");
+      expect(client.calls, key).toHaveLength(0);
+    }
+  });
+
+  test("accepts the boundary lengths 8 and 80", async () => {
+    for (const key of ["a".repeat(8), "a".repeat(80)]) {
+      const client = makeClient({ line_entry_resolve: LIVE });
+      const result = await getMyLineEntryRoute({ client, verifier, idToken: "user_alice" }, key);
+      expect(result.status).toBe(200);
+    }
   });
 });

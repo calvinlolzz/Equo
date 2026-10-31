@@ -152,6 +152,10 @@ function makeClient(): PostgrestClient {
         return { ok: true, already_linked: false, currently_linked: false };
       }
       if (fn === "line_unlink_user") return { ok: true, unlinked: true };
+      // Echo who and which key, so the wiring (session user, decoded key) is visible.
+      if (fn === "line_entry_resolve") {
+        return { status: "live", group_id: "ledger_1", expense_id: "expense_1", expense_date: "2026-11-01", edited: false, user: args.p_user, key: args.p_entry_key };
+      }
       return null;
     },
   });
@@ -1493,6 +1497,82 @@ describe("LINE account link routes", () => {
     const del = await runtime.handle({ method: "DELETE", path: "/api/v1/me/line", headers: auth });
     expect(del.status).toBe(200);
     expect(del.body).toEqual({ ok: true, unlinked: true });
+  });
+
+  test("GET /me/line/entries/:key is routed at its deep path, for the session user only", async () => {
+    const runtime = makeRuntime();
+
+    const anonymous = await runtime.handle({ method: "GET", path: "/api/v1/me/line/entries/msg%3A1234567890", headers: {} });
+    expect(anonymous.status).toBe(401);
+    expect((anonymous.body as { error: { code: string } }).error.code).toBe("UNAUTHENTICATED");
+
+    const signedIn = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/me/line/entries/msg%3A1234567890",
+      headers: { authorization: "Bearer google-alice" },
+    });
+    expect(signedIn.status).toBe(200);
+    expect(signedIn.body).toMatchObject({ status: "live", user: "user_alice", key: "msg:1234567890" });
+
+    const malformed = await runtime.handle({
+      method: "GET",
+      path: "/api/v1/me/line/entries/short",
+      headers: { authorization: "Bearer google-alice" },
+    });
+    expect(malformed.status).toBe(400);
+  });
+
+  test("the entry route is a GET only: other methods on that path are not routed", async () => {
+    const response = await makeRuntime().handle({
+      method: "DELETE",
+      path: "/api/v1/me/line/entries/msg%3A1234567890",
+      headers: { authorization: "Bearer google-alice" },
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  test("maintenance and view-as do not block resolving an entry (it is a read)", async () => {
+    const { resetSiteNoticeCache } = await import("./maintenance.js");
+    const { createViewAsToken } = await import("../auth/sessionToken.js");
+    resetSiteNoticeCache();
+
+    const client = makeClient();
+    const maintenanceClient: PostgrestClient = {
+      ...client,
+      async rpc(fn, args) {
+        if (fn === "site_notice_settings") {
+          return {
+            banner: { message: "", level: "info", ends_at: null, active: false },
+            maintenance: { enabled: true, message: "維護中" },
+          } as never;
+        }
+        return client.rpc(fn, args);
+      },
+    };
+    const path = "/api/v1/me/line/entries/msg%3A1234567890";
+
+    const duringMaintenance = await makeRuntime(maintenanceClient).handle({
+      method: "GET",
+      path,
+      headers: { authorization: "Bearer google-alice" },
+    });
+    expect(duringMaintenance.status).toBe(200);
+    resetSiteNoticeCache();
+
+    const viewAsToken = await createViewAsToken(
+      { auth_user_id: "user_alice", google_sub: "google_alice", email: "alice@example.com", display_name: "Alice" },
+      "user_admin",
+      "session-secret",
+      1_000,
+    );
+    const viewingAs = await makeRuntime().handle({
+      method: "GET",
+      path,
+      headers: { cookie: `equo_view_as=${viewAsToken}` },
+    });
+    expect(viewingAs.status).toBe(200);
+    expect(viewingAs.body).toMatchObject({ user: "user_alice" });
   });
 
   test("a view-as cookie refuses POST /me/line/link and DELETE /me/line with VIEW_AS_READONLY", async () => {

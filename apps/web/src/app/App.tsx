@@ -86,6 +86,7 @@ import { DEFAULT_PROFILE, PROFILE_KEY, normalizeProfile, type ProfileData } from
 import { saveSession, type StoredSession } from "./sessionStore";
 import { useActionGuard } from "./useActionGuard";
 import { useExpenseComposer } from "./useExpenseComposer";
+import { useLineIntent } from "./useLineIntent";
 import { useGroupMutations } from "./useGroupMutations";
 import { useIsMobileLayout } from "./useIsMobileLayout";
 import { useInviteFlow } from "./useInviteFlow";
@@ -452,6 +453,22 @@ export function App() {
     endAction,
     setDialog,
     setBusy,
+  });
+
+  // Links from the LINE bot: ?view=records | ?view=analysis | ?entry=<key>. Needs
+  // openExpenseEdit, so it sits right after the composer hook. Opens only
+  // surfaces that are already registered with useOverlayHistory below.
+  useLineIntent({
+    session,
+    activeGroupId,
+    activeGroup,
+    expenses,
+    detailLoaded: Boolean(cloudActiveDetail),
+    openGroup,
+    setDialog,
+    openExpenseEdit,
+    showToast,
+    api: pollingClient,
   });
 
   // The read-only detail dialog stacks over whatever is already open

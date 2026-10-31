@@ -30,6 +30,23 @@ describe("createApiClient", () => {
     expect(calls[0].init.headers).not.toMatchObject({ Authorization: expect.any(String) });
   });
 
+  test("resolves a LINE entry key with a plain GET, the key encoded into the path", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const live = { status: "live", group_id: "ledger_1", expense_id: "expense_1", expense_date: "2026-11-01", edited: false };
+    const client = createApiClient({
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return { ok: true, async json() { return live; } } as Response;
+      },
+    });
+
+    await expect(client.resolveLineEntry("msg:1234567890")).resolves.toEqual(live);
+
+    expect(calls[0].url).toBe("/api/v1/me/line/entries/msg%3A1234567890");
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].init.body).toBeUndefined();
+  });
+
   test("loads groups from the backend", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const client = createApiClient({

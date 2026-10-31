@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createApiClient } from "./apiClient";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
+import { clearStashedLineIntent, readLineIntent, stashLineIntent } from "./lineIntent";
 import { resumePendingLineLink } from "./lineLink";
 import { stashPendingRoute } from "./pendingRoute";
 import { clearSession, loadSession, saveSession, type StoredSession } from "./sessionStore";
@@ -157,6 +158,11 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
     // The redirect comes back at the bare origin, so remember the group the
     // visitor was trying to reach before the path is thrown away.
     stashPendingRoute();
+    // Same for a link from the LINE bot (?view= / ?entry=). A stash from some
+    // earlier, abandoned login is dropped so it cannot fire on this one.
+    const lineIntent = readLineIntent(window.location.search);
+    if (lineIntent) stashLineIntent(lineIntent);
+    else clearStashedLineIntent();
     window.location.href = buildAuthorizeUrl(supabaseUrl, window.location.origin);
   }
 

@@ -101,6 +101,16 @@ export type ExpenseSummary = {
   expense_shares?: ExpenseShareSummary[];
 };
 
+/**
+ * Where a LINE entry link points now (GET /me/line/entries/:key). `live` names
+ * the row to open - already followed through any edits made in the app - and
+ * the group it lives in (always the caller's personal ledger).
+ */
+export type LineEntryResolution =
+  | { status: "not_found" }
+  | { status: "gone" }
+  | { status: "live"; group_id: string; expense_id: string; expense_date: string; edited: boolean };
+
 export type AdminRetention = {
   period: "week" | "month";
   total_users: number;
@@ -729,6 +739,11 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     },
     getMyLineLink() {
       return request<{ linked: boolean; linked_at: string | null }>("/me/line", {
+        method: "GET",
+      });
+    },
+    resolveLineEntry(entryKey: string) {
+      return request<LineEntryResolution>(`/me/line/entries/${encodeURIComponent(entryKey)}`, {
         method: "GET",
       });
     },
