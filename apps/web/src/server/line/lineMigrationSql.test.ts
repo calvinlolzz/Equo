@@ -17,6 +17,8 @@ const botSql = readFileSync(join(MIGRATIONS_DIR, "20260929090000_line_bot.sql"),
 const mergeSql = readFileSync(join(MIGRATIONS_DIR, "20260929090100_line_merge_users.sql"), "utf8");
 const budgetSql = readFileSync(join(MIGRATIONS_DIR, "20260930090000_line_set_budget.sql"), "utf8");
 const categoriesSql = readFileSync(join(MIGRATIONS_DIR, "20261003090000_line_month_categories.sql"), "utf8");
+const replacedBySql = readFileSync(join(MIGRATIONS_DIR, "20261101090000_expense_replaced_by.sql"), "utf8");
+const receiptsSql = readFileSync(join(MIGRATIONS_DIR, "20260826014823_expense_receipts_and_comments.sql"), "utf8");
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const workflow = readFileSync(join(REPO_ROOT, ".github", "workflows", "db-backup.yml"), "utf8");
 
@@ -313,5 +315,93 @@ describe("line_month_categories migration", () => {
   test("defines only the helper and line_month_summary - line_record_entry and line_set_budget are left alone", () => {
     const defined = [...categoriesSql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."(\w+)"/g)].map((m) => m[1]);
     expect(defined).toEqual(["line_ledger_month_categories", "line_month_summary"]);
+  });
+});
+
+/**
+ * expenses.replaced_by_expense_id: the forwarding address replace_expense
+ * leaves on the row an edit retires. The patch is applied to the LIVE
+ * function (anchor + hit count), so what is pinned here is the patch text
+ * itself - the function body is not in the migration.
+ */
+describe("expense_replaced_by migration", () => {
+  const anchor = "return jsonb_build_object('expense', v_next, 'previous', v_previous);";
+  const patchStart = replacedBySql.indexOf("DO $patch$");
+  const patchSql = replacedBySql.slice(patchStart);
+
+  test("adds a nullable uuid column, re-runnable", () => {
+    expect(replacedBySql).toContain("ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS replaced_by_expense_id uuid;");
+    expect(replacedBySql).not.toMatch(/replaced_by_expense_id uuid NOT NULL/i);
+  });
+
+  // [MV]: ON DELETE SET NULL is what lets a hard delete (account deletion, retention, admin purge) of the newer row go through without dangling.
+  test("the foreign key points at expenses(id) and SETs NULL on delete, guarded for re-runs", () => {
+    expect(replacedBySql).toContain("FOREIGN KEY (replaced_by_expense_id) REFERENCES public.expenses(id) ON DELETE SET NULL");
+    expect(replacedBySql).toContain("IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'expenses_replaced_by_expense_id_fkey')");
+  });
+
+  test("indexes the foreign key (deleting a parent row scans it)", () => {
+    expect(replacedBySql).toContain(
+      "CREATE INDEX IF NOT EXISTS expenses_replaced_by_expense_id_idx ON public.expenses (replaced_by_expense_id);",
+    );
+  });
+
+  // [MV]: any other anchor (say, the start of the function) and the pointer is written before the new row exists.
+  test("anchors on the final return of replace_expense, and the anchor exists exactly once in its source migration", () => {
+    expect(patchSql).toContain(`v_anchor constant text := $anchor$${anchor}$anchor$;`);
+    expect(receiptsSql.split(anchor).length - 1).toBe(1);
+  });
+
+  // [MV]: drop the hit-count check and a drifted function is patched blind.
+  test("aborts unless the anchor appears exactly once", () => {
+    expect(patchSql).toContain("v_hits <> 1");
+    expect(patchSql).toContain("anchor appears % times in replace_expense (expected 1)");
+  });
+
+  test("is re-runnable: an already patched function is skipped", () => {
+    const skip = patchSql.indexOf("replace_expense already patched, skipping");
+    expect(skip).toBeGreaterThan(-1);
+    expect(patchSql.indexOf("position('replaced_by_expense_id' in v_def) > 0")).toBeLessThan(skip);
+    expect(skip).toBeLessThan(patchSql.indexOf("EXECUTE replace("));
+  });
+
+  // [MV]: put the insert after the anchor and the statement is unreachable; drop it and no edit leaves a forwarding address.
+  test("inserts the pointer update immediately before the final return", () => {
+    expect(patchSql).toContain("EXECUTE replace(v_def, v_anchor, v_insert || v_anchor);");
+  });
+
+  // [MV]: drop `group_id = p_group_id` and the update could touch another ledger's row with the same id; drop the where and every row is repointed.
+  test("the insert writes the new id onto the retired row, inside the same group", () => {
+    const insert = patchSql.slice(patchSql.indexOf("v_insert constant text := $repl$"), patchSql.indexOf("$repl$;"));
+    expect(insert).toContain("update expenses set replaced_by_expense_id = (v_next ->> 'id')::uuid");
+    expect(insert).toContain("where id = p_expense_id and group_id = p_group_id;");
+  });
+
+  test("re-reads the function afterwards: the patch landed, the comment move survived, nothing else changed", () => {
+    expect(patchSql).toContain("patch did not land in replace_expense");
+    expect(patchSql).toContain("position('update expense_comments' in v_patched) = 0");
+    expect(patchSql).toContain("replace(v_patched, v_insert, '') <> v_def");
+    expect(patchSql).toContain("replace_expense changed by more than the patch");
+  });
+
+  test("does not restate replace_expense: no CREATE FUNCTION anywhere in the migration", () => {
+    expect(normalizeSql(replacedBySql)).not.toMatch(/create (or replace )?function/i);
+  });
+
+  test("carries the un-patch as comments only, undoing exactly the same insert at the same anchor", () => {
+    const lines = replacedBySql.split("\n");
+    const first = lines.findIndex((l) => l.startsWith("--   DO $unpatch$"));
+    const last = lines.findIndex((l) => l.startsWith("--   $unpatch$;"));
+    expect(first).toBeGreaterThan(-1);
+    expect(last).toBeGreaterThan(first);
+
+    const unpatch = lines.slice(first, last + 1).join("\n");
+    expect(unpatch).toContain("v_anchor constant text := 'return jsonb_build_object(''expense'', v_next, ''previous'', v_previous);';");
+    expect(unpatch).toContain("update expenses set replaced_by_expense_id = (v_next ->> ''id'')::uuid");
+    expect(unpatch).toContain("where id = p_expense_id and group_id = p_group_id;");
+    expect(unpatch).toContain("EXECUTE replace(v_def, v_insert || v_anchor, v_anchor);");
+    // Nothing of it is executable.
+    expect(replacedBySql.split("$unpatch$").length - 1).toBe(2);
+    expect(normalizeSql(replacedBySql)).not.toContain("$unpatch$");
   });
 });
