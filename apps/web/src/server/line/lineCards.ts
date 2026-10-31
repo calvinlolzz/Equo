@@ -46,14 +46,15 @@ import type { LineDictionary } from "./lineText.js";
 /**
  * The thin mint-blue-violet rule along the top of a card without a hero image:
  * the one piece of brand colour on the card, as the aurora is on the cover.
- * Three equal segments, each an empty box with a `flex` so it keeps its width.
+ * Three equal segments, each an empty box with a `flex` so it keeps its width
+ * and its own 4px height so it does not depend on the client stretching it.
  */
 export function brandStrip(): FlexBox {
   return hbox(
     [
-      vbox([], { flex: 1, backgroundColor: CARD.mint }),
-      vbox([], { flex: 1, backgroundColor: CARD.blue }),
-      vbox([], { flex: 1, backgroundColor: CARD.violet }),
+      vbox([], { flex: 1, height: "4px", backgroundColor: CARD.mint }),
+      vbox([], { flex: 1, height: "4px", backgroundColor: CARD.blue }),
+      vbox([], { flex: 1, height: "4px", backgroundColor: CARD.violet }),
     ],
     { height: "4px" },
   );

@@ -508,16 +508,16 @@ https://equo-mu.vercel.app/api/v1/health
 
 ### 回覆卡片（Flex）
 
-記帳、「本月」、「預算」（查看）、「說明」、加好友／請連結帳號、綁定成功這六種回覆是 **Flex 卡片**（極光深色，程式在 `apps/web/src/server/line/lineCards.ts`），其餘維持純文字：「復原」、取消預算、各種錯誤與維護訊息，以及沒設預算時的「預算」。**「復原」只出現在 Quick Reply 按鈕上，卡片裡不放。** 每張卡片的 `altText` 就是原本那句純文字（通知列、聊天列表預覽、不支援 Flex 的舊版 LINE 看到的都是它），所以文案的單一來源仍是 `lineText.ts`。
+記帳、「本月」、「預算」與「預算 N」（查看與設定，同一張預算卡）、「說明」、加好友／請連結帳號、綁定成功這六種回覆是 **Flex 卡片**（極光深色，程式在 `apps/web/src/server/line/lineCards.ts`），其餘維持純文字：「復原」、「解除綁定」、取消預算、已連結的人重新加好友（歡迎回來）、已連結還按「綁定」、各種錯誤與維護訊息，以及沒設預算時的「預算」。**「復原」只出現在 Quick Reply 按鈕上，卡片裡不放。** 每張卡片的 `altText` 就是原本那句純文字（通知列、聊天列表預覽、不支援 Flex 的舊版 LINE 看到的都是它），所以文案的單一來源仍是 `lineText.ts`。
 
-LINE 對不喜歡的 Flex 訊息只回一個沒有內文的 `400`，所以沒辦法事前保證每張卡片都被收。處理方式是**自動退回純文字**：回覆含 Flex 卡片而被 LINE 以 400 拒絕時，`safeReply` 會用同一個 reply token **再送一次**卡片原本取代的純文字（連結卡片退回的是「原本的文字＋按鈕範本」，所以仍然有按鈕可以點）。只有「400」且「至少一張卡片是以 Flex 送出」才會重送；純文字的 400，或 401／429／5xx／逾時都不重送，照舊只記一行 `reply failed`。另外，**組卡片的程式丟例外也不會讓已存好的帳變成錯誤訊息**：該張卡片直接改用純文字（log 見下表第三行）。
+LINE 對不喜歡的 Flex 訊息回 `400`（回應內文我們刻意不讀，所以 log 只看得到狀態碼、看不到哪個欄位被嫌），所以沒辦法事前保證每張卡片都被收。處理方式是**自動退回純文字**：回覆含 Flex 卡片而被 LINE 以 400 拒絕時，`safeReply` 會用同一個 reply token **再送一次**卡片原本取代的純文字（連結卡片退回的是「原本的文字＋按鈕範本」，所以仍然有按鈕可以點）。只有「400」且「至少一張卡片是以 Flex 送出」才會重送；純文字的 400，或 401／429／5xx／逾時都不重送，照舊只記一行 `reply failed`。另外，**組卡片的程式丟例外也不會讓已存好的帳變成錯誤訊息**：該張卡片直接改用純文字（log 見下表第三行）。
 
 Vercel runtime logs（Logs 搜尋框）可 grep 的三種字串：
 
 | 搜尋字串 | 等級 | 意思 | 該怎麼辦 |
 |---|---|---|---|
 | `flex reply rejected` | error | LINE 回 400 拒絕卡片，括號內是被拒的卡片名稱（`record`／`month`／`budget`／`help`／`link`／`linked`），下一步會重送純文字 | 偶發一兩筆可忽略；**同一個卡片名稱持續出現**就是卡片 JSON 有問題（或 LINE 改了規格），去對 `lineFlexValidator.ts` 的規則 |
-| `text fallback` | warn：`text fallback delivered`；error：`text fallback failed: …` | 重送純文字成功（使用者沒察覺，只是看到舊樣式）／連純文字也失敗（回覆整則丟失，帳已寫入；通常是 reply token 逾時，LINE 的 reply token 很短命） | `failed` 比 `delivered` 嚴重，但帳不會因此遺失 |
+| `text fallback` | warn：`text fallback delivered`；error：`text fallback failed: …` | 重送純文字成功（使用者沒察覺，只是看到舊樣式）／連純文字也失敗（回覆整則丟失，帳已寫入；通常是 reply token 逾時，LINE 的 reply token 很短命） | `failed` 比 `delivered` 嚴重，但帳不會因此遺失。**判斷方向**：同一個 token 上 `rejected` 之後接 `delivered`，代表卡片本身有問題；`rejected` 之後接 `failed`，多半是 reply token 已失效或用過，不是卡片的錯 |
 | `card build failed` | error | 組卡片時程式丟例外，括號內是卡片名稱；該張卡片已改成純文字送出 | 這是程式 bug，要修；使用者端看起來只是樣式變回純文字 |
 
 這三種 log 只有狀態碼（400）與上面那六個固定的卡片名稱，**不含**標題、金額、reply token、link token、email 或 LINE user id；其中 `failed`／`build failed` 後面接的是已過 `redactForLog` 的錯誤訊息。上線後第一週看一下 `flex reply rejected` 有沒有出現，沒有就代表卡片在真機上都被收了。

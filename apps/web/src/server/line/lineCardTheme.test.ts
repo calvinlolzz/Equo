@@ -264,6 +264,16 @@ describe("categoryDisplay", () => {
     expect(categoryDisplay("ghost", [], "zh-Hant").label).toBe("ghost");
   });
 
+  // [MV]: drop the built-in table and a disabled default category shows as "lodging" on a zh card.
+  test("zh names a category the live catalog no longer lists (an admin disabled it) from the built-in table", () => {
+    expect(categoryDisplay("lodging", [], "zh-Hant").label).toBe("住宿");
+    expect(categoryDisplay("other_income", catalog, "zh-Hant").label).toBe("其他收入");
+  });
+
+  test("a renamed category shows the catalog's label, not the built-in one", () => {
+    expect(categoryDisplay("lodging", [{ key: "lodging", label: "旅宿", color: "#112233" }], "zh-Hant").label).toBe("旅宿");
+  });
+
   test("a locale that is not English is read like zh", () => {
     expect(categoryDisplay("food", catalog, "fr").label).toBe("餐飲");
   });

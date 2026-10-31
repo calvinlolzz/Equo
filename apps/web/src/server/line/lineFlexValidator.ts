@@ -3,9 +3,10 @@ import type { LineAction, LineFlexMessage, LineMessage, LineUriAction } from "./
 /**
  * A test-only checker for LINE reply messages (the same convention as
  * db/fakePostgrest.ts: it lives beside the code it checks, and only tests
- * import it). LINE answers a message it does not like with a bare 400 that
- * says nothing about WHY, so every limit and rule the cards rely on is written
- * down here once and every test that builds a message runs it through.
+ * import it). LINE answers a message it does not like with a 400 whose body
+ * the bot deliberately never reads, so production can't say WHY. Every limit
+ * and rule the cards rely on is written down here once and every test that
+ * builds a message runs it through.
  *
  * It is stricter than LINE on purpose. Besides the documented limits it
  * refuses anything the cards deliberately avoid - carousels, spans, fillers,

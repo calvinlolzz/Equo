@@ -64,7 +64,7 @@ describe("brandStrip", () => {
     expect(strip.height).toBe("4px");
     expect(strip.contents).toHaveLength(3);
     for (const segment of strip.contents) {
-      expect(segment).toMatchObject({ type: "box", flex: 1, contents: [] });
+      expect(segment).toMatchObject({ type: "box", flex: 1, height: "4px", contents: [] });
     }
     expect(strip.contents.map((segment) => (segment as FlexBox).backgroundColor)).toEqual([CARD.mint, CARD.blue, CARD.violet]);
   });

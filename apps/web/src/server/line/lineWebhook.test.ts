@@ -202,19 +202,21 @@ function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {
 /**
  * Everything LINE would have refused, found by the validator on every reply
  * any fake client in this file received. LINE answers a bad message with a
- * bare 400, so "the test passed" must also mean "LINE would have accepted
- * it" - afterEach below turns a non-empty list into a failure.
+ * 400 the bot never reads the reason of, so "the test passed" must also mean
+ * "LINE would have accepted it" - afterEach below turns a non-empty list into
+ * a failure.
  */
 let replyProblems: string[] = [];
 
 /**
  * `failStatuses` makes reply attempts fail with that HTTP status, in order (a
- * LineApiError, as the real client throws; null lets that attempt through).
+ * LineApiError, as the real client throws; an Error is thrown as it is, the
+ * way a timeout reaches safeReply; null lets that attempt through).
  * Every attempt is
  * recorded in `calls.reply` first, failed or not, so a test sees what was
  * sent and in what order - including the retry.
  */
-function fakeLineClient(options: { failStatuses?: Array<number | null>; issueLinkTokenFails?: boolean } = {}) {
+function fakeLineClient(options: { failStatuses?: Array<number | Error | null>; issueLinkTokenFails?: boolean } = {}) {
   const calls: {
     reply: Array<{ replyToken: string; messages: LineMessage[] }>;
     issueLinkToken: string[];
@@ -230,6 +232,7 @@ function fakeLineClient(options: { failStatuses?: Array<number | null>; issueLin
       // null = let this attempt through; an empty queue lets it through too.
       const status = failStatuses.shift();
       if (typeof status === "number") throw new LineApiError(status);
+      if (status instanceof Error) throw status;
     },
     async issueLinkToken(userId) {
       calls.issueLinkToken.push(userId);
@@ -1430,6 +1433,43 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       expect(labelsOf(line.calls.reply[1].messages[0])).toEqual(["開啟帳本"]);
       expect(plainTextOf(line.calls.reply[3].messages[0])).toBe("每月預算已設為 $15,000。\n本月已花 $6,000，還剩 $9,000");
       expect(labelsOf(line.calls.reply[3].messages[0])).toEqual(["本月", "開啟帳本"]);
+    });
+
+    // [MV]: drop the `message !== null` filter in safeReply and this reply is sent twice, identical both times.
+    test("a card that could not be built went out as text already: a 400 on it is not retried", async () => {
+      cardFaults.recordCard = true;
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
+      });
+      const line = fakeLineClient({ failStatuses: [400] });
+
+      const result = await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      expect(result.status).toBe(200);
+      expect(line.calls.reply).toHaveLength(1);
+      expect(line.calls.reply[0].messages[0].type).toBe("text");
+      expect(logged()).toContain("[line] card build failed (record)");
+      expect(logged()).toContain("[line] reply failed: LINE API request failed with status 400");
+      expect(logged()).not.toContain("flex reply rejected");
+    });
+
+    // [MV]: retry on any error, not just a LineApiError 400, and a timed-out reply is sent twice - LINE may have delivered the first.
+    test("a timeout is not a card problem: one call, no resend", async () => {
+      const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
+      });
+      const line = fakeLineClient({ failStatuses: [timeout] });
+
+      const result = await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
+
+      expect(result.status).toBe(200);
+      expect(line.calls.reply).toHaveLength(1);
+      expect(line.calls.reply[0].messages[0].type).toBe("flex");
+      expect(logged()).toContain("[line] reply failed: The operation was aborted due to timeout");
+      expect(logged()).not.toContain("flex reply rejected");
     });
   });
 });

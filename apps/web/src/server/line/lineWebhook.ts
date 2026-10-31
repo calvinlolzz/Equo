@@ -121,7 +121,8 @@ async function dispatch(deps: LineWebhookDeps, event: LineEvent): Promise<void> 
  * event already did (an entry saved is saved whatever LINE says next).
  *
  * Cards are the one place a reply can fail for a reason that is ours: LINE
- * answers a Flex message it dislikes with a bare 400. When that happens and at
+ * answers a Flex message it dislikes with a 400 (the reason is in a body we
+ * deliberately do not read). When that happens and at
  * least one card went out as a Flex message, the same reply is sent once more
  * as the plain text the cards replaced. A 400 on text alone, or any other
  * status (LINE down, a timeout, 401/429/5xx), is not a card problem and is

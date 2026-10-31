@@ -1,4 +1,5 @@
 import { EN } from "../../app/i18n/en.js";
+import { ZH_HANT } from "../../app/i18n/zhHant.js";
 import type { FlexAspectRatio, FlexTextSize } from "./lineFlex.js";
 
 /**
@@ -182,7 +183,8 @@ export type LineCategoryDisplay = { key: string; label: string; color: string; e
 /**
  * A category as a card shows it. The label rules are the ones the plain-text
  * replies always used: zh shows the live catalog's label (an admin may have
- * renamed it) and falls back to the key; en shows the app's own English label
+ * renamed it), then the app's built-in Chinese name (the catalog only lists
+ * enabled categories), then the key; en shows the app's own English label
  * and falls back to the catalog's for a category the bundle has never heard of.
  * The colour is normalized (admin input) and the emoji falls back to a bookmark.
  */
@@ -192,7 +194,10 @@ export function categoryDisplay(
   locale: string,
 ): LineCategoryDisplay {
   const entry = categories.find((category) => category.key === key);
-  const catalogLabel = entry?.label ?? key;
+  // line_context only returns the ENABLED categories, but a ledger still holds spending on one an admin has
+  // since disabled; the app names it from its built-in table (catalog.ts categoryLabel), so a card does too.
+  const builtInLabel = Object.hasOwn(ZH_HANT.categories, key) ? (ZH_HANT.categories as Record<string, string>)[key] : undefined;
+  const catalogLabel = entry?.label ?? builtInLabel ?? key;
   // Own-property check for the same reason as categoryEmoji: the key can be any string a ledger holds.
   const englishLabel = Object.hasOwn(EN.categories, key) ? (EN.categories as Record<string, string>)[key] : undefined;
 
