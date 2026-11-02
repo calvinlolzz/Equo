@@ -882,6 +882,18 @@ label span {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* The LIFF chrome has no group rail (appChrome.groupNavigation), so the content
+   is the grid's only child: one track, and column 1 - the desktop rule above
+   would otherwise leave it in column 2 with an implicit track beside the 64px
+   one. Three classes beat both that rule and the phone override. */
+.workspace-grid.workspace-grid--no-rail {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-grid.workspace-grid--no-rail > .pizo-home {
+  grid-column: 1;
+}
+
 .workspace-grid > .group-rail {
   border: 0;
   border-radius: 0;

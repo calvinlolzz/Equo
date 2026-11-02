@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { syncAppBadge } from "./appBadge";
+import { dialogAllowed, resolveAppChrome, type LiffAppContext } from "./appChrome";
 import { lazyChunk } from "./lazyChunk";
 import { clearShortcutParam, readShortcutAction, type ShortcutAction } from "./appShortcuts";
 import { clearShareParam, hasSharedReceipt, takeSharedReceiptFile } from "./sharedReceipt";
@@ -175,7 +176,7 @@ const ScanSheet = lazyChunk(() => import("./ScanSheet").then((m) => ({ default: 
  * shell is in the entry chunk, so it arrives instantly and then waits, which
  * reads as the app hanging on the way up.
  */
-function prefetchOverlayChunks(): void {
+function prefetchOverlayChunks(includeProfile: boolean): void {
   const warm = () => {
     // Swallowed, unlike the render-time imports: this is speculative warming,
     // and a stale chunk here is neither worth an entry in the error log nor
@@ -185,7 +186,7 @@ function prefetchOverlayChunks(): void {
     void import("./ExpenseDetailDialog").catch(() => {});
     void import("./RecordsPanel").catch(() => {});
     void import("./AnalysisPanel").catch(() => {});
-    void import("./ProfileDialog").catch(() => {});
+    if (includeProfile) void import("./ProfileDialog").catch(() => {});
   };
 
   if (typeof window.requestIdleCallback === "function") {
@@ -197,6 +198,13 @@ function prefetchOverlayChunks(): void {
 
 
 
+
+/** What the home screens get when the chrome shows no install hint: the same shape as useInstallPrompt, saying "nothing to offer". */
+const INSTALL_UNAVAILABLE: ReturnType<typeof useInstallPrompt> = {
+  state: "unavailable",
+  promptInstall: async () => {},
+  dismiss: () => {},
+};
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -211,11 +219,25 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-export function App() {
+/**
+ * `liff` puts the app in LINE's restricted chrome (appChrome.ts): signed in by
+ * the page already, memory-only, personal ledger only. Omitted - which is every
+ * route but /liff - it is the full app, unchanged.
+ */
+export function App({ liff }: { liff?: LiffAppContext } = {}) {
+  const chrome = resolveAppChrome(liff ? "liff" : "full");
   const { activeGroupId, openGroup, closeGroup } = useGroupRoute();
   const [startMode, setStartMode] = useState<StartMode>("create");
   const [selectedTemplate, setSelectedTemplate] = useState("trip");
-  const [dialog, setDialog] = useState<DialogMode>(null);
+  const [dialog, setDialogState] = useState<DialogMode>(null);
+  // Every way of opening a sheet comes through here, so a chrome that does not
+  // list a sheet cannot reach it even by a code path nobody thought about.
+  const setDialog = useCallback(
+    (mode: DialogMode) => {
+      if (dialogAllowed(chrome, mode)) setDialogState(mode);
+    },
+    [chrome],
+  );
   /** Bumped by `/` to move the cursor into the records search. See useAppShortcuts. */
   const [focusSearchSignal, setFocusSearchSignal] = useState(0);
   // The privacy/terms sheet that stacks on top of the profile dialog. Lifted out
@@ -337,6 +359,11 @@ export function App() {
       ),
     // Signing out has to close the open group too - that is the route's business.
     onSignedOut: () => closeGroup("replace"),
+    // LIFF: the page signed in before this mounted, and keeps it in memory.
+    injectedSession: liff?.session,
+    persist: chrome.localSession,
+    onSessionExpired: liff?.reauthenticate,
+    skipOAuthFragment: !chrome.landing,
   });
 
   /**
@@ -352,7 +379,7 @@ export function App() {
 
   // Signed-in only: the inbox belongs to an account, and polling it while
   // signed out would be a 401 every five minutes.
-  const notifications = useNotifications(pollingClient, Boolean(session));
+  const notifications = useNotifications(pollingClient, Boolean(session) && chrome.notifications);
   // The category and currency lists, which an admin can now change without a
   // deploy. Held here rather than read at module load so the fetched copy
   // re-renders the composer that uses it.
@@ -469,7 +496,16 @@ export function App() {
     openExpenseEdit,
     showToast,
     api: pollingClient,
+    // LIFF has read the link's intent from the endpoint URL / liff.state itself.
+    initialIntent: liff ? liff.intent : undefined,
   });
+
+  // LIFF opens on the token's own ledger. The page already put /group/<ledger>
+  // in the address bar, so this is a no-op unless something moved it.
+  useEffect(() => {
+    if (liff) openGroup(liff.ledgerId, "replace");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The read-only detail dialog stacks over whatever is already open
   // (records, home, ...) rather than replacing it - see useExpenseComposer's
@@ -777,6 +813,7 @@ export function App() {
   // user actually has a group open — asking someone to install the app before
   // they have used it is how a prompt gets dismissed forever on reflex.
   const install = useInstallPrompt();
+  const homeInstall = chrome.installHint ? install : INSTALL_UNAVAILABLE;
 
   const online = useOnlineStatus();
 
@@ -948,7 +985,7 @@ export function App() {
   }, [activeIsPersonal, cloudActiveDetail, expenses, aggregates.expenseCount, cloudStore, activeGroupId, autoPageInFlightGroupId]);
 
   async function handleFeedbackSubmit(payload: { type: FeedbackType; message: string }) {
-    if (!session) return;
+    if (!session || !chrome.feedback) return;
     try {
       const client = createApiClient();
       await client.createFeedback({ ...payload, page: window.location.pathname });
@@ -967,7 +1004,7 @@ export function App() {
    * On failure nothing is torn down and the dialog stays open with a toast.
    */
   async function handleDeleteAccount() {
-    if (!session) return;
+    if (!session || !chrome.profile) return;
     try {
       await createApiClient().deleteMyAccount();
       signOut();
@@ -1019,7 +1056,8 @@ export function App() {
 
   useEffect(() => {
     if (!hasSession) return;
-    prefetchOverlayChunks();
+    prefetchOverlayChunks(chrome.profile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasSession]);
 
   useEffect(() => {
@@ -1264,6 +1302,7 @@ export function App() {
    * user sees an error toast instead of losing the whole edit.
    */
   async function saveProfile(nextProfile: ProfileData) {
+    if (!chrome.profile) return;
     const normalized = normalizeProfile(nextProfile);
     const avatarChanged = normalized.avatarDataUrl && normalized.avatarDataUrl !== session?.user.avatarUrl;
 
@@ -1378,6 +1417,7 @@ export function App() {
   }
 
   function openReceiptScan() {
+    if (!chrome.receiptScan) return;
     closeDrawers();
     setDialog(null);
     // Asked once per device, before the camera rather than after the photo:
@@ -1644,6 +1684,10 @@ export function App() {
 
 
   if (!session) {
+    // LIFF never shows the Google sign-in: it cannot work inside LINE. A LIFF
+    // session that ends is swapped for LiffApp's own screen; this is the one
+    // render in between.
+    if (!chrome.landing) return null;
     return (
       // The landing page is full-bleed: it runs its own scrim and column widths
       // edge to edge, where the shell's centred 1180px box would leave strips of
@@ -1696,7 +1740,7 @@ export function App() {
         </div>
       ) : null}
       <header className="top-bar">
-        {activeGroup ? (
+        {activeGroup && chrome.groupNavigation ? (
           <button className="top-bar-icon-button mobile-only" type="button" aria-label={text.groupList} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined} onClick={() => setGroupDrawerOpen(true)}>
             <Menu aria-hidden="true" size={22} />
             {/* The drawer is closed by default on mobile, so without this the
@@ -1720,19 +1764,21 @@ export function App() {
           {/* The inbox. A count rather than a dot, unlike the group drawer's
               badge: those are "there is activity in another group", this is
               "somebody wrote to you", and how many matters. */}
-          <button
-            className="top-bar-icon-button notifications-button"
-            type="button"
-            aria-label={text.notifications}
-            onClick={() => setNotificationsOpen(true)}
-          >
-            <Bell aria-hidden="true" size={20} />
-            {notifications.unread > 0 ? (
-              <span className="top-bar-unread-count" aria-hidden="true">
-                {notifications.unread > 9 ? "9+" : notifications.unread}
-              </span>
-            ) : null}
-          </button>
+          {chrome.notifications ? (
+            <button
+              className="top-bar-icon-button notifications-button"
+              type="button"
+              aria-label={text.notifications}
+              onClick={() => setNotificationsOpen(true)}
+            >
+              <Bell aria-hidden="true" size={20} />
+              {notifications.unread > 0 ? (
+                <span className="top-bar-unread-count" aria-hidden="true">
+                  {notifications.unread > 9 ? "9+" : notifications.unread}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
           <button
             className="top-bar-icon-button theme-toggle-button"
             type="button"
@@ -1749,13 +1795,15 @@ export function App() {
               It shows the Google picture when there is one: an avatar is how
               people recognise "this is my account", and a generic outline of a
               person is not. */}
-          <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
-            {displayAvatarUrl ? (
-              <img src={upscaleGoogleAvatar(displayAvatarUrl)} alt="" />
-            ) : (
-              <UserRound aria-hidden="true" size={18} />
-            )}
-          </button>
+          {chrome.profile ? (
+            <button className="profile-dot" type="button" aria-label={text.profile} onClick={openProfileDialog}>
+              {displayAvatarUrl ? (
+                <img src={upscaleGoogleAvatar(displayAvatarUrl)} alt="" />
+              ) : (
+                <UserRound aria-hidden="true" size={18} />
+              )}
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -1818,21 +1866,23 @@ export function App() {
           onOpenInviteInput={() => setDialog("inviteInput")}
         />
       ) : (
-        <section className="workspace-grid">
-          <GroupRail
-            activeGroup={activeGroup}
-            groups={displayGroups}
-            inert={isMobileLayout}
-            onCreateGroup={openCreateGroupDialog}
-            onOpenArchivedGroups={openArchivedGroups}
-            onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
-            onSelectGroup={selectGroup}
-            onShowInviteCode={() => setDialog("inviteInput")}
-            railExpanded={railExpanded}
-            onToggleRail={toggleRail}
-          />
+        <section className={chrome.groupNavigation ? "workspace-grid" : "workspace-grid workspace-grid--no-rail"}>
+          {chrome.groupNavigation ? (
+            <GroupRail
+              activeGroup={activeGroup}
+              groups={displayGroups}
+              inert={isMobileLayout}
+              onCreateGroup={openCreateGroupDialog}
+              onOpenArchivedGroups={openArchivedGroups}
+              onRefresh={() => showToast("\u5df2\u91cd\u65b0\u6574\u7406\u76ee\u524d\u7fa4\u7d44\u3002")}
+              onSelectGroup={selectGroup}
+              onShowInviteCode={() => setDialog("inviteInput")}
+              railExpanded={railExpanded}
+              onToggleRail={toggleRail}
+            />
+          ) : null}
 
-          {groupDrawerOpen ? (
+          {groupDrawerOpen && chrome.groupNavigation ? (
             <div className={groupDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) groupDrawerSwipe.requestClose(); }}>
               <div className={groupDrawerSwipe.closing ? "side-drawer side-drawer-left closing" : "side-drawer side-drawer-left"} role="dialog" aria-modal="true" aria-label={text.groupList} {...groupDrawerSwipe.dragProps} ref={groupDrawerRef}>
                 <GroupRail
@@ -1854,10 +1904,11 @@ export function App() {
               isMobileLayout={isMobileLayout}
               group={activeGroup}
               displayName={activeDisplayName}
-              install={install}
+              install={homeInstall}
               showSkeleton={cloudActiveLoading && !cloudActiveDetail}
               hasLoadedDetail={Boolean(cloudActiveDetail)}
               headerMenu={
+                chrome.groupMenu ? (
                 <GroupMenu
                   groupName={activeDisplayName}
                   coverImageUrl={activeGroup.coverImageUrl}
@@ -1872,6 +1923,7 @@ export function App() {
                   onDelete={() => setDialog("delete")}
                   personal={activeIsPersonal}
                 />
+                ) : undefined
               }
               expenses={expenses}
               expenseCount={aggregates.expenseCount}
@@ -1880,7 +1932,9 @@ export function App() {
               viewingAs={siteNotice.viewingAs}
               siteNoticeLoaded={siteNotice.loaded}
               onOpenDialog={setDialog}
-              onScanReceipt={openReceiptScan}
+              onScanReceipt={chrome.receiptScan ? openReceiptScan : undefined}
+              showLineHint={chrome.lineHint}
+              showGroupActions={chrome.groupNavigation}
               onOpenExpenseComposer={openExpenseComposer}
               onOpenExpenseDetail={openExpenseDetail}
               onCreateGroup={openCreateGroupDialog}
@@ -1891,10 +1945,11 @@ export function App() {
             <GroupHome
               isMobileLayout={isMobileLayout}
               group={activeGroup}
-              install={install}
+              install={homeInstall}
               showSkeleton={cloudActiveLoading && !cloudActiveDetail}
               hasLoadedDetail={Boolean(cloudActiveDetail)}
               headerMenu={
+                chrome.groupMenu ? (
                 <GroupMenu
                   groupName={activeDisplayName}
                   coverImageUrl={activeGroup.coverImageUrl}
@@ -1909,6 +1964,7 @@ export function App() {
                   onDelete={() => setDialog("delete")}
                   personal={activeIsPersonal}
                 />
+                ) : undefined
               }
               members={members}
               currentMember={currentMember}
@@ -1946,6 +2002,7 @@ export function App() {
               variant="drawer" elsewhere, not this one), but it never paints
               at any width now, so it is permanently out of the tab order and
               the accessibility tree. */}
+          {chrome.groupNavigation ? (
           <aside className="group-side-nav glass-panel" aria-label={text.groupHome} inert aria-hidden="true">
             {activeGroup ? (
               <GroupSideNav
@@ -1964,8 +2021,9 @@ export function App() {
               />
             ) : null}
           </aside>
+          ) : null}
 
-          {settingsDrawerOpen ? (
+          {settingsDrawerOpen && chrome.groupNavigation ? (
             <div className={settingsDrawerSwipe.closing ? "side-drawer-backdrop closing" : "side-drawer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) settingsDrawerSwipe.requestClose(); }}>
               <div className={settingsDrawerSwipe.closing ? "side-drawer side-drawer-right closing" : "side-drawer side-drawer-right"} role="dialog" aria-modal="true" aria-label={text.groupManage} {...settingsDrawerSwipe.dragProps} ref={settingsDrawerRef}>
                 {activeGroup ? (
@@ -2007,7 +2065,7 @@ export function App() {
             <Plus aria-hidden="true" size={34} />
           </button>
 
-          <nav className="mobile-tab-bar" aria-label={text.groupHome} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined}>
+          <nav className={chrome.groupNavigation ? "mobile-tab-bar" : "mobile-tab-bar mobile-tab-bar--compact"} aria-label={text.groupHome} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined}>
             <button
               className={activeTab === "home" ? "mobile-tab-item active" : "mobile-tab-item"}
               type="button"
@@ -2051,6 +2109,8 @@ export function App() {
               <ChartNoAxesColumn aria-hidden="true" size={20} />
               <span>{text.navAnalysis}</span>
             </button>
+            {chrome.groupNavigation ? (
+              <>
             {/* 群組 / 帳本, not 設定: this opens the group-management drawer
                 (GroupSideNav variant="drawer") - member list, export, edit,
                 archive/delete - not a settings screen, and calling it 設定
@@ -2068,6 +2128,8 @@ export function App() {
               {activeIsPersonal ? <Wallet aria-hidden="true" size={20} /> : <UsersRound aria-hidden="true" size={20} />}
               <span>{activeIsPersonal ? text.navLedger : text.navGroup}</span>
             </button>
+              </>
+            ) : null}
           </nav>
         </section>
       )}
@@ -2113,7 +2175,7 @@ export function App() {
           a hidden backdrop tap, and it leaves the user exactly where they
           were - the composer's own camera still attaches photos without any
           of this. */}
-      {scanConsentOpen ? (
+      {scanConsentOpen && chrome.receiptScan ? (
         <div
           className="modal-backdrop"
           role="presentation"
@@ -2177,7 +2239,7 @@ export function App() {
         </div>
       ) : null}
 
-      {dialog === "profile" ? (
+      {dialog === "profile" && chrome.profile ? (
         <Suspense fallback={null}>
         <ProfileDialog
           profile={profile}
@@ -2202,13 +2264,13 @@ export function App() {
         </Suspense>
       ) : null}
 
-      {feedbackOpen ? (
+      {feedbackOpen && chrome.feedback ? (
         <Suspense fallback={null}>
           <FeedbackDialog onClose={() => setFeedbackOpen(false)} onSubmit={handleFeedbackSubmit} />
         </Suspense>
       ) : null}
 
-      {notificationsOpen ? (
+      {notificationsOpen && chrome.notifications ? (
         <Suspense fallback={null}>
           <NotificationsPanel
             items={notifications.items}

@@ -322,7 +322,8 @@ type HomeRecordsSectionProps = {
   /** A muted count beside the title (e.g. "12 筆"); omitted (falsy) shows nothing. */
   count: string | null;
   onViewAll: () => void;
-  onScanReceipt: () => void;
+  /** Absent omits the scan button. */
+  onScanReceipt?: () => void;
   children: ReactNode;
 };
 
@@ -343,9 +344,11 @@ export function HomeRecordsSection({ label, count, onViewAll, onScanReceipt, chi
         <button className="text-action home-records-all" type="button" onClick={onViewAll}>
           {text.viewAll}
         </button>
-        <button className="icon-action" type="button" aria-label={text.scanReceipt} onClick={onScanReceipt}>
-          <Scan aria-hidden="true" size={18} />
-        </button>
+        {onScanReceipt ? (
+          <button className="icon-action" type="button" aria-label={text.scanReceipt} onClick={onScanReceipt}>
+            <Scan aria-hidden="true" size={18} />
+          </button>
+        ) : null}
       </div>
       {children}
     </section>

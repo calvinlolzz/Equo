@@ -727,6 +727,16 @@ export const EN: UiDictionary = {
     hintDismiss: "Dismiss LINE tip",
     backHome: "Back to Equo",
   },
+  liff: {
+    loading: "Opening Equo…",
+    notLinkedTitle: "Your Equo account isn't linked yet",
+    notLinkedBody: 'Go back to the chat and send "link". Once linked, you can view and edit your ledger here.',
+    backToChat: "Back to chat",
+    disabled: "This Equo account has been disabled.",
+    failed: "Couldn't open this inside LINE. Try your browser instead.",
+    openInBrowser: "Open in browser",
+    sessionEnded: "Your session ended. Reopen this from the chat.",
+  },
   misc: {
     pullRefreshing: "Refreshing…",
     pullArmed: "Release to refresh",

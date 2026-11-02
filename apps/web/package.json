@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@line/liff": "2.31.2",
     "@vercel/analytics": "^2.0.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^1.23.0",

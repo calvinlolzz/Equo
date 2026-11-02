@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { createApiClient } from "./apiClient";
+import { afterEach, describe, expect, test } from "vitest";
+import { createApiClient, setApiBearerToken } from "./apiClient";
 
 describe("createApiClient", () => {
   test("sends same-origin credentials and never an Authorization header", async () => {
@@ -257,5 +257,71 @@ describe("createApiClient", () => {
     await expect(
       client.removeGroupMember("group_1", "member_2", { client_request_id: "remove_req" }),
     ).rejects.toMatchObject({ code: "MEMBER_HAS_BALANCE" });
+  });
+});
+
+describe("the LIFF bearer", () => {
+  afterEach(() => setApiBearerToken(null));
+
+  function recorder(body: unknown = {}) {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createApiClient({
+      fetcher: async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        return { ok: true, async json() { return body; } } as Response;
+      },
+    });
+    return { calls, client };
+  }
+
+  test("nothing sets it by default: the ordinary app never sends an Authorization header", async () => {
+    const { calls, client } = recorder({ groups: [] });
+    await client.listGroups();
+    expect(calls[0].init.headers).not.toHaveProperty("Authorization");
+    expect(calls[0].init.credentials).toBe("same-origin");
+  });
+
+  test("once set, ordinary requests carry it as a Bearer header, and the cookie rides along as before", async () => {
+    setApiBearerToken("equoL1.payload.sig");
+    const { calls, client } = recorder({ groups: [] });
+    await client.listGroups();
+    expect(calls[0].init.headers).toMatchObject({ Authorization: "Bearer equoL1.payload.sig" });
+    expect(calls[0].init.credentials).toBe("same-origin");
+  });
+
+  test("clearing it stops sending it", async () => {
+    setApiBearerToken("equoL1.payload.sig");
+    setApiBearerToken(null);
+    const { calls, client } = recorder({ groups: [] });
+    await client.listGroups();
+    expect(calls[0].init.headers).not.toHaveProperty("Authorization");
+  });
+
+  test("the LINE exchange is anonymous even while a bearer is set: no Authorization, no cookies", async () => {
+    setApiBearerToken("equoL1.stale.sig");
+    const { calls, client } = recorder({ session: {} });
+    await client.exchangeLineIdToken("id.token.value");
+    expect(calls[0].url).toBe("/api/v1/auth/line");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.body).toBe(JSON.stringify({ id_token: "id.token.value" }));
+    expect(calls[0].init.headers).not.toHaveProperty("Authorization");
+    expect(calls[0].init.credentials).toBe("omit");
+  });
+
+  test("the LIFF config lookup is anonymous too", async () => {
+    setApiBearerToken("equoL1.stale.sig");
+    const { calls, client } = recorder({ liff_id: null });
+    await expect(client.getLiffConfig()).resolves.toEqual({ liff_id: null });
+    expect(calls[0].url).toBe("/api/v1/line/liff");
+    expect(calls[0].init.headers).not.toHaveProperty("Authorization");
+    expect(calls[0].init.credentials).toBe("omit");
+  });
+
+  test("the LINE ID token only ever goes to /auth/line", async () => {
+    setApiBearerToken("equoL1.payload.sig");
+    const { calls, client } = recorder({ groups: [] });
+    await client.listGroups();
+    await client.getLiffConfig();
+    expect(calls.some((c) => String(c.init.body ?? "").includes("id_token"))).toBe(false);
   });
 });

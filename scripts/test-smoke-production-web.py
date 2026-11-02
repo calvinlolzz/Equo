@@ -71,6 +71,12 @@ def main() -> int:
         print("FAIL: expected a too-short expectation to be rejected")
         return 1
 
+    # LIFF's endpoint URL must be checked: LINE opens it from a card, and the
+    # SPA rewrite is the only thing that serves it.
+    if not any(check.path == "/liff" and check.status == 200 for check in module.CHECKS):
+        print("FAIL: expected the smoke checks to cover the LIFF shell at /liff")
+        return 1
+
     print("PASS: production web smoke rules verified")
     return 0
 

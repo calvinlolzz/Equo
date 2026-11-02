@@ -17,7 +17,7 @@ const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "App.tsx"
 
 /** The modules `prefetchOverlayChunks` warms. */
 function warmed(): string[] {
-  const body = /function prefetchOverlayChunks\(\): void \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+  const body = /function prefetchOverlayChunks\([^)]*\): void \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
   return [...body.matchAll(/import\("\.\/(\w+)"\)/g)].map(([, name]) => name);
 }
 
@@ -33,7 +33,7 @@ describe("the chunks behind the bottom bar", () => {
   test("warming never takes the page down with it", () => {
     // Speculative: a stale chunk here must not reload the page out from under
     // somebody who has not asked for that sheet. Every warm import is caught.
-    const body = /function prefetchOverlayChunks\(\): void \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+    const body = /function prefetchOverlayChunks\([^)]*\): void \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
     const imports = [...body.matchAll(/import\("\.\/\w+"\)(\.catch\(\(\) => \{\}\))?/g)];
 
     expect(imports.length).toBeGreaterThan(0);

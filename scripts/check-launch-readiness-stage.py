@@ -41,6 +41,10 @@ REQUIRED = {
         '"destination": "/index.html"',
         # Security headers (review report issue 4). CSP must stay present.
         '"Content-Security-Policy"',
+        # The LIFF SDK (/liff, inside LINE) fetches the app config, the OAuth
+        # token and the signing keys from api.line.me. Without it /liff cannot
+        # sign in; nothing else on the policy was widened for it.
+        "https://api.line.me",
         '"X-Frame-Options"',
         '"X-Content-Type-Options"',
     ],

@@ -21,6 +21,14 @@ export type UseLineIntentOptions = {
   openExpenseEdit: (expense: Expense) => void;
   showToast: (message: string) => void;
   api: Pick<EquoApiClient, "resolveLineEntry" | "searchExpenses">;
+  /**
+   * An intent the page already worked out (LIFF reads it from the endpoint URL
+   * and `liff.state`, and has cleaned the address bar by the time the App
+   * mounts). Given - even as null - it replaces both the URL and the stash:
+   * the stash belongs to a Google sign-in on this browser, which a LIFF page
+   * must neither consume nor be steered by. Omitted: URL, then stash, as ever.
+   */
+  initialIntent?: LineIntent | null;
 };
 
 /** An entry the server says is live, on its way to the edit composer. */
@@ -44,7 +52,9 @@ type EntryTarget = { groupId: string; expenseId: string; expenseDate: string };
  */
 export function useLineIntent(options: UseLineIntentOptions): void {
   const { session, activeGroupId, activeGroup, expenses, detailLoaded } = options;
-  const intentRef = useRef<LineIntent | null>(readLineIntent(window.location.search));
+  const intentRef = useRef<LineIntent | null>(
+    options.initialIntent !== undefined ? options.initialIntent : readLineIntent(window.location.search),
+  );
   const [target, setTarget] = useState<EntryTarget | null>(null);
   const switchedForRef = useRef<EntryTarget | null>(null);
 
@@ -59,8 +69,10 @@ export function useLineIntent(options: UseLineIntentOptions): void {
   // The stash is read in an effect, not while rendering: reading consumes it,
   // and a render may run twice. The URL wins; the stash is dropped either way.
   useEffect(() => {
+    if (options.initialIntent !== undefined) return;
     const stashed = takeStashedLineIntent();
     if (!intentRef.current) intentRef.current = stashed;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

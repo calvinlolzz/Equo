@@ -43,7 +43,12 @@ export type PersonalLedgerHomeProps = {
   /** Whether the site-notice fetch (which is what says whether this is a view-as) has landed; the LINE hint waits for it. */
   siteNoticeLoaded: boolean;
   onOpenDialog: (mode: DialogMode) => void;
-  onScanReceipt: () => void;
+  /** Absent hides the scan button (the LIFF chrome has no receipt scanning). */
+  onScanReceipt?: () => void;
+  /** Default true. False omits the "record from LINE" suggestion. */
+  showLineHint?: boolean;
+  /** Default true. False omits the create/join-a-group buttons from the empty state. */
+  showGroupActions?: boolean;
   onOpenExpenseComposer: () => void;
   /** Takes the whole Expense - see GroupHome's own doc on this prop. */
   onOpenExpenseDetail: (expense: Expense) => void;
@@ -73,6 +78,8 @@ export function PersonalLedgerHome({
   siteNoticeLoaded,
   onOpenDialog,
   onScanReceipt,
+  showLineHint = true,
+  showGroupActions = true,
   onOpenExpenseComposer,
   onOpenExpenseDetail,
   onCreateGroup,
@@ -97,7 +104,7 @@ export function PersonalLedgerHome({
   // `key` keeps one instance across the empty and non-empty branches: the hint
   // sits at a different child index in each, so without it recording the very
   // first entry would remount it (refetch, flicker, gone on a failed fetch).
-  const lineHint = (
+  const lineHint = !showLineHint ? null : (
     <LineLedgerHint
       key="line-hint"
       enabled={
@@ -132,12 +139,16 @@ export function PersonalLedgerHome({
               {/* The ledger being the new landing screen means create/join is no
                   longer reachable through StartFlow for a brand-new user - kept
                   discoverable here instead. */}
-              <button className="secondary-action" type="button" onClick={onCreateGroup}>
-                {text.createGroup}
-              </button>
-              <button className="secondary-action" type="button" onClick={onJoinGroup}>
-                {text.joinGroup}
-              </button>
+              {showGroupActions ? (
+                <>
+                  <button className="secondary-action" type="button" onClick={onCreateGroup}>
+                    {text.createGroup}
+                  </button>
+                  <button className="secondary-action" type="button" onClick={onJoinGroup}>
+                    {text.joinGroup}
+                  </button>
+                </>
+              ) : null}
             </div>
             {lineHint}
           </>

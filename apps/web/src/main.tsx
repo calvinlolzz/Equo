@@ -1,6 +1,5 @@
 import React, { Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { Analytics } from "@vercel/analytics/react";
 import "./app/App.css";
 import { App } from "./app/App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
@@ -8,8 +7,10 @@ import { dismissAppSplash } from "./app/appSplash";
 import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
+import { isLiffPath } from "./app/liff/liffPath";
 import { isLineLinkPath } from "./app/lineLink";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
+import { PageAnalytics } from "./app/PageAnalytics";
 import { resolvePublicPage } from "./app/publicRoute";
 import { initRail } from "./app/railStore";
 import { initTheme } from "./app/themeStore";
@@ -55,13 +56,21 @@ const LegalPage = lazyChunk(() => import("./app/LegalPage").then((module) => ({ 
 const lineLinkPage = !isAdminPath && isLineLinkPath(window.location.pathname);
 const LineLinkPage = lazyChunk(() => import("./app/LineLinkPage").then((module) => ({ default: module.LineLinkPage })));
 
+// /liff - the app opened from a card inside LINE (see app/liff/LiffApp.tsx):
+// signs in with LINE's ID token, then renders <App /> in a restricted chrome.
+// Lazy, so nobody outside LINE downloads the SDK or this shell. No analytics
+// there, and no service worker (see below): the page keeps nothing of its own.
+const liffPage = !isAdminPath && isLiffPath(window.location.pathname);
+const LiffApp = lazyChunk(() => import("./app/liff/LiffApp").then((module) => ({ default: module.LiffApp })));
+
 // Apply the persisted day/night theme to <html> before first paint (no flash).
 // Same for the desktop group rail's collapsed/expanded state — a 64px strip
 // that widens to 260px one frame after mount is exactly the flash this avoids.
 // The admin console keeps its own dark styling and has no rail, so skip both.
+// /liff has no rail either (appChrome.groupNavigation).
 if (!isAdminPath) {
   initTheme();
-  initRail();
+  if (!liffPage) initRail();
 }
 
 // Global crash telemetry -> POST /api/v1/errors (deduped, capped per page
@@ -89,6 +98,10 @@ createRoot(root).render(
             <Suspense fallback={null}>
               <LineLinkPage />
             </Suspense>
+          ) : liffPage ? (
+            <Suspense fallback={null}>
+              <LiffApp />
+            </Suspense>
           ) : publicPage ? (
             <Suspense fallback={null}>
               <LegalPage page={publicPage} />
@@ -104,8 +117,10 @@ createRoot(root).render(
             Only on the user-facing app; the operator console isn't measured.
             Skipped on /line/link so the linkToken query param never reaches
             page-view analytics — it is stripped from the URL a moment later,
-            but a beacon can fire before that happens. */}
-        {lineLinkPage ? null : <Analytics />}
+            but a beacon can fire before that happens — and on /liff, whose
+            URLs carry entry keys and, mid sign-in, LINE's own tokens. See
+            PageAnalytics. */}
+        <PageAnalytics pathname={window.location.pathname} />
       </>
     )}
   </React.StrictMode>,
@@ -124,7 +139,8 @@ requestAnimationFrame(() => requestAnimationFrame(() => dismissAppSplash()));
 
 // Register the PWA service worker in production builds only, after the page
 // has finished loading so it never competes with the initial render/fetch.
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+// Not on /liff: that page keeps nothing of its own.
+if (import.meta.env.PROD && !liffPage && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.debug("[sw] registration failed", error);

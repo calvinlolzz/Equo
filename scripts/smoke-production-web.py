@@ -37,6 +37,9 @@ class Check:
 CHECKS = (
     Check("home", "/", 200, "text/html", '<div id="root"></div>'),
     Check("group deep link", "/group/smoke-test", 200, "text/html", '<div id="root"></div>'),
+    # LIFF's endpoint URL. It is served by the SPA rewrite like any deep link;
+    # a 404 here means LINE opens a dead page.
+    Check("LIFF shell", "/liff", 200, "text/html", '<div id="root"></div>'),
     Check("missing API stays JSON", "/api/v1/unknown", 404, "application/json", '"Unknown API route."'),
     # The LINE link card's hero image is fetched by LINE's servers. A typo or a
     # missing file anywhere outside /assets/ would silently come back as the

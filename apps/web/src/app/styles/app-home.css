@@ -1536,3 +1536,8 @@
   background: var(--card-solid);
   box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.32);
 }
+
+/* Without the 群組/帳本 tab (LIFF chrome): four tabs, not five with a hole. */
+.mobile-tab-bar.mobile-tab-bar--compact {
+  grid-template-columns: repeat(4, 1fr);
+}

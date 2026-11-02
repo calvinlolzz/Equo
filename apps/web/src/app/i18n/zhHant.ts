@@ -770,6 +770,16 @@ export const ZH_HANT = {
     hintQrAlt: "加 Equo 為 LINE 好友的 QR code",
     hintDismiss: "關閉 LINE 記帳提示",
   },
+  liff: {
+    loading: "正在開啟 Equo…",
+    notLinkedTitle: "還沒有連結 Equo 帳號",
+    notLinkedBody: "回到聊天室傳「綁定」，連結後就能在這裡查看和編輯帳本。",
+    backToChat: "回到聊天室",
+    disabled: "這個 Equo 帳號已被停用。",
+    failed: "暫時無法在 LINE 裡開啟，請改用瀏覽器。",
+    openInBrowser: "用瀏覽器開啟",
+    sessionEnded: "登入已過期，請從聊天室重新開啟。",
+  },
   misc: {
     pullRefreshing: "重新整理中…",
     pullArmed: "放開以重新整理",

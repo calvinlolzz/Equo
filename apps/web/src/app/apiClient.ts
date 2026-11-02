@@ -359,6 +359,44 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 /**
+ * The LIFF session's bearer token (equoL1.…), or null.
+ *
+ * The one place a Bearer header is ever sent, and it exists for exactly one
+ * caller: the /liff page inside LINE, where Google sign-in cannot run and a
+ * cookie would land in whichever browser opened the link. It lives in this
+ * module variable and nowhere else - not localStorage, not sessionStorage, not
+ * a cookie, not the URL - so a reload throws it away and the page signs in
+ * again from LINE's own ID token. The server only accepts it for a 60-minute,
+ * personal-ledger-only scope (see server/http/liffScope.ts).
+ */
+let liffBearer: string | null = null;
+
+export function setApiBearerToken(token: string | null): void {
+  liffBearer = token;
+}
+
+/** What POST /auth/line answers with: a LIFF-scoped session for the caller's personal ledger. */
+export type LineSessionResponse = {
+  session: {
+    token: string;
+    expires_at: string;
+    user: { id: string; google_sub: string; email: string; display_name: string; avatar_url: string | null };
+    ledger_id: string;
+    locale: "zh-Hant" | "en";
+  };
+};
+
+type RequestOptions = {
+  /**
+   * Sends no credential at all: no Bearer header, no cookies. For the calls
+   * that happen before there is a session (or while the one we have is being
+   * replaced) - an expired LIFF bearer on the exchange itself would be refused
+   * by the gate before the route ever ran.
+   */
+  anonymous?: boolean;
+};
+
+/**
  * The session travels in the `equo_session` cookie, which the server set at
  * login as HttpOnly, Secure, SameSite=Lax (see sessionToken.ts's
  * createSessionCookie). The browser attaches it to every same-origin request
@@ -369,19 +407,23 @@ async function readJson<T>(response: Response): Promise<T> {
  * to exactly the attacker the HttpOnly flag exists to keep it away from, and
  * made the cookie's protection worth nothing. The server accepts either (see
  * getAuthToken), so dropping the Bearer half changes no server behaviour.
+ *
+ * The Bearer path is back for LIFF only, memory-only and scope-limited - see
+ * setApiBearerToken above. Outside /liff nothing ever sets it.
  */
 export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiClientOptions = {}) {
-  async function request<T>(path: string, init: RequestInit): Promise<T> {
+  async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     };
+    if (liffBearer && !options.anonymous) headers.Authorization = `Bearer ${liffBearer}`;
 
     let response: Response;
     try {
       response = await fetcher(`${baseUrl}${path}`, {
         ...init,
-        credentials: "same-origin",
+        credentials: options.anonymous ? "omit" : "same-origin",
         headers,
       });
     } catch (cause) {
@@ -420,6 +462,23 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
         method: "POST",
         body: JSON.stringify({ access_token: accessToken }),
       });
+    },
+    /**
+     * Trade LINE's ID token (from liff.getIDToken()) for a LIFF session. The
+     * only place that token is ever sent, and sent anonymously: no Bearer
+     * header and no cookies, so a stale LIFF bearer cannot turn the very call
+     * that replaces it into a 401.
+     */
+    exchangeLineIdToken(idToken: string) {
+      return request<LineSessionResponse>(
+        "/auth/line",
+        { method: "POST", body: JSON.stringify({ id_token: idToken }) },
+        { anonymous: true },
+      );
+    },
+    /** The LIFF app id, or null while LIFF is off. Needs no credential. */
+    getLiffConfig() {
+      return request<{ liff_id: string | null }>("/line/liff", { method: "GET" }, { anonymous: true });
     },
     createGroup(payload: CreateGroupRequest) {
       return request<{ group: GroupSummary; owner_member: GroupMemberSummary }>("/groups", {

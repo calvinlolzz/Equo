@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createApiClient } from "./apiClient";
 import { clearCloudCache } from "./cloudCache";
 import { createCloudGroupsStore, type CloudGroupsStore } from "./cloudStore";
+import { createMemoryStorage } from "./memoryStorage";
 import { clearStashedLineIntent, readLineIntent, stashLineIntent } from "./lineIntent";
 import { resumePendingLineLink } from "./lineLink";
 import { stashPendingRoute } from "./pendingRoute";
@@ -21,6 +22,27 @@ export type UseAuthSessionOptions = {
   onSignedIn: (session: StoredSession) => void;
   /** Sign-out has to close the open group too, which is the route's business, not this hook's. */
   onSignedOut: () => void;
+  /**
+   * A session that already exists, handed in by the page (LIFF signs in with
+   * LINE before the App mounts). Nothing is read from storage to find one.
+   */
+  injectedSession?: StoredSession;
+  /**
+   * Whether the session, the cloud cache and the offline queue are kept in the
+   * browser's storage. Default true. `false` means none of them is read,
+   * written or cleared - the normal app's saved session on the same origin is
+   * left exactly as it is, and the cloud store runs on a throwaway in-memory
+   * storage instead.
+   */
+  persist?: boolean;
+  /**
+   * The server said the session is no longer good. Resolve true if a fresh one
+   * is in place (the session is kept and work carries on), false to end it.
+   * Without this the session is simply ended, as before.
+   */
+  onSessionExpired?: () => Promise<boolean>;
+  /** Do not look for an OAuth redirect in the URL fragment (on /liff it can hold LINE's tokens, never ours). */
+  skipOAuthFragment?: boolean;
 };
 
 /**
@@ -31,17 +53,48 @@ export type UseAuthSessionOptions = {
  * here rather than as two independent pieces of state - a session without its
  * store, or a store outliving its session, is a bug in either direction.
  */
-export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSessionOptions) {
-  const [session, setSession] = useState<StoredSession | null>(() => loadSession(Date.now()));
+export function useAuthSession({
+  showToast,
+  onSignedIn,
+  onSignedOut,
+  injectedSession,
+  persist = true,
+  onSessionExpired,
+  skipOAuthFragment = false,
+}: UseAuthSessionOptions) {
+  const [session, setSession] = useState<StoredSession | null>(() => injectedSession ?? loadSession(Date.now()));
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  // Where the cloud store keeps its cache and offline queue. Undefined means
+  // the browser's localStorage; a non-persisting session gets its own.
+  const cacheStorage = useMemo(() => (persist ? undefined : createMemoryStorage()), [persist]);
+  // One renewal at a time: a screenful of requests that all come back 401
+  // together must produce one sign-in, not one each.
+  const renewing = useRef<Promise<boolean> | null>(null);
+
+  function endSession() {
+    if (persist) {
+      clearSession();
+      clearCloudCache();
+    }
+    setSession(null);
+    showToast(text.sessionExpired);
+  }
 
   /** The server rejected the session (expired, revoked, or the account was disabled). */
   function handleSessionExpired() {
-    clearSession();
-    clearCloudCache();
-    setSession(null);
-    showToast(text.sessionExpired);
+    if (!onSessionExpired) {
+      endSession();
+      return;
+    }
+    renewing.current ??= onSessionExpired()
+      .catch(() => false)
+      .finally(() => {
+        renewing.current = null;
+      });
+    void renewing.current.then((kept) => {
+      if (!kept) endSession();
+    });
   }
 
   const cloudStore = useMemo<CloudGroupsStore | null>(() => {
@@ -50,6 +103,7 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
       apiClient: createApiClient(),
       onSessionExpired: handleSessionExpired,
       userId: session.user.id,
+      cacheStorage,
       onWriteDropped: () => showToast(text.offlineWriteDropped),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +154,7 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
    * Runs once, on boot. A page with no fragment falls straight through.
    */
   useEffect(() => {
+    if (skipOAuthFragment) return;
     const parsed = parseOAuthFragment(window.location.hash);
     if (!parsed) return;
 
@@ -148,6 +203,9 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
   }, []);
 
   function startGoogleLogin() {
+    // Google sign-in cannot run inside LINE (disallowed_useragent), and a
+    // non-persisting session has nowhere to put the result anyway.
+    if (!persist) return;
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 
     if (!supabaseUrl) {
@@ -167,8 +225,10 @@ export function useAuthSession({ showToast, onSignedIn, onSignedOut }: UseAuthSe
   }
 
   function signOut() {
-    clearSession();
-    clearCloudCache();
+    if (persist) {
+      clearSession();
+      clearCloudCache();
+    }
     setSession(null);
     onSignedOut();
     showToast(text.logoutSuccess);

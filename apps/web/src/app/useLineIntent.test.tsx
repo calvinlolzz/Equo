@@ -328,3 +328,48 @@ describe("useLineIntent - across the login redirect", () => {
     expect(setDialog).not.toHaveBeenCalled();
   });
 });
+
+describe("useLineIntent - initialIntent (LIFF)", () => {
+  test("a view handed in is acted on once, with nothing in the URL", () => {
+    const { setDialog, resolveLineEntry } = setup(`/group/${LEDGER}`, { initialIntent: { kind: "analysis" } });
+
+    expect(setDialog).toHaveBeenCalledTimes(1);
+    expect(setDialog).toHaveBeenCalledWith("analysisPanel");
+    expect(resolveLineEntry).not.toHaveBeenCalled();
+  });
+
+  test("an entry handed in is resolved and opened", async () => {
+    const { resolveLineEntry, openExpenseEdit } = setup(`/group/${LEDGER}`, {
+      initialIntent: { kind: "entry", entryKey: KEY },
+    });
+
+    await waitFor(() => expect(openExpenseEdit).toHaveBeenCalledTimes(1));
+    expect(resolveLineEntry).toHaveBeenCalledWith(KEY);
+  });
+
+  test("it replaces the URL: a query that happens to be there is not a second intent", () => {
+    const { setDialog } = setup(`/group/${LEDGER}?view=records`, { initialIntent: { kind: "analysis" } });
+
+    expect(setDialog).toHaveBeenCalledTimes(1);
+    expect(setDialog).toHaveBeenCalledWith("analysisPanel");
+  });
+
+  test("null means no intent at all - the URL is not consulted", () => {
+    const { setDialog, resolveLineEntry } = setup(`/group/${LEDGER}?view=records&${ENTRY_QUERY}`, {
+      initialIntent: null,
+    });
+
+    expect(setDialog).not.toHaveBeenCalled();
+    expect(resolveLineEntry).not.toHaveBeenCalled();
+  });
+
+  test("the stash from a Google sign-in on this browser is neither consumed nor obeyed", () => {
+    stashLineIntent({ kind: "records" });
+    const { setDialog } = setup(`/group/${LEDGER}`, { initialIntent: null });
+    expect(setDialog).not.toHaveBeenCalled();
+
+    // Still there for the ordinary app's own sign-in to pick up.
+    const ordinary = setup(`/group/${LEDGER}`);
+    expect(ordinary.setDialog).toHaveBeenCalledWith("recordsPanel");
+  });
+});
