@@ -304,6 +304,26 @@ export async function resolveLineEntryForUser(
   });
 }
 
+export type LineLiffIdentityResult =
+  | { ok: false; reason: "not_linked" | "account_disabled" | "no_ledger" }
+  | {
+      ok: true;
+      user: { id: string; google_sub: string; email: string; display_name: string; avatar_url: string | null };
+      ledger_id: string;
+      locale: string;
+    };
+
+/**
+ * POST /api/v1/auth/line, the step after LINE has vouched for `lineUserId`:
+ * which Equo user is that LINE account linked to, and which is their personal
+ * ledger (created on first use). Takes only the LINE user id - never a user or
+ * a group - so the identity can only be the one the link says it is. Anything
+ * unlinked or malformed is `not_linked`; a disabled account never gets a ledger.
+ */
+export async function lineLiffIdentity(client: PostgrestClient, lineUserId: string): Promise<LineLiffIdentityResult> {
+  return client.rpc<LineLiffIdentityResult>("line_liff_identity", { p_line_user_id: lineUserId });
+}
+
 /**
  * Is a LIFF session still good? True only while ALL of these hold: the user is
  * still linked to the LINE account whose id hashes to `lineSubHash`, the user is

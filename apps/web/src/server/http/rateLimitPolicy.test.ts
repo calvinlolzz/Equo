@@ -42,6 +42,27 @@ describe("resolveRateLimitRule", () => {
     expect(google!.limit).toBeLessThan(resolveRateLimitRule("POST", "/api/v1/groups")!.limit);
   });
 
+  test("the LINE ID token exchange has its own per-address rule, looser than the other logins", () => {
+    const line = resolveRateLimitRule("POST", "/api/v1/auth/line");
+    const google = resolveRateLimitRule("POST", "/api/v1/auth/google")!;
+
+    // [MV] if the generic /auth/ rule matched first this would be the tight AUTH
+    // budget: carrier-grade NAT puts many phones behind one address.
+    expect(line).toMatchObject({ name: "lineAuth", scope: "ip" });
+    expect(line!.limit).toBeGreaterThan(google.limit);
+    expect(line!.limit).toBe(60);
+    expect(line!.windowSeconds).toBe(600);
+  });
+
+  test("the lineAuth rule is exactly that path - siblings and look-alikes keep their own rules", () => {
+    expect(resolveRateLimitRule("POST", "/api/v1/auth/line/")).toMatchObject({ name: "auth" });
+    expect(resolveRateLimitRule("POST", "/api/v1/auth/linex")).toMatchObject({ name: "auth" });
+    expect(resolveRateLimitRule("POST", "/api/v1/auth/line/extra")).toMatchObject({ name: "auth" });
+    expect(resolveRateLimitRule("POST", "/api/v1/auth/google")).toMatchObject({ name: "auth" });
+    // The config read is an ordinary GET.
+    expect(resolveRateLimitRule("GET", "/api/v1/line/liff")).toBeNull();
+  });
+
   test("caps feedback per user", () => {
     expect(resolveRateLimitRule("POST", "/api/v1/feedback")).toMatchObject({ name: "feedback", scope: "user" });
   });

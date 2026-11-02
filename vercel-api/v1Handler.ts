@@ -50,11 +50,12 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
   const [
     { createHttpRuntime },
     { createGoogleTokenVerifier },
-    { missingRuntimeEnv, readRuntimeEnv, readVapidKeys },
+    { missingRuntimeEnv, readLineLiffConfig, readRuntimeEnv, readVapidKeys },
     { createSupabaseAccessTokenVerifier },
     { createPostgrestClient },
     { createSupabaseStorageClient },
     { createReceiptScanner },
+    { createLineIdTokenVerifier },
   ] = await Promise.all([
     import("../apps/web/src/server/http/runtime.js"),
     import("../apps/web/src/server/runtime/googleTokenVerifier.js"),
@@ -63,6 +64,7 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     import("../apps/web/src/server/db/postgrestClient.js"),
     import("../apps/web/src/server/runtime/supabaseStorageClient.js"),
     import("../apps/web/src/server/runtime/receiptScanner.js"),
+    import("../apps/web/src/server/line/lineIdToken.js"),
   ]);
 
   const runtimeEnv = readRuntimeEnv({
@@ -78,7 +80,11 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     RECEIPT_SCAN_MODEL: process.env.RECEIPT_SCAN_MODEL,
+    LINE_LIFF_ID: process.env.LINE_LIFF_ID,
+    LINE_LOGIN_CHANNEL_ID: process.env.LINE_LOGIN_CHANNEL_ID,
+    LINE_LIFF_LINKS: process.env.LINE_LIFF_LINKS,
   });
+  const liffConfig = readLineLiffConfig(runtimeEnv);
   const missing = missingRuntimeEnv(runtimeEnv);
 
   if (missing.length > 0) {
@@ -125,6 +131,12 @@ async function routeV1Request(request: VercelRequest, response: VercelResponse) 
       google: runtimeEnv.GEMINI_API_KEY,
     },
     receiptScanModel: runtimeEnv.RECEIPT_SCAN_MODEL,
+    lineLiff: liffConfig
+      ? {
+          liffId: liffConfig.liffId,
+          verifyIdToken: createLineIdTokenVerifier({ channelId: liffConfig.channelId }),
+        }
+      : undefined,
   });
   const url = new URL(request.url ?? "/api/v1", "https://equo.local");
   const result = await runtime.handle({

@@ -16,6 +16,8 @@ import type {
 import type { GoogleTokenVerifier } from "../auth/google.js";
 import { verifySessionToken } from "../auth/sessionToken.js";
 import { authGoogleRoute, authSupabaseRoute } from "../routes/authRoutes.js";
+import type { LineIdTokenResult } from "../line/lineIdToken.js";
+import { authLineRoute, liffConfigRoute } from "../routes/lineLiffRoutes.js";
 import {
   createGroupRoute,
   createInviteRoute,
@@ -178,6 +180,16 @@ type RuntimeOptions = {
   receiptScanModel?: string;
   /** Which providers have keys here, so the console can mark each model runnable or not. */
   receiptScanKeys?: ReceiptScanKeys;
+  /**
+   * Absent = opening Equo inside LINE (LIFF) is off: GET /line/liff reports
+   * liff_id:null and POST /auth/line answers 503. Present only when
+   * LINE_LIFF_ID is set and well-formed (runtime/runtimeEnv.ts).
+   */
+  lineLiff?: {
+    liffId: string;
+    /** Verifies a LINE ID token against the LINE Login channel; a test seam. */
+    verifyIdToken: (idToken: string) => Promise<LineIdTokenResult>;
+  };
 };
 
 type RuntimeRoute = {
@@ -282,6 +294,42 @@ export function createHttpRuntime(options: RuntimeOptions) {
           },
           body<{ id_token?: string }>(request),
         );
+        const response = jsonResponse(result.status, result.body);
+        return { ...response, headers: { ...response.headers, ...result.headers } };
+      },
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/v1\/auth\/line$/,
+      label: "POST /api/v1/auth/line",
+      async handle(request) {
+        if (!options.sessionSecret) {
+          return errorResponse(503, "RUNTIME_ENV_MISSING", "Missing runtime env: SESSION_SECRET", "req_runtime_env");
+        }
+
+        if (!options.lineLiff) {
+          return errorResponse(503, "LINE_UNAVAILABLE", "Opening Equo inside LINE is not enabled.", "req_liff_off");
+        }
+
+        const result = await authLineRoute(
+          {
+            client: options.client,
+            sessionSecret: options.sessionSecret,
+            verifyIdToken: options.lineLiff.verifyIdToken,
+            now: options.now,
+          },
+          body<{ id_token?: unknown }>(request),
+        );
+        const response = jsonResponse(result.status, result.body);
+        return { ...response, headers: { ...response.headers, ...result.headers } };
+      },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/v1\/line\/liff$/,
+      label: "GET /api/v1/line/liff",
+      async handle() {
+        const result = liffConfigRoute(options.lineLiff?.liffId ?? null);
         const response = jsonResponse(result.status, result.body);
         return { ...response, headers: { ...response.headers, ...result.headers } };
       },

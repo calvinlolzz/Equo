@@ -44,6 +44,15 @@ const ERRORS: RateLimitRule = { name: "errors", limit: 30, windowSeconds: HOUR, 
  */
 const AUTH: RateLimitRule = { name: "auth", limit: 20, windowSeconds: 10 * MINUTE, scope: "ip" };
 
+/**
+ * The LINE ID token exchange (opening Equo inside LINE). Looser than AUTH
+ * because every LIFF open is one exchange and, on Taiwanese mobile carriers,
+ * many unrelated phones share one address - 60 per 10 minutes per address is
+ * still far below credential-guessing speed, and a per-LINE-account cap of its
+ * own sits behind it (routes/lineLiffRoutes.ts).
+ */
+const LINE_AUTH: RateLimitRule = { name: "lineAuth", limit: 60, windowSeconds: 10 * MINUTE, scope: "ip" };
+
 /** Human-speed by nature — nobody files ten support notes an hour. */
 const FEEDBACK: RateLimitRule = { name: "feedback", limit: 10, windowSeconds: HOUR, scope: "user" };
 
@@ -108,6 +117,8 @@ export function resolveRateLimitRule(method: string, path: string): RateLimitRul
   if (!WRITE_METHODS.has(method)) return null;
 
   if (path === "/api/v1/errors") return ERRORS;
+  // Before the generic /auth/ rule below, which is tighter and would catch it.
+  if (path === "/api/v1/auth/line") return LINE_AUTH;
   if (path.startsWith("/api/v1/auth/")) return AUTH;
   if (path === "/api/v1/feedback") return FEEDBACK;
   if (path === "/api/v1/receipts/scan") return RECEIPT_SCAN;

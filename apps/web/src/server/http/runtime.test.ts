@@ -2027,4 +2027,227 @@ describe("LIFF sessions", () => {
 
     expect(rpcs.map((call) => call.fn)).not.toContain("line_liff_link_live");
   });
+
+  describe("exchanging a LINE ID token", () => {
+    const SUB = "U" + "a".repeat(32);
+    const IDENTITY = {
+      ok: true,
+      user: { id: "user_alice", google_sub: "google_alice", email: "alice@example.com", display_name: "Alice", avatar_url: null },
+      ledger_id: LEDGER,
+      locale: "zh-Hant",
+    };
+    const goodVerify = async () => ({
+      ok: true as const,
+      claims: { iss: "https://access.line.me", sub: SUB, aud: "1234567890", exp: 9_999_999, iat: 1 },
+    });
+    const LIFF_ON = { liffId: "1234567890-AbcdEfgh", verifyIdToken: goodVerify };
+
+    /** liffClient plus the identity RPC. */
+    function exchangeClient(identity: unknown = IDENTITY, live: unknown = true) {
+      const { client: base, rpcs, inserts } = liffClient(live);
+      const client: PostgrestClient = {
+        ...base,
+        async rpc<T>(fn: string, args: Record<string, unknown>) {
+          if (fn === "line_liff_identity") {
+            rpcs.push({ fn, args });
+            return identity as T;
+          }
+          return base.rpc<T>(fn, args);
+        },
+      };
+      return { client, rpcs, inserts };
+    }
+
+    function exchangeRuntime(client: PostgrestClient) {
+      return makeRuntime(client, { lineLiff: LIFF_ON });
+    }
+
+    const exchange = (runtime: ReturnType<typeof makeRuntime>, extra: Record<string, unknown> = {}) =>
+      runtime.handle({
+        method: "POST",
+        path: "/api/v1/auth/line",
+        headers: { "x-forwarded-for": "203.0.113.9" },
+        json: { id_token: "aaa.bbb.ccc" },
+        ...extra,
+      });
+
+    function maintenanceOn(base: PostgrestClient): PostgrestClient {
+      return {
+        ...base,
+        async rpc<T>(fn: string, args: Record<string, unknown>) {
+          if (fn === "site_notice_settings") {
+            return {
+              banner: { message: "", level: "info", ends_at: null, active: false },
+              maintenance: { enabled: true, message: "maintenance" },
+            } as T;
+          }
+          return base.rpc<T>(fn, args);
+        },
+      };
+    }
+
+    test("GET /line/liff needs no credential and reports the LIFF id", async () => {
+      const { client } = exchangeClient();
+
+      const response = await exchangeRuntime(client).handle({ method: "GET", path: "/api/v1/line/liff", headers: {} });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ liff_id: "1234567890-AbcdEfgh" });
+      expect(response.headers["cache-control"]).toBe("no-store");
+    });
+
+    test("GET /line/liff reports null when LIFF is not configured", async () => {
+      const { client } = exchangeClient();
+
+      const response = await makeRuntime(client).handle({ method: "GET", path: "/api/v1/line/liff", headers: {} });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ liff_id: null });
+    });
+
+    test("POST /auth/line is 503 LINE_UNAVAILABLE when LIFF is not configured, and the database is not asked who it is", async () => {
+      const { client, rpcs } = exchangeClient();
+
+      const response = await exchange(makeRuntime(client));
+
+      expect(response.status).toBe(503);
+      expect(code(response)).toBe("LINE_UNAVAILABLE");
+      expect(rpcs.map((call) => call.fn)).not.toContain("line_liff_identity");
+    });
+
+    test("POST /auth/line without SESSION_SECRET is 503 RUNTIME_ENV_MISSING", async () => {
+      const { client } = exchangeClient();
+
+      const response = await exchange(makeRuntime(client, { sessionSecret: undefined, lineLiff: LIFF_ON }));
+
+      expect(response.status).toBe(503);
+      expect(code(response)).toBe("RUNTIME_ENV_MISSING");
+    });
+
+    test("an exchange returns a token in the body and sets no cookie", async () => {
+      const { client } = exchangeClient();
+
+      const response = await exchange(exchangeRuntime(client));
+
+      expect(response.status).toBe(200);
+      expect((response.body as { session: { token: string } }).session.token.startsWith("equoL1.")).toBe(true);
+      expect(Object.keys(response.headers).map((name) => name.toLowerCase())).not.toContain("set-cookie");
+      expect(response.headers["cache-control"]).toBe("no-store");
+    });
+
+    test("the exchange is charged to the ADDRESS under its own rule, and to the account", async () => {
+      const { client, rpcs } = exchangeClient();
+
+      await exchange(exchangeRuntime(client));
+
+      const buckets = rpcs.filter((call) => call.fn === "consume_rate_limit").map((call) => String(call.args.p_bucket));
+      expect(buckets).toContain("lineAuth:ip:203.0.113.9");
+      expect(buckets.some((bucket) => bucket.startsWith("lineAuth:s:"))).toBe(true);
+    });
+
+    test("an exchange over the address limit is a 429 and LINE is never asked", async () => {
+      const base = exchangeClient().client;
+      const verify = vi.fn(goodVerify);
+      const client: PostgrestClient = {
+        ...base,
+        async rpc<T>(fn: string, args: Record<string, unknown>) {
+          if (fn === "consume_rate_limit") return { allowed: false, retry_after: 7 } as T;
+          return base.rpc<T>(fn, args);
+        },
+      };
+
+      const response = await exchange(makeRuntime(client, { lineLiff: { liffId: "1234567890-AbcdEfgh", verifyIdToken: verify } }));
+
+      expect(response.status).toBe(429);
+      expect(verify).not.toHaveBeenCalled();
+    });
+
+    test("the exchange is not stopped by maintenance mode", async () => {
+      const { resetSiteNoticeCache } = await import("./maintenance.js");
+      resetSiteNoticeCache();
+
+      try {
+        const response = await exchange(exchangeRuntime(maintenanceOn(exchangeClient().client)));
+
+        expect(response.status).toBe(200);
+      } finally {
+        resetSiteNoticeCache();
+      }
+    });
+
+    test("a LIFF write IS stopped by maintenance mode, like any other write", async () => {
+      const { resetSiteNoticeCache } = await import("./maintenance.js");
+      resetSiteNoticeCache();
+
+      try {
+        const response = await makeRuntime(maintenanceOn(liffClient().client)).handle({
+          method: "POST",
+          path: `/api/v1/groups/${LEDGER}/expenses`,
+          headers: { authorization: `Bearer ${await liffToken()}` },
+          json: {},
+        });
+
+        expect(response.status).toBe(503);
+        expect(code(response)).toBe("MAINTENANCE");
+      } finally {
+        resetSiteNoticeCache();
+      }
+    });
+
+    test("an exchanged token works end to end: lists only its ledger, and is refused everywhere else", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { client } = exchangeClient();
+      const runtime = exchangeRuntime(client);
+      const token = ((await exchange(runtime)).body as { session: { token: string } }).session.token;
+      const headers = { authorization: `Bearer ${token}` };
+
+      const groups = await runtime.handle({ method: "GET", path: "/api/v1/groups", headers });
+      expect((groups.body as { groups: Array<{ id: string }> }).groups.map((group) => group.id)).toEqual([LEDGER]);
+
+      for (const [method, path] of [
+        ["GET", "/api/v1/admin/users"],
+        ["DELETE", "/api/v1/me"],
+        ["GET", `/api/v1/groups/${SHARED}`],
+        ["POST", "/api/v1/me/line/link"],
+      ] as const) {
+        const refused = await runtime.handle({ method, path, headers });
+        expect([method, path, refused.status, code(refused)]).toEqual([method, path, 403, "LIFF_SCOPE"]);
+      }
+    });
+
+    test("a LIFF token sent along with an exchange is refused: the client must exchange without Authorization", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { client } = exchangeClient();
+
+      const response = await exchange(exchangeRuntime(client), {
+        headers: { authorization: `Bearer ${await liffToken()}`, "x-forwarded-for": "203.0.113.9" },
+      });
+
+      // The token in hand cannot be used to mint another one.
+      expect(response.status).toBe(403);
+      expect(code(response)).toBe("LIFF_SCOPE");
+    });
+
+    test("an unlinked LINE account gets 403 and no token", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { client } = exchangeClient({ ok: false, reason: "not_linked" });
+
+      const response = await exchange(exchangeRuntime(client));
+
+      expect(response.status).toBe(403);
+      expect(code(response)).toBe("LINE_NOT_LINKED");
+      expect(JSON.stringify(response.body)).not.toContain("equoL1");
+    });
+
+    test("a view-as cookie blocks the exchange like every other write", async () => {
+      const { client } = exchangeClient();
+
+      const response = await exchange(exchangeRuntime(client), {
+        headers: { cookie: "equo_view_as=anything", "x-forwarded-for": "203.0.113.9" },
+      });
+
+      expect(response.status).toBe(403);
+      expect(code(response)).toBe("VIEW_AS_READONLY");
+    });
+  });
 });

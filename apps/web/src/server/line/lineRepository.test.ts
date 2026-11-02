@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { PostgrestClient } from "../db/postgrestClient.js";
-import { deleteLineEntry, lineEntryStatus, lineStreak, liffLinkIsLive, resolveLineEntryForUser } from "./lineRepository.js";
+import { deleteLineEntry, lineEntryStatus, lineStreak, liffLinkIsLive, lineLiffIdentity, resolveLineEntryForUser } from "./lineRepository.js";
 
 /**
  * The wrappers are thin on purpose; what is worth pinning is the RPC name and
@@ -135,5 +135,18 @@ describe("liffLinkIsLive", () => {
     const client = { rpc: vi.fn(async () => { throw new Error("down"); }) } as unknown as PostgrestClient;
 
     await expect(liffLinkIsLive(client, claims)).rejects.toThrow("down");
+  });
+});
+
+describe("lineLiffIdentity", () => {
+  test("calls line_liff_identity with the LINE user id and nothing else, passing the answer through", async () => {
+    const answer = { ok: true, user: { id: "user_alice" }, ledger_id: "0b8f2c1e-5a41-4f0a-9d2e-3c6b7a8d9e10", locale: "zh-Hant" };
+    const { client, rpc } = clientReturning(answer);
+
+    const result = await lineLiffIdentity(client, "U" + "a".repeat(32));
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith("line_liff_identity", { p_line_user_id: "U" + "a".repeat(32) });
+    expect(result).toEqual(answer);
   });
 });

@@ -94,6 +94,14 @@ export const errorCodes = [
    * a sign-in problem - the session is fine, the request is not allowed.
    */
   "LIFF_SCOPE",
+  /** POST /auth/line: the LINE ID token is malformed, for another channel, or refused by LINE. */
+  "LINE_ID_TOKEN_INVALID",
+  /** POST /auth/line: LINE says the ID token has expired. The client logs in again (once) and retries. */
+  "LINE_ID_TOKEN_EXPIRED",
+  /** POST /auth/line: a genuine LINE account that is not linked to any Equo account yet. */
+  "LINE_NOT_LINKED",
+  /** POST /auth/line: linked, but there is no personal ledger to open. */
+  "NO_LEDGER",
   /**
    * LINE (or our own database, while checking a LINE-issued session) could not
    * be reached. Retryable; nothing about the caller's credentials was judged.
