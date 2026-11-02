@@ -9,6 +9,17 @@ import { loadLiffSdk } from "./liffSdk";
 
 const text = UI_TEXT.liff;
 
+/**
+ * Renew this long before the session runs out. Waiting for the first 401 makes
+ * the save itself the request that fails, and if LINE's own ID token has also
+ * expired by then the re-login redirect throws away an open composer.
+ */
+export const LIFF_RENEW_BEFORE_MS = 5 * 60_000;
+/** Never renew sooner than this after scheduling: a session that is always "about to expire" must not become a tight loop on the exchange. */
+const MIN_RENEW_DELAY_MS = 15_000;
+/** setTimeout's ceiling; anything longer fires at once. */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /** The real browser, wired to the state machine. Tests override pieces of it. */
 function createBootDeps(overrides: Partial<LiffBootDeps> = {}): LiffBootDeps {
   let sdk: ReturnType<typeof loadLiffSdk> | null = null;
@@ -61,7 +72,9 @@ export function LiffApp({ overrides }: { overrides?: Partial<LiffBootDeps> }) {
   const deps = useMemo(() => createBootDeps(overrides), [overrides]);
   const [state, setState] = useState<LiffBootState>({ phase: "loading" });
   const [ended, setEnded] = useState(false);
+  const [renewedUntil, setRenewedUntil] = useState<string | null>(null);
   const mounted = useRef(false);
+  const renewing = useRef<Promise<boolean> | null>(null);
   const started = useRef(false);
 
   // Page-view analytics is not mounted on /liff (PageAnalytics); this is the
@@ -85,11 +98,41 @@ export function LiffApp({ overrides }: { overrides?: Partial<LiffBootDeps> }) {
     };
   }, [deps]);
 
+  // One renewal at a time, whoever asks: the timer below and a 401 on a request
+  // can land together, and two exchanges would race for the bearer.
+  const renew = useCallback((): Promise<boolean> => {
+    renewing.current ??= reauthenticateLiff({
+      ...deps,
+      onRenewed: (expiresAt) => {
+        if (mounted.current) setRenewedUntil(expiresAt);
+      },
+    }).finally(() => {
+      renewing.current = null;
+    });
+    return renewing.current;
+  }, [deps]);
+
+  // The App's 401 path. A renewal that cannot be had ends the session here.
   const reauthenticate = useCallback(async () => {
-    const ok = await reauthenticateLiff(deps);
+    const ok = await renew();
     if (!ok && mounted.current) setEnded(true);
     return ok;
-  }, [deps]);
+  }, [renew]);
+
+  // The quiet renewal ahead of expiry. If it fails nothing ends: the bearer is
+  // gone, so the next request 401s and takes the path above, which decides.
+  const expiresAt = renewedUntil ?? (state.phase === "ready" ? state.session.expiresAt : null);
+  useEffect(() => {
+    const at = expiresAt ? Date.parse(expiresAt) : NaN;
+    if (!Number.isFinite(at)) return;
+
+    const delay = Math.min(MAX_TIMER_MS, Math.max(MIN_RENEW_DELAY_MS, at - LIFF_RENEW_BEFORE_MS - Date.now()));
+    const timer = setTimeout(() => {
+      void renew();
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [expiresAt, renew]);
 
   const closeWindow = useCallback(() => {
     deps

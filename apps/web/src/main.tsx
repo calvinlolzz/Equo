@@ -7,7 +7,7 @@ import { dismissAppSplash } from "./app/appSplash";
 import { installErrorReporter } from "./app/errorReporter";
 import { installKeyboardInset } from "./app/keyboardInset";
 import { lazyChunk } from "./app/lazyChunk";
-import { isLiffPath } from "./app/liff/liffPath";
+import { isLiffPath, shouldReturnToLiff } from "./app/liff/liffPath";
 import { isLineLinkPath } from "./app/lineLink";
 import { purgeLegacyBrowserStorage } from "./app/legacyStorageCleanup";
 import { PageAnalytics } from "./app/PageAnalytics";
@@ -63,6 +63,23 @@ const LineLinkPage = lazyChunk(() => import("./app/LineLinkPage").then((module) 
 const liffPage = !isAdminPath && isLiffPath(window.location.pathname);
 const LiffApp = lazyChunk(() => import("./app/liff/LiffApp").then((module) => ({ default: module.LiffApp })));
 
+// A reload of /group/<ledger> inside a tab that booted LIFF (the LIFF menu's
+// refresh, or the OS restoring a killed webview) goes back through /liff: the
+// ordinary app would show a Google login, which cannot work inside LINE.
+// Only liffPath is imported for this, so the boot machinery stays out of the
+// entry chunk.
+const returningToLiff = (() => {
+  try {
+    return shouldReturnToLiff(window.location.pathname, window.sessionStorage);
+  } catch {
+    return false;
+  }
+})();
+
+if (returningToLiff) {
+  window.location.replace("/liff");
+}
+
 // Apply the persisted day/night theme to <html> before first paint (no flash).
 // Same for the desktop group rail's collapsed/expanded state — a 64px strip
 // that widens to 260px one frame after mount is exactly the flash this avoids.
@@ -83,7 +100,8 @@ installErrorReporter(isAdminPath ? "admin" : "web");
 // there is no on-screen keyboard, so it is not gated on the path.
 installKeyboardInset();
 
-createRoot(root).render(
+// Nothing to render when the page is already on its way back to /liff.
+if (!returningToLiff) createRoot(root).render(
   <React.StrictMode>
     {isAdminPath ? (
       <ErrorBoundary source="admin">
@@ -135,12 +153,13 @@ createRoot(root).render(
 // synchronously from storage (useAuthSession's lazy initial state) and the group
 // data is seeded synchronously from the cloud cache, so the app lands on either
 // the login screen or a populated home — never a blank one.
-requestAnimationFrame(() => requestAnimationFrame(() => dismissAppSplash()));
+// (Not when leaving for /liff: the splash stays up instead of uncovering an empty page.)
+if (!returningToLiff) requestAnimationFrame(() => requestAnimationFrame(() => dismissAppSplash()));
 
 // Register the PWA service worker in production builds only, after the page
 // has finished loading so it never competes with the initial render/fetch.
 // Not on /liff: that page keeps nothing of its own.
-if (import.meta.env.PROD && !liffPage && "serviceWorker" in navigator) {
+if (import.meta.env.PROD && !liffPage && !returningToLiff && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.debug("[sw] registration failed", error);

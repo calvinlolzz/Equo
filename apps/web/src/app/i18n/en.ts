@@ -233,6 +233,8 @@ export const EN: UiDictionary = {
     networkError: "No connection. Check your network and try again.",
     serverError: "The server is not responding right now. Please try again shortly.",
     rateLimited: "That is a lot of requests - please wait a moment and try again.",
+    lineUnavailable: "Could not confirm your LINE sign-in right now. Please try again shortly.",
+    liffScope: "Inside LINE you can only use your personal ledger. Open Equo in your browser to do this.",
     accountDeleted: "Account deleted",
     accountDeleteBlocked:
       "You are the last owner of the admin console. Hand ownership to someone else first.",

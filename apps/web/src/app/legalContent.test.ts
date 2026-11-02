@@ -87,17 +87,37 @@ describe("legal content", () => {
   test("the privacy policy discloses LINE Login inside LINE, in both languages", () => {
     const zh = allText(PRIVACY_POLICY);
     expect(zh).toContain("LINE Login");
-    expect(zh).toContain("不會保存這個憑證");
+    expect(zh).toContain("短效的登入憑證");
+    expect(zh).not.toContain("一次性的登入憑證");
+    expect(zh).toContain("我們的伺服器不會保存這個憑證");
     expect(zh).toContain("只能使用個人帳本");
-    expect(zh).toContain("一小時後自動失效");
+    expect(zh).toContain("每次的登入憑證一小時後失效");
+    expect(zh).not.toContain("一小時後自動失效");
     expect(zh).toContain("解除連結後立即失效");
 
     const en = allText(PRIVACY_POLICY_EN);
     expect(en).toContain("LINE Login");
-    expect(en).toContain("We do not store that credential");
+    expect(en).toContain("short-lived sign-in credential");
+    expect(en).not.toContain("one-time sign-in credential");
+    expect(en).toContain("Our servers do not store that credential");
     expect(en).toContain("only your personal ledger");
-    expect(en).toContain("expires after an hour");
+    expect(en).toContain("each sign-in expires after an hour");
     expect(en).toContain("as soon as you unlink");
+  });
+
+  // The §1 sign-in sentence used to say Equo only signs in with Google, which stops being true once LIFF is on.
+  test("the privacy policy's sign-in sentence admits LINE Login inside LINE, in both languages", () => {
+    const zh = allText(PRIVACY_POLICY);
+    expect(zh).not.toContain("Equo 只用 Google 登入");
+    expect(zh).toContain(
+      "Equo 的帳號只透過 Google 建立與登入，我們看不到、也不儲存你的 Google 密碼（在 LINE 裡開啟個人帳本時，另以 LINE Login 確認身分，見第 4 節）。",
+    );
+
+    const en = allText(PRIVACY_POLICY_EN);
+    expect(en).not.toContain("Equo only signs you in with Google");
+    expect(en).toContain(
+      "Equo accounts are created and signed in with Google only — we never see or store your Google password (inside LINE, your personal ledger can also be opened with LINE Login; see section 4).",
+    );
   });
 
   test("the privacy policy discloses administrators' read-only access", () => {

@@ -313,6 +313,11 @@ export function isMaintenanceError(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === "MAINTENANCE";
 }
 
+/** The LIFF gate could not check that the LINE link still exists (503). Temporary, and nothing to do with this request. */
+export function isLineUnavailableError(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "LINE_UNAVAILABLE";
+}
+
 /**
  * Whether a failed write should stay in the queue and be tried again.
  *
@@ -321,10 +326,11 @@ export function isMaintenanceError(error: unknown): boolean {
  * one rejection that is not about the write at all - the same payload will be
  * accepted in ten minutes - so it has to be on this side of the line. Without
  * it, reconnecting during a maintenance window would silently delete the
- * expenses somebody recorded offline.
+ * expenses somebody recorded offline. The LIFF gate's "could not check the
+ * link" 503 is the same kind of rejection and gets the same treatment.
  */
 export function isRetryableError(error: unknown): boolean {
-  return isNetworkError(error) || isMaintenanceError(error);
+  return isNetworkError(error) || isMaintenanceError(error) || isLineUnavailableError(error);
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -371,8 +377,25 @@ async function readJson<T>(response: Response): Promise<T> {
  */
 let liffBearer: string | null = null;
 
+/**
+ * True from the first bearer on, and it stays true when the bearer is cleared
+ * (a re-login clears it before exchanging a new one): this page is a LIFF page
+ * for the rest of its life, so it never sends cookies. In an external or desktop
+ * browser that also holds an ordinary `equo_session`, a cookie would otherwise
+ * authenticate requests made in the gap as a full-scope session - possibly a
+ * different account - inside the LIFF chrome.
+ */
+let liffMode = false;
+
 export function setApiBearerToken(token: string | null): void {
   liffBearer = token;
+  if (token) liffMode = true;
+}
+
+/** Test seam: back to the ordinary app (no bearer, cookies on). Nothing in the app calls this. */
+export function resetApiBearerForTests(): void {
+  liffBearer = null;
+  liffMode = false;
 }
 
 /** What POST /auth/line answers with: a LIFF-scoped session for the caller's personal ledger. */
@@ -423,7 +446,7 @@ export function createApiClient({ baseUrl = "/api/v1", fetcher = fetch }: ApiCli
     try {
       response = await fetcher(`${baseUrl}${path}`, {
         ...init,
-        credentials: options.anonymous ? "omit" : "same-origin",
+        credentials: options.anonymous || liffMode ? "omit" : "same-origin",
         headers,
       });
     } catch (cause) {

@@ -594,7 +594,8 @@ Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也�
 3. 拿 LINE 的 ID token 去 `POST /api/v1/auth/line` 換一個 **LIFF 專用憑證**（`equoL1.…`，60 分鐘，只放在頁面記憶體裡：不進 localStorage、不進 cookie、不進網址）。這個呼叫**不帶任何 Authorization 或 cookie**，LINE ID token 也只會送到這一個端點。
 4. 憑證只能用在**自己的個人帳本**，白名單在 `server/http/liffScope.ts`（`liffAllows`），前面有 `liffGate`、驗證時再問一次；沒列的路徑一律 `403 LIFF_SCOPE`。解除 LINE 綁定後憑證立即失效。
 5. 頁面用同一個 App，但套 `appChrome.ts` 的 LIFF 外框：沒有群組導覽、個人資料、通知、掃描收據、登出、安裝提示與 LINE 記帳提示，只開得了明細與分析兩個面板（程式碼層也擋，不只是藏起來）。網址在登入後換成 `/group/<帳本 id>`，query 與 fragment 都拿掉。
-6. 憑證過期或被拒（401）時重新換一次；換不到就停在「登入已過期，請從聊天室重新開啟」，**不會**出現 Google 登入頁。LINE ID token 過期最多自動重新登入**一次**（`sessionStorage` 守門），避免無限迴圈。
+6. 憑證過期或被拒（401）時重新換一次；換不到就停在「登入已過期，請從聊天室重新開啟」，**不會**出現 Google 登入頁。LINE ID token 過期最多自動重新登入**一次**（`sessionStorage` 守門），避免無限迴圈。頁面也會在憑證到期前約 5 分鐘安靜地先換一次（`LiffApp` 的計時器，與 401 的重換共用同一次進行中的請求），不讓「儲存」本身撞上過期；這次安靜重換失敗不會結束 session，由下一個 401 決定。
+7. **只在 LINE App 裡運作**：`liff.init` 成功後若 `isInClient()` 為假（外部瀏覽器、桌面瀏覽器），直接顯示「用瀏覽器開啟」，不登入也不換憑證。理由：外部瀏覽器裡 SDK 會把 LINE 自己的 token 留在 localStorage，之後用同一個瀏覽器的人可能重新進入帳本。`liff.init` 另有 20 秒逾時，逾時視同失敗。這一頁的所有請求一旦拿到 LIFF 憑證就不再帶 cookie（`credentials: omit`），避免同一瀏覽器裡一般 App 的 `equo_session` 混進來。
 
 **環境變數（Vercel Production，改了要重新部署，沒有 runtime 開關也沒有 DB 旗標）**
 
@@ -602,19 +603,27 @@ Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也�
 |---|---|
 | `LINE_LIFF_ID` | `2011782032-WJwjePnJ`。設了之後 `/liff` 與 `POST /auth/line` 才會運作；**但卡片與按鈕的連結還是去瀏覽器**。格式 `^\d{6,20}-[A-Za-z0-9]{4,32}$`，不合格視同沒設（log 只寫變數名稱一次） |
 | `LINE_LOGIN_CHANNEL_ID` | 選填。驗證 ID token 的 `client_id`；沒設就用 LIFF ID 的數字前綴（`2011782032`）。只有前綴與實際 channel 不同才需要設 |
-| `LINE_LIFF_LINKS` | 只有字串 `1` 有效（`true`、` 1`、`0` 都算關）。**必須與 `LINE_LIFF_ID` 同時成立**，編輯／明細／分析連結才改去 LIFF；本月卡的「開啟帳本」與圖文選單不變 |
+| `LINE_LIFF_LINKS` | 只有字串 `1` 有效。前後空白與 BOM 會先被清掉，所以 `" 1"` **算開**；`true`、`0`、`11` 才算關。**必須與 `LINE_LIFF_ID` 同時成立**，編輯／明細／分析連結才改去 LIFF；本月卡的「開啟帳本」與圖文選單不變 |
 
 **兩段式開關**：先只設 `LINE_LIFF_ID`，讓測試者自己貼 `https://liff.line.me/2011782032-WJwjePnJ?view=records` 在手機上開；真機都過了才設 `LINE_LIFF_LINKS=1`。程式只用 `LINE_LIFF_ID` 一個條件是不會把連結換掉的（`liffIdForLinks` 有測試）。
 
 **Kill switch（都不用改程式）**
 
 - 連結退回瀏覽器：**刪掉 `LINE_LIFF_LINKS`** → 重新部署。新送出的卡片立刻是瀏覽器連結（已送出的舊卡片還指向 LIFF，那些仍可用）。
-- 整個功能關掉：再刪掉 `LINE_LIFF_ID` → 重新部署。`GET /line/liff` 回 `{"liff_id":null}`，`/liff` 顯示「暫時無法在 LINE 裡開啟，請改用瀏覽器」與開瀏覽器的連結；`POST /auth/line` 回 `503`。
+- 整個功能關掉：再刪掉 `LINE_LIFF_ID` → 重新部署。`GET /line/liff` 回 `{"liff_id":null}`，`/liff` 顯示「暫時無法在 LINE 裡開啟，請改用瀏覽器」與開瀏覽器的連結；`POST /auth/line` 回 `503`。**已發出的 LIFF 憑證也立刻失效**：每個帶 LIFF 憑證的請求（不論路徑）都回 `401`，連解除綁定的檢查都不會做，頁面接著顯示「登入已過期」。
 - LINE Login channel 取消發佈（Published → Developing）也會讓非管理員登不進去，但這是 LINE 端的開關，上面兩個才是我們自己的。
+
+**事故時的順序（由輕到重）**
+
+1. 只想讓新卡片退回瀏覽器：刪 `LINE_LIFF_LINKS` → 重新部署（已送出的舊卡片仍指向 LIFF）。
+2. 整個關掉：刪 `LINE_LIFF_ID` → 重新部署（已發出的憑證立即失效，見上）。
+3. 不想重新部署：把 LINE Login channel 取消發佈（只擋新的登入、只影響非管理員）。
+4. 只處理一個人：在 LINE 傳「解除綁定」、`DELETE /me/line`，或後台停用該帳號；每個請求都會重查連結，立即生效。
+5. 最後手段：輪替 `SESSION_SECRET`。**所有人**（LIFF、一般登入、view-as）都會被登出，只在確定憑證簽章金鑰外洩時用。
 
 **LINE Developers console 還要手動做的**：channel 必須 **Published**，非 channel 管理員的好友才登入得了（Developing 狀態只有管理員可以）。其他欄位見 `docs/line-oa/README.md`。
 
-**CSP**：只加了 `connect-src https://api.line.me`（SDK 登入與取 ID token 用）。SDK 每次 init 也會要 `static.line-scdn.net`（舊版外掛腳本、alert、統計）與 `liffsdk.line-scdn.net`（翻譯檔），**我們刻意讓它們被擋**：讀 SDK 程式碼的結論是失敗都被 catch、不影響登入與開頁（這是讀碼推論，**沒有在真機驗證**）。`securitypolicyviolation` 回報器（`liff/cspReporter.ts`）會把被擋的來源（只有 origin 與 directive，不含路徑與 query）送進錯誤紀錄，訊息開頭是 `[liff csp] blocked …`；上面兩個預期來源不回報。`X-Frame-Options` 與 `frame-ancestors` 沒動。**注意**：伺服器的錯誤紀錄只存 `web`／`admin` 兩種 source，所以回報的 `source: "liff"` 會被存成 `web`，辨識靠訊息前綴 `[liff csp]`。真機測試時如果 LIFF 無法登入或出現其他 CSP 回報，就是 SDK 還需要別的來源：加進對應的 directive、重新部署、再測一次。
+**CSP**：只加了 `connect-src https://api.line.me`（SDK 登入與取 ID token 用）。SDK 每次 init 也會要 `static.line-scdn.net`（舊版外掛腳本、alert、統計）與 `liffsdk.line-scdn.net`（翻譯檔），**我們刻意讓它們被擋**：讀 SDK 程式碼的結論是在 LINE App 裡失敗都被 catch、不影響登入與開頁（這是讀碼推論，**沒有在真機驗證**）。**例外**：Android 外部瀏覽器的登入流程會載入 `luivendor.js`，載入器只有 `onload` 沒有 `onerror`，被 CSP 擋掉後 `liff.init` 永遠不會結束，而且回報器濾掉整個 `static.line-scdn.net`，log 裡看不到；所以現在 init 有 20 秒逾時（逾時顯示「用瀏覽器開啟」），而且外部瀏覽器本來就不開 LIFF（見上面第 7 點）。`securitypolicyviolation` 回報器（`liff/cspReporter.ts`）會把被擋的來源（只有 origin 與 directive，不含路徑與 query）送進錯誤紀錄，訊息開頭是 `[liff csp] blocked …`；上面兩個預期來源不回報。`X-Frame-Options` 與 `frame-ancestors` 沒動。**注意**：伺服器的錯誤紀錄只存 `web`／`admin` 兩種 source，所以回報的 `source: "liff"` 會被存成 `web`，辨識靠訊息前綴 `[liff csp]`。真機測試時如果 LIFF 無法登入或出現其他 CSP 回報，就是 SDK 還需要別的來源：加進對應的 directive、重新部署、再測一次。
 
 **要看的 log／數字**
 
@@ -628,16 +637,20 @@ Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也�
 
 **這一輪的已知取捨**
 
-- 登入完成後網址被換成 `/group/<帳本 id>`。LINE 內建瀏覽器若**重新整理**，載入的是一般 App（Google 登入頁，在 LINE 裡登不進去），要從聊天室再點一次連結。此行為需真機確認是否可接受。
+- 登入完成後網址被換成 `/group/<帳本 id>`。在**同一個分頁**重新整理（LIFF 選單的重新整理，或系統把被收掉的 WebView 還原）時，`main.tsx` 看到 `sessionStorage` 的 `equo.liff.booted` 旗標，會先 `location.replace("/liff")` 再重新登入，帳本從憑證重新取得；旗標是分頁範圍，一般瀏覽器分頁不受影響。**需真機確認**重新整理與被系統收掉再還原兩種情況。
+- LIFF 只在 LINE App 裡運作（見上面第 7 點）。**LINE 電腦版**的行為必須真機確認：若它不是在 LINE 的 LIFF 瀏覽器裡開（`isInClient()` 為假），電腦版使用者會落到「用瀏覽器開啟」，改用 Google 登入；這個結果決定要不要放寬這條限制。
 - LIFF 裡離線時記的帳**只存在頁面記憶體**（為了不去動一般 App 在同一個網站、同一個 localStorage 裡的離線佇列，也不讓 ledger-only 憑證去重送別的群組的寫入）：關掉視窗就沒了。
 - 一般 App 與 LIFF 共用同一個網站 origin，但 LIFF **不讀、不寫、不清**一般 App 的 `equo.clean.session`。
 
 **上線順序**（人工步驟，非程式）
 
-1. 部署；冒煙：`/liff` 回 200 的 HTML、`GET /api/v1/line/liff` 回 `{"liff_id":null}`（尚未設 env）、`POST /api/v1/auth/line {"id_token":"a.b.c"}` 回 503（尚未設）。正式站冒煙腳本 `scripts/smoke-production-web.py`／`smoke-production-api.py` 都含這些。
-2. 到 Vercel Production 設 `LINE_LIFF_ID` → 重新部署；冒煙：`GET /api/v1/line/liff` 回該 id、`POST /api/v1/auth/line` 帶亂湊的 token 回 401 JSON。
-3. 確認隱私權政策第 4 節的 LINE Login 段落已上線（`legalContent.test.ts` 守著），再做真機。
-4. **真機（見下）全過**之後才設 `LINE_LIFF_LINKS=1` → 重新部署。
+1. 套用 migration `20261102090000_line_liff_identity.sql`（純新增、沒人呼叫就沒作用；兩個函式只授權給 `service_role`）。之後查權限（`anon`／`authenticated` 都必須是 false）並跑一次 advisors。順序顛倒也安全：還沒套用時換憑證回 `503 LINE_UNAVAILABLE`，什麼都不會發。
+2. 推 main（此時 `LINE_LIFF_ID` 還沒設，等於沒作用）並同步 prod worktree。冒煙：`/api/v1/health` 200；**深層路徑** `GET /api/v1/groups/abc` 回 401 JSON（不是邊緣的 404）；`/liff` 回 200 的 HTML；`GET /api/v1/line/liff` 回 `{"liff_id":null}`；`POST /api/v1/auth/line {"id_token":"a.b.c"}` 回 503；`GET /api/v1/groups` 帶 `Bearer equoL1.e30.AAAA` 回 401；`/privacy` 看得到新的第 1、4 節文字。`npm run smoke:production`、`npm run smoke:production:web` 都含這些（API 冒煙也會打 `GET /api/v1/me/line/entries/abcdefgh12` 確認深層路徑是 JSON 401）。
+3. **隱私權政策（第 1 節的登入句、第 4 節的 LINE Login 段落）必須已經上線**，才能設 `LINE_LIFF_ID`（`legalContent.test.ts` 守著文字）。
+4. 到 Vercel Production 設 `LINE_LIFF_ID`（`LINE_LOGIN_CHANNEL_ID` 留空）→ 重新部署；冒煙：`GET /api/v1/line/liff` 回該 id、`POST /api/v1/auth/line` 帶亂湊的 token 回 401 `LINE_ID_TOKEN_INVALID`（證明 LINE 連得到、audience 設定對）。這一步起要開著 Vercel runtime logs（Hobby 只留約一小時）。
+5. **真機（見下）**。Channel 還在 Developing，只有管理員登入得了，自己的手機沒問題。
+6. 到 LINE Developers 把 LINE Login channel `2011782032` **Publish**；沒有這一步，非管理員的好友登不進去。可以找一位非管理員好友測一次。
+7. 最後才設 `LINE_LIFF_LINKS=1` → 重新部署；傳「早餐 60」，確認編輯、明細、分析都在 LINE 裡打開，本月卡的「開啟帳本」仍開瀏覽器。
 
 **只有真人用手機才驗得了的**（程式端的單元測試與 jsdom 驗不到 LINE 的 WebView、權限畫面與軟鍵盤），iOS 與 Android 各走一遍，淺色與深色主題各一次：
 
@@ -648,8 +661,9 @@ Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也�
 5. 編輯畫面叫出軟鍵盤（iOS）：輸入框不被蓋住、版面沒有爆開。
 6. 還沒綁定的 LINE 帳號開同一個連結 → 「還沒有連結 Equo 帳號」→ 「回到聊天室」會關掉視窗。
 7. 在 LIFF 裡看畫面：沒有群組導覽、個人資料、通知、掃描收據、登出；底部分頁列只有首頁、紀錄、新增、分析。
-8. 一小時之後再開同一個連結：靜默換新憑證、不用再同意一次；重新整理的行為（見上面的取捨）符合預期。
-9. LINE 電腦版：開不開得起 LIFF？有沒有被 iframe？沒開起來時會不會落到「用瀏覽器開啟」？
+8. 一小時之後再開同一個連結：靜默換新憑證、不用再同意一次。另外開著頁面、編輯畫面填一半，放過約 55 分鐘：憑證到期前會安靜重換，草稿還在；若 LINE 自己的 ID token 已過期而被送去重新登入（草稿會丟），記下來。再測**重新整理**（LIFF 選單）與**切去別的 App 久到被系統收掉再回來**：都應該回到帳本，不是 Google 登入頁。
+8a. 把 LIFF 網址貼到手機的外部瀏覽器（例如 Android Chrome）：應該直接顯示「用瀏覽器開啟」，不會一直轉圈。
+9. LINE 電腦版：開不開得起 LIFF？有沒有被 iframe（我們送 DENY）？`isInClient()` 是不是真？沒開起來時會不會落到「用瀏覽器開啟」？這一項決定要不要放寬「只在 LINE App 裡運作」。
 10. 長按分享 LIFF 頁的網址：網址列沒有 token、`code` 或 `access_token`。
 11. 上述都過、設了 `LINE_LIFF_LINKS=1` 並部署之後：傳「早餐 60」→ 編輯、明細、分析都在 LINE 裡打開；本月卡底部的「開啟帳本」仍開手機瀏覽器。同時開著 Vercel runtime logs 看上面那張表。
 

@@ -1,6 +1,7 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   LIFF_BOOTED_KEY,
+  LIFF_INIT_TIMEOUT_MS,
   LIFF_RELOGIN_KEY,
   bootLiff,
   liffFallbackUrl,
@@ -63,6 +64,7 @@ function harness(
     exchange?: () => Promise<ReturnType<typeof sessionResponse>>;
     config?: () => Promise<{ liff_id: string | null }>;
     init?: () => Promise<void>;
+    inClient?: boolean;
     navigationType?: string;
     storage?: FakeStorage;
   } = {},
@@ -75,7 +77,7 @@ function harness(
       await options.init?.();
     }),
     isLoggedIn: vi.fn(() => options.loggedIn ?? true),
-    isInClient: vi.fn(() => true),
+    isInClient: vi.fn(() => options.inClient ?? true),
     login: vi.fn((_o?: { redirectUri?: string }) => {
       order.push("login");
     }),
@@ -156,6 +158,60 @@ describe("bootLiff: the happy path", () => {
   test("an intent-less open is ready with a null intent", async () => {
     const state = await bootLiff(harness().deps);
     expect(state).toMatchObject({ phase: "ready", intent: null });
+  });
+});
+
+describe("bootLiff: init that never settles", () => {
+  afterEach(() => vi.useRealTimers());
+
+  // [MV]: remove the race and a blocked vendor script leaves the user on "opening Equo" for good.
+  test("sdk.init still pending after 20 s is a failure with the browser way out, and nothing is exchanged", async () => {
+    vi.useFakeTimers();
+    const h = harness({ init: () => new Promise<void>(() => {}), search: "?view=records" });
+
+    const pending = bootLiff(h.deps);
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(LIFF_INIT_TIMEOUT_MS - 1);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await pending).toEqual({
+      phase: "failed",
+      fallbackUrl: `${ORIGIN}/?view=records&openExternalBrowser=1`,
+    });
+    expect(h.api.exchangeLineIdToken).not.toHaveBeenCalled();
+    expect(h.sdk.login).not.toHaveBeenCalled();
+  });
+
+  test("an init that finishes in time is untouched by the timer, which is cleared", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+
+    expect(await bootLiff(h.deps)).toMatchObject({ phase: "ready" });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("bootLiff: outside the LINE app", () => {
+  // [MV]: drop the check and an external browser signs in and keeps LINE's tokens in localStorage.
+  test("not in the LINE client is unavailable, with the browser way out, before any login or exchange", async () => {
+    const h = harness({ inClient: false, search: "?entry=msg%3A12345678", loggedIn: false });
+
+    const state = await bootLiff(h.deps);
+
+    expect(state).toEqual({
+      phase: "unavailable",
+      fallbackUrl: `${ORIGIN}/?entry=msg%3A12345678&openExternalBrowser=1`,
+    });
+    expect(h.sdk.init).toHaveBeenCalledTimes(1);
+    expect(h.sdk.login).not.toHaveBeenCalled();
+    expect(h.api.exchangeLineIdToken).not.toHaveBeenCalled();
+    expect(h.setBearer).not.toHaveBeenCalled();
+    expect([...h.storage.map.keys()]).toEqual([]);
   });
 });
 

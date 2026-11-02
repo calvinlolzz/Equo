@@ -336,7 +336,7 @@ export function App({ liff }: { liff?: LiffAppContext } = {}) {
    */
   const pollingClient = useMemo(() => createApiClient(), []);
   const [profile, setProfile] = useState<ProfileData>(() => normalizeProfile(readJson<Partial<ProfileData>>(PROFILE_KEY, DEFAULT_PROFILE)));
-  const { cloudActivities, recordCloudActivity } = useCloudActivities();
+  const { cloudActivities, recordCloudActivity } = useCloudActivities({ persist: chrome.localSession });
 
   const {
     session,

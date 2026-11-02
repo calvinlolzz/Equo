@@ -421,6 +421,25 @@ describe("offline queue: maintenance windows", () => {
     expect(onWriteDropped).not.toHaveBeenCalled();
   });
 
+  // [MV]: drop LINE_UNAVAILABLE from isRetryableError and a LIFF user's offline entry is deleted by one Supabase blip.
+  test("a flush that hits the LIFF gate's LINE_UNAVAILABLE 503 keeps everything queued", async () => {
+    const onWriteDropped = vi.fn();
+    const createExpense = vi.fn(async () => {
+      const error: Error & { code?: string } = new Error("Could not verify the LINE session. Try again.");
+      error.code = "LINE_UNAVAILABLE";
+      throw error;
+    });
+    const { store } = await openedStore({ createExpense }, { onWriteDropped });
+
+    await store.addExpense("group_1", baseDraft, "TWD");
+    expect(store.getState().pendingWrites).toHaveLength(1);
+
+    await store.flushPendingWrites();
+
+    expect(store.getState().pendingWrites).toHaveLength(1);
+    expect(onWriteDropped).not.toHaveBeenCalled();
+  });
+
   test("and goes out once the window ends", async () => {
     let paused = true;
     const createExpense = vi.fn(async () => {

@@ -32,7 +32,7 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
     {
       heading: "1. What we collect",
       bullets: [
-        "When you sign in with Google: your email address, display name, and Google profile picture. Equo only signs you in with Google — we never see or store your Google password.",
+        "When you sign in with Google: your email address, display name, and Google profile picture. Equo accounts are created and signed in with Google only — we never see or store your Google password (inside LINE, your personal ledger can also be opened with LINE Login; see section 4).",
         "What you create in the app: your personal ledger's spending and income, groups, expenses (item, amount, category, note, date), the member names you add (including placeholder members with no account), settlement records, and the images you upload (receipts, group covers, custom avatars).",
         "If you choose to scan a receipt: that photo, and the amount, shop name, date, and items read from it. See section 3.",
         "If you choose to link LINE: your LINE user ID, and the bookkeeping messages you send to Equo's official LINE account. See section 4.",
@@ -79,7 +79,7 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
         "Entries recorded from LINE carry a LINE event number so that a card's \"Edit\" and \"Delete\" buttons can find them; it is kept with the entry and removed with it.",
         "Dates are always interpreted in Taiwan time.",
         "Messages and the bot's replies travel through LINE's platform (LY Corporation). Replies may include amounts, entry titles, this month's totals, your logging streak, and a partly masked email address.",
-        "When you open Equo pages inside LINE (for example by tapping \"Edit\" or \"Records\" on a card), LINE Login gives us a one-time sign-in credential that we use only to confirm you are the linked LINE account, so you can view and edit your personal ledger. We do not store that credential, and it does not give us your LINE name, profile picture or email address. This sign-in reaches only your personal ledger — not your groups — expires after an hour, and stops working as soon as you unlink.",
+        "When you open Equo pages inside LINE (for example by tapping \"Edit\" or \"Records\" on a card), LINE Login gives us a short-lived sign-in credential that we use only to confirm you are the linked LINE account, so you can view and edit your personal ledger. Our servers do not store that credential, and it does not give us your LINE name, profile picture or email address. This sign-in reaches only your personal ledger — not your groups — each sign-in expires after an hour, and stops working as soon as you unlink.",
         "You can unlink at any time by sending \"unlink\" in LINE or from your profile. Unlinking deletes the LINE data above (entries you already recorded, with the LINE event number they carry, stay in your ledger).",
       ],
     },

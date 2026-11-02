@@ -9,6 +9,27 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+describe("useCloudActivities without persistence (the LINE-in-app page)", () => {
+  // [MV]: ignore `persist` and a LIFF user's entry titles and amounts land in localStorage.
+  test("keeps the log in memory and writes nothing to localStorage", () => {
+    const { result } = renderHook(() => useCloudActivities({ persist: false }));
+
+    act(() => result.current.recordCloudActivity("group_1", "午餐 NT$120"));
+
+    expect(result.current.cloudActivities.group_1.map((a) => a.text)).toEqual(["午餐 NT$120"]);
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+  });
+
+  test("and does not read what the ordinary app saved either", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ group_1: [{ id: "a", text: "別人的", createdAt: "2026-01-01T00:00:00.000Z" }] }));
+
+    const { result } = renderHook(() => useCloudActivities({ persist: false }));
+
+    expect(result.current.cloudActivities).toEqual({});
+    expect(window.localStorage.getItem(KEY)).toContain("別人的");
+  });
+});
+
 describe("useCloudActivities", () => {
   test("records activities newest-first, scoped to their group", () => {
     const { result } = renderHook(() => useCloudActivities());

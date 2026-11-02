@@ -4,7 +4,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { LiffAppContext } from "../appChrome";
 import { UI_TEXT } from "../uiText";
-import { LiffApp } from "./LiffApp";
+import { LIFF_RENEW_BEFORE_MS, LiffApp } from "./LiffApp";
 import type { LiffBootDeps } from "./liffBoot";
 import type { LiffSdk } from "./liffSdk";
 
@@ -207,5 +207,121 @@ describe("LiffApp: a session that cannot be renewed", () => {
     expect(screen.queryByText(text.sessionEnded)).toBeNull();
     // Old bearer dropped first, new one installed.
     expect(setBearer.mock.calls.map((call) => call[0])).toEqual(["equoL1.x.y", null, "equoL1.x.y"]);
+  });
+});
+
+describe("LiffApp: renewing before the session runs out", () => {
+  const TEN_MINUTES = 10 * 60_000;
+
+  /** Every exchange hands out a session that lasts ten more minutes from "now" (fake time). */
+  function tenMinuteSessions(extra: { gate?: Promise<void> } = {}) {
+    return async () => {
+      await extra.gate;
+      return {
+        session: {
+          token: "equoL1.x.y",
+          expires_at: new Date(Date.now() + TEN_MINUTES).toISOString(),
+          user: { id: "u1", google_sub: "g", email: "a@example.com", display_name: "Alice", avatar_url: null },
+          ledger_id: LEDGER,
+          locale: "zh-Hant",
+        },
+      };
+    };
+  }
+
+  /** The boot is all promises; with fake timers, let them run instead of polling with findBy. */
+  async function settle(ms = 0) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // [MV]: remove the timer and the first 401 is the save itself.
+  test("exchanges again about five minutes before expiry, and not before", async () => {
+    const { overrides, api, setBearer } = fakes({ exchange: tenMinuteSessions() });
+    render(<LiffApp overrides={overrides} />);
+    await settle();
+    expect(screen.getByTestId("app")).toBeTruthy();
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(1);
+
+    await settle(TEN_MINUTES - LIFF_RENEW_BEFORE_MS - 1_000);
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(1);
+
+    await settle(2_000);
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(2);
+    expect(setBearer.mock.calls.map((call) => call[0])).toEqual(["equoL1.x.y", null, "equoL1.x.y"]);
+    expect(screen.getByTestId("app")).toBeTruthy();
+  });
+
+  test("the renewed session is renewed in its turn", async () => {
+    const { overrides, api } = fakes({ exchange: tenMinuteSessions() });
+    render(<LiffApp overrides={overrides} />);
+    await settle();
+
+    await settle(TEN_MINUTES - LIFF_RENEW_BEFORE_MS + 1_000);
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(2);
+
+    await settle(TEN_MINUTES - LIFF_RENEW_BEFORE_MS);
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(3);
+  });
+
+  // [MV]: two exchanges would race for the bearer.
+  test("a 401 that lands while the timer's renewal is in flight shares it - one exchange, not two", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    let calls = 0;
+    const fresh = tenMinuteSessions();
+    const gated = tenMinuteSessions({ gate });
+    const { overrides, api } = fakes({ exchange: () => (++calls === 1 ? fresh() : gated()) });
+    render(<LiffApp overrides={overrides} />);
+    await settle();
+
+    await settle(TEN_MINUTES - LIFF_RENEW_BEFORE_MS + 1_000);
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(2);
+
+    // The App's own 401 path asks while that exchange is still pending.
+    await act(async () => {
+      fireEvent.click(screen.getByText("expire"));
+    });
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(2);
+
+    open();
+    await settle();
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("app")).toBeTruthy();
+  });
+
+  test("a quiet renewal that fails does not end the session by itself", async () => {
+    let calls = 0;
+    const ok = tenMinuteSessions();
+    const { overrides } = fakes({ exchange: () => (++calls === 1 ? ok() : Promise.reject(apiError("LINE_UNAVAILABLE"))) });
+    render(<LiffApp overrides={overrides} />);
+    await settle();
+
+    await settle(TEN_MINUTES);
+
+    expect(screen.queryByText(text.sessionEnded)).toBeNull();
+    expect(screen.getByTestId("app")).toBeTruthy();
+  });
+
+  test("the timer is cleaned up when the page goes away", async () => {
+    const { overrides, api } = fakes({ exchange: tenMinuteSessions() });
+    const { unmount } = render(<LiffApp overrides={overrides} />);
+    await settle();
+
+    unmount();
+    await settle(TEN_MINUTES * 2);
+
+    expect(api.exchangeLineIdToken).toHaveBeenCalledTimes(1);
   });
 });

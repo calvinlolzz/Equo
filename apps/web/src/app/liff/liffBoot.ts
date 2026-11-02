@@ -1,7 +1,10 @@
 import type { EquoApiClient } from "../apiClient";
 import { readLineIntent, type LineIntent } from "../lineIntent";
 import type { StoredSession } from "../sessionStore";
+import { LIFF_BOOTED_KEY } from "./liffPath";
 import type { LiffSdk } from "./liffSdk";
+
+export { LIFF_BOOTED_KEY };
 
 /**
  * Signing in on /liff, as a state machine over an injected SDK and API.
@@ -11,7 +14,8 @@ import type { LiffSdk } from "./liffSdk";
  *
  *   1. back/forward guard  - a page restored from history closes itself
  *   2. GET /line/liff      - no id => LIFF is switched off => unavailable
- *   3. sdk.init            - throws => failed
+ *   3. sdk.init            - throws or takes over 20 s => failed
+ *      not inside the LINE app => unavailable (the browser app is the way out)
  *   4. not logged in       - login(), once per tab
  *   5. no ID token         - login(), once per tab
  *   6. POST /auth/line     - EXPIRED => re-login once per tab; NOT_LINKED, DISABLED
@@ -45,10 +49,25 @@ export type LiffBootDeps = {
   replaceUrl: (path: string) => void;
 };
 
-/** Set once a boot has reached `ready` in this tab. */
-export const LIFF_BOOTED_KEY = "equo.liff.booted";
 /** Set when this tab has sent the user to LINE's login. One per tab, until a sign-in succeeds. */
 export const LIFF_RELOGIN_KEY = "equo.liff.relogin";
+
+/**
+ * How long sdk.init may take. In one SDK path (the Android external-browser
+ * login) a vendor script it waits for can be blocked by our CSP with no error
+ * event, so init would never settle and the page would sit on "opening Equo"
+ * for ever, silently. Time out and show the way out instead.
+ */
+export const LIFF_INIT_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error("LIFF init timed out")), ms);
+  });
+
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
 
 function safeGet(storage: LiffBootDeps["storage"], key: string): string | null {
   try {
@@ -167,9 +186,17 @@ export async function bootLiff(deps: LiffBootDeps): Promise<LiffBootState> {
 
   // 3.
   try {
-    await sdk.init({ liffId });
+    await withTimeout(sdk.init({ liffId }), LIFF_INIT_TIMEOUT_MS);
   } catch {
     return failed();
+  }
+
+  // LIFF is for the LINE app. In an external or desktop browser the SDK leaves
+  // LINE's own tokens in localStorage, where whoever uses that browser next
+  // could walk back into the ledger; Equo's normal sign-in is the right door
+  // there. Before any login or exchange.
+  if (!sdk.isInClient()) {
+    return { phase: "unavailable", fallbackUrl: liffFallbackUrl(location.origin, null, initialIntent) };
   }
 
   const intent = initialIntent ?? readLiffIntent(location.search);
@@ -231,7 +258,10 @@ export async function bootLiff(deps: LiffBootDeps): Promise<LiffBootState> {
   };
 }
 
-export type LiffReauthDeps = Pick<LiffBootDeps, "sdk" | "api" | "location" | "storage" | "setBearer">;
+export type LiffReauthDeps = Pick<LiffBootDeps, "sdk" | "api" | "location" | "storage" | "setBearer"> & {
+  /** Called with the new session's expiry whenever a renewal produced one (not when the page is just leaving for LINE's login). */
+  onRenewed?: (expiresAt: string) => void;
+};
 
 /**
  * A 401 on a LIFF request: the 60-minute token ran out (or was revoked). Get a
@@ -263,6 +293,7 @@ export async function reauthenticateLiff(deps: LiffReauthDeps): Promise<boolean>
       const { session } = await deps.api.exchangeLineIdToken(idToken);
       deps.setBearer(session.token);
       safeRemove(deps.storage, LIFF_RELOGIN_KEY);
+      deps.onRenewed?.(session.expires_at);
       return true;
     } catch (error) {
       if (errorCode(error) !== "LINE_ID_TOKEN_EXPIRED") return false;

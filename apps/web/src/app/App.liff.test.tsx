@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { liffAllows } from "../server/http/liffScope";
 import { App } from "./App";
 import type { LiffAppContext } from "./appChrome";
-import { setApiBearerToken, type ExpenseSummary } from "./apiClient";
+import { resetApiBearerForTests, setApiBearerToken, type ExpenseSummary } from "./apiClient";
 import { group, groupDetail, stubBrowser, SESSION_KEY } from "./appTestHarness";
 import type { LineIntent } from "./lineIntent";
 import { UI_TEXT } from "./uiText";
@@ -105,6 +105,8 @@ function ledgerDetail() {
 }
 
 function standardRoutes() {
+  // Production answers this, and the surfaces gated on it (the LINE hint among them) only wake up once it has.
+  route("GET /site-notice", { notice: null, view_as: null });
   route("GET /groups", { groups: [ledger()] });
   route(`GET /groups/${LEDGER}`, ledgerDetail());
   route(`GET /groups/${LEDGER}/expenses/search`, {
@@ -144,6 +146,9 @@ async function ready() {
 }
 
 beforeEach(() => {
+  // Production has both of these; without them the surfaces they switch on never render here,
+  // and a LIFF-forbidden request from one of them would go unseen.
+  vi.stubEnv("VITE_LINE_OA_URL", "https://line.me/R/ti/p/@test");
   stubBrowser();
   seen = [];
   routes = new Map();
@@ -158,8 +163,9 @@ afterEach(() => {
   const refused = seen.filter((call) => !liffAllows(call.method, call.path, LEDGER)).map((call) => call.key);
   const bare = seen.filter((call) => call.authorization !== `Bearer ${BEARER}`).map((call) => call.key);
   cleanup();
-  setApiBearerToken(null);
+  resetApiBearerForTests();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   expect(refused, "requests the LIFF gate would refuse").toEqual([]);
   expect(bare, "requests without the bearer").toEqual([]);
@@ -204,6 +210,8 @@ describe("LIFF mode: what it keeps in the browser", () => {
     expect(window.localStorage.getItem(CACHE_KEY)).toBe(NORMAL_CACHE);
     for (const key of Object.keys(before)) expect(window.localStorage.getItem(key)).toBe(before[key]);
     expect(JSON.stringify({ ...window.localStorage, ...window.sessionStorage })).not.toContain(BEARER);
+    // The activity log carries titles and amounts: in memory here, never written to the browser.
+    expect(window.localStorage.getItem("equo.clean.cloud_activities")).toBeNull();
   });
 
   test("with no saved session at all, it still writes none", async () => {
@@ -316,7 +324,8 @@ describe("LIFF mode: edit and delete", () => {
     await screen.findByRole("dialog", { name: UI_TEXT.expenseDetail.title });
 
     fireEvent.click(screen.getByRole("button", { name: app.deleteExpense }));
-    fireEvent.click(screen.getByRole("button", { name: app.confirmDelete }));
+    // findBy: a background refresh between the two clicks re-arms the button, so wait for it.
+    fireEvent.click(await screen.findByRole("button", { name: app.confirmDelete }));
 
     await waitFor(() => expect(seen.map((call) => call.key)).toContain(`DELETE /groups/${LEDGER}/expenses/expense_1`));
   });
@@ -348,7 +357,7 @@ describe("LIFF mode: the token stops working", () => {
 
 describe("the ordinary app is unchanged", () => {
   test("with no LIFF context it is the login wall, as ever, and sends no bearer", async () => {
-    setApiBearerToken(null);
+    resetApiBearerForTests();
     window.history.replaceState(null, "", "/");
     render(<App />);
     expect(await screen.findByText(UI_TEXT.login.googleLogin)).toBeTruthy();

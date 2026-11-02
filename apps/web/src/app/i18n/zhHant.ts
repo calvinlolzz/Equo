@@ -240,6 +240,8 @@ export const ZH_HANT = {
     networkError: "網路連線失敗，請確認網路後再試一次。",
     serverError: "伺服器暫時無法回應，請稍後再試。",
     rateLimited: "操作太頻繁了，請稍等一下再試。",
+    lineUnavailable: "暫時無法確認 LINE 登入，請稍後再試。",
+    liffScope: "在 LINE 裡只能使用個人帳本，這個動作請用瀏覽器開啟 Equo。",
     accountDeleted: "帳號已刪除",
     accountDeleteBlocked: "你是管理後台的最後一位擁有者，請先把後台擁有權轉移給其他人。",
     offlineNotice: "目前離線，資料可能不是最新",

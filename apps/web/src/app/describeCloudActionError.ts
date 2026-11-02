@@ -30,6 +30,15 @@ export function describeCloudActionError(error: unknown): string {
   if (code === "RATE_LIMITED") {
     return text.rateLimited;
   }
+  // The LINE (LIFF) session gate: it could not check the link (retryable, so a
+  // queued write stays queued - see isRetryableError), or the request is
+  // outside what a LINE session may do. Neither shows a raw English message.
+  if (code === "LINE_UNAVAILABLE") {
+    return text.lineUnavailable;
+  }
+  if (code === "LIFF_SCOPE") {
+    return text.liffScope;
+  }
   // Writes are paused for maintenance. The copy says the entry is kept rather
   // than that something failed, because that is what happens: the write goes
   // into the offline queue and drains when the window ends (see

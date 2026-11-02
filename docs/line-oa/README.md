@@ -56,6 +56,7 @@ Console 檢查清單（改過任何一項都回來對一次）：
 - [ ] Channel 狀態 = **Published**（Developing 時只有 channel 管理員登入得了，其他好友會被擋）
 - [ ] Vercel Production：`LINE_LIFF_ID` = `2011782032-WJwjePnJ`（`LINE_LOGIN_CHANNEL_ID` 只有前綴與 channel id 不同才要設）
 - [ ] `LINE_LIFF_LINKS` **最後**才設為 `1`，且是在真機測試通過之後
+- [ ] **Channel `2011782032` 只給這個 LIFF app 用**：這個 channel 裡不要再建別的 LIFF app，也不要加別的 LINE Login 網頁登入的 callback URL。同一個 channel 簽出來的 ID token `aud` 都一樣，我們的伺服器會一律接受；任何其他入口都等於多一條能換到 Equo 憑證的路。LINE Login 分頁的 callback URL 與 LIFF 清單應該只剩我們自己的 endpoint
 
 LIFF 開啟的連結長這樣（OA Manager 與圖文選單都不用動，連結是程式在每次回覆時帶上去的）：
 

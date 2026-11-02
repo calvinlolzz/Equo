@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { createApiClient, setApiBearerToken } from "./apiClient";
+import { createApiClient, resetApiBearerForTests, setApiBearerToken } from "./apiClient";
 
 describe("createApiClient", () => {
   test("sends same-origin credentials and never an Authorization header", async () => {
@@ -261,7 +261,7 @@ describe("createApiClient", () => {
 });
 
 describe("the LIFF bearer", () => {
-  afterEach(() => setApiBearerToken(null));
+  afterEach(() => resetApiBearerForTests());
 
   function recorder(body: unknown = {}) {
     const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -281,20 +281,30 @@ describe("the LIFF bearer", () => {
     expect(calls[0].init.credentials).toBe("same-origin");
   });
 
-  test("once set, ordinary requests carry it as a Bearer header, and the cookie rides along as before", async () => {
+  // [MV]: back to "same-origin" and a normal equo_session cookie in the same browser authenticates LIFF-page requests as a full session.
+  test("once set, ordinary requests carry it as a Bearer header and NO cookies", async () => {
     setApiBearerToken("equoL1.payload.sig");
     const { calls, client } = recorder({ groups: [] });
     await client.listGroups();
+    await client.getGroupDetail("group_1");
     expect(calls[0].init.headers).toMatchObject({ Authorization: "Bearer equoL1.payload.sig" });
-    expect(calls[0].init.credentials).toBe("same-origin");
+    expect(calls.map((call) => call.init.credentials)).toEqual(["omit", "omit"]);
   });
 
-  test("clearing it stops sending it", async () => {
+  test("clearing it stops sending it - and the cookies stay off for the rest of the page's life", async () => {
     setApiBearerToken("equoL1.payload.sig");
     setApiBearerToken(null);
     const { calls, client } = recorder({ groups: [] });
     await client.listGroups();
     expect(calls[0].init.headers).not.toHaveProperty("Authorization");
+    // The gap while a new session is being fetched is exactly when a cookie could sneak in.
+    expect(calls[0].init.credentials).toBe("omit");
+  });
+
+  test("the ordinary app, which never sets a bearer, still sends its cookie", async () => {
+    const { calls, client } = recorder({ groups: [] });
+    await client.listGroups();
+    expect(calls[0].init.credentials).toBe("same-origin");
   });
 
   test("the LINE exchange is anonymous even while a bearer is set: no Authorization, no cookies", async () => {
