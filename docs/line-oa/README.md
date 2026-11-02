@@ -30,6 +30,43 @@
 
 記帳卡上的「編輯／刪除」、每則回覆底下的 Quick Reply（復原、本月、明細、分析、說明…）和「確定刪除／取消」都是**程式在每次回覆時帶上去的**，OA Manager 與圖文選單都不用設定、也改不到。圖文選單的 D「復原上一筆」仍是送出文字「復原」。細節與 log 見 `docs/OPERATIONS.md` 第 18 節。
 
+## LINE Login channel 與 LIFF app（在 LINE 裡開啟 Equo）
+
+給記帳卡的「編輯」與 Quick Reply 的「明細」「分析」用：在 LINE 裡直接開，不經手機瀏覽器。**Messaging API channel（`2011782046`，機器人）與 LINE Login channel 必須在同一個 provider**，否則同一個人的 LINE user id 不同，綁定對不上（`[liff] exchange not_linked` 的 tag 和 webhook 的 tag 會不同）。開關、環境變數與真機清單見 `docs/OPERATIONS.md` 第 18 節「在 LINE 裡開啟（LIFF）」。
+
+已建立（2026-11），設定如下（兩個 id 都不是祕密；**這裡不記錄、也不需要任何 channel secret 或 token**）：
+
+| 項目 | 值 |
+|---|---|
+| Channel 類型 | LINE Login |
+| Channel ID | `2011782032` |
+| LIFF ID | `2011782032-WJwjePnJ` |
+| Size | Full |
+| Endpoint URL | `https://equo-mu.vercel.app/liff` |
+| Scopes | 只有 `openid`（不要勾 `profile`、不要 email） |
+| Add friend option | Off |
+| Scan QR／Module mode | Off |
+| 隱私權政策／服務條款 | `https://equo-mu.vercel.app/privacy`／`/terms`，圖示用 `avatar.jpg` |
+
+Console 檢查清單（改過任何一項都回來對一次）：
+
+- [ ] LINE Login channel 與 Messaging API channel 在**同一個 provider**
+- [ ] LIFF app：Size = Full、Endpoint URL = `https://equo-mu.vercel.app/liff`（結尾不要加斜線或 query）
+- [ ] Scopes 只有 `openid`；Add friend option = Off
+- [ ] Channel 狀態 = **Published**（Developing 時只有 channel 管理員登入得了，其他好友會被擋）
+- [ ] Vercel Production：`LINE_LIFF_ID` = `2011782032-WJwjePnJ`（`LINE_LOGIN_CHANNEL_ID` 只有前綴與 channel id 不同才要設）
+- [ ] `LINE_LIFF_LINKS` **最後**才設為 `1`，且是在真機測試通過之後
+
+LIFF 開啟的連結長這樣（OA Manager 與圖文選單都不用動，連結是程式在每次回覆時帶上去的）：
+
+| 用途 | 網址 |
+|---|---|
+| 明細 | `https://liff.line.me/2011782032-WJwjePnJ?view=records` |
+| 分析 | `https://liff.line.me/2011782032-WJwjePnJ?view=analysis` |
+| 編輯一筆 | `https://liff.line.me/2011782032-WJwjePnJ?entry=<事件 id，冒號寫成 %3A>` |
+
+圖文選單 C「開啟 Equo」與本月卡底部的「開啟帳本」**維持**開手機瀏覽器（它們要完整的 App，包括 Google 登入）。
+
 ## 文字指令（不在圖文選單上）
 
 圖文選單維持上表 A–F 不變；下面這些直接在聊天室傳文字。
