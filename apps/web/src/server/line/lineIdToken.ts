@@ -44,6 +44,26 @@ type VerifierOptions = {
   now?: () => number;
 };
 
+/**
+ * The claims an ID token CLAIMS, read without checking the signature. Used
+ * only to turn away tokens that cannot be ours before LINE is asked - never to
+ * accept one: every accepted token still goes through LINE's verify and the
+ * checks after it. Null when the token is not a JWT with a JSON-object payload.
+ */
+function peekPayload(idToken: string): Record<string, unknown> | null {
+  const parts = idToken.split(".");
+
+  if (parts.length !== 3 || !parts[1]) return null;
+
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+
+    return isRecord(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -54,6 +74,18 @@ export function createLineIdTokenVerifier(options: VerifierOptions): (idToken: s
   const now = options.now ?? Date.now;
 
   return async function verifyLineIdToken(idToken) {
+    // Before any outbound call: junk that merely looks like a JWT, a token for
+    // another channel or issuer, and an expired one are refused here, so a flood
+    // of them from many addresses cannot make us hammer LINE's verify endpoint
+    // (and get this server throttled into 503s for real users). The same
+    // checks run again on LINE's answer below.
+    const claimed = peekPayload(idToken);
+
+    if (!claimed) return { ok: false, reason: "invalid" };
+    if (claimed.iss !== LINE_ID_TOKEN_ISSUER || claimed.aud !== options.channelId) return { ok: false, reason: "invalid" };
+    if (typeof claimed.exp !== "number" || !Number.isFinite(claimed.exp)) return { ok: false, reason: "invalid" };
+    if (claimed.exp * 1_000 <= now()) return { ok: false, reason: "expired" };
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -66,6 +98,9 @@ export function createLineIdTokenVerifier(options: VerifierOptions): (idToken: s
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ id_token: idToken, client_id: options.channelId }).toString(),
         signal: controller.signal,
+        // LINE answers this endpoint directly. A redirect would carry the token
+        // (and our channel id) to wherever it points: refuse to follow one.
+        redirect: "error",
       });
       // Still under the timeout: a response whose body never arrives is as dead as one that never started.
       payload = await response.json().catch(() => null);

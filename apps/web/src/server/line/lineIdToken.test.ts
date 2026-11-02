@@ -4,7 +4,12 @@ import { createLineIdTokenVerifier, LINE_ID_TOKEN_ISSUER, LINE_VERIFY_URL } from
 const CHANNEL = "1234567890";
 const SUB = "U" + "a".repeat(32);
 const NOW = 1_800_000_000_000; // ms
-const ID_TOKEN = "aaa.bbb.ccc";
+
+/** A JWT-shaped string whose payload is `payload`: the signature is junk, because LINE (mocked here) is the one who checks it. */
+function jwtWith(payload: unknown): string {
+  const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${b64({ alg: "ES256", typ: "JWT" })}.${b64(payload)}.c2ln`;
+}
 
 function goodPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -16,6 +21,8 @@ function goodPayload(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+const ID_TOKEN = jwtWith(goodPayload());
 
 function respond(status: number, payload: unknown): typeof fetch {
   return vi.fn(async () => new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
@@ -42,6 +49,69 @@ describe("createLineIdTokenVerifier - what is sent", () => {
     expect(form.get("client_id")).toBe(CHANNEL);
     // No secret of any kind, in the body or in a header.
     expect(Object.keys(init.headers as object)).toEqual(["content-type"]);
+  });
+
+  // [MV]: drop it and a redirect from the endpoint would be followed with the token in tow.
+  test("never follows a redirect", async () => {
+    const fetcher = respond(200, goodPayload());
+
+    await verifierWith(fetcher)(ID_TOKEN);
+
+    expect(((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit])[1].redirect).toBe("error");
+  });
+
+  test("a redirect (fetch rejects it) is unavailable, not a crash", async () => {
+    const fetcher = vi.fn(async () => {
+      throw new TypeError("fetch failed: redirect mode is set to error");
+    }) as unknown as typeof fetch;
+
+    expect(await verifierWith(fetcher)(ID_TOKEN)).toEqual({ ok: false, reason: "unavailable" });
+  });
+});
+
+describe("createLineIdTokenVerifier - turned away before LINE is asked", () => {
+  // [MV]: remove the local peek and every junk token costs us an outbound call to LINE.
+  test.each([
+    ["not a JWT at all", "hello"],
+    ["three junk parts", "aaa.bbb.ccc"],
+    ["two parts", "aaa.bbb"],
+    ["four parts", "a.b.c.d"],
+    ["an empty payload part", "a..c"],
+    ["a payload that is not JSON", `a.${Buffer.from("nope").toString("base64url")}.c`],
+    ["a payload that is not an object", `a.${Buffer.from("[1]").toString("base64url")}.c`],
+    ["an empty string", ""],
+  ])("%s makes no outbound call", async (_label, token) => {
+    const fetcher = respond(200, goodPayload());
+
+    expect(await verifierWith(fetcher)(token)).toEqual({ ok: false, reason: "invalid" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["another channel's token", { aud: "999999999" }],
+    ["a numeric audience", { aud: 1234567890 }],
+    ["another issuer", { iss: "https://evil.example.com" }],
+    ["no exp", { exp: undefined }],
+    ["a string exp", { exp: "9999999999" }],
+  ])("%s makes no outbound call", async (_label, override) => {
+    const fetcher = respond(200, goodPayload());
+
+    expect(await verifierWith(fetcher)(jwtWith(goodPayload(override)))).toEqual({ ok: false, reason: "invalid" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test("an expired token makes no outbound call", async () => {
+    const fetcher = respond(200, goodPayload());
+
+    expect(await verifierWith(fetcher)(jwtWith(goodPayload({ exp: NOW / 1_000 - 1 })))).toEqual({ ok: false, reason: "expired" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test("a token that passes the local look still has to pass LINE", async () => {
+    const fetcher = respond(400, { error_description: "Invalid IdToken." });
+
+    expect(await verifierWith(fetcher)(ID_TOKEN)).toEqual({ ok: false, reason: "invalid" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -13,6 +13,7 @@ ON = (200, NO_STORE, {"liff_id": "2008123456-AbCdEfGh"})
 UNAVAILABLE = (503, NO_STORE, {"error": {"code": "LINE_UNAVAILABLE", "message": "off", "request_id": "r"}})
 INVALID = (401, NO_STORE, {"error": {"code": "LINE_ID_TOKEN_INVALID", "message": "bad", "request_id": "r"}})
 REFUSED = (401, {}, {"error": {"code": "UNAUTHENTICATED", "message": "no", "request_id": "r"}})
+DEEP = REFUSED
 
 
 def load_module():
@@ -31,12 +32,12 @@ def main() -> int:
     failures: list[str] = []
 
     def expect_ok(label: str, *responses) -> None:
-        problem = judge(*responses)
+        problem = judge(*responses, *([DEEP] if len(responses) == 3 else []))
         if problem is not None:
             failures.append(f"{label}: expected pass, got: {problem}")
 
     def expect_fail(label: str, *responses) -> None:
-        if judge(*responses) is None:
+        if judge(*responses, *([DEEP] if len(responses) == 3 else [])) is None:
             failures.append(f"{label}: expected a failure, got a pass")
 
     # The two healthy deployments.
@@ -66,6 +67,13 @@ def main() -> int:
     expect_fail("forged LIFF bearer reaches the route (200)", ON, INVALID, (200, {}, {"groups": []}))
     expect_fail("forged LIFF bearer is 403, not 401", ON, INVALID, (403, {}, {"error": {"code": "LIFF_SCOPE"}}))
     expect_fail("forged LIFF bearer is 404", ON, INVALID, (404, {}, None))
+
+    # The deep path: a rewrite that dropped multi-segment API paths looks exactly like this.
+    expect_fail("deep path 404 from the edge", ON, INVALID, REFUSED, (404, {}, {"non_json": "<html>"}))
+    expect_fail("deep path 404 JSON", ON, INVALID, REFUSED, (404, {}, {"error": {"code": "FORBIDDEN"}}))
+    expect_fail("deep path reaches a handler (200)", ON, INVALID, REFUSED, (200, {}, {"entry": {}}))
+    expect_fail("deep path 401 but not JSON", ON, INVALID, REFUSED, (401, {}, {"non_json": "<html>"}))
+    expect_ok("deep path is a JSON 401", ON, INVALID, REFUSED, REFUSED)
 
     if failures:
         for failure in failures:

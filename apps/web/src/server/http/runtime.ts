@@ -207,7 +207,8 @@ function routeOptions(options: RuntimeOptions, request: HttpRuntimeRequest) {
     // independent scope check (the first is the gate in handle()), and the
     // reason a route that forgot LIFF exists still cannot be reached by one.
     if (isLiffTokenShape(idToken)) {
-      return verifyLiffForRequest(idToken, request, options.sessionSecret, options.now);
+      // LIFF switched off (LINE_LIFF_ID unset): no LIFF token is honoured.
+      return options.lineLiff ? verifyLiffForRequest(idToken, request, options.sessionSecret, options.now) : null;
     }
 
     if (options.sessionSecret) {
@@ -269,6 +270,10 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function noStore(response: HttpRuntimeResponse): HttpRuntimeResponse {
+  return { ...response, headers: { ...response.headers, "cache-control": "no-store" } };
+}
+
 function queryParam(request: HttpRuntimeRequest, name: string): string | undefined {
   const value = request.query?.[name];
   return Array.isArray(value) ? value[0] : value;
@@ -304,11 +309,11 @@ export function createHttpRuntime(options: RuntimeOptions) {
       label: "POST /api/v1/auth/line",
       async handle(request) {
         if (!options.sessionSecret) {
-          return errorResponse(503, "RUNTIME_ENV_MISSING", "Missing runtime env: SESSION_SECRET", "req_runtime_env");
+          return noStore(errorResponse(503, "RUNTIME_ENV_MISSING", "Missing runtime env: SESSION_SECRET", "req_runtime_env"));
         }
 
         if (!options.lineLiff) {
-          return errorResponse(503, "LINE_UNAVAILABLE", "Opening Equo inside LINE is not enabled.", "req_liff_off");
+          return noStore(errorResponse(503, "LINE_UNAVAILABLE", "Opening Equo inside LINE is not enabled.", "req_liff_off"));
         }
 
         const result = await authLineRoute(
@@ -1657,6 +1662,12 @@ export function createHttpRuntime(options: RuntimeOptions) {
           "You are viewing the app as another user. Leave the view before making changes.",
           "req_view_as",
         );
+      }
+
+      // LIFF switched off: no LIFF token is honoured, however fresh - unsetting
+      // LINE_LIFF_ID is the kill switch for issued sessions, not only new sign-ins.
+      if (!options.lineLiff && liffTokenOf(request) !== null) {
+        return errorResponse(401, "UNAUTHENTICATED", "Opening Equo inside LINE is switched off.", "req_liff_off");
       }
 
       // A LINE-in-app (LIFF) session: valid, inside its allowlist and still

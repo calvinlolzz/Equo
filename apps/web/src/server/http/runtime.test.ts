@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { createHttpRuntime } from "./runtime.js";
+import { liffAllows } from "./liffScope.js";
 import { createFakePostgrest } from "../db/fakePostgrest.js";
 import { resetHealthCache } from "../routes/healthRoutes.js";
+import type { HttpMethod } from "./httpTypes.js";
 import type { PostgrestClient } from "../db/postgrestClient.js";
 import type { SupabaseStorageClient } from "../runtime/supabaseStorageClient.js";
 
@@ -1739,6 +1741,9 @@ describe("LIFF sessions", () => {
       }),
       sessionSecret: SECRET,
       now: 1_000,
+      // LIFF is ON unless a test says otherwise ({ lineLiff: undefined }): with it
+      // off no LIFF token is honoured at all.
+      lineLiff: { liffId: "2011782032-WJwjePnJ", verifyIdToken: async () => ({ ok: false, reason: "invalid" }) },
       ...extra,
     });
   }
@@ -1799,6 +1804,37 @@ describe("LIFF sessions", () => {
     expect(code(response)).toBe("UNAUTHENTICATED");
   });
 
+  // [MV]: without this, unsetting LINE_LIFF_ID leaves every token already issued working for up to an hour.
+  test("LIFF switched off (no lineLiff option): a still-valid token is a 401 and the link is never even checked", async () => {
+    const { client, rpcs } = liffClient();
+    const runtime = makeRuntime(client, { lineLiff: undefined });
+    const token = await liffToken();
+
+    for (const headers of [{ authorization: `Bearer ${token}` }, { cookie: `equo_session=${token}` }]) {
+      const response = await runtime.handle({ method: "GET", path: `/api/v1/groups/${LEDGER}`, headers });
+
+      expect(response.status).toBe(401);
+      expect(code(response)).toBe("UNAUTHENTICATED");
+    }
+
+    expect(rpcs.filter((call) => call.fn === "line_liff_link_live")).toHaveLength(0);
+  });
+
+  test("LIFF switched off: the route verifier refuses the token even where the gate is not in the way", async () => {
+    const { client } = liffClient();
+    const runtime = makeRuntime(client, { lineLiff: undefined });
+    const token = await liffToken();
+    const route = runtime.routes.find((candidate) => candidate.label === "GET /api/v1/groups")!;
+
+    // Straight into the handler: the second, independent check.
+    const response = await route.handle(
+      { method: "GET", path: "/api/v1/groups", headers: { authorization: `Bearer ${token}` } },
+      "/api/v1/groups".match(route.pattern)!,
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   test("when the link cannot be checked the request is refused (503), not waved through", async () => {
     const { client } = liffClient(new Error("db down"));
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -1850,6 +1886,96 @@ describe("LIFF sessions", () => {
     // Nothing ran: no handler RPC, not even the liveness check.
     expect(rpcs.map((call) => call.fn).filter((fn) => fn !== "consume_rate_limit" && fn !== "site_notice_settings")).toEqual([]);
     warn.mockRestore();
+  });
+
+  // The 19-row table above is a sample. This one walks the real route table, so a route added tomorrow
+  // is covered the day it exists: whatever liffAllows does not name MUST be a 403 for a LIFF token.
+  describe("every registered route", () => {
+    const routes = makeRuntime(liffClient().client).routes;
+
+    /** A concrete request path for a route pattern: ids become an id-shaped placeholder, the first id after /groups/ is the token's own ledger. */
+    function concretePath(pattern: RegExp): string {
+      let path = pattern.source
+        .replace(/^\^/, "")
+        .replace(/\$$/, "")
+        .replace(/\\\//g, "/")
+        .replace(/\((?:[a-z]+)\|[a-z|]+\)/g, (group) => group.slice(1, -1).split("|")[0]);
+
+      if (path.startsWith("/api/v1/groups/([^/]+)")) {
+        path = path.replace("([^/]+)", LEDGER);
+      }
+
+      return path.replace(/\(\[\^\/\]\+\)/g, "abcdefgh12");
+    }
+
+    const cases = routes.map((route) => ({ route, path: concretePath(route.pattern) }));
+
+    test("the generated paths are real: each matches its own pattern and no regex syntax is left in it", () => {
+      expect(cases.length).toBeGreaterThan(90);
+
+      for (const { route, path } of cases) {
+        expect(path, route.label).toMatch(route.pattern);
+        expect(path, route.label).not.toMatch(/[()\^$|]/);
+      }
+    });
+
+    test("the routes a LIFF session may reach are exactly the ones named here", () => {
+      const reachable = cases.filter(({ route, path }) => liffAllows(route.method, path, LEDGER)).map(({ route }) => route.label);
+
+      expect(reachable.sort()).toEqual(
+        [
+          "GET /api/v1/site-notice",
+          "GET /api/v1/catalog",
+          "GET /api/v1/exchange-rates",
+          "GET /api/v1/line/liff",
+          "GET /api/v1/groups",
+          "GET /api/v1/me/line/entries/:key",
+          "POST /api/v1/errors",
+          "GET /api/v1/groups/:groupId",
+          "GET /api/v1/groups/:groupId/expenses",
+          "GET /api/v1/groups/:groupId/expenses/search",
+          "GET /api/v1/groups/:groupId/spend-breakdown",
+          "GET /api/v1/groups/:groupId/recurring",
+          "GET /api/v1/groups/:groupId/expenses/:expenseId/comments",
+          "POST /api/v1/groups/:groupId/expenses",
+          "POST /api/v1/groups/:groupId/images",
+          "POST /api/v1/groups/:groupId/read",
+          "PUT /api/v1/groups/:groupId/expenses/:expenseId",
+          "DELETE /api/v1/groups/:groupId/expenses/:expenseId",
+        ].sort(),
+      );
+    });
+
+    // [MV]: loosen liffAllows (or add a LIFF-reachable route by accident) and one of these stops being a 403.
+    test("every other route answers a LIFF token with 403 LIFF_SCOPE, whatever its method", async () => {
+      const { client } = liffClient();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const runtime = makeRuntime(client);
+      const authorization = `Bearer ${await liffToken()}`;
+      const refused: string[] = [];
+
+      try {
+        for (const { route, path } of cases) {
+          if (liffAllows(route.method, path, LEDGER)) continue;
+
+          const response = await runtime.handle({
+            // Routes carry a plain string method (HEAD /health is one): the runtime compares it as text.
+            method: route.method as HttpMethod,
+            path,
+            headers: { authorization },
+            json: {},
+          });
+
+          if (response.status !== 403 || code(response) !== "LIFF_SCOPE") {
+            refused.push(`${route.label} -> ${response.status}`);
+          }
+        }
+      } finally {
+        warn.mockRestore();
+      }
+
+      expect(refused).toEqual([]);
+    });
   });
 
   test("a token for another ledger cannot reach this one", async () => {
@@ -2099,7 +2225,7 @@ describe("LIFF sessions", () => {
     test("GET /line/liff reports null when LIFF is not configured", async () => {
       const { client } = exchangeClient();
 
-      const response = await makeRuntime(client).handle({ method: "GET", path: "/api/v1/line/liff", headers: {} });
+      const response = await makeRuntime(client, { lineLiff: undefined }).handle({ method: "GET", path: "/api/v1/line/liff", headers: {} });
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ liff_id: null });
@@ -2108,10 +2234,12 @@ describe("LIFF sessions", () => {
     test("POST /auth/line is 503 LINE_UNAVAILABLE when LIFF is not configured, and the database is not asked who it is", async () => {
       const { client, rpcs } = exchangeClient();
 
-      const response = await exchange(makeRuntime(client));
+      const response = await exchange(makeRuntime(client, { lineLiff: undefined }));
 
       expect(response.status).toBe(503);
       expect(code(response)).toBe("LINE_UNAVAILABLE");
+      // The early refusals are never cached.
+      expect(response.headers["cache-control"]).toBe("no-store");
       expect(rpcs.map((call) => call.fn)).not.toContain("line_liff_identity");
     });
 
@@ -2122,6 +2250,7 @@ describe("LIFF sessions", () => {
 
       expect(response.status).toBe(503);
       expect(code(response)).toBe("RUNTIME_ENV_MISSING");
+      expect(response.headers["cache-control"]).toBe("no-store");
     });
 
     test("an exchange returns a token in the body and sets no cookie", async () => {

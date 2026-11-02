@@ -35,6 +35,9 @@ export async function handleLineWebhookRequest(request: Request): Promise<Respon
       LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN,
       APP_ORIGIN: process.env.APP_ORIGIN,
       LINE_LIFF_ID: process.env.LINE_LIFF_ID,
+      // Read here too: a malformed override turns LIFF off in the API, and the
+      // bot must reach the same verdict or its cards link to a dead /liff.
+      LINE_LOGIN_CHANNEL_ID: process.env.LINE_LOGIN_CHANNEL_ID,
       LINE_LIFF_LINKS: process.env.LINE_LIFF_LINKS,
     });
 

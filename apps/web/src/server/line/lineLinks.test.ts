@@ -133,4 +133,9 @@ describe("the webhook function's wiring", () => {
     expect(handler).toMatch(/LINE_LIFF_LINKS: process\.env\.LINE_LIFF_LINKS/);
     expect(handler).toMatch(/liffId: liffIdForLinks\(env\)/);
   });
+
+  // [MV]: stop passing the override and a malformed one turns LIFF off in the API but not in the bot.
+  test("passes LINE_LOGIN_CHANNEL_ID so the bot and the API judge a malformed override the same way", () => {
+    expect(handler).toMatch(/LINE_LOGIN_CHANNEL_ID: process\.env\.LINE_LOGIN_CHANNEL_ID/);
+  });
 });

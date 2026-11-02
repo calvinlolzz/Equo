@@ -61,7 +61,7 @@ def has_set_cookie(headers: dict) -> bool:
     return any(name.lower() == "set-cookie" for name in headers)
 
 
-def evaluate_liff(config, exchange, bogus_session) -> str | None:
+def evaluate_liff(config, exchange, bogus_session, deep_path) -> str | None:
     """Judge the LINE-in-app (LIFF) endpoints. Each argument is (status, headers, payload).
 
     Returns a failure message, or None when everything is as it should be. Pure
@@ -76,6 +76,9 @@ def evaluate_liff(config, exchange, bogus_session) -> str | None:
         once it is. Never 200, never a Set-Cookie, never a token in the body.
       * A LIFF-shaped bearer that was not signed by us is 401 on a read: the
         gate that keeps LINE sessions inside their scope is deployed.
+      * A DEEP path (/me/line/entries/<key>, no credential) is a JSON 401 from
+        our router, not an edge 404 or an HTML page: the vercel.json rewrite
+        that carries multi-segment API paths to the function is still in place.
     """
     config_status, config_headers, config_payload = config
 
@@ -116,6 +119,14 @@ def evaluate_liff(config, exchange, bogus_session) -> str | None:
 
     if session_status != 401:
         return f"a forged LIFF bearer on GET /api/v1/groups expected 401, got {session_status}: {session_payload}"
+
+    deep_status, _, deep_payload = deep_path
+
+    if deep_status != 401 or error_code(deep_payload) is None:
+        return (
+            "GET /api/v1/me/line/entries/<key> (a deep path, no credential) expected a JSON 401, "
+            f"got {deep_status}: {deep_payload}"
+        )
 
     return None
 
@@ -193,10 +204,12 @@ def main() -> int:
         bogus_session = request_json_with(
             opener, "GET", "/api/v1/groups", headers={"Authorization": "Bearer equoL1.e30.AAAA"}
         )
+        # Three segments below /api/v1: the rewrite trap only shows on deep paths.
+        deep_path = request_json_with(opener, "GET", "/api/v1/me/line/entries/abcdefgh12")
     except (URLError, TimeoutError) as error:
         return fail(f"LIFF smoke request failed: {error}")
 
-    liff_problem = evaluate_liff(config, exchange, bogus_session)
+    liff_problem = evaluate_liff(config, exchange, bogus_session, deep_path)
 
     if liff_problem:
         return fail(liff_problem)

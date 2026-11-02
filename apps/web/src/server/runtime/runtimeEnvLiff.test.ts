@@ -92,6 +92,17 @@ describe("LINE_LOGIN_CHANNEL_ID", () => {
     expect(readLineEnv({ LINE_LIFF_ID: LIFF_ID, LINE_LOGIN_CHANNEL_ID: "nope" }).LINE_LIFF_ID).toBeUndefined();
     expect(readLineEnv({ LINE_LIFF_ID: LIFF_ID, LINE_LOGIN_CHANNEL_ID: "2009999999" }).LINE_LIFF_ID).toBe(LIFF_ID);
   });
+
+  // The webhook (readLineEnv) and the API (readRuntimeEnv) are handed the same variables and must agree on "LIFF on".
+  test.each([
+    ["well-formed override", "2009999999"],
+    ["malformed override", "nope"],
+    ["no override", undefined],
+  ])("the bot and the API agree on LIFF with a %s", (_label, channel) => {
+    const source = { LINE_LIFF_ID: LIFF_ID, LINE_LOGIN_CHANNEL_ID: channel };
+
+    expect(readLineEnv(source).LINE_LIFF_ID).toBe(readRuntimeEnv(source).LINE_LIFF_ID);
+  });
 });
 
 describe("readLineLiffConfig", () => {
