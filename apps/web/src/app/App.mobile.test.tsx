@@ -2,6 +2,7 @@
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, group, groupDetail, renderApp, signIn, stubBrowser } from "./appTestHarness";
+import { readAppStylesheet, ruleFor } from "./cssDeclarations";
 import { UI_TEXT } from "./uiText";
 
 // Same lazy-chunk problem as App.test.tsx / App.scan.test.tsx: the panels and
@@ -215,6 +216,20 @@ describe("the settings drawer", () => {
 });
 
 describe("the bottom tab bar", () => {
+  test("the full app keeps all five slots, ＋ in the middle one (only LIFF drops to three)", async () => {
+    await landOnGroup();
+
+    const bar = screen.getByRole("navigation", { name: app.groupHome });
+    const labels = within(bar)
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label"));
+    expect(labels).toEqual([app.navHome, app.navRecords, app.addExpense, app.navAnalysis, app.navGroup]);
+    expect(bar.className).not.toContain("mobile-tab-bar--compact");
+
+    const columns = ruleFor(readAppStylesheet("app-home.css"), ".mobile-tab-bar")["grid-template-columns"];
+    expect(columns).toBe("repeat(5, 1fr)");
+  });
+
   test("marks the current destination, and moves the mark as you navigate", async () => {
     await landOnGroup();
 

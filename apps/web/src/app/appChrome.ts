@@ -18,7 +18,10 @@ import type { StoredSession } from "./sessionStore";
  * future caller) cannot open a sheet this chrome never meant to show.
  */
 export type AppChrome = {
-  /** The group rail, side nav, both drawers, the 群組/帳本 tab and the menu button: moving between ledgers and groups. */
+  /**
+   * The group rail, side nav, both drawers, the 群組/帳本 tab and the menu button: moving between ledgers and groups.
+   * Also the 首頁 tab, which is not navigation but is dropped with the rest so the phone bar's three slots centre the ＋.
+   */
   groupNavigation: boolean;
   /** The profile dot and dialog (name, photo, language, legal pages, LINE link row, delete account). */
   profile: boolean;

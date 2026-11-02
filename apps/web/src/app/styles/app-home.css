@@ -1537,7 +1537,10 @@
   box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.32);
 }
 
-/* Without the 群組/帳本 tab (LIFF chrome): four tabs, not five with a hole. */
+/* Without the 首頁 and 群組/帳本 tabs (LIFF chrome): 紀錄 | ＋ | 分析. Three equal
+   columns, so the ＋ in the middle one is the middle of the screen. Four (the
+   old 首頁 | 紀錄 | ＋ | 分析) left two tabs on one side of it and one on the
+   other: the ＋ sat half a column right of centre (~45px on a 390px phone). */
 .mobile-tab-bar.mobile-tab-bar--compact {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }

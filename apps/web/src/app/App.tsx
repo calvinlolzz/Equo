@@ -2066,6 +2066,12 @@ export function App({ liff }: { liff?: LiffAppContext } = {}) {
           </button>
 
           <nav className={chrome.groupNavigation ? "mobile-tab-bar" : "mobile-tab-bar mobile-tab-bar--compact"} aria-label={text.groupHome} inert={!isMobileLayout} aria-hidden={!isMobileLayout || undefined}>
+            {/* LIFF's bar is 紀錄 | ＋ | 分析: three slots so the ＋ sits dead
+                centre (with 首頁 it was four, and the ＋ landed off to one
+                side). 首頁 is the one to drop because it navigates nowhere: it
+                only scrolls to the top, and every sheet's backdrop already
+                covers the bar. See .mobile-tab-bar--compact. */}
+            {chrome.groupNavigation ? (
             <button
               className={activeTab === "home" ? "mobile-tab-item active" : "mobile-tab-item"}
               type="button"
@@ -2081,6 +2087,7 @@ export function App({ liff }: { liff?: LiffAppContext } = {}) {
               <House aria-hidden="true" size={20} />
               <span>{text.navHome}</span>
             </button>
+            ) : null}
             <button
               className={activeTab === "records" ? "mobile-tab-item active" : "mobile-tab-item"}
               type="button"

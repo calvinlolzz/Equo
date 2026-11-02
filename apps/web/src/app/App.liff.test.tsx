@@ -6,6 +6,7 @@ import { App } from "./App";
 import type { LiffAppContext } from "./appChrome";
 import { resetApiBearerForTests, setApiBearerToken, type ExpenseSummary } from "./apiClient";
 import { group, groupDetail, stubBrowser, SESSION_KEY } from "./appTestHarness";
+import { readAppStylesheet, ruleFor } from "./cssDeclarations";
 import type { LineIntent } from "./lineIntent";
 import { UI_TEXT } from "./uiText";
 
@@ -252,6 +253,44 @@ describe("LIFF mode: what is on screen", () => {
     expect(container.querySelector(".profile-dot")).toBeNull();
     expect(container.querySelector(".group-rail")).toBeNull();
     expect(container.querySelector(".workspace-grid--no-rail")).not.toBeNull();
+  });
+
+  test("the phone's tab bar is 紀錄 | ＋ | 分析: three slots with the ＋ in the middle one, and no 首頁", async () => {
+    stubBrowser({ mobile: true });
+    renderLiff();
+    await ready();
+
+    const bar = screen.getByRole("navigation", { name: app.groupHome });
+    const labels = within(bar)
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label"));
+    expect(labels).toEqual([app.navRecords, app.addExpense, app.navAnalysis]);
+    expect(bar.className).toContain("mobile-tab-bar--compact");
+
+    // As many equal columns as the bar has buttons: with a different count the ＋ is off centre again.
+    const columns = ruleFor(readAppStylesheet("app-home.css"), ".mobile-tab-bar.mobile-tab-bar--compact")[
+      "grid-template-columns"
+    ];
+    expect(columns).toMatch(/^repeat\(\d+, 1fr\)$/);
+    expect(Number(/repeat\((\d+),/.exec(columns ?? "")?.[1])).toBe(labels.length);
+
+    // ruleFor skips @media blocks, and the rule that shows the bar on a phone lives in one: it must not
+    // set its own column count over the one above.
+    expect(readAppStylesheet("app-composer.css")).not.toMatch(/\.mobile-tab-bar[^{}]*\{[^}]*grid-template-columns/);
+  });
+
+  test("the tab bar marks nothing while the home screen is showing, and the sheet's tab once one is open", async () => {
+    stubBrowser({ mobile: true });
+    renderLiff();
+    await ready();
+
+    const bar = screen.getByRole("navigation", { name: app.groupHome });
+    expect(bar.querySelector('[aria-current="page"]')).toBeNull();
+
+    fireEvent.click(within(bar).getByRole("button", { name: app.navRecords }));
+    await waitFor(() =>
+      expect(within(bar).getByRole("button", { name: app.navRecords }).getAttribute("aria-current")).toBe("page"),
+    );
   });
 
   test("the ledger itself is there: its records are listed", async () => {
