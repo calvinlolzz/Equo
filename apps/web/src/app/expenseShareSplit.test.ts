@@ -8,10 +8,48 @@ import {
   getPaymentsRemainderMinor,
   getPercentSplitRemainder,
   isCustomSplitValid,
+  isEqualShareSplit,
   isPaymentsSplitValid,
   isPercentSplitValid,
   sumShareAmountsMinor,
 } from "./expenseShareSplit";
+
+describe("isEqualShareSplit", () => {
+  test("an even split is equal", () => {
+    expect(isEqualShareSplit(["a", "b"], { a: 500, b: 500 }, 1000)).toBe(true);
+  });
+
+  test("one member holding the whole amount is equal", () => {
+    expect(isEqualShareSplit(["me"], { me: 6000 }, 6000)).toBe(true);
+  });
+
+  test("the spare cents go to the earliest members, exactly as buildEqualShareAmountsMinor deals them", () => {
+    expect(isEqualShareSplit(["a", "b", "c"], { a: 334, b: 333, c: 333 }, 1000)).toBe(true);
+    // Same sum, spare cent on the wrong member: somebody typed that, it is not the even split.
+    expect(isEqualShareSplit(["a", "b", "c"], { a: 333, b: 333, c: 334 }, 1000)).toBe(false);
+  });
+
+  test("a custom split is not equal", () => {
+    expect(isEqualShareSplit(["a", "b"], { a: 400, b: 600 }, 1000)).toBe(false);
+  });
+
+  test("shares that no longer add up to the amount are not equal", () => {
+    expect(isEqualShareSplit(["a", "b"], { a: 500, b: 500 }, 1200)).toBe(false);
+  });
+
+  test("a different member set is not equal", () => {
+    expect(isEqualShareSplit(["a", "b"], { a: 500, c: 500 }, 1000)).toBe(false);
+    expect(isEqualShareSplit(["a", "b"], { a: 500, b: 500, c: 0 }, 1000)).toBe(false);
+  });
+
+  test("a member listed twice is not equal, even when the key count happens to match", () => {
+    expect(isEqualShareSplit(["a", "a"], { a: 500, z: 500 }, 1000)).toBe(false);
+  });
+
+  test("nobody to split between is not equal", () => {
+    expect(isEqualShareSplit([], {}, 1000)).toBe(false);
+  });
+});
 
 describe("buildEqualShareAmountsMinor", () => {
   test("distributes the remainder to the earliest members", () => {

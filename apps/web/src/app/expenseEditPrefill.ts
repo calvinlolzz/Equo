@@ -1,4 +1,5 @@
 import type { Expense } from "./appTypes";
+import { isEqualShareSplit } from "./expenseShareSplit";
 
 export type ComposerSplitMode = "equal" | "amount" | "percent";
 
@@ -159,12 +160,22 @@ export function buildExpenseEditPrefill(expense: Expense, groupCurrency: string)
       ? expense.payments.map((payment) => ({ payerId: payment.payerId, amount: minorToAmountString(payment.amountMinor) }))
       : [];
 
+  // The server always returns the share amounts, even for an even split, so
+  // their mere presence says nothing. Reopening an even split as "amount"
+  // would freeze today's numbers: change the total and they no longer add up,
+  // and the save button stays off until somebody re-splits by hand. Compared
+  // against expense.amountMinor (group currency, like the shares), not the
+  // local amountMinor above, which is the source-currency figure.
+  const isCustomAmountSplit =
+    expense.shareAmountsMinor !== undefined &&
+    !isEqualShareSplit(expense.shareMemberIds, expense.shareAmountsMinor, expense.amountMinor);
+
   return {
     ...base,
     mode: "expense",
     payerId: expense.payerId,
     shareMemberIds: expense.shareMemberIds,
-    splitMode: isPercent ? "percent" : expense.shareAmountsMinor ? "amount" : "equal",
+    splitMode: isPercent ? "percent" : isCustomAmountSplit ? "amount" : "equal",
     shareAmounts,
     sharePercents,
     payments,

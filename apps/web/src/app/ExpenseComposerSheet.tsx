@@ -688,6 +688,15 @@ export function ExpenseComposerSheet({
     ? members.find((member) => member.id === currentMemberId)?.id ?? members[0]?.id
     : undefined;
 
+  /**
+   * A personal ledger has one member and renders no split editor, so whatever
+   * split mode the entry was opened in (an income reopens as "amount" with its
+   * old figures) is state nobody can see or fix. Gating or saving on it would
+   * leave 儲存變更 off, or write stale shares, the moment the amount changes.
+   * The single share is always the whole amount: equal.
+   */
+  const effectiveSplitMode: ComposerSplitMode = personal ? "equal" : composerSplitMode;
+
   const canSubmit =
     composerMode === "transfer"
       ? canSubmitTransferDraft({
@@ -700,7 +709,7 @@ export function ExpenseComposerSheet({
           selectedShareMemberCount: personal ? (personalMemberId ? 1 : 0) : composerShareIds.length,
           totalAmountMinor: composerTotalAmountMinor,
           shareAmountsMinor: composerCustomShareAmountsMinor,
-          splitMode: composerSplitMode,
+          splitMode: effectiveSplitMode,
           shareMemberIds: composerShareIds,
           sharePercents: composerSharePercentValues,
           paymentAmountsMinor: composerMode === "expense" && isMultiPayer ? composerPaymentAmountsMinor : undefined,
@@ -846,9 +855,9 @@ export function ExpenseComposerSheet({
         imageDataUrls: composerImageDataUrls,
         imageUrls: composerImageUrls,
       };
-      if (composerSplitMode === "amount") {
+      if (effectiveSplitMode === "amount") {
         draft.shareAmountsMinor = composerCustomShareAmountsMinor;
-      } else if (composerSplitMode === "percent") {
+      } else if (effectiveSplitMode === "percent") {
         draft.shareType = "percent";
         draft.sharePercents = composerSharePercentValues;
       }

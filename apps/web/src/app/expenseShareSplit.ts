@@ -11,6 +11,23 @@ export function buildEqualShareAmountsMinor(memberIds: string[], amountMinor: nu
   return result;
 }
 
+/**
+ * Whether stored share amounts are exactly the even split of `amountMinor`
+ * (the same floor-plus-remainder split buildEqualShareAmountsMinor deals out,
+ * including which member gets the spare cents). Anything else - a custom
+ * split, a different member set, an empty list - is not.
+ */
+export function isEqualShareSplit(
+  memberIds: string[],
+  shareAmountsMinor: Record<string, number>,
+  amountMinor: number,
+): boolean {
+  if (memberIds.length === 0 || new Set(memberIds).size !== memberIds.length) return false;
+  if (Object.keys(shareAmountsMinor).length !== memberIds.length) return false;
+  const equal = buildEqualShareAmountsMinor(memberIds, amountMinor);
+  return memberIds.every((memberId) => shareAmountsMinor[memberId] === equal[memberId]);
+}
+
 export function sumShareAmountsMinor(shareAmountsMinor: Record<string, number>): number {
   return Object.values(shareAmountsMinor).reduce((sum, value) => sum + value, 0);
 }

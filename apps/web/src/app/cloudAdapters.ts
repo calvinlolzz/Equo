@@ -221,7 +221,9 @@ function resolveIncomeBeneficiaryPayments(draft: ExpenseDraft): Array<{ payerId:
  * - shareAmountsMinor is ALWAYS built from expense_shares (even when the
  *   split happens to be even). The server is the source of truth for
  *   amounts, and always building it keeps this mapping simple and correct
- *   without having to detect "is this an equal split".
+ *   without having to detect "is this an equal split". (The edit prefill
+ *   does that detection - isEqualShareSplit - so an even split reopens as
+ *   平分 rather than as frozen custom amounts.)
  * - share_type "percent" rows surface as shareType "percent" plus
  *   sharePercents (from share_value) so edit-prefill can reopen the percent
  *   inputs; the exact amounts still live in shareAmountsMinor.

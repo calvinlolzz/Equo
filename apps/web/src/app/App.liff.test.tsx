@@ -44,6 +44,7 @@ type Seen = {
   key: string;
   authorization: string | undefined;
   credentials: RequestCredentials | undefined;
+  body: BodyInit | null | undefined;
 };
 
 type Route = { status?: number; body: unknown };
@@ -64,7 +65,14 @@ function stubFetch() {
       const path = String(url).split("?")[0];
       const key = `${method} ${path.replace(/^\/api\/v1/, "")}`;
       const headers = (init?.headers ?? {}) as Record<string, string>;
-      seen.push({ method, path, key, authorization: headers.Authorization, credentials: init?.credentials });
+      seen.push({
+        method,
+        path,
+        key,
+        authorization: headers.Authorization,
+        credentials: init?.credentials,
+        body: init?.body,
+      });
       const match = routes.get(key);
       const status = match?.status ?? 404;
       return {
@@ -310,6 +318,29 @@ describe("LIFF mode: edit and delete", () => {
     fireEvent.click(submit as HTMLElement);
 
     await waitFor(() => expect(seen.map((call) => call.key)).toContain(`PUT /groups/${LEDGER}/expenses/expense_1`));
+  });
+
+  test("changing the amount of an entry still lets it be saved (it used to switch 儲存變更 off)", async () => {
+    route(`PUT /groups/${LEDGER}/expenses/expense_1`, { expense: entry({ amount_minor: 12000 }) });
+    renderLiff({ intent: { kind: "entry", entryKey: KEY } });
+
+    await screen.findByDisplayValue("早餐");
+    const composer = screen.getByRole("dialog", { name: app.addExpense });
+    fireEvent.change(within(composer).getByLabelText(app.amount), { target: { value: "120" } });
+    const submit = within(composer)
+      .getAllByRole("button", { name: app.saveChanges })
+      .find((button) => button.className.includes("composer-submit")) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(seen.map((call) => call.key)).toContain(`PUT /groups/${LEDGER}/expenses/expense_1`));
+    const put = seen.find((call) => call.key === `PUT /groups/${LEDGER}/expenses/expense_1`);
+    // The server refuses shares or payments that do not add up to the amount, and this mock would not.
+    expect(JSON.parse(String(put?.body))).toMatchObject({
+      amount_minor: 12000,
+      expense_payments: [{ payer_member_id: "member_alice", amount_minor: 12000 }],
+      expense_shares: [{ member_id: "member_alice", amount_minor: 12000 }],
+    });
   });
 
   test("deleting from the detail DELETEs the entry under the token's own ledger", async () => {

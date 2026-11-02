@@ -64,6 +64,56 @@ describe("buildExpenseEditPrefill", () => {
     expect(prefill.shareAmounts).toEqual({ member_a: "4", member_b: "6" });
   });
 
+  describe("an even split reopens as 平分, not as frozen custom amounts", () => {
+    // The server always returns the share amounts, so their presence alone says nothing.
+    test("two members, even", () => {
+      const expense = makeExpense({ amountMinor: 1000, shareAmountsMinor: { member_a: 500, member_b: 500 } });
+      expect(buildExpenseEditPrefill(expense, "TWD").splitMode).toBe("equal");
+    });
+
+    test("one member holding the whole amount (a personal ledger entry)", () => {
+      const expense = makeExpense({
+        amountMinor: 6000,
+        shareMemberIds: ["member_a"],
+        shareAmountsMinor: { member_a: 6000 },
+      });
+      expect(buildExpenseEditPrefill(expense, "TWD").splitMode).toBe("equal");
+    });
+
+    test("three members with a spare cent on the first", () => {
+      const members = ["member_a", "member_b", "member_c"];
+      const even = makeExpense({
+        amountMinor: 1000,
+        shareMemberIds: members,
+        shareAmountsMinor: { member_a: 334, member_b: 333, member_c: 333 },
+      });
+      const shifted = makeExpense({
+        amountMinor: 1000,
+        shareMemberIds: members,
+        shareAmountsMinor: { member_a: 333, member_b: 333, member_c: 334 },
+      });
+      expect(buildExpenseEditPrefill(even, "TWD").splitMode).toBe("equal");
+      expect(buildExpenseEditPrefill(shifted, "TWD").splitMode).toBe("amount");
+    });
+
+    test("judged against the group-currency total the shares are in, not the foreign figure", () => {
+      // 1000 JPY at 0.3 = 300 TWD: the shares add up to 30000, the foreign figure is 100000.
+      const expense = makeExpense({
+        amountMinor: 30000,
+        sourceCurrency: "JPY",
+        sourceAmountMinor: 100000,
+        exchangeRate: 0.3,
+        shareAmountsMinor: { member_a: 15000, member_b: 15000 },
+      });
+      expect(buildExpenseEditPrefill(expense, "TWD").splitMode).toBe("equal");
+    });
+
+    test("an unequal split stays custom", () => {
+      const expense = makeExpense({ amountMinor: 1000, shareAmountsMinor: { member_a: 400, member_b: 600 } });
+      expect(buildExpenseEditPrefill(expense, "TWD").splitMode).toBe("amount");
+    });
+  });
+
   test("carries over note and image when present", () => {
     const expense = makeExpense({ note: "備註內容", imageUrl: "https://cdn.equo.local/expense.jpg" });
     const prefill = buildExpenseEditPrefill(expense, "TWD");
