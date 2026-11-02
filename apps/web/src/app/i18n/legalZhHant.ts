@@ -14,7 +14,8 @@ import { LEGAL_CONTACT_EMAIL } from "../legalContact";
  * Plain-language, Traditional Chinese, ROC (Taiwan) jurisdiction. Reviewed and
  * approved 2026-07-25; receipt-recognition disclosure added 2026-08-03;
  * personal ledger, LINE bookkeeping and admin read-only access added 2026-09-30;
- * LINE entry key and reply contents clarified 2026-11-02.
+ * LINE entry key and reply contents clarified 2026-11-02; LINE Login inside LINE
+ * (LIFF) added 2026-11-02.
  * Contact: support@equomu.com.
  *
  * ⚠️ The receipt-recognition section names the AI provider and its tier, because
@@ -99,6 +100,7 @@ export const PRIVACY_POLICY_ZH: LegalDocument = {
         "從 LINE 記下的帳會帶著一個 LINE 事件編號，讓卡片上的「編輯」「刪除」按鈕找得到那一筆；它跟著那筆帳保存，帳刪除時一起刪除。",
         "日期一律以台灣時間計算。",
         "訊息與機器人的回覆會經過 LINE（LY Corporation）的平台傳遞；回覆內容可能包含金額、記錄名稱、本月總額、連續記帳天數，以及部分遮蔽的電子郵件。",
+        "在 LINE 裡開啟 Equo 頁面（例如點卡片上的「編輯」或「明細」）時，我們會透過 LINE Login 取得一次性的登入憑證，只用來確認你就是已連結的那個 LINE 帳號，讓你查看與編輯個人帳本。我們不會保存這個憑證，也不會因此取得你的 LINE 名稱、大頭貼或電子郵件。這個登入只能使用個人帳本、看不到你的群組，一小時後自動失效，解除連結後立即失效。",
         "你隨時可以在 LINE 傳「解除綁定」，或到個人資料頁解除連結；解除後，上述 LINE 相關資料會一併刪除（已記下的帳，連同它帶著的 LINE 事件編號，會保留在你的帳本裡）。",
       ],
     },

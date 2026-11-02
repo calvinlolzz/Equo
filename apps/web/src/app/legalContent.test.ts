@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { LEGAL_CONTACT_EMAIL, PRIVACY_POLICY, TERMS_OF_SERVICE } from "./legalContent";
+import { PRIVACY_POLICY_EN } from "./i18n/legalEn";
 
 function allText(doc: typeof PRIVACY_POLICY): string {
   return [
@@ -77,6 +78,26 @@ describe("legal content", () => {
     expect(text).toContain("LINE 使用者識別碼");
     expect(text).toContain("LY Corporation");
     expect(text).toContain("解除綁定");
+  });
+
+  // LIFF login (Phase B) must be disclosed BEFORE LINE_LIFF_ID is set in
+  // production - this is the guard that the paragraph is there in both languages
+  // and keeps promising what the code enforces (no stored credential, personal
+  // ledger only, one hour, revoked on unlink).
+  test("the privacy policy discloses LINE Login inside LINE, in both languages", () => {
+    const zh = allText(PRIVACY_POLICY);
+    expect(zh).toContain("LINE Login");
+    expect(zh).toContain("不會保存這個憑證");
+    expect(zh).toContain("只能使用個人帳本");
+    expect(zh).toContain("一小時後自動失效");
+    expect(zh).toContain("解除連結後立即失效");
+
+    const en = allText(PRIVACY_POLICY_EN);
+    expect(en).toContain("LINE Login");
+    expect(en).toContain("We do not store that credential");
+    expect(en).toContain("only your personal ledger");
+    expect(en).toContain("expires after an hour");
+    expect(en).toContain("as soon as you unlink");
   });
 
   test("the privacy policy discloses administrators' read-only access", () => {

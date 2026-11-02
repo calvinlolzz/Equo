@@ -79,6 +79,7 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
         "Entries recorded from LINE carry a LINE event number so that a card's \"Edit\" and \"Delete\" buttons can find them; it is kept with the entry and removed with it.",
         "Dates are always interpreted in Taiwan time.",
         "Messages and the bot's replies travel through LINE's platform (LY Corporation). Replies may include amounts, entry titles, this month's totals, your logging streak, and a partly masked email address.",
+        "When you open Equo pages inside LINE (for example by tapping \"Edit\" or \"Records\" on a card), LINE Login gives us a one-time sign-in credential that we use only to confirm you are the linked LINE account, so you can view and edit your personal ledger. We do not store that credential, and it does not give us your LINE name, profile picture or email address. This sign-in reaches only your personal ledger — not your groups — expires after an hour, and stops working as soon as you unlink.",
         "You can unlink at any time by sending \"unlink\" in LINE or from your profile. Unlinking deletes the LINE data above (entries you already recorded, with the LINE event number they carry, stay in your ledger).",
       ],
     },
