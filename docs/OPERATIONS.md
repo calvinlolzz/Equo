@@ -491,7 +491,7 @@ https://equo-mu.vercel.app/api/v1/health
 
 - Webhook：`POST /api/line/webhook`（獨立 function，不在 `/api/v1` 底下，因為簽章要讀原始 body）。
 - **Kill switch：LINE Developers console → Messaging API → 關掉 Use webhook。** 關掉之後不會再記任何東西；已綁定的資料留著。
-- 只擋寫入的維護模式對它也有效（記帳、復原、設定／取消預算會回維護訊息；「本月」與「預算」（查看）照常可用），但**解除綁定與 `DELETE /api/v1/me/line` 一律放行**（LINE 要求隨時能解除，且它只刪這個功能自己的資料）。綁定事件（`accountLink`）與發 link token 也不被維護擋住。
+- 只擋寫入的維護模式對它也有效（記帳、復原、設定／取消預算，以及卡片上刪除的「詢問」與「確定刪除」兩步會回維護訊息；「本月」、「預算」（查看）與刪除流程裡的「取消」照常可用，因為取消不寫任何東西），但**解除綁定與 `DELETE /api/v1/me/line` 一律放行**（LINE 要求隨時能解除，且它只刪這個功能自己的資料）。綁定事件（`accountLink`）與發 link token 也不被維護擋住。
 
 ### Console 設定清單
 
@@ -504,11 +504,11 @@ https://equo-mu.vercel.app/api/v1/health
 
 ### 資料與保留
 
-`line_accounts`（綁定，帳號刪除時 `ON DELETE CASCADE` 帶走）、`line_link_requests`（只存 link token 與 nonce 的**雜湊**，1 天後清）、`line_bot_entries`（事件 id → 帳目，供復原用，90 天）、`line_undo_events`（每次復原嘗試的結果，讓**重送的復原**永遠得到原本的答案，不會刪到之後才記的新帳，只留 2 天，解除綁定時一併刪除）。清理掛在每晚 workflow 的保留步驟（第 2 節）。帳號合併（`admin_console_merge_users`）會**刪掉**被併掉那個帳號的綁定，不搬給目標帳號。
+`line_accounts`（綁定，帳號刪除時 `ON DELETE CASCADE` 帶走）、`line_link_requests`（只存 link token 與 nonce 的**雜湊**，1 天後清）、`line_bot_entries`（事件 id → 帳目，供復原用，90 天）、`line_undo_events`（每次復原嘗試的結果，讓**重送的復原**永遠得到原本的答案，不會刪到之後才記的新帳，只留 2 天，解除綁定時一併刪除）。**卡片上的刪除不用這兩張表**：它靠帳目本身永遠留著的 `expenses.client_request_id = 'line:' || <事件 id>` 找到那一筆，所以不受 90 天限制（見下面「從卡片刪除」）。清理掛在每晚 workflow 的保留步驟（第 2 節）。帳號合併（`admin_console_merge_users`）會**刪掉**被併掉那個帳號的綁定，不搬給目標帳號。
 
 ### 回覆卡片（Flex）
 
-記帳、「本月」、「預算」與「預算 N」（查看與設定，同一張預算卡）、「說明」、加好友／請連結帳號、綁定成功這六種回覆是 **Flex 卡片**（極光深色，程式在 `apps/web/src/server/line/lineCards.ts`），其餘維持純文字：「復原」、「解除綁定」、取消預算、已連結的人重新加好友（歡迎回來）、已連結還按「綁定」、各種錯誤與維護訊息，以及沒設預算時的「預算」。**「復原」只出現在 Quick Reply 按鈕上，卡片裡不放。** 每張卡片的 `altText` 就是原本那句純文字（通知列、聊天列表預覽、不支援 Flex 的舊版 LINE 看到的都是它），所以文案的單一來源仍是 `lineText.ts`。
+記帳（記帳卡加心情卡，兩張）、「本月」、「預算」與「預算 N」（查看與設定，同一張預算卡）、「說明」、加好友／請連結帳號、綁定成功這幾種回覆是 **Flex 卡片**（極光深色，程式在 `apps/web/src/server/line/lineCards.ts`），其餘維持純文字：「復原」、「解除綁定」、取消預算、已連結的人重新加好友（歡迎回來）、已連結還按「綁定」、刪除流程的詢問與結果、各種錯誤與維護訊息，以及沒設預算時的「預算」。**「復原」只出現在 Quick Reply 按鈕上，卡片裡不放；卡片裡唯一會送出 postback 的按鈕是記帳卡的「刪除」，而且它只負責「詢問」。** 每張卡片的 `altText` 就是原本那句純文字（通知列、聊天列表預覽、不支援 Flex 的舊版 LINE 看到的都是它），所以文案的單一來源仍是 `lineText.ts`。
 
 LINE 對不喜歡的 Flex 訊息回 `400`（回應內文我們刻意不讀，所以 log 只看得到狀態碼、看不到哪個欄位被嫌），所以沒辦法事前保證每張卡片都被收。處理方式是**自動退回純文字**：回覆含 Flex 卡片而被 LINE 以 400 拒絕時，`safeReply` 會用同一個 reply token **再送一次**卡片原本取代的純文字（連結卡片退回的是「原本的文字＋按鈕範本」，所以仍然有按鈕可以點）。只有「400」且「至少一張卡片是以 Flex 送出」才會重送；純文字的 400，或 401／429／5xx／逾時都不重送，照舊只記一行 `reply failed`。另外，**組卡片的程式丟例外也不會讓已存好的帳變成錯誤訊息**：該張卡片直接改用純文字（log 見下表第三行）。
 
@@ -516,11 +516,78 @@ Vercel runtime logs（Logs 搜尋框）可 grep 的三種字串：
 
 | 搜尋字串 | 等級 | 意思 | 該怎麼辦 |
 |---|---|---|---|
-| `flex reply rejected` | error | LINE 回 400 拒絕卡片，括號內是被拒的卡片名稱（`record`／`month`／`budget`／`help`／`link`／`linked`），下一步會重送純文字 | 偶發一兩筆可忽略；**同一個卡片名稱持續出現**就是卡片 JSON 有問題（或 LINE 改了規格），去對 `lineFlexValidator.ts` 的規則 |
+| `flex reply rejected` | error | LINE 回 400 拒絕卡片，括號內是被拒的卡片名稱（`record`／`mood`／`month`／`budget`／`help`／`link`／`linked`；一次記帳的回覆有兩張，所以通常寫成 `cards: record, mood`），下一步會重送純文字 | 偶發一兩筆可忽略；**同一個卡片名稱持續出現**就是卡片 JSON 有問題（或 LINE 改了規格），去對 `lineFlexValidator.ts` 的規則。只有 `mood` 持續出現，問題在心情卡的週圈圈那一段（`weekDay`）；兩張一起，先懷疑記帳卡的 postback 按鈕 |
 | `text fallback` | warn：`text fallback delivered`；error：`text fallback failed: …` | 重送純文字成功（使用者沒察覺，只是看到舊樣式）／連純文字也失敗（回覆整則丟失，帳已寫入；通常是 reply token 逾時，LINE 的 reply token 很短命） | `failed` 比 `delivered` 嚴重，但帳不會因此遺失。**判斷方向**：同一個 token 上 `rejected` 之後接 `delivered`，代表卡片本身有問題；`rejected` 之後接 `failed`，多半是 reply token 已失效或用過，不是卡片的錯 |
 | `card build failed` | error | 組卡片時程式丟例外，括號內是卡片名稱；該張卡片已改成純文字送出 | 這是程式 bug，要修；使用者端看起來只是樣式變回純文字 |
 
-這三種 log 只有狀態碼（400）與上面那六個固定的卡片名稱，**不含**標題、金額、reply token、link token、email 或 LINE user id；其中 `failed`／`build failed` 後面接的是已過 `redactForLog` 的錯誤訊息。上線後第一週看一下 `flex reply rejected` 有沒有出現，沒有就代表卡片在真機上都被收了。
+這三種 log 只有狀態碼（400）與上面那七個固定的卡片名稱，**不含**標題、金額、reply token、link token、email 或 LINE user id；其中 `failed`／`build failed` 後面接的是已過 `redactForLog` 的錯誤訊息。上線後第一週看一下 `flex reply rejected` 有沒有出現，沒有就代表卡片在真機上都被收了。
+
+### 記帳回覆：兩則訊息與心情卡
+
+每記一筆，機器人用**同一個 reply token 回兩則訊息**：
+
+1. **記帳卡**：原本那張（標題、金額、分類、本月合計、預算條），底下多一排按鈕：**編輯**（綠底，`uri`，開啟這一筆的編輯畫面）和**刪除**（珊瑚色文字鈕，`postback`，只會「詢問」）。`altText` 仍是原本那句純文字。
+2. **心情卡**（`mood`）：一句依情境挑的短語、一句鼓勵語（遇到里程碑時換成里程碑那句，琥珀色），以及連續記帳天數、「本月記帳 N 天 · 今天第 N 筆」和週一到週日的打勾圓圈（有記帳的日子是薄荷綠圓＋勾，沒有的日子一律是空圓，過去漏掉和還沒到的日子長一樣，卡片不指出缺口）。`altText` 是短語加連續天數（聊天列表預覽和通知顯示的就是它，所以預覽不再是「已記下支出…」）。
+
+Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也就是心情卡**，因為 LINE 在官方帳號再送出訊息時會把前一則的 Quick Reply 拿掉。退回純文字時同樣是兩則文字，Quick Reply 在第二則。
+
+**短語怎麼挑**（`lineMood.ts`，純函式）：先看是不是收入，再看是不是大額支出（單筆 ≥ 當月預算的 20%，或 TWD ≥ NT$3,000），再看餐飲（**標題裡的字優先**：早餐／午餐／下午茶／咖啡／晚餐／宵夜…，沒有關鍵字才看台灣時間 05:00–10:30 早餐、10:30–14:00 午餐、14:00–17:00 下午茶、17:00–21:00 晚餐、其餘宵夜），最後看分類（交通、購物、娛樂、健康、居家／帳單／住宿、教育），都不是就是通用句。英文關鍵字要成為獨立的字（`tea` 不會中 `steak`）。每個情境三句，用**事件 id 的 FNV-1a** 挑，所以 LINE 重送同一個事件時文字一模一樣；連續天數這類數字則重新查（今天第 N 筆可能不同，這是預期的）。文案只在 `lineMoodText.ts`（繁中＋英文，缺任何一句型別就不過）。
+
+**連續天數**來自 RPC `line_streak(p_line_user_id, p_today)`（`p_today` 是台灣日期）：算個人帳本裡有收支的**不同日期**數，不含未來日期與已刪除的帳。**它在記帳寫入之後才呼叫，而且失敗不影響記帳**：RPC 丟例外、回 `ok: false`、或回的形狀不對（週不是 7 格、`today_index` 不在 0–6、計數不是非負整數…）時，心情卡照樣送出，只是少了連續天數那一段（只剩短語和鼓勵語），並寫一行 `streak unavailable`。尚未套用 `line_streak` 這支 migration 時也是這個樣子，不會壞。
+
+### 從卡片刪除
+
+記帳卡的**刪除**按鈕分兩步，**沒有時間限制**（跟 30 分鐘的「復原」不同）：
+
+1. 點「刪除」→ 聊天室出現「刪除這筆」，機器人回「確定刪除『早餐 $60』？」，Quick Reply 只有**確定刪除**與**取消**。這一步不寫任何東西。
+2. 點「確定刪除」→ 軟刪除這一筆，回「已刪除：早餐 $60」；點「取消」→「好的，沒有刪除。」（不呼叫資料庫）。
+
+怎麼找到那一筆：卡片上的按鈕只帶**事件 id**（postback 資料是封閉格式 `v=1&a=del|delok|delno&k=<id>`，其他一律當作失效按鈕），機器人拿**傳訊者自己**的個人帳本，用 `expenses.client_request_id = 'line:' || <id>` 去找。所以轉傳的卡片、別人的卡片、解除綁定後重綁到別的帳號，都只會得到「找不到這筆記錄…」。
+
+- **在 App 裡改過**：編輯支出的做法是軟刪除舊列、建新列，所以 `expenses.replaced_by_expense_id` 會記下接班的那一列，卡片會跟著換。確認文字顯示的是**現在**的標題和金額，並寫明「這筆在 App 裡改過了，現在是『…』。確定刪除？」。
+- **已經刪掉了**（App 或另一次點擊）：「這筆已經刪除了。」LINE 重送同一次「確定刪除」則回原本的「已刪除：…」（以這次點擊的事件 id 當冪等鍵，不會變成「已經刪除」）；同時兩次點擊由資料列鎖序列化。
+- **復原不變**：仍是 30 分鐘內、從 LINE 記的最後一筆。卡片刪除不會寫 `line_bot_entries.undone_at`，所以刪掉最新一筆之後再傳「復原」會得到「上一筆已經被修改或刪除了。」（這句文案改過，不再說「在 App 裡」）。
+- 維護模式擋詢問與確定（取消不擋）；未綁定回連結卡；帳號停用回停用訊息；群組／room 的 postback 一律忽略；被限流回限流訊息。
+
+### Quick Reply 一覽
+
+| 回覆 | Quick Reply |
+|---|---|
+| 記帳（心情卡） | 復原（文字）· 本月（文字）· 明細（連結）· 分析（連結） |
+| 本月卡 | 明細 · 分析 · 說明 |
+| 說明卡 | 本月 · 明細 · 分析 |
+| 預算（查看／設定／沒設定）、取消預算 | 本月 · 明細 · 分析 · 說明 |
+| 復原的結果（已復原／沒有可復原／已被修改） | 本月 · 明細 · 分析 · 說明 |
+| 刪除流程的結果（已刪除／取消／已經刪除／找不到／按鈕失效） | 本月 · 明細 · 分析 · 說明 |
+| 重新加好友（歡迎回來）、已連結還按「綁定」、各種輸入錯誤（看不懂、金額不對…） | 本月 · 明細 · 分析 · 說明 |
+| 綁定成功卡 | 本月 · 說明（這個事件不知道是哪個帳本，沒有連結） |
+| 刪除的詢問 | 確定刪除 · 取消（postback，只有這兩個） |
+| 連結卡、未綁定、解除綁定的結果、停用、維護、限流、系統錯誤、非文字訊息、群組 | 無 |
+
+沒有個人帳本時（`context.ledger` 為空）明細與分析兩個連結會被省略。**「開啟帳本」不再出現在 Quick Reply**；本月卡的底部按鈕仍是「開啟帳本」。
+
+### 深層連結（App 端，`lineIntent.ts`）
+
+機器人送出的連結都開個人帳本自己的網址 `/group/<帳本 id>`，帶一個參數，`openExternalBrowser=1` 永遠排在最後（LINE 內建瀏覽器擋 Google 登入，這個參數讓它改用手機瀏覽器）：
+
+| 連結 | 參數 | 效果 |
+|---|---|---|
+| 編輯（記帳卡） | `?entry=<事件 id>&openExternalBrowser=1`（id 會 URL 編碼，`msg:123` → `msg%3A123`） | 解析這個 id（`GET /api/v1/me/line/entries/:key`，只查登入者自己的個人帳本）→ 開啟編輯畫面；已刪除、找不到、暫時失敗各有一則提示 |
+| 明細 | `?view=records&openExternalBrowser=1` | 開啟明細面板 |
+| 分析 | `?view=analysis&openExternalBrowser=1` | 開啟分析面板 |
+
+只認這三種形狀，不接受「要去哪個網址」。`entry` 與 `view` 同時出現時 `entry` 優先。讀完就從網址列拿掉 `view`／`entry`（其他參數保留），重新整理不會再開一次。尚未登入時會先存進 localStorage（`equo.clean.pending_line_intent`，15 分鐘有效）撐過 Google 登入的跳轉，登入回來再開。
+
+### 新的 log 關鍵字
+
+除了上面三種卡片 log，這一輪新增（都不含標題、金額、事件 id、reply token、LINE user id）：
+
+| 搜尋字串 | 等級 | 意思 | 該怎麼辦 |
+|---|---|---|---|
+| `streak unavailable` | warn | 連續天數那一段拿不到，後面是原因：`not_linked`／`account_disabled`／`no_ledger`（RPC 回 `ok: false`）、`unexpected stats`（形狀不對）、或已過 `redactForLog` 的例外訊息。心情卡還是送出了，只少一段 | 單筆偶發可忽略；**每一筆都出現**多半是 `line_streak` migration 沒套或 RPC 壞了（`function … does not exist`），去補 migration |
+| `postback ignored` | warn | 收到格式不認得的 postback（`postback ignored (unknown data)`）；使用者看到的是「這個按鈕已經失效了」 | 正常情況不會出現（按鈕都是我們發的）；大量出現代表按鈕格式改過而舊訊息還在被點，或有人亂送 |
+| `[line] postback failed (<tag>)` | error | 處理 postback 時丟例外（刪除流程的 RPC 失敗等），使用者看到通用錯誤訊息；`<tag>` 是 `lineUserTag` 雜湊前綴 | 去看後面已過 `redactForLog` 的錯誤訊息；刪除是冪等的，使用者可以再點一次 |
+| `card build failed (mood)` | error | 心情卡組不出來，已改成純文字（短語＋鼓勵＋連續天數）送出 | 程式 bug，要修；使用者端只是樣式變回純文字 |
 
 **連結卡片的橫幅圖**：`apps/web/public/assets/line/link-hero-v1.jpg`（1024×512，語言中性：品牌符號、字標、一張小儀表板；原稿 `docs/line-oa/link-hero.html`，用 `docs/line-oa/render.mjs` 輸出）。卡片引用的網址是 `${APP_ORIGIN}/assets/line/link-hero-v1.jpg`，**只有 `APP_ORIGIN` 是 https 才會放橫幅**（LINE 只抓 https 圖片；本機 http 開發環境的卡片沒有橫幅，這是預期的）。放在 `/assets/` 底下是刻意的：SPA 的 catch-all rewrite 排除這個前綴，所以打錯檔名是真的 404，不會被回成 200 的 `index.html`。**檔名帶版本號是因為 `vercel.json` 把 `/assets/*` 設成 immutable、快取一年**：想換圖不能覆蓋 `link-hero-v1.jpg`（LINE 與瀏覽器都不會重抓），要存成 `link-hero-v2.jpg`，同步改 `lineCardTheme.ts` 的 `LINK_HERO_PATH`、`render.mjs` 的輸出檔名與 `scripts/smoke-production-web.py` 裡的檢查路徑，再重新部署。正式站冒煙腳本（`scripts/smoke-production-web.py`）會檢查橫幅是 `image/jpeg`、旁邊一個不存在的檔案是 404；橫幅真的 404 時卡片仍會送出，只是 LINE 在那個位置顯示空白。
 
@@ -531,3 +598,15 @@ Vercel runtime logs（Logs 搜尋框）可 grep 的三種字串：
 ### 上線前
 
 隱私權政策要先寫明 LINE 這條資料流（見計畫 §11），**之後**才開 webhook。真機（iOS／Android × 已登入／未登入 Equo）要走一遍：加好友 → 綁定 → `早餐 60` → `本月` → `預算 15000` → `預算` → `取消預算` → `復原` → `解除綁定` → 再綁定；LINE 內建瀏覽器擋 Google 登入，頁面會給「用瀏覽器開啟」的連結（已帶 token 與 `openExternalBrowser=1`）。
+
+**只有真人用手機才驗得了的（心情卡與卡片刪除這一輪；程式端的 validator 與測試都過，但 LINE 的 Flex 渲染與 postback 顯示沒有離線驗證方法）**，iOS 與 Android、LINE 淺色與深色主題各走一次：
+
+1. 在早餐時段傳「早餐 60」→ 收到**兩則**；Quick Reply 顯示在心情卡下面；週圈圈有畫出來、勾勾看得見（深色勾在薄荷綠圓上）。
+2. 聊天列表預覽與通知文字：應是短語加「連續記帳 N 天」。
+3. 點「刪除」→ 聊天室出現「刪除這筆」的字樣（`displayText`，實際怎麼顯示未驗證）和確認訊息 → 點「取消」→ 再點「刪除」→「確定刪除」→「已刪除」。快速連點兩次「確定刪除」。
+4. 點「編輯」→ 手機瀏覽器打開並進入編輯畫面（已登入與未登入兩種路徑）。
+5. 先到 App 把那筆改掉，再用舊卡片的「刪除」→ 應看到「這筆在 App 裡改過了，現在是…」的確認文字。
+6. 「明細」、「分析」兩顆 Quick Reply 打得開對的面板。
+7. 傳「+52000 薪水」→ 收入的短語；很長的英文標題與英文語系版面不破。
+8. 刪掉最新一筆後傳「復原」→ 「上一筆已經被修改或刪除了。」
+9. 珊瑚色「刪除」文字鈕在深色卡片上的樣子（連結樣式）和與綠色「編輯」並排的比例。
