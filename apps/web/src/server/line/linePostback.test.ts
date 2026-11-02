@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { LINE_ENTRY_KEY_PATTERN as APP_PATTERN } from "../../app/lineIntent";
 import {
   LINE_ENTRY_KEY_PATTERN,
   LINE_POSTBACK_DATA_MAX,
@@ -103,6 +104,12 @@ describe("LINE_ENTRY_KEY_PATTERN", () => {
   test("accepts what lineEventKey produces: a webhook event id, or msg: and a message id", () => {
     expect(LINE_ENTRY_KEY_PATTERN.test("01J0000000000000000000000A")).toBe(true);
     expect(LINE_ENTRY_KEY_PATTERN.test("msg:5645678901234")).toBe(true);
+  });
+
+  // [MV]: change the pattern here (or in app/lineIntent.ts) and this goes red.
+  test("is the same pattern as the web app's copy in app/lineIntent.ts", () => {
+    expect(APP_PATTERN.source).toBe(LINE_ENTRY_KEY_PATTERN.source);
+    expect(APP_PATTERN.flags).toBe(LINE_ENTRY_KEY_PATTERN.flags);
   });
 
   test("is exactly the pattern the SQL checks, in both functions that check it", () => {

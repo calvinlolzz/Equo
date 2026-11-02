@@ -235,6 +235,10 @@ function validateQuickReply(node: unknown, path: string, out: Problems): void {
     checkKeys(item, KEYS.quickReplyItem, itemPath, out);
     if (item.type !== "action") out.add(`${itemPath}.type`, 'must be "action"');
     validateAction(item.action, `${itemPath}.action`, out, ["uri", "message", "postback"], "a quick reply");
+    // LINE requires displayText on a postback in a quick reply; a 400 on a plain-text message is not retried.
+    if (isRecord(item.action) && item.action.type === "postback" && item.action.displayText === undefined) {
+      out.add(`${itemPath}.action.displayText`, "is required on a quick-reply postback");
+    }
   });
 }
 

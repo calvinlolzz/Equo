@@ -2492,7 +2492,10 @@ describe("handleLineWebhook - the mood card after a record", () => {
       const [first, second] = line.calls.reply.map((call) => textsOf(call.messages[1]));
       expect(first).toContain("本月記帳 12 天 · 今天第 1 筆");
       expect(second).toContain("本月記帳 12 天 · 今天第 4 筆");
-      expect(second.slice(0, 3)).toEqual(first.slice(0, 3));
+      // The short line is the same; the note is not: a streak milestone shows on the day's first entry only.
+      expect(second[1]).toBe(first[1]);
+      expect(first).toContain(ZH_MOOD.milestones.streak3);
+      expect(second).not.toContain(ZH_MOOD.milestones.streak3);
       expect(client.calls.filter((c) => c.op === "rpc" && c.fn === "line_streak")).toHaveLength(2);
     });
 

@@ -3,6 +3,7 @@ import type { GoogleTokenVerifier } from "../auth/google.js";
 import { buildAuthContext } from "../auth/routeContext.js";
 import { LOCALES, type Locale } from "../../app/i18n/locale.js";
 import { createLinkNonce, sha256Hex } from "../line/lineCrypto.js";
+import { LINE_ENTRY_KEY_PATTERN } from "../line/linePostback.js";
 import {
   attachLinkRequest,
   getLineLinkForUser,
@@ -29,13 +30,6 @@ type RouteOptions = {
 };
 
 const LINK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,256}$/;
-
-/**
- * An entry key is the LINE event id a card was recorded under. Same check as
- * line_entry_lookup (SQL) and app/lineIntent.ts's LINE_ENTRY_KEY_PATTERN; this
- * is a copy because server code cannot import app/ modules (ESM `.js` rule).
- */
-const ENTRY_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,80}$/;
 
 function malformedRequest(message: string) {
   return {
@@ -151,7 +145,7 @@ export async function getMyLineEntryRoute(options: RouteOptions, rawKey: string)
   } catch {
     return malformedRequest("entry key is not valid.");
   }
-  if (!ENTRY_KEY_PATTERN.test(key)) {
+  if (!LINE_ENTRY_KEY_PATTERN.test(key)) {
     return malformedRequest("entry key is not valid.");
   }
 

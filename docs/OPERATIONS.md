@@ -516,11 +516,11 @@ Vercel runtime logs（Logs 搜尋框）可 grep 的三種字串：
 
 | 搜尋字串 | 等級 | 意思 | 該怎麼辦 |
 |---|---|---|---|
-| `flex reply rejected` | error | LINE 回 400 拒絕卡片，括號內是被拒的卡片名稱（`record`／`mood`／`month`／`budget`／`help`／`link`／`linked`；一次記帳的回覆有兩張，所以通常寫成 `cards: record, mood`），下一步會重送純文字 | 偶發一兩筆可忽略；**同一個卡片名稱持續出現**就是卡片 JSON 有問題（或 LINE 改了規格），去對 `lineFlexValidator.ts` 的規則。只有 `mood` 持續出現，問題在心情卡的週圈圈那一段（`weekDay`）；兩張一起，先懷疑記帳卡的 postback 按鈕 |
+| `flex reply rejected` | error | LINE 回 400 拒絕卡片，括號內是這則回覆以 Flex 送出的卡片名稱（不是 LINE 單獨拒絕的那一張；`record`／`mood`／`month`／`budget`／`help`／`link`／`linked`；一次記帳的回覆有兩張，所以通常寫成 `cards: record, mood`），下一步會重送純文字 | 偶發一兩筆可忽略；**同一個卡片名稱持續出現**就是卡片 JSON 有問題（或 LINE 改了規格），去對 `lineFlexValidator.ts` 的規則。兩張卡的回覆分不出 LINE 拒了哪一張：log 列的是「以 Flex 送出的卡片」，不是被拒的那一張，所以一次記帳一律寫成 `record, mood`；要到手機上看哪一張變成純文字，或對照本月／預算卡有沒有被收 |
 | `text fallback` | warn：`text fallback delivered`；error：`text fallback failed: …` | 重送純文字成功（使用者沒察覺，只是看到舊樣式）／連純文字也失敗（回覆整則丟失，帳已寫入；通常是 reply token 逾時，LINE 的 reply token 很短命） | `failed` 比 `delivered` 嚴重，但帳不會因此遺失。**判斷方向**：同一個 token 上 `rejected` 之後接 `delivered`，代表卡片本身有問題；`rejected` 之後接 `failed`，多半是 reply token 已失效或用過，不是卡片的錯 |
 | `card build failed` | error | 組卡片時程式丟例外，括號內是卡片名稱；該張卡片已改成純文字送出 | 這是程式 bug，要修；使用者端看起來只是樣式變回純文字 |
 
-這三種 log 只有狀態碼（400）與上面那七個固定的卡片名稱，**不含**標題、金額、reply token、link token、email 或 LINE user id；其中 `failed`／`build failed` 後面接的是已過 `redactForLog` 的錯誤訊息。上線後第一週看一下 `flex reply rejected` 有沒有出現，沒有就代表卡片在真機上都被收了。
+這三種 log 只有狀態碼（400）與上面那七個固定的卡片名稱，**不含**標題、金額、reply token、link token、email 或 LINE user id；其中 `failed`／`build failed` 後面接的是已過 `redactForLog` 的錯誤訊息。Hobby 方案的 runtime logs 只保留大約 1 小時，所以不能事後再翻：部署完立刻做手機測試，並同時開著 log（dashboard 或 `vercel logs`）看 `flex reply rejected`；這個手機測試才是卡片的真正關卡，LINE 的自然流量太少，之後不會有人替我們發現問題。
 
 ### 記帳回覆：兩則訊息與心情卡
 
@@ -533,7 +533,7 @@ Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也�
 
 **短語怎麼挑**（`lineMood.ts`，純函式）：先看是不是收入，再看是不是大額支出（單筆 ≥ 當月預算的 20%，或 TWD ≥ NT$3,000），再看餐飲（**標題裡的字優先**：早餐／午餐／下午茶／咖啡／晚餐／宵夜…，沒有關鍵字才看台灣時間 05:00–10:30 早餐、10:30–14:00 午餐、14:00–17:00 下午茶、17:00–21:00 晚餐、其餘宵夜），最後看分類（交通、購物、娛樂、健康、居家／帳單／住宿、教育），都不是就是通用句。英文關鍵字要成為獨立的字（`tea` 不會中 `steak`）。每個情境三句，用**事件 id 的 FNV-1a** 挑，所以 LINE 重送同一個事件時文字一模一樣；連續天數這類數字則重新查（今天第 N 筆可能不同，這是預期的）。文案只在 `lineMoodText.ts`（繁中＋英文，缺任何一句型別就不過）。
 
-**連續天數**來自 RPC `line_streak(p_line_user_id, p_today)`（`p_today` 是台灣日期）：算個人帳本裡有收支的**不同日期**數，不含未來日期與已刪除的帳。**它在記帳寫入之後才呼叫，而且失敗不影響記帳**：RPC 丟例外、回 `ok: false`、或回的形狀不對（週不是 7 格、`today_index` 不在 0–6、計數不是非負整數…）時，心情卡照樣送出，只是少了連續天數那一段（只剩短語和鼓勵語），並寫一行 `streak unavailable`。尚未套用 `line_streak` 這支 migration 時也是這個樣子，不會壞。
+**連續天數**來自 RPC `line_streak(p_line_user_id, p_today)`（`p_today` 是台灣日期）：從今天往回數、每天都有收入或支出記錄的**連續天數**（不含清償轉帳、未來日期與已刪除的帳；以帳目日期 `expense_date` 計，在 App 補記漏掉的那天也會接上）。**它在記帳寫入之後才呼叫，而且失敗不影響記帳**：RPC 丟例外、回 `ok: false`、或回的形狀不對（週不是 7 格、`today_index` 不在 0–6、計數不是非負整數…）時，心情卡照樣送出，只是少了連續天數那一段（只剩短語和鼓勵語），並寫一行 `streak unavailable`。尚未套用 `line_streak` 這支 migration 時也是這個樣子，不會壞。
 
 ### 從卡片刪除
 
@@ -586,7 +586,7 @@ Quick Reply（復原／本月／明細／分析）**只掛在最後一則，也�
 |---|---|---|---|
 | `streak unavailable` | warn | 連續天數那一段拿不到，後面是原因：`not_linked`／`account_disabled`／`no_ledger`（RPC 回 `ok: false`）、`unexpected stats`（形狀不對）、或已過 `redactForLog` 的例外訊息。心情卡還是送出了，只少一段 | 單筆偶發可忽略；**每一筆都出現**多半是 `line_streak` migration 沒套或 RPC 壞了（`function … does not exist`），去補 migration |
 | `postback ignored` | warn | 收到格式不認得的 postback（`postback ignored (unknown data)`）；使用者看到的是「這個按鈕已經失效了」 | 正常情況不會出現（按鈕都是我們發的）；大量出現代表按鈕格式改過而舊訊息還在被點，或有人亂送 |
-| `[line] postback failed (<tag>)` | error | 處理 postback 時丟例外（刪除流程的 RPC 失敗等），使用者看到通用錯誤訊息；`<tag>` 是 `lineUserTag` 雜湊前綴 | 去看後面已過 `redactForLog` 的錯誤訊息；刪除是冪等的，使用者可以再點一次 |
+| `[line] postback failed (<tag>)` | error | 處理 postback 時丟例外（刪除流程的 RPC 失敗等），使用者看到通用錯誤訊息；`<tag>` 是 `lineUserTag` 雜湊前綴 | 去看後面已過 `redactForLog` 的錯誤訊息；刪除是冪等的，但出錯後確認用的 Quick Reply 已經不在了，使用者要回到記帳卡再點一次「刪除」（會重新詢問；若第一次其實已經成功，會回「這筆已經刪除了」） |
 | `card build failed (mood)` | error | 心情卡組不出來，已改成純文字（短語＋鼓勵＋連續天數）送出 | 程式 bug，要修；使用者端只是樣式變回純文字 |
 
 **連結卡片的橫幅圖**：`apps/web/public/assets/line/link-hero-v1.jpg`（1024×512，語言中性：品牌符號、字標、一張小儀表板；原稿 `docs/line-oa/link-hero.html`，用 `docs/line-oa/render.mjs` 輸出）。卡片引用的網址是 `${APP_ORIGIN}/assets/line/link-hero-v1.jpg`，**只有 `APP_ORIGIN` 是 https 才會放橫幅**（LINE 只抓 https 圖片；本機 http 開發環境的卡片沒有橫幅，這是預期的）。放在 `/assets/` 底下是刻意的：SPA 的 catch-all rewrite 排除這個前綴，所以打錯檔名是真的 404，不會被回成 200 的 `index.html`。**檔名帶版本號是因為 `vercel.json` 把 `/assets/*` 設成 immutable、快取一年**：想換圖不能覆蓋 `link-hero-v1.jpg`（LINE 與瀏覽器都不會重抓），要存成 `link-hero-v2.jpg`，同步改 `lineCardTheme.ts` 的 `LINK_HERO_PATH`、`render.mjs` 的輸出檔名與 `scripts/smoke-production-web.py` 裡的檢查路徑，再重新部署。正式站冒煙腳本（`scripts/smoke-production-web.py`）會檢查橫幅是 `image/jpeg`、旁邊一個不存在的檔案是 404；橫幅真的 404 時卡片仍會送出，只是 LINE 在那個位置顯示空白。

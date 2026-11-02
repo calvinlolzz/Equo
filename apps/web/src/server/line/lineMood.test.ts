@@ -289,16 +289,16 @@ describe("pickMood", () => {
     // [MV]: swap any rung's number or text and its row goes red.
     test.each<[string, Partial<LineStreakStats>, string]>([
       ["the very first entry", { totalEntries: 1, streakDays: 1, monthDays: 1, todayEntries: 1 }, copy.milestones.firstEver],
-      ["a 3-day streak", { streakDays: 3 }, copy.milestones.streak3],
-      ["a 7-day streak", { streakDays: 7 }, copy.milestones.streak7],
-      ["a 14-day streak", { streakDays: 14 }, copy.milestones.streak14],
-      ["a 30-day streak", { streakDays: 30 }, copy.milestones.streak30],
-      ["a 100-day streak", { streakDays: 100 }, copy.milestones.streak100],
-      ["a 365-day streak", { streakDays: 365 }, copy.milestones.streak365],
-      ["a 21-day streak", { streakDays: 21 }, fill(copy.milestones.streakOther, { days: 21 })],
-      ["a 50-day streak", { streakDays: 50, totalEntries: 51 }, fill(copy.milestones.streakOther, { days: 50 })],
-      ["a 200-day streak", { streakDays: 200 }, fill(copy.milestones.streakOther, { days: 200 })],
-      ["a 300-day streak", { streakDays: 300 }, fill(copy.milestones.streakOther, { days: 300 })],
+      ["a 3-day streak", { streakDays: 3, todayEntries: 1 }, copy.milestones.streak3],
+      ["a 7-day streak", { streakDays: 7, todayEntries: 1 }, copy.milestones.streak7],
+      ["a 14-day streak", { streakDays: 14, todayEntries: 1 }, copy.milestones.streak14],
+      ["a 30-day streak", { streakDays: 30, todayEntries: 1 }, copy.milestones.streak30],
+      ["a 100-day streak", { streakDays: 100, todayEntries: 1 }, copy.milestones.streak100],
+      ["a 365-day streak", { streakDays: 365, todayEntries: 1 }, copy.milestones.streak365],
+      ["a 21-day streak", { streakDays: 21, todayEntries: 1 }, fill(copy.milestones.streakOther, { days: 21 })],
+      ["a 50-day streak", { streakDays: 50, totalEntries: 51, todayEntries: 1 }, fill(copy.milestones.streakOther, { days: 50 })],
+      ["a 200-day streak", { streakDays: 200, todayEntries: 1 }, fill(copy.milestones.streakOther, { days: 200 })],
+      ["a 300-day streak", { streakDays: 300, todayEntries: 1 }, fill(copy.milestones.streakOther, { days: 300 })],
       ["the 10th entry", { totalEntries: 10 }, fill(copy.milestones.total, { count: 10 })],
       ["the 50th entry", { totalEntries: 50 }, fill(copy.milestones.total, { count: 50 })],
       ["the 100th entry", { totalEntries: 100 }, fill(copy.milestones.total, { count: 100 })],
@@ -320,6 +320,20 @@ describe("pickMood", () => {
       for (const totalEntries of [2, 9, 11, 49, 51, 99, 101, 999, 1001]) {
         expect(pick(stats({ totalEntries })).noteKind).toBe("encouragement");
       }
+    });
+
+    // [MV]: drop the todayEntries === 1 gate in milestoneNote and this goes red.
+    test("a streak milestone shows on the day's first entry only; later entries that day get the next rung or an encouragement", () => {
+      for (const streakDays of [3, 7, 14, 30, 100, 365, 21, 200]) {
+        const later = pick(stats({ streakDays, todayEntries: 2 }));
+        expect(later.noteKind).toBe("encouragement");
+        expect(copy.encouragement).toContain(later.note);
+        expect(pick(stats({ streakDays, todayEntries: 1 })).noteKind).toBe("milestone");
+      }
+      // The entry-count milestone still shows on a later entry of a streak day.
+      expect(pick(stats({ streakDays: 7, todayEntries: 2, totalEntries: 10 })).note).toBe(
+        fill(copy.milestones.total, { count: 10 }),
+      );
     });
 
     test("the first-of-month line needs BOTH it being the month's first day and its first entry", () => {

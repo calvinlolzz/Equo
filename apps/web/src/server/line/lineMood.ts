@@ -253,10 +253,13 @@ export function pickMood(copy: LineMoodCopy, a: { seed: string; bucket: MoodBuck
 function milestoneNote(copy: LineMoodCopy, stats: LineStreakStats): string | null {
   if (stats.totalEntries === 1) return copy.milestones.firstEver;
 
-  if (Object.hasOwn(STREAK_NOTES, stats.streakDays)) {
-    return copy.milestones[STREAK_NOTES[stats.streakDays as keyof typeof STREAK_NOTES]];
+  // A streak grows on the day's first entry; later entries that day would only repeat the same milestone.
+  if (stats.todayEntries === 1) {
+    if (Object.hasOwn(STREAK_NOTES, stats.streakDays)) {
+      return copy.milestones[STREAK_NOTES[stats.streakDays as keyof typeof STREAK_NOTES]];
+    }
+    if (OTHER_STREAKS.has(stats.streakDays)) return fill(copy.milestones.streakOther, { days: stats.streakDays });
   }
-  if (OTHER_STREAKS.has(stats.streakDays)) return fill(copy.milestones.streakOther, { days: stats.streakDays });
 
   if (TOTAL_NOTES.has(stats.totalEntries)) return fill(copy.milestones.total, { count: stats.totalEntries });
   if (stats.monthDays === 1 && stats.todayEntries === 1) return copy.milestones.firstOfMonth;

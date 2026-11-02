@@ -1136,7 +1136,7 @@ describe("moodCard", () => {
     });
 
     test("a milestone draws the party emoji and an amber note; an encouragement a muted one", () => {
-      const milestone = build(ZH, { ...STATS, streakDays: 7 });
+      const milestone = build(ZH, { ...STATS, streakDays: 7, todayEntries: 1 });
       expect(textsOf(milestone)[0]).toBe(MOOD_EMOJI.milestone);
       expect(textNode(milestone, ZH.milestones.streak7)).toMatchObject({ size: "sm", color: CARD.amber, wrap: true });
 

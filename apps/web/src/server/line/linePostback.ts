@@ -30,7 +30,7 @@ export const LINE_POSTBACK_DATA_MAX = 300;
  * LINE_ENTRY_KEY_PATTERN in app/lineIntent.ts. Duplicated, not imported: server
  * code must not import app/ modules that lack ".js" import extensions (see
  * scripts/check-api-esm-imports.py). linePostback.test.ts pins this copy to the
- * SQL.
+ * SQL and to the app copy; server/routes/lineRoutes.ts imports it from here.
  */
 export const LINE_ENTRY_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,80}$/;
 

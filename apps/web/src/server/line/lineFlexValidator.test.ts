@@ -505,7 +505,9 @@ describe("a quick reply", () => {
     ["a message action label over 20", (c) => (first(c).action.label = "a".repeat(21)), /label.*1-20/],
     ["a typo'd key on a message action", (c) => (first(c).action.txt = "x"), /txt.*not a known property/],
     ["a postback in a quick reply whose data is not the grammar", (c) => (first(c).action = { type: "postback", label: "x", data: "a" }), /not data the bot's postback grammar knows/],
-    ["a postback in a quick reply with a typo'd key", (c) => (first(c).action = { type: "postback", label: "x", data: CANCEL, text: "x" }), /text.*not a known property/],
+    ["a postback in a quick reply with a typo'd key", (c) => (first(c).action = { type: "postback", label: "x", data: CANCEL, displayText: "x", text: "x" }), /text.*not a known property/],
+    // [MV]: LINE rejects a quick-reply postback without displayText; on a plain-text reply nothing retries that 400.
+    ["a postback in a quick reply without a displayText", (c) => (first(c).action = { type: "postback", label: "取消", data: CANCEL }), /items\[0\]\.action\.displayText.*required/],
   ]);
 
   test("13 items is the limit", () => {

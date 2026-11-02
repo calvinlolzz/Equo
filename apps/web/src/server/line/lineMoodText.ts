@@ -44,11 +44,11 @@ export type LineMoodCopy = {
 
 const ZH_HANT: LineMoodCopy = {
   short: {
-    breakfast: ["早餐記好了，今天有個好的開始。", "吃飽才有力氣，早安！", "一早就把帳記好，今天的節奏很穩。"],
-    lunch: ["午餐記好了，好好吃飯吧。", "中午補充能量，下午繼續加油。", "午餐記下來，下午花多少心裡也有數。"],
-    afternoon: ["來杯飲料喘口氣，辛苦了。", "小確幸也值得記下來。", "提個神，晚點繼續努力。"],
+    breakfast: ["早餐記好了，今天有個好的開始。", "早餐吃飽了，才有力氣做事。", "早餐記下來，今天的帳有個好開頭。"],
+    lunch: ["午餐記好了，好好吃飯很重要。", "午餐補充能量，記好了。", "午餐記下來，今天花多少心裡有數。"],
+    afternoon: ["來杯飲料喘口氣，辛苦了。", "小確幸也值得記下來。", "提個神，繼續加油。"],
     dinner: ["晚餐記好了，今天辛苦了。", "好好吃頓晚餐，犒賞一下自己。", "一天快結束了，帳也跟上了。"],
-    lateNight: ["宵夜也記得記，真的很自律。", "夜深了，記完早點休息。", "這麼晚還記得記帳，佩服。"],
+    lateNight: ["宵夜也記得記，真的很自律。", "宵夜記好了，記得早點休息。", "宵夜也算一筆，記好了。"],
     transport: ["出門一路順風！", "交通費記好了，路上小心。", "移動中也能隨手記，效率滿分。"],
     shopping: ["買到喜歡的東西了嗎？記下來就不會忘。", "花得明明白白，買得也開心。", "記下來，月底對帳就輕鬆了。"],
     entertainment: ["好好放鬆，玩得開心！", "娛樂也是生活的一部分，記好了。", "享受當下，數字交給我。"],
@@ -90,13 +90,13 @@ const EN: LineMoodCopy = {
   short: {
     breakfast: [
       "Breakfast logged — a good start to the day.",
-      "Fueled up. Good morning!",
-      "Logged first thing — nice rhythm today.",
+      "Breakfast logged — fuel for the day.",
+      "Breakfast noted — off to a steady start.",
     ],
     lunch: [
-      "Lunch is logged — go enjoy it.",
-      "Midday refuel done. Keep going this afternoon.",
-      "Lunch noted — the afternoon starts on track.",
+      "Lunch logged — eating well matters.",
+      "Midday refuel, logged.",
+      "Lunch noted — you know where today is going.",
     ],
     afternoon: ["A little break — you've earned it.", "Small treats count too.", "A quick pick-me-up, noted."],
     dinner: [
@@ -106,8 +106,8 @@ const EN: LineMoodCopy = {
     ],
     lateNight: [
       "Even the late-night snack — that's discipline.",
-      "It's late. Logged — now get some rest.",
-      "Logging at this hour. Impressive.",
+      "Late-night snack logged — get some rest.",
+      "Late bites count too. Logged.",
     ],
     transport: ["Safe travels!", "Fare logged. Take care out there.", "Logging on the move — efficient."],
     shopping: [

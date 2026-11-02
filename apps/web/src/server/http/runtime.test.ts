@@ -1538,27 +1538,31 @@ describe("LINE account link routes", () => {
     resetSiteNoticeCache();
 
     const client = makeClient();
-    const maintenanceClient: PostgrestClient = {
-      ...client,
-      async rpc(fn, args) {
-        if (fn === "site_notice_settings") {
-          return {
-            banner: { message: "", level: "info", ends_at: null, active: false },
-            maintenance: { enabled: true, message: "維護中" },
-          } as never;
-        }
-        return client.rpc(fn, args);
-      },
-    };
     const path = "/api/v1/me/line/entries/msg%3A1234567890";
+    try {
+      const maintenanceClient: PostgrestClient = {
+        ...client,
+        async rpc(fn, args) {
+          if (fn === "site_notice_settings") {
+            return {
+              banner: { message: "", level: "info", ends_at: null, active: false },
+              maintenance: { enabled: true, message: "維護中" },
+            } as never;
+          }
+          return client.rpc(fn, args);
+        },
+      };
 
-    const duringMaintenance = await makeRuntime(maintenanceClient).handle({
-      method: "GET",
-      path,
-      headers: { authorization: "Bearer google-alice" },
-    });
-    expect(duringMaintenance.status).toBe(200);
-    resetSiteNoticeCache();
+      const duringMaintenance = await makeRuntime(maintenanceClient).handle({
+        method: "GET",
+        path,
+        headers: { authorization: "Bearer google-alice" },
+      });
+      expect(duringMaintenance.status).toBe(200);
+    } finally {
+      // A failing assertion must not leave maintenance cached for the next test.
+      resetSiteNoticeCache();
+    }
 
     const viewAsToken = await createViewAsToken(
       { auth_user_id: "user_alice", google_sub: "google_alice", email: "alice@example.com", display_name: "Alice" },
