@@ -14,6 +14,16 @@ export type GoogleIdentity = {
    * upsertUserByGoogleIdentity DB round-trip that a fresh login still needs.
    */
   resolved_user_id?: string;
+  /**
+   * Set only on an identity decoded from a LIFF token (auth/liffToken.ts), i.e.
+   * a LINE-in-app session limited to one personal ledger. Informational: no
+   * route reads it, and none may rely on it for access control - the scope is
+   * enforced in front of the router (http/liffGate.ts) and again by the
+   * verifier, so a route that forgets about it still cannot be reached.
+   */
+  scope?: "liff";
+  /** The one ledger a LIFF identity may touch. Present exactly when scope is "liff". */
+  liff_ledger_id?: string;
 };
 
 export type GoogleTokenVerifier = (idToken: string) => Promise<GoogleIdentity | null>;

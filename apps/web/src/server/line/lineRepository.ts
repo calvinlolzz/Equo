@@ -8,7 +8,8 @@ import { sha256Hex } from "./lineCrypto.js";
  * commands, 20260930090000_line_set_budget.sql, and, for the 「本月」
  * category breakdown, 20261003090000_line_month_categories.sql, and, for the
  * record card's 編輯/刪除 and the mood card's streak,
- * 20261101090100_line_entry_actions.sql). One function per RPC, named to
+ * 20261101090100_line_entry_actions.sql, and, for the LIFF login's revocation
+ * check, 20261102090000_line_liff_identity.sql). One function per RPC, named to
  * match, so a call site reads like the SQL it triggers.
  */
 
@@ -301,6 +302,30 @@ export async function resolveLineEntryForUser(
     p_user: userId,
     p_entry_key: entryKey,
   });
+}
+
+/**
+ * Is a LIFF session still good? True only while ALL of these hold: the user is
+ * still linked to the LINE account whose id hashes to `lineSubHash`, the user is
+ * enabled, and `ledgerId` is still their own live personal ledger. Unlinking,
+ * relinking to another LINE account, an admin merge, disabling or deleting the
+ * account each turn it false, so a LIFF token dies at once rather than at its
+ * expiry. Anything but a literal `true` from the database counts as false.
+ *
+ * Throws when the database cannot be asked: the caller decides what an
+ * unanswerable question means (the runtime gate fails closed).
+ */
+export async function liffLinkIsLive(
+  client: PostgrestClient,
+  claims: { auth_user_id: string; ledger_id: string; line_sub_hash: string },
+): Promise<boolean> {
+  const live = await client.rpc<unknown>("line_liff_link_live", {
+    p_user: claims.auth_user_id,
+    p_ledger: claims.ledger_id,
+    p_line_sub_hash: claims.line_sub_hash,
+  });
+
+  return live === true;
 }
 
 /**

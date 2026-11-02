@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { PostgrestClient } from "../db/postgrestClient.js";
-import { deleteLineEntry, lineEntryStatus, lineStreak, resolveLineEntryForUser } from "./lineRepository.js";
+import { deleteLineEntry, lineEntryStatus, lineStreak, liffLinkIsLive, resolveLineEntryForUser } from "./lineRepository.js";
 
 /**
  * The wrappers are thin on purpose; what is worth pinning is the RPC name and
@@ -104,5 +104,36 @@ describe("resolveLineEntryForUser", () => {
     });
     expect(Object.keys(rpc.mock.calls[0]?.[1] as object).sort()).toEqual(["p_entry_key", "p_user"]);
     expect(result).toEqual(live);
+  });
+});
+
+describe("liffLinkIsLive", () => {
+  const claims = { auth_user_id: "user_alice", ledger_id: "0b8f2c1e-5a41-4f0a-9d2e-3c6b7a8d9e10", line_sub_hash: "f".repeat(64) };
+
+  function clientAnswering(answer: unknown) {
+    const rpc = vi.fn(async () => answer);
+    return { client: { rpc } as unknown as PostgrestClient, rpc };
+  }
+
+  test("asks line_liff_link_live with the user, ledger and hash from the token - nothing else", async () => {
+    const { client, rpc } = clientAnswering(true);
+
+    expect(await liffLinkIsLive(client, claims)).toBe(true);
+    expect(rpc).toHaveBeenCalledWith("line_liff_link_live", {
+      p_user: "user_alice",
+      p_ledger: claims.ledger_id,
+      p_line_sub_hash: claims.line_sub_hash,
+    });
+  });
+
+  // [MV]: `return Boolean(live)` would treat "false" and 1 as alive.
+  test.each([false, null, undefined, "true", 1, {}, []])("only a literal true is alive (database said %j)", async (answer) => {
+    expect(await liffLinkIsLive(clientAnswering(answer).client, claims)).toBe(false);
+  });
+
+  test("lets a database failure propagate, so the caller can fail closed", async () => {
+    const client = { rpc: vi.fn(async () => { throw new Error("down"); }) } as unknown as PostgrestClient;
+
+    await expect(liffLinkIsLive(client, claims)).rejects.toThrow("down");
   });
 });

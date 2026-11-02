@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createFakePostgrest } from "../db/fakePostgrest.js";
+import { createLiffToken } from "../auth/liffToken.js";
 import { createSessionToken } from "../auth/sessionToken.js";
 import { enforceRateLimit } from "./rateLimit.js";
 import type { HttpRuntimeRequest } from "./httpTypes.js";
@@ -142,5 +143,41 @@ describe("enforceRateLimit", () => {
     const args = client.rpcCall("consume_rate_limit")?.args as { p_limit: number; p_window_seconds: number };
     expect(args.p_limit).toBeGreaterThan(0);
     expect(args.p_window_seconds).toBeGreaterThan(0);
+  });
+
+  // [MV]: drop the LIFF branch of identify() and every LINE-in-app write is charged to the (carrier-shared) address.
+  describe("a LINE-in-app (LIFF) token", () => {
+    const LEDGER = "0b8f2c1e-5a41-4f0a-9d2e-3c6b7a8d9e10";
+    const liff = (secret = SECRET, now = Date.now()) =>
+      createLiffToken(
+        {
+          auth_user_id: "user_alice",
+          google_sub: "sub_alice",
+          email: "alice@example.com",
+          display_name: "Alice",
+          ledger_id: LEDGER,
+          line_sub_hash: "e".repeat(64),
+        },
+        secret,
+        now,
+      );
+
+    test("is charged to its user, in the same bucket as that user's normal session", async () => {
+      const client = allowingClient();
+
+      await enforceRateLimit({ client, sessionSecret: SECRET }, request({ headers: { authorization: `Bearer ${liff()}`, "x-forwarded-for": "203.0.113.9" } }));
+
+      expect(client.rpcCall("consume_rate_limit")?.args).toMatchObject({ p_bucket: "write:u:user_alice" });
+    });
+
+    test("a forged, foreign or expired LIFF token is charged to the address instead", async () => {
+      for (const token of [`equoL1.${"x".repeat(20)}.${"y".repeat(20)}`, liff("another-secret"), liff(SECRET, 1_000)]) {
+        const client = allowingClient();
+
+        await enforceRateLimit({ client, sessionSecret: SECRET }, request({ headers: { authorization: `Bearer ${token}`, "x-forwarded-for": "203.0.113.9" } }));
+
+        expect(client.rpcCall("consume_rate_limit")?.args).toMatchObject({ p_bucket: "write:ip:203.0.113.9" });
+      }
+    });
   });
 });

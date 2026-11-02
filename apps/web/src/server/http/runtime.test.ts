@@ -1663,3 +1663,368 @@ describe("LINE account link routes", () => {
     resetSiteNoticeCache();
   });
 });
+
+/**
+ * A LINE-in-app (LIFF) session is a NEW credential path, so these go through
+ * the real runtime: the point is that nothing a route does can widen it. Token
+ * and allowlist rules are in liffToken.test.ts / liffScope.test.ts, the gate in
+ * isolation in liffGate.test.ts.
+ */
+describe("LIFF sessions", () => {
+  const SECRET = "session-secret";
+  const LEDGER = "0b8f2c1e-5a41-4f0a-9d2e-3c6b7a8d9e10";
+  const HASH = "d".repeat(64);
+  const SHARED = "group_1";
+
+  async function liffToken(overrides: Partial<{ ledger_id: string; line_sub_hash: string }> = {}, now = 1_000) {
+    const { createLiffToken } = await import("../auth/liffToken.js");
+    return createLiffToken(
+      {
+        auth_user_id: "user_alice",
+        google_sub: "google_alice",
+        email: "alice@example.com",
+        display_name: "Alice",
+        ledger_id: LEDGER,
+        line_sub_hash: HASH,
+        ...overrides,
+      },
+      SECRET,
+      now,
+    );
+  }
+
+  /** makeClient plus: a controllable liveness answer, a two-group list, and a record of every rpc/insert. */
+  function liffClient(live: unknown = true) {
+    const base = makeClient();
+    const rpcs: Array<{ fn: string; args: Record<string, unknown> }> = [];
+    const inserts: string[] = [];
+    const client: PostgrestClient = {
+      ...base,
+      async select<T>(table: string, query: string) {
+        if (table === "groups" && query.includes("order=")) {
+          return [
+            { id: LEDGER, name: "My ledger", currency: "TWD", kind: "personal", owner_member_id: "member_owner" },
+            { id: SHARED, name: "Tokyo Trip", currency: "TWD", kind: "shared", owner_member_id: "member_owner" },
+          ] as T[];
+        }
+        return base.select<T>(table, query);
+      },
+      async insert<T>(table: string, body: unknown, options?: Parameters<PostgrestClient["insert"]>[2]) {
+        inserts.push(table);
+        return base.insert<T>(table, body, options);
+      },
+      async rpc<T>(fn: string, args: Record<string, unknown>) {
+        rpcs.push({ fn, args });
+        if (fn === "line_liff_link_live") {
+          if (live instanceof Error) throw live;
+          return live as T;
+        }
+        return base.rpc<T>(fn, args);
+      },
+    };
+    return { client, rpcs, inserts };
+  }
+
+  function makeRuntime(client: PostgrestClient, extra: Partial<Parameters<typeof createHttpRuntime>[0]> = {}) {
+    return createHttpRuntime({
+      client,
+      storage: makeStorage(),
+      // Accepts ANY string as a Google token, like the rest of this file: a LIFF
+      // token that fell through to here would be let in as "Alice".
+      verifier: async (idToken) => ({
+        auth_user_id: "user_alice",
+        google_sub: idToken,
+        email: "alice@example.com",
+        display_name: "Alice",
+      }),
+      sessionSecret: SECRET,
+      now: 1_000,
+      ...extra,
+    });
+  }
+
+  const code = (response: { body: unknown }) => (response.body as { error: { code: string } }).error.code;
+
+  test("lists the personal ledger and nothing else, and never writes a user row", async () => {
+    const { client, inserts } = liffClient();
+
+    const response = await makeRuntime(client).handle({
+      method: "GET",
+      path: "/api/v1/groups",
+      headers: { authorization: `Bearer ${await liffToken()}` },
+    });
+
+    expect(response.status).toBe(200);
+    expect((response.body as { groups: Array<{ id: string }> }).groups.map((group) => group.id)).toEqual([LEDGER]);
+    // The token is a resolved identity: no upsert of the user on the way in.
+    expect(inserts).not.toContain("users");
+  });
+
+  // [MV]: an unfiltered GET /groups hands a LINE session every shared group.
+  test("a normal session still sees every group (the filter is LIFF-only)", async () => {
+    const { client } = liffClient();
+    const runtime = makeRuntime(client);
+    const login = await runtime.handle({ method: "POST", path: "/api/v1/auth/google", headers: {}, json: { id_token: "google-alice" } });
+    const session = (login.body as { session: { token: string } }).session.token;
+
+    const response = await runtime.handle({ method: "GET", path: "/api/v1/groups", headers: { authorization: `Bearer ${session}` } });
+
+    expect((response.body as { groups: Array<{ id: string }> }).groups.map((group) => group.id)).toEqual([LEDGER, SHARED]);
+  });
+
+  test("checks the link on every request, with the user, ledger and hash from the token", async () => {
+    const { client, rpcs } = liffClient();
+    const runtime = makeRuntime(client);
+    const headers = { authorization: `Bearer ${await liffToken()}` };
+
+    await runtime.handle({ method: "GET", path: "/api/v1/groups", headers });
+    await runtime.handle({ method: "GET", path: `/api/v1/groups/${LEDGER}`, headers });
+
+    const checks = rpcs.filter((call) => call.fn === "line_liff_link_live");
+    expect(checks).toHaveLength(2);
+    expect(checks[0].args).toEqual({ p_user: "user_alice", p_ledger: LEDGER, p_line_sub_hash: HASH });
+  });
+
+  // [MV]: remove the liveness check and unlinking would leave the token working for the rest of its hour.
+  test("unlinking (the link check says no) ends the session at once: 401", async () => {
+    const { client } = liffClient(false);
+
+    const response = await makeRuntime(client).handle({
+      method: "GET",
+      path: `/api/v1/groups/${LEDGER}`,
+      headers: { authorization: `Bearer ${await liffToken()}` },
+    });
+
+    expect(response.status).toBe(401);
+    expect(code(response)).toBe("UNAUTHENTICATED");
+  });
+
+  test("when the link cannot be checked the request is refused (503), not waved through", async () => {
+    const { client } = liffClient(new Error("db down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await makeRuntime(client).handle({
+      method: "GET",
+      path: `/api/v1/groups/${LEDGER}`,
+      headers: { authorization: `Bearer ${await liffToken()}` },
+    });
+
+    expect(response.status).toBe(503);
+    expect(code(response)).toBe("LINE_UNAVAILABLE");
+    spy.mockRestore();
+  });
+
+  test.each([
+    ["DELETE", "/api/v1/me"],
+    ["GET", "/api/v1/admin/me"],
+    ["GET", "/api/v1/admin/users"],
+    ["POST", "/api/v1/admin/view-as"],
+    ["GET", "/api/v1/me/line"],
+    ["DELETE", "/api/v1/me/line"],
+    ["PATCH", `/api/v1/groups/${LEDGER}`],
+    ["POST", `/api/v1/groups/${LEDGER}/invites`],
+    ["POST", `/api/v1/groups/${LEDGER}/archive`],
+    ["POST", "/api/v1/groups"],
+    ["GET", `/api/v1/groups/${SHARED}`],
+    ["GET", `/api/v1/groups/${SHARED}/expenses`],
+    ["POST", `/api/v1/groups/${SHARED}/expenses`],
+    ["POST", "/api/v1/receipts/scan"],
+    ["POST", "/api/v1/push/subscribe"],
+    ["GET", "/api/v1/notifications"],
+    ["POST", "/api/v1/feedback"],
+    ["POST", "/api/v1/auth/google"],
+    ["GET", "/api/v1/nope"],
+  ] as const)("%s %s is refused 403 LIFF_SCOPE before any handler runs", async (method, path) => {
+    const { client, rpcs } = liffClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const response = await makeRuntime(client).handle({
+      method,
+      path,
+      headers: { authorization: `Bearer ${await liffToken()}` },
+      json: {},
+    });
+
+    expect(response.status).toBe(403);
+    expect(code(response)).toBe("LIFF_SCOPE");
+    // Nothing ran: no handler RPC, not even the liveness check.
+    expect(rpcs.map((call) => call.fn).filter((fn) => fn !== "consume_rate_limit" && fn !== "site_notice_settings")).toEqual([]);
+    warn.mockRestore();
+  });
+
+  test("a token for another ledger cannot reach this one", async () => {
+    const { client } = liffClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const other = "11111111-2222-4333-8444-555555555555";
+
+    const response = await makeRuntime(client).handle({
+      method: "GET",
+      path: `/api/v1/groups/${LEDGER}/expenses`,
+      headers: { authorization: `Bearer ${await liffToken({ ledger_id: other })}` },
+    });
+
+    expect(response.status).toBe(403);
+    expect(code(response)).toBe("LIFF_SCOPE");
+    warn.mockRestore();
+  });
+
+  test("writes inside the scope work: an expense on its own ledger, a delete", async () => {
+    const { client } = liffClient();
+    const runtime = makeRuntime(client);
+    const headers = { authorization: `Bearer ${await liffToken()}` };
+
+    const created = await runtime.handle({
+      method: "POST",
+      path: `/api/v1/groups/${LEDGER}/expenses`,
+      headers,
+      json: {
+        client_request_id: "req_liff_expense",
+        title: "Dinner",
+        amount_minor: 120000,
+        currency: "TWD",
+        expense_payments: [{ payer_member_id: "member_owner", amount_minor: 120000, currency: "TWD" }],
+        expense_shares: [{ member_id: "member_owner", share_type: "fixed", amount_minor: 120000 }],
+      },
+    });
+    const removed = await runtime.handle({
+      method: "DELETE",
+      path: `/api/v1/groups/${LEDGER}/expenses/expense_1`,
+      headers,
+      json: { client_request_id: "req_liff_delete" },
+    });
+
+    expect(created.status).toBe(201);
+    expect(removed.status).toBe(200);
+  });
+
+  // [MV]: a route verifier that falls through to the Google verifier would turn any junk after equoL1. into "Alice".
+  test("a LIFF token never reaches the session or Google verifiers, even where the Google one accepts anything", async () => {
+    const { client } = liffClient();
+    const seen: string[] = [];
+    const runtime = makeRuntime(client, {
+      verifier: async (idToken) => {
+        seen.push(idToken);
+        return { auth_user_id: "user_alice", google_sub: idToken, email: "alice@example.com", display_name: "Alice" };
+      },
+    });
+
+    // Correctly signed and in scope: served through the LIFF identity (fast path, no upsert).
+    const ok = await runtime.handle({ method: "GET", path: `/api/v1/groups/${LEDGER}`, headers: { authorization: `Bearer ${await liffToken()}` } });
+    // Forged: the gate says 401 and the Google verifier is never consulted.
+    const forged = await runtime.handle({ method: "GET", path: `/api/v1/groups/${LEDGER}`, headers: { authorization: "Bearer equoL1.eyJ4IjoxfQ.AAAA" } });
+
+    expect(ok.status).toBe(200);
+    expect(forged.status).toBe(401);
+    expect(seen).toEqual([]);
+  });
+
+  test("an expired token is a 401, not a fall-through", async () => {
+    const { client } = liffClient();
+
+    const response = await makeRuntime(client, { now: 1_000 + 61 * 60_000 }).handle({
+      method: "GET",
+      path: `/api/v1/groups/${LEDGER}`,
+      headers: { authorization: `Bearer ${await liffToken()}` },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  test("a deployment with no session secret trusts no LIFF token", async () => {
+    const { client } = liffClient();
+
+    const response = await makeRuntime(client, { sessionSecret: undefined }).handle({
+      method: "GET",
+      path: `/api/v1/groups/${LEDGER}`,
+      headers: { authorization: `Bearer ${await liffToken()}` },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  test("a LIFF token smuggled into a cookie is gated the same way", async () => {
+    const { client } = liffClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const token = await liffToken();
+
+    const denied = await makeRuntime(client).handle({ method: "GET", path: "/api/v1/admin/me", headers: { cookie: `equo_session=${token}` } });
+    const revoked = await makeRuntime(liffClient(false).client).handle({
+      method: "GET",
+      path: `/api/v1/groups/${LEDGER}`,
+      headers: { cookie: `equo_session=${token}` },
+    });
+
+    expect(denied.status).toBe(403);
+    expect(revoked.status).toBe(401);
+    warn.mockRestore();
+  });
+
+  // The view-as write block is in front of the gate and unchanged: a LIFF bearer does not lift it.
+  test("a write is still refused while an equo_view_as cookie is present", async () => {
+    const { client } = liffClient();
+    const { createViewAsToken } = await import("../auth/sessionToken.js");
+    const view = createViewAsToken(
+      { auth_user_id: "user_alice", google_sub: "google_alice", email: "alice@example.com", display_name: "Alice" },
+      "user_admin",
+      SECRET,
+      1_000,
+    );
+
+    const response = await makeRuntime(client).handle({
+      method: "POST",
+      path: `/api/v1/groups/${LEDGER}/expenses`,
+      headers: { authorization: `Bearer ${await liffToken()}`, cookie: `equo_view_as=${view}` },
+      json: { client_request_id: "req_x", title: "x", amount_minor: 1, currency: "TWD" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(code(response)).toBe("VIEW_AS_READONLY");
+  });
+
+  test("a LIFF write is charged to its user, not to the shared carrier address", async () => {
+    const { client, rpcs } = liffClient();
+
+    await makeRuntime(client).handle({
+      method: "DELETE",
+      path: `/api/v1/groups/${LEDGER}/expenses/expense_1`,
+      headers: { authorization: `Bearer ${await liffToken()}`, "x-forwarded-for": "203.0.113.9" },
+      json: { client_request_id: "req_liff_delete" },
+    });
+
+    const limited = rpcs.find((call) => call.fn === "consume_rate_limit");
+    expect(limited?.args.p_bucket).toBe("write:u:user_alice");
+  });
+
+  test("a LIFF write over the limit is a 429 before the gate's database check", async () => {
+    const base = liffClient().client;
+    const rpcs: string[] = [];
+    const client: PostgrestClient = {
+      ...base,
+      async rpc<T>(fn: string, args: Record<string, unknown>) {
+        rpcs.push(fn);
+        if (fn === "consume_rate_limit") return { allowed: false, retry_after: 12 } as T;
+        return base.rpc<T>(fn, args);
+      },
+    };
+
+    const response = await makeRuntime(client).handle({
+      method: "POST",
+      path: `/api/v1/groups/${LEDGER}/expenses`,
+      headers: { authorization: `Bearer ${await liffToken()}` },
+      json: {},
+    });
+
+    expect(response.status).toBe(429);
+    expect(rpcs).not.toContain("line_liff_link_live");
+  });
+
+  test("an ordinary session and a Google token never trigger the link check", async () => {
+    const { client, rpcs } = liffClient();
+    const runtime = makeRuntime(client);
+
+    await runtime.handle({ method: "GET", path: "/api/v1/groups", headers: { authorization: "Bearer google-token" } });
+    await runtime.handle({ method: "GET", path: "/api/v1/site-notice", headers: {} });
+
+    expect(rpcs.map((call) => call.fn)).not.toContain("line_liff_link_live");
+  });
+});

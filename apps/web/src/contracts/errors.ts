@@ -88,6 +88,17 @@ export const errorCodes = [
    * LINE and send "綁定" for a fresh one.
    */
   "LINE_LINK_EXPIRED",
+  /**
+   * A LIFF session (Equo opened inside LINE) asked for something outside the
+   * one personal ledger and the few endpoints it may use. Not retryable and not
+   * a sign-in problem - the session is fine, the request is not allowed.
+   */
+  "LIFF_SCOPE",
+  /**
+   * LINE (or our own database, while checking a LINE-issued session) could not
+   * be reached. Retryable; nothing about the caller's credentials was judged.
+   */
+  "LINE_UNAVAILABLE",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

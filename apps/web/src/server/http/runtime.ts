@@ -139,6 +139,8 @@ import { errorResponse, jsonResponse } from "./jsonResponse.js";
 import { enforceRateLimit } from "./rateLimit.js";
 import { blocksRequest, loadSiteNotice } from "./maintenance.js";
 import { blocksWrite, viewAsToken, viewingAs } from "./viewAs.js";
+import { isLiffTokenShape } from "../auth/liffToken.js";
+import { filterGroupsForLiff, liffClaimsOf, liffGate, liffTokenOf, verifyLiffForRequest } from "./liffGate.js";
 
 type RuntimeOptions = {
   client: PostgrestClient;
@@ -188,6 +190,14 @@ type RuntimeRoute = {
 function routeOptions(options: RuntimeOptions, request: HttpRuntimeRequest) {
   const token = getAuthToken(request);
   const verifier: GoogleTokenVerifier = async (idToken) => {
+    // A LIFF token is judged by the LIFF rules or by nothing. It must never
+    // reach the session or Google verifiers below: this is the second,
+    // independent scope check (the first is the gate in handle()), and the
+    // reason a route that forgot LIFF exists still cannot be reached by one.
+    if (isLiffTokenShape(idToken)) {
+      return verifyLiffForRequest(idToken, request, options.sessionSecret, options.now);
+    }
+
     if (options.sessionSecret) {
       const sessionIdentity = verifySessionToken(idToken, options.sessionSecret, options.now);
 
@@ -327,6 +337,13 @@ export function createHttpRuntime(options: RuntimeOptions) {
         const result = await listGroupsRoute(routeOptions(options, request), {
           ensurePersonalLedger: !viewAsToken(request),
         });
+        // A LINE (LIFF) session is one ledger, not the account: list only that
+        // one. The gate has already proven the token valid, so a missing claim
+        // here means something is wrong and the list is emptied, not passed on.
+        if (liffTokenOf(request) !== null) {
+          const claims = liffClaimsOf(request, options.sessionSecret, options.now);
+          return jsonResponse(result.status, result.ok ? filterGroupsForLiff(result.body, claims?.ledger_id ?? "") : result.body);
+        }
         return jsonResponse(result.status, result.body);
       },
     },
@@ -1592,6 +1609,19 @@ export function createHttpRuntime(options: RuntimeOptions) {
           "You are viewing the app as another user. Leave the view before making changes.",
           "req_view_as",
         );
+      }
+
+      // A LINE-in-app (LIFF) session: valid, inside its allowlist and still
+      // linked, or turned away here. After the view-as gate (a view-as cookie
+      // still refuses every write, whatever else the request carries) and in
+      // front of the router for the same reason those two are.
+      const liffRefusal = await liffGate(
+        { client: options.client, sessionSecret: options.sessionSecret, now: options.now },
+        request,
+      );
+
+      if (liffRefusal) {
+        return liffRefusal;
       }
 
       const route = routes.find((candidate) => {
