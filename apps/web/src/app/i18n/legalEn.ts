@@ -17,7 +17,7 @@ import { LEGAL_CONTACT_EMAIL } from "../legalContact";
  * on legalZhHant.ts about naming the AI provider applies here twice over.
  */
 
-const LAST_UPDATED = "Last updated: 30 September 2026";
+const LAST_UPDATED = "Last updated: 2 November 2026";
 
 /** Shown at the top of both English documents. */
 export const TRANSLATION_NOTICE =
@@ -75,10 +75,11 @@ export const PRIVACY_POLICY_EN: LegalDocument = {
         "What we keep: the user ID LINE gives us (an opaque code, not your phone number or name), when you linked, when you last used it, and the language the bot replies in. These stay for as long as the link does.",
         "What we never read: your LINE display name, profile picture, or status message.",
         "Your messages: read only while they are being processed. What is saved is the resulting entry (item, amount, category, date), the same as an entry you record in the app.",
-        "Temporary data: the one-time codes used while linking are stored only as hashes and deleted within about a day of expiring; each entry recorded from LINE is kept with its message ID for 90 days so it can be undone; the record of each undo request is kept for 2 days.",
+        "Temporary data: the one-time codes used while linking are stored only as hashes and deleted within about a day of expiring; the record that lets you undo an entry recorded from LINE (the entry with its message ID) is kept for 90 days; the record of each undo request is kept for 2 days.",
+        "Entries recorded from LINE carry a LINE event number so that a card's \"Edit\" and \"Delete\" buttons can find them; it is kept with the entry and removed with it.",
         "Dates are always interpreted in Taiwan time.",
-        "Messages and the bot's replies travel through LINE's platform (LY Corporation). Replies may include amounts, this month's totals, and a partly masked email address.",
-        "You can unlink at any time by sending \"unlink\" in LINE or from your profile. Unlinking deletes the LINE data above (entries you already recorded stay in your ledger).",
+        "Messages and the bot's replies travel through LINE's platform (LY Corporation). Replies may include amounts, entry titles, this month's totals, your logging streak, and a partly masked email address.",
+        "You can unlink at any time by sending \"unlink\" in LINE or from your profile. Unlinking deletes the LINE data above (entries you already recorded, with the LINE event number they carry, stay in your ledger).",
       ],
     },
     {

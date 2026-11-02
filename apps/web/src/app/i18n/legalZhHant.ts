@@ -13,7 +13,8 @@ import { LEGAL_CONTACT_EMAIL } from "../legalContact";
  *
  * Plain-language, Traditional Chinese, ROC (Taiwan) jurisdiction. Reviewed and
  * approved 2026-07-25; receipt-recognition disclosure added 2026-08-03;
- * personal ledger, LINE bookkeeping and admin read-only access added 2026-09-30.
+ * personal ledger, LINE bookkeeping and admin read-only access added 2026-09-30;
+ * LINE entry key and reply contents clarified 2026-11-02.
  * Contact: support@equomu.com.
  *
  * ⚠️ The receipt-recognition section names the AI provider and its tier, because
@@ -42,7 +43,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-const LAST_UPDATED = "最後更新：2026 年 9 月 30 日";
+const LAST_UPDATED = "最後更新：2026 年 11 月 2 日";
 
 export const PRIVACY_POLICY_ZH: LegalDocument = {
   title: "隱私權政策",
@@ -94,10 +95,11 @@ export const PRIVACY_POLICY_ZH: LegalDocument = {
         "我們會保存：LINE 提供給我們的使用者識別碼（一串代碼，不是你的手機號碼或名字）、連結時間、最後使用時間，以及機器人回覆用的語言。只要保持連結，這些資料就會保留。",
         "我們不會讀取：你的 LINE 暱稱、大頭貼或狀態訊息。",
         "你傳來的訊息：只在處理當下用來判讀，存下來的只有記帳結果（項目、金額、分類、日期），和你在 App 裡記的帳一樣。",
-        "暫存資料：連結過程中的一次性驗證碼只保存雜湊值，過期後約一天內刪除；每一筆從 LINE 記下的帳與對應的訊息編號保留 90 天，用於「復原」；復原的處理紀錄保留 2 天。",
+        "暫存資料：連結過程中的一次性驗證碼只保存雜湊值，過期後約一天內刪除；用於「復原」的對照紀錄（每一筆從 LINE 記下的帳與對應的訊息編號）保留 90 天；復原的處理紀錄保留 2 天。",
+        "從 LINE 記下的帳會帶著一個 LINE 事件編號，讓卡片上的「編輯」「刪除」按鈕找得到那一筆；它跟著那筆帳保存，帳刪除時一起刪除。",
         "日期一律以台灣時間計算。",
-        "訊息與機器人的回覆會經過 LINE（LY Corporation）的平台傳遞；回覆內容可能包含金額、本月總額，以及部分遮蔽的電子郵件。",
-        "你隨時可以在 LINE 傳「解除綁定」，或到個人資料頁解除連結；解除後，上述 LINE 相關資料會一併刪除（已記下的帳會保留在你的帳本裡）。",
+        "訊息與機器人的回覆會經過 LINE（LY Corporation）的平台傳遞；回覆內容可能包含金額、記錄名稱、本月總額、連續記帳天數，以及部分遮蔽的電子郵件。",
+        "你隨時可以在 LINE 傳「解除綁定」，或到個人資料頁解除連結；解除後，上述 LINE 相關資料會一併刪除（已記下的帳，連同它帶著的 LINE 事件編號，會保留在你的帳本裡）。",
       ],
     },
     {
