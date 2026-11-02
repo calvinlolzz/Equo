@@ -2569,3 +2569,78 @@ describe("handleLineWebhook - the mood card after a record", () => {
     }
   });
 });
+
+describe("handleLineWebhook - links that open in LIFF", () => {
+  const LIFF_ID = "2011782032-WJwjePnJ";
+  const LIFF_BASE = `https://liff.line.me/${LIFF_ID}`;
+  const KEY = "01J0000000000000000000000X"; // messageEvent's default webhookEventId
+
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+
+  async function reply(text: string, extra: Partial<LineWebhookDeps> = {}) {
+    resetSiteNoticeCache();
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+    await send({ ...deps(client, line.client), now: () => 1790000000000, ...extra }, [messageEvent({ text })]);
+    return line.calls.reply.at(-1)!.messages;
+  }
+
+  const quickUris = (message: LineMessage | undefined) =>
+    (message?.quickReply?.items ?? []).flatMap((item) => (item.action.type === "uri" ? [item.action.uri as string] : []));
+
+  // [MV]: ignore deps.liffId in linksFor and these go red; ignore its absence and the browser test below does.
+  test("with a LIFF id, the quick reply's 明細 and 分析 open in LIFF - with no openExternalBrowser", async () => {
+    const messages = await reply("亂七八糟", { liffId: LIFF_ID });
+    expect(quickUris(messages[0])).toEqual([`${LIFF_BASE}?view=records`, `${LIFF_BASE}?view=analysis`]);
+    for (const uri of quickUris(messages[0])) expect(uri).not.toContain("openExternalBrowser");
+  });
+
+  test("with a LIFF id, the record card's 編輯 opens that entry in LIFF", async () => {
+    const messages = await reply("早餐 60", { liffId: LIFF_ID });
+    const uris = uriActionsOf(messages[0]).map((action) => action.uri);
+    expect(uris).toEqual([`${LIFF_BASE}?entry=${KEY}`]);
+    // The quick reply rides on the last message of the reply (the mood card).
+    expect(quickUris(messages.at(-1))).toEqual([`${LIFF_BASE}?view=records`, `${LIFF_BASE}?view=analysis`]);
+  });
+
+  test("with a LIFF id, an entry key made from a message id keeps its encoded colon", async () => {
+    resetSiteNoticeCache();
+    const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+    const line = fakeLineClient();
+    const event = messageEvent({ text: "早餐 60", webhookEventId: "short" });
+    await send({ ...deps(client, line.client), liffId: LIFF_ID }, [{ ...event, message: { ...event.message, id: "4711000000001" } }]);
+    expect(uriActionsOf(line.calls.reply[0].messages[0]).map((action) => action.uri)).toEqual([
+      `${LIFF_BASE}?entry=msg%3A4711000000001`,
+    ]);
+  });
+
+  test("with a LIFF id, the month card's 開啟帳本 footer still opens the full ledger in the browser", async () => {
+    const messages = await reply("本月", { liffId: LIFF_ID });
+    expect(uriActionsOf(messages[0]).map((action) => action.uri)).toEqual([
+      `${APP_ORIGIN}/group/ledger_1?openExternalBrowser=1`,
+    ]);
+    // ...while its quick reply goes to LIFF.
+    expect(quickUris(messages[0])).toEqual([`${LIFF_BASE}?view=records`, `${LIFF_BASE}?view=analysis`]);
+  });
+
+  test("the card and its LIFF links are ones LINE accepts (https, uri within 1000 characters)", async () => {
+    const messages = await reply("早餐 60", { liffId: LIFF_ID });
+    expect(lineReplyProblems(messages)).toEqual([]);
+    for (const uri of [...uriActionsOf(messages[0]).map((a) => a.uri), ...quickUris(messages.at(-1))]) {
+      expect(uri.startsWith("https://")).toBe(true);
+      expect(uri.length).toBeLessThanOrEqual(1000);
+    }
+  });
+
+  test("without a LIFF id every link is the browser link, unchanged", async () => {
+    const messages = await reply("早餐 60");
+    expect(uriActionsOf(messages[0]).map((action) => action.uri)).toEqual([`${APP_ORIGIN}/group/ledger_1?entry=${KEY}&openExternalBrowser=1`]);
+    expect(quickUris(messages.at(-1))).toEqual([
+      `${APP_ORIGIN}/group/ledger_1?view=records&openExternalBrowser=1`,
+      `${APP_ORIGIN}/group/ledger_1?view=analysis&openExternalBrowser=1`,
+    ]);
+  });
+});

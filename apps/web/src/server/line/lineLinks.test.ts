@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { lineLinks } from "./lineLinks.js";
+import { liffIdForLinks, lineLinks } from "./lineLinks.js";
 
 const ORIGIN = "https://equo-mu.vercel.app";
 
@@ -43,5 +45,92 @@ describe("lineLinks", () => {
 
   test("the four links are all different", () => {
     expect(new Set([links.ledger, links.records, links.analysis, links.entry("01J0000000000000000000000A")]).size).toBe(4);
+  });
+});
+
+describe("lineLinks in LIFF mode", () => {
+  const LIFF_ID = "2011782032-WJwjePnJ";
+  const links = lineLinks({ appOrigin: ORIGIN, ledgerId: "6f1c2d3e-0000-4000-8000-000000000001", liff: { liffId: LIFF_ID } });
+
+  // [MV]: change a path or a parameter name and the web app's parser (readLiffIntent) stops understanding the link.
+  test("records, analysis and entry are LIFF URLs with the same query", () => {
+    expect(links.records).toBe(`https://liff.line.me/${LIFF_ID}?view=records`);
+    expect(links.analysis).toBe(`https://liff.line.me/${LIFF_ID}?view=analysis`);
+    expect(links.entry("01J0000000000000000000000A")).toBe(`https://liff.line.me/${LIFF_ID}?entry=01J0000000000000000000000A`);
+  });
+
+  // [MV]: leave openExternalBrowser on a LIFF link and LINE pulls the page back out into the phone's browser.
+  test("none of them carries openExternalBrowser", () => {
+    for (const url of [links.records, links.analysis, links.entry("msg:12345678")]) {
+      expect(url).not.toContain("openExternalBrowser");
+    }
+  });
+
+  test("a message-id key keeps its encoded colon", () => {
+    expect(links.entry("msg:5645678901234")).toBe(`https://liff.line.me/${LIFF_ID}?entry=msg%3A5645678901234`);
+  });
+
+  test("the ledger link stays the browser link (it is the month card's open-the-full-ledger footer)", () => {
+    expect(links.ledger).toBe("https://equo-mu.vercel.app/group/6f1c2d3e-0000-4000-8000-000000000001?openExternalBrowser=1");
+  });
+
+  test("the LIFF URLs do not depend on the ledger or the app origin", () => {
+    const other = lineLinks({ appOrigin: "http://localhost:5173", ledgerId: "other", liff: { liffId: LIFF_ID } });
+    expect(other.records).toBe(links.records);
+    expect(other.entry("01J0000000000000000000000A")).toBe(links.entry("01J0000000000000000000000A"));
+  });
+
+  test.each([undefined, null])("liff = %s is the browser mode, byte for byte", (liff) => {
+    const browser = lineLinks({ appOrigin: ORIGIN, ledgerId: "g1" });
+    const same = lineLinks({ appOrigin: ORIGIN, ledgerId: "g1", liff });
+    expect(same.records).toBe(browser.records);
+    expect(same.analysis).toBe(browser.analysis);
+    expect(same.entry("01J0000000000000000000000A")).toBe(browser.entry("01J0000000000000000000000A"));
+    expect(same.records).toBe(`${ORIGIN}/group/g1?view=records&openExternalBrowser=1`);
+  });
+
+  test.each(["", "not-an-id", "2011782032", "2011782032-", "2011782032-a/b", "https://evil.example/x"])(
+    "a malformed id (%j) falls back to browser links instead of building a broken LIFF URL",
+    (liffId) => {
+      const fallback = lineLinks({ appOrigin: ORIGIN, ledgerId: "g1", liff: { liffId } });
+      expect(fallback.records).toBe(`${ORIGIN}/group/g1?view=records&openExternalBrowser=1`);
+    },
+  );
+});
+
+describe("liffIdForLinks - the two-step switch", () => {
+  const LIFF_ID = "2011782032-WJwjePnJ";
+
+  // [MV]: switch links on LINE_LIFF_ID alone and setting it for a hand-test on a phone moves every card at once.
+  test("LINE_LIFF_ID alone leaves the links in the browser", () => {
+    expect(liffIdForLinks({ LINE_LIFF_ID: LIFF_ID })).toBeUndefined();
+    expect(liffIdForLinks({ LINE_LIFF_ID: LIFF_ID, LINE_LIFF_LINKS: undefined })).toBeUndefined();
+  });
+
+  test("LINE_LIFF_ID with LINE_LIFF_LINKS=1 moves them", () => {
+    expect(liffIdForLinks({ LINE_LIFF_ID: LIFF_ID, LINE_LIFF_LINKS: "1" })).toBe(LIFF_ID);
+  });
+
+  test("LINE_LIFF_LINKS=1 without an id is nothing to link to", () => {
+    expect(liffIdForLinks({ LINE_LIFF_LINKS: "1" })).toBeUndefined();
+    expect(liffIdForLinks({})).toBeUndefined();
+  });
+
+  test.each(["0", "true", "yes", " 1", ""])("only the exact string 1 counts (%j)", (value) => {
+    expect(liffIdForLinks({ LINE_LIFF_ID: LIFF_ID, LINE_LIFF_LINKS: value })).toBeUndefined();
+  });
+});
+
+describe("the webhook function's wiring", () => {
+  const handler = readFileSync(
+    fileURLToPath(new URL("../../../../../vercel-api/lineWebhookHandler.ts", import.meta.url)),
+    "utf8",
+  );
+
+  // [MV]: stop reading the two variables, or stop passing the result on, and the switch does nothing.
+  test("reads both variables and hands the deps the result of liffIdForLinks", () => {
+    expect(handler).toMatch(/LINE_LIFF_ID: process\.env\.LINE_LIFF_ID/);
+    expect(handler).toMatch(/LINE_LIFF_LINKS: process\.env\.LINE_LIFF_LINKS/);
+    expect(handler).toMatch(/liffId: liffIdForLinks\(env\)/);
   });
 });

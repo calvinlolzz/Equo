@@ -69,6 +69,12 @@ export type LineWebhookDeps = {
   line: LineClient;
   channelSecret: string;
   appOrigin: string;
+  /**
+   * Set (to a valid LIFF ID) only when the bot's links should open inside LINE
+   * - i.e. LINE_LIFF_ID is set AND LINE_LIFF_LINKS is "1" (liffIdForLinks).
+   * Unset: every link is the browser link, exactly as before.
+   */
+  liffId?: string;
   now?: () => number;
 };
 
@@ -174,7 +180,12 @@ async function safeReply(deps: LineWebhookDeps, replyToken: string | undefined, 
 
 /** The links for a ledger, or null when the user has none yet. */
 function linksFor(deps: LineWebhookDeps, ledgerId: string | null | undefined): LineLinks | null {
-  return ledgerId ? lineLinks({ appOrigin: deps.appOrigin, ledgerId }) : null;
+  return ledgerId ? linksForLedger(deps, ledgerId) : null;
+}
+
+/** lineLinks with this deployment's LIFF setting applied - the one place a webhook reply builds links. */
+function linksForLedger(deps: LineWebhookDeps, ledgerId: string): LineLinks {
+  return lineLinks({ appOrigin: deps.appOrigin, ledgerId, liff: deps.liffId ? { liffId: deps.liffId } : null });
 }
 
 /** The quick reply most replies to a linked user carry (本月 · 明細 · 分析 · 說明); see standardQuickReply. */
@@ -491,7 +502,7 @@ async function handleRecord(
     month: result.month,
     dateKey,
     entryKey: eventKey,
-    links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
+    links: linksForLedger(deps, result.ledger_id),
     pick,
     stats,
   });
@@ -542,7 +553,7 @@ async function handleMonth(
     budgetMinor: result.budget_minor,
     month_totals: result.month,
     categories: monthCategoriesFor(result.categories, context),
-    links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
+    links: linksForLedger(deps, result.ledger_id),
   });
   await safeReply(deps, event.replyToken, [message]);
 }
@@ -565,7 +576,7 @@ async function handleBudgetShow(deps: LineWebhookDeps, event: LineEvent, dict: L
     currency: result.currency,
     budgetMinor: result.budget_minor,
     spentMinor: result.month.expense_minor,
-    links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
+    links: linksForLedger(deps, result.ledger_id),
   });
   await safeReply(deps, event.replyToken, [message]);
 }
@@ -602,7 +613,7 @@ async function handleBudgetWrite(
     return;
   }
 
-  const links = lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id });
+  const links = linksForLedger(deps, result.ledger_id);
   const message =
     budgetMinor === null
       ? budgetClearedReply(dict, { links })

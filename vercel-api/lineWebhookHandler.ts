@@ -14,13 +14,19 @@ const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 
 export async function handleLineWebhookRequest(request: Request): Promise<Response> {
   try {
-    const [{ createPostgrestClient }, { createLineClient }, { handleLineWebhook }, { readLineEnv, missingLineEnv }] =
-      await Promise.all([
-        import("../apps/web/src/server/db/postgrestClient.js"),
-        import("../apps/web/src/server/line/lineClient.js"),
-        import("../apps/web/src/server/line/lineWebhook.js"),
-        import("../apps/web/src/server/runtime/runtimeEnv.js"),
-      ]);
+    const [
+      { createPostgrestClient },
+      { createLineClient },
+      { handleLineWebhook },
+      { readLineEnv, missingLineEnv },
+      { liffIdForLinks },
+    ] = await Promise.all([
+      import("../apps/web/src/server/db/postgrestClient.js"),
+      import("../apps/web/src/server/line/lineClient.js"),
+      import("../apps/web/src/server/line/lineWebhook.js"),
+      import("../apps/web/src/server/runtime/runtimeEnv.js"),
+      import("../apps/web/src/server/line/lineLinks.js"),
+    ]);
 
     const env = readLineEnv({
       SUPABASE_URL: process.env.SUPABASE_URL,
@@ -28,6 +34,8 @@ export async function handleLineWebhookRequest(request: Request): Promise<Respon
       LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET,
       LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN,
       APP_ORIGIN: process.env.APP_ORIGIN,
+      LINE_LIFF_ID: process.env.LINE_LIFF_ID,
+      LINE_LIFF_LINKS: process.env.LINE_LIFF_LINKS,
     });
 
     const missing = missingLineEnv(env);
@@ -60,7 +68,14 @@ export async function handleLineWebhookRequest(request: Request): Promise<Respon
     const signature = request.headers.get("x-line-signature");
 
     const result = await handleLineWebhook(
-      { client, line, channelSecret: env.LINE_CHANNEL_SECRET as string, appOrigin: env.APP_ORIGIN },
+      {
+        client,
+        line,
+        channelSecret: env.LINE_CHANNEL_SECRET as string,
+        appOrigin: env.APP_ORIGIN,
+        // Cards and quick replies open in LIFF only when both variables say so.
+        liffId: liffIdForLinks(env),
+      },
       { rawBody, signature },
     );
 
