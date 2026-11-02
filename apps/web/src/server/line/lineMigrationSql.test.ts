@@ -19,6 +19,7 @@ const budgetSql = readFileSync(join(MIGRATIONS_DIR, "20260930090000_line_set_bud
 const categoriesSql = readFileSync(join(MIGRATIONS_DIR, "20261003090000_line_month_categories.sql"), "utf8");
 const replacedBySql = readFileSync(join(MIGRATIONS_DIR, "20261101090000_expense_replaced_by.sql"), "utf8");
 const entryActionsSql = readFileSync(join(MIGRATIONS_DIR, "20261101090100_line_entry_actions.sql"), "utf8");
+const liffIdentitySql = readFileSync(join(MIGRATIONS_DIR, "20261102090000_line_liff_identity.sql"), "utf8");
 const receiptsSql = readFileSync(join(MIGRATIONS_DIR, "20260826014823_expense_receipts_and_comments.sql"), "utf8");
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const workflow = readFileSync(join(REPO_ROOT, ".github", "workflows", "db-backup.yml"), "utf8");
@@ -108,6 +109,7 @@ describe("every LINE migration function is callable by service_role only", () =>
     ["20260930090000_line_set_budget.sql", budgetSql],
     ["20261003090000_line_month_categories.sql", categoriesSql],
     ["20261101090100_line_entry_actions.sql", entryActionsSql],
+    ["20261102090000_line_liff_identity.sql", liffIdentitySql],
   ];
 
   test.each(LINE_MIGRATIONS)("%s revokes PUBLIC, anon and authenticated and grants service_role", (file, sql) => {
@@ -630,5 +632,90 @@ describe("line_entry_actions migration", () => {
       expect(sql).toContain("'reason', 'no_ledger'");
       expect(sql).toContain("v_group := line_personal_ledger_id(v_user)");
     });
+  });
+});
+
+describe("line_liff_identity migration", () => {
+  const FUNCTIONS = ["line_liff_identity", "line_liff_link_live"];
+  const SIGNATURES: Record<string, string> = {
+    line_liff_identity: "(text)",
+    line_liff_link_live: "(uuid, uuid, text)",
+  };
+
+  const fn = (name: string) => functionSql(liffIdentitySql, name);
+  const body = (name: string) => normalizeSql(fn(name));
+
+  test("sorts after the entry-actions migration it builds on, and defines exactly these two functions", () => {
+    expect("20261102090000_line_liff_identity.sql" > "20261101090100_line_entry_actions.sql").toBe(true);
+    const defined = [...liffIdentitySql.matchAll(/CREATE OR REPLACE FUNCTION "public"\."(\w+)"/g)].map((m) => m[1]);
+    expect(defined).toEqual(FUNCTIONS);
+  });
+
+  test.each(FUNCTIONS)("%s: definer, pinned search_path, owned by postgres, service_role only", (name) => {
+    expect(fn(name)).toContain("SECURITY DEFINER");
+    expect(fn(name)).toContain("SET search_path TO 'public'");
+    const sig = `"public"."${name}"${SIGNATURES[name]}`;
+    expect(liffIdentitySql).toContain(`ALTER FUNCTION ${sig} OWNER TO postgres`);
+    for (const role of ["PUBLIC", '"anon"', '"authenticated"']) {
+      expect(liffIdentitySql).toContain(`REVOKE ALL ON FUNCTION ${sig} FROM ${role}`);
+    }
+    expect(liffIdentitySql).toContain(`GRANT ALL ON FUNCTION ${sig} TO "service_role"`);
+  });
+
+  // [MV]: let a request name the user or the ledger and the exchange stops being "who LINE says you are".
+  test("the exchange takes a LINE user id and nothing that names a user or group", () => {
+    const sql = body("line_liff_identity");
+    expect(sql).toContain('"p_line_user_id" text');
+    expect(sql).not.toMatch(/p_user|p_group|p_ledger/);
+  });
+
+  test("the exchange refuses a malformed id, an unlinked id and a disabled account", () => {
+    const sql = body("line_liff_identity");
+    expect(sql).toContain("p_line_user_id !~ '^U[0-9a-f]{32}$'");
+    expect(sql).toContain("'reason', 'not_linked'");
+    expect(sql).toContain("'reason', 'account_disabled'");
+    expect(sql).toContain("'reason', 'no_ledger'");
+  });
+
+  // [MV]: move ensure_personal_ledger above the disabled check and a disabled account grows a ledger.
+  test("a disabled account is refused BEFORE a ledger is created for it", () => {
+    const sql = body("line_liff_identity");
+    expect(sql.indexOf("'account_disabled'")).toBeGreaterThan(-1);
+    expect(sql.indexOf("'account_disabled'")).toBeLessThan(sql.indexOf("ensure_personal_ledger("));
+    expect(sql.indexOf("'not_linked'")).toBeLessThan(sql.indexOf("ensure_personal_ledger("));
+  });
+
+  test("the exchange is VOLATILE (it may create the ledger); the liveness check is STABLE and writes nothing", () => {
+    expect(fn("line_liff_identity")).not.toContain("STABLE");
+    expect(body("line_liff_identity")).toContain("ensure_personal_ledger(u.id)");
+    expect(fn("line_liff_link_live")).toMatch(/LANGUAGE sql STABLE SECURITY DEFINER/);
+    expect(body("line_liff_link_live")).not.toMatch(/(insert|update|delete)|ensure_personal_ledger/);
+  });
+
+  test("the exchange returns exactly the fields the token is built from", () => {
+    const sql = body("line_liff_identity");
+    for (const key of ["id", "google_sub", "email", "display_name", "avatar_url", "ledger_id", "locale"]) {
+      expect(sql, key).toContain(`'${key}'`);
+    }
+    // The ledger comes from ensure_personal_ledger, never from the request.
+    expect(sql).toContain("'ledger_id', v_ledger ->> 'id'");
+  });
+
+  // [MV]: drop any one conjunct and a LIFF token outlives the thing it was minted for.
+  test.each([
+    "la.user_id = p_user",
+    "u.deleted_at is null",
+    "g.id = p_ledger",
+    "g.owner_id = la.user_id",
+    "g.kind = 'personal'",
+    "g.deleted_at is null",
+    "encode(sha256(convert_to(la.line_user_id, 'UTF8')), 'hex') = p_line_sub_hash",
+  ])("liveness requires `%s`", (clause) => {
+    expect(body("line_liff_link_live")).toContain(clause);
+  });
+
+  test("the liveness hash is the same sha256 hex the TypeScript side stores in the token", () => {
+    // lineCrypto.ts sha256Hex: createHash("sha256").update(value).digest("hex")
+    expect(readFileSync(join(__dirname, "lineCrypto.ts"), "utf8")).toContain('createHash("sha256").update(value).digest("hex")');
   });
 });
