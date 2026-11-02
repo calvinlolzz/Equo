@@ -27,6 +27,8 @@ import {
   uriButton,
   vbox,
 } from "./lineFlex.js";
+import { type LineStreakStats, MOOD_EMOJI, type MoodBucket, type MoodPick } from "./lineMood.js";
+import type { LineMoodCopy } from "./lineMoodText.js";
 import type { LineMonthTotals } from "./lineRepository.js";
 import type { LineDictionary } from "./lineText.js";
 
@@ -337,6 +339,118 @@ export function recordCard(
     args.altText,
     bubble({ body: cardBody(content), footer, background: CARD.bg, footerSeparator: CARD.hairline }),
   );
+}
+
+/** The tile colour behind a mood's emoji: meals and big spending warm, movement and the home cool, fun violet, health coral. */
+function moodAccent(bucket: MoodBucket): string {
+  switch (bucket) {
+    case "breakfast":
+    case "lunch":
+    case "afternoon":
+    case "dinner":
+    case "lateNight":
+    case "large":
+      return CARD.amber;
+    case "transport":
+    case "home":
+    case "education":
+      return CARD.blue;
+    case "shopping":
+    case "entertainment":
+      return CARD.violet;
+    case "health":
+      return CARD.coral;
+    case "income":
+    case "general":
+      return CARD.mint;
+  }
+}
+
+const CHECK_MARK = "\u{2713}";
+
+/**
+ * One day of the week row: a round mark that is mint with a check when the day
+ * has an entry and an empty dark disc when it has not, then the weekday under
+ * it - today's in bold white. An empty disc has `contents: []` and a fixed
+ * height, which keeps it from collapsing. Missed days and days to come look the
+ * same on purpose: the card never points at a gap.
+ */
+function weekDay(label: string, done: boolean, isToday: boolean): FlexBox {
+  const disc = vbox(done ? [text(CHECK_MARK, { size: "xs", weight: "bold", color: CARD.bg, align: "center" })] : [], {
+    width: "28px",
+    height: "28px",
+    cornerRadius: "14px",
+    backgroundColor: done ? CARD.mint : CARD.raised,
+    justifyContent: "center",
+    alignItems: "center",
+  });
+
+  return vbox(
+    [
+      disc,
+      text(label, {
+        size: "xs",
+        weight: isToday ? "bold" : "regular",
+        color: isToday ? CARD.text : CARD.muted,
+        align: "center",
+        margin: "xs",
+      }),
+    ],
+    { flex: 1, alignItems: "center" },
+  );
+}
+
+/**
+ * The card after a record: a short line for the moment next to an emoji tile,
+ * a second line (an encouragement, or amber when it is a milestone), and - when
+ * `stats` is there - the streak: its length, this month's days and today's
+ * count, and Monday to Sunday as check circles. Without `stats` the streak part
+ * is simply absent, and the card is just the two lines.
+ *
+ * It is the last message of the reply, so the quick reply is put on it by
+ * lineMessages.withQuickReply, not built in here.
+ */
+export function moodCard(
+  copy: LineMoodCopy,
+  args: { pick: MoodPick; stats: LineStreakStats | null; altText: string },
+): LineFlexMessage {
+  const { pick, stats } = args;
+
+  const content: FlexComponent[] = [
+    hbox(
+      [
+        emojiTile(MOOD_EMOJI[pick.noteKind === "milestone" ? "milestone" : pick.bucket], moodAccent(pick.bucket), 40),
+        text(pick.shortLine, { size: "md", weight: "bold", color: CARD.text, wrap: true, flex: 1 }),
+      ],
+      { spacing: "md", alignItems: "center" },
+    ),
+    text(pick.note, {
+      size: "sm",
+      color: pick.noteKind === "milestone" ? CARD.amber : CARD.muted,
+      wrap: true,
+      margin: "md",
+    }),
+  ];
+
+  if (stats !== null && pick.streakLine !== null && pick.statsLine !== null) {
+    content.push(
+      separator(CARD.hairline, "lg"),
+      hbox(
+        [
+          text(MOOD_EMOJI.streak, { size: "md", color: CARD.text, flex: 0 }),
+          text(pick.streakLine, { size: "sm", weight: "bold", color: CARD.mint, flex: 1 }),
+        ],
+        { margin: "lg", spacing: "sm", alignItems: "center" },
+      ),
+      text(pick.statsLine, { size: "xs", color: CARD.muted, margin: "xs", wrap: true }),
+      hbox(
+        copy.weekdays.map((label, index) => weekDay(label, stats.week[index] === true, index === stats.todayIndex)),
+        { margin: "md", spacing: "xs" },
+      ),
+    );
+  }
+
+  return flexMessage(args.altText, bubble({ body: cardBody(content), background: CARD.bg }));
 }
 
 /** One category's expense total for the month, with the label, colour and emoji already resolved. */

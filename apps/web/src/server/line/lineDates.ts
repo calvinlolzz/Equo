@@ -15,6 +15,15 @@ export function lineDateKey(timestampMs: number): string {
   return shifted.toISOString().slice(0, 10);
 }
 
+const MINUTES_PER_DAY = 24 * 60;
+
+/** Minutes since midnight in Taiwan time, 0-1439, for a UTC epoch millisecond timestamp. */
+export function lineTaiwanMinuteOfDay(timestampMs: number): number {
+  const shifted = Math.floor(timestampMs / 60_000) + LINE_UTC_OFFSET_MINUTES;
+  // A double modulo: JavaScript's % keeps the sign of the dividend, and a timestamp before 1970 is negative.
+  return ((shifted % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+}
+
 /** The first day of the month a "YYYY-MM-DD" date key falls in. */
 export function lineMonthStart(dateKey: string): string {
   return `${dateKey.slice(0, 7)}-01`;

@@ -12,10 +12,13 @@ import {
   linkedCard,
   monthCard,
   monthLabelText,
+  moodCard,
   recordCard,
 } from "./lineCards.js";
 import type { FlexBox, LineFlexMessage, LineQuickReply } from "./lineFlex.js";
 import { actionsOf, assertValidFlexMessage, lineMessageProblems, postbacksOf, uriActionsOf } from "./lineFlexValidator.js";
+import { type LineStreakStats, MOOD_BUCKETS, MOOD_EMOJI, type MoodBucket, moodAltText, pickMood } from "./lineMood.js";
+import { LINE_MOOD_TEXT, type LineMoodCopy } from "./lineMoodText.js";
 import { encodeLinePostback, parseLinePostback } from "./linePostback.js";
 import { type LineDictionary, LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 
@@ -1008,5 +1011,252 @@ describe("linkedCard", () => {
 
   test("English dictionary", () => {
     expect(textsOf(build(EN))).toEqual(["\u{2705}", EN.linkedCardTitle, "al***@example.com", EN.linkedCardHint]);
+  });
+});
+
+describe("moodCard", () => {
+  const SEED = "01J0000000000000000000000X";
+  const STATS: LineStreakStats = {
+    streakDays: 4,
+    week: [true, true, true, false, false, false, false],
+    todayIndex: 2,
+    monthDays: 12,
+    todayEntries: 2,
+    totalEntries: 40,
+  };
+
+  const MOOD_LOCALES = [
+    ["zh-Hant", LINE_MOOD_TEXT["zh-Hant"]],
+    ["en", LINE_MOOD_TEXT.en],
+  ] as const satisfies ReadonlyArray<readonly [string, LineMoodCopy]>;
+
+  const ZH = LINE_MOOD_TEXT["zh-Hant"];
+
+  const build = (
+    copy: LineMoodCopy = ZH,
+    stats: LineStreakStats | null = STATS,
+    bucket: MoodBucket = "breakfast",
+    seed = SEED,
+  ): LineFlexMessage => {
+    const pick = pickMood(copy, { seed, bucket, stats });
+    return moodCard(copy, { pick, stats, altText: moodAltText(pick) });
+  };
+
+  /** The week row: the one horizontal box with seven children. */
+  const weekRow = (message: LineFlexMessage): FlexBox => {
+    const rows = nodesWhere(message, (node) => node.type === "box" && node.layout === "horizontal" && (node.contents as unknown[]).length === 7);
+    expect(rows).toHaveLength(1);
+    return rows[0] as unknown as FlexBox;
+  };
+  const discOf = (day: unknown): FlexBox => (day as FlexBox).contents[0] as FlexBox;
+  const labelOf = (day: unknown): Node => (day as FlexBox).contents[1] as unknown as Node;
+
+  test("passes the LINE validator for every bucket, both locales, with and without stats", () => {
+    for (const [locale, copy] of MOOD_LOCALES) {
+      for (const bucket of MOOD_BUCKETS) {
+        for (const stats of [null, STATS]) {
+          expect(lineMessageProblems(build(copy, stats, bucket)), `${locale} ${bucket} ${stats ? "stats" : "no stats"}`).toEqual([]);
+        }
+      }
+    }
+  });
+
+  test.each<[string, Partial<LineStreakStats>]>([
+    ["no streak yet, an empty week", { streakDays: 0, week: Array(7).fill(false), todayIndex: 0, monthDays: 0, todayEntries: 0 }],
+    ["a full week", { streakDays: 365, week: Array(7).fill(true), todayIndex: 6, totalEntries: 1000 }],
+    ["Monday", { todayIndex: 0, week: [true, false, false, false, false, false, false] }],
+    ["Sunday", { todayIndex: 6, week: [false, false, false, false, false, false, true] }],
+    ["the very first entry", { totalEntries: 1, streakDays: 1, monthDays: 1, todayEntries: 1 }],
+    ["a huge number of entries", { streakDays: 99_999, monthDays: 31, todayEntries: 9_999, totalEntries: 99_999_999 }],
+  ])("passes the LINE validator with %s", (_label, overrides) => {
+    for (const [, copy] of MOOD_LOCALES) {
+      expect(lineMessageProblems(build(copy, { ...STATS, ...overrides })), JSON.stringify(overrides)).toEqual([]);
+    }
+  });
+
+  test("is a card without a quick reply (the caller puts it on the last message) and without anything to tap", () => {
+    const message = build();
+    expect(message.quickReply).toBeUndefined();
+    expect(actionsOf(message)).toEqual([]);
+    expect(message.contents.footer).toBeUndefined();
+  });
+
+  describe("with stats", () => {
+    test("emoji tile, short line, note, streak row, month line, then the week: a check and a label per day", () => {
+      const pick = pickMood(ZH, { seed: SEED, bucket: "breakfast", stats: STATS });
+
+      expect(textsOf(build())).toEqual([
+        MOOD_EMOJI.breakfast,
+        pick.shortLine,
+        pick.note,
+        MOOD_EMOJI.streak,
+        "連續記帳 4 天",
+        "本月記帳 12 天 · 今天第 2 筆",
+        "\u{2713}",
+        "一",
+        "\u{2713}",
+        "二",
+        "\u{2713}",
+        "三",
+        "四",
+        "五",
+        "六",
+        "日",
+      ]);
+    });
+
+    test("the header is a 40px tinted tile (amber for a meal) and the short line in bold white", () => {
+      const message = build();
+      const [tile] = nodesWhere(message, (node) => node.width === "40px");
+      expect(tile).toMatchObject({ height: "40px", cornerRadius: "12px", backgroundColor: tint(CARD.amber) });
+      const pick = pickMood(ZH, { seed: SEED, bucket: "breakfast", stats: STATS });
+      expect(textNode(message, pick.shortLine)).toMatchObject({ size: "md", weight: "bold", color: CARD.text, wrap: true, flex: 1 });
+    });
+
+    test.each<[MoodBucket, string]>([
+      ["breakfast", CARD.amber],
+      ["lunch", CARD.amber],
+      ["afternoon", CARD.amber],
+      ["dinner", CARD.amber],
+      ["lateNight", CARD.amber],
+      ["large", CARD.amber],
+      ["transport", CARD.blue],
+      ["home", CARD.blue],
+      ["education", CARD.blue],
+      ["shopping", CARD.violet],
+      ["entertainment", CARD.violet],
+      ["health", CARD.coral],
+      ["income", CARD.mint],
+      ["general", CARD.mint],
+    ])("the %s tile is tinted from its accent", (bucket, accent) => {
+      const message = build(ZH, STATS, bucket);
+      const [tile] = nodesWhere(message, (node) => node.width === "40px");
+      expect(tile.backgroundColor).toBe(tint(accent));
+      expect(textsOf(message)[0]).toBe(MOOD_EMOJI[bucket]);
+    });
+
+    test("a milestone draws the party emoji and an amber note; an encouragement a muted one", () => {
+      const milestone = build(ZH, { ...STATS, streakDays: 7 });
+      expect(textsOf(milestone)[0]).toBe(MOOD_EMOJI.milestone);
+      expect(textNode(milestone, ZH.milestones.streak7)).toMatchObject({ size: "sm", color: CARD.amber, wrap: true });
+
+      const plain = build(ZH, STATS);
+      const pick = pickMood(ZH, { seed: SEED, bucket: "breakfast", stats: STATS });
+      expect(textsOf(plain)[0]).toBe(MOOD_EMOJI.breakfast);
+      expect(textNode(plain, pick.note)).toMatchObject({ size: "sm", color: CARD.muted, wrap: true });
+    });
+
+    test("the streak row: the fire emoji and the length in bold mint; the month line in muted xs; one rule", () => {
+      const message = build();
+      expect(textNode(message, MOOD_EMOJI.streak)).toMatchObject({ size: "md", color: CARD.text, flex: 0 });
+      expect(textNode(message, "連續記帳 4 天")).toMatchObject({ size: "sm", weight: "bold", color: CARD.mint, flex: 1 });
+      expect(textNode(message, "本月記帳 12 天 · 今天第 2 筆")).toMatchObject({ size: "xs", color: CARD.muted, wrap: true });
+      expect(nodesWhere(message, (node) => node.type === "separator")).toEqual([{ type: "separator", color: CARD.hairline, margin: "lg" }]);
+    });
+
+    test("the week row has seven equal columns, Monday first, in both locales", () => {
+      for (const [, copy] of MOOD_LOCALES) {
+        const row = weekRow(build(copy));
+        expect(row.contents).toHaveLength(7);
+        row.contents.forEach((day, index) => {
+          expect(day).toMatchObject({ type: "box", layout: "vertical", flex: 1, alignItems: "center" });
+          expect(labelOf(day).text).toBe(copy.weekdays[index]);
+        });
+      }
+    });
+
+    // [MV]: mark the wrong day (week[i + 1], or reversed) and this goes red.
+    test("a day with an entry is a mint disc with a dark check, a day without is an empty dark disc", () => {
+      const week = [true, false, true, false, false, true, false];
+      const row = weekRow(build(ZH, { ...STATS, week }));
+
+      row.contents.forEach((day, index) => {
+        const disc = discOf(day);
+        expect(disc, `day ${index}`).toMatchObject({ width: "28px", height: "28px", cornerRadius: "14px" });
+        expect(disc.backgroundColor, `day ${index}`).toBe(week[index] ? CARD.mint : CARD.raised);
+        if (week[index]) {
+          expect(disc.contents, `day ${index}`).toEqual([
+            { type: "text", text: "\u{2713}", color: CARD.bg, size: "xs", weight: "bold", align: "center" },
+          ]);
+        } else {
+          expect(disc.contents, `day ${index}`).toEqual([]);
+        }
+      });
+    });
+
+    // [MV]: highlight the wrong weekday (off by one on todayIndex).
+    test.each([0, 1, 3, 6])("only today's weekday (index %i) is bold white; the others are regular muted", (todayIndex) => {
+      const row = weekRow(build(ZH, { ...STATS, todayIndex }));
+      row.contents.forEach((day, index) => {
+        expect(labelOf(day), `day ${index}`).toMatchObject(
+          index === todayIndex
+            ? { weight: "bold", color: CARD.text, size: "xs", align: "center", margin: "xs" }
+            : { weight: "regular", color: CARD.muted, size: "xs", align: "center", margin: "xs" },
+        );
+      });
+    });
+
+    test("missed days and days to come look alike: nothing on the card marks a gap", () => {
+      const message = build(ZH, { ...STATS, week: Array(7).fill(false), todayIndex: 3 });
+      for (const day of weekRow(message).contents) {
+        expect(discOf(day).backgroundColor).toBe(CARD.raised);
+        expect(discOf(day).contents).toEqual([]);
+      }
+      expect(JSON.stringify(message)).not.toContain(CARD.coral);
+    });
+
+    test("the check is dark on mint, and the texts hold 4.5:1 on the card", () => {
+      const lum = (hex: string) => {
+        const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+        const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      };
+      const ratio = (a: string, b: string) => {
+        const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+      expect(ratio(CARD.bg, CARD.mint)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(CARD.muted, CARD.bg)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(CARD.muted, CARD.raised)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(CARD.amber, CARD.bg)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test("only #RRGGBB colours, every box states its spacing, and the card is far below LINE's size limit", () => {
+      const message = build();
+      const colors = new Set<string>();
+      walk(message.contents, (node) => {
+        for (const key of ["color", "backgroundColor", "separatorColor"]) if (typeof node[key] === "string") colors.add(node[key] as string);
+      });
+      for (const color of colors) expect(color).toMatch(/^#[0-9A-F]{6}$/);
+      for (const box of nodesWhere(message, (node) => node.type === "box")) expect(box.spacing).toBeDefined();
+      expect(JSON.stringify(message.contents).length).toBeLessThan(6000);
+    });
+  });
+
+  describe("without stats", () => {
+    test("the card is the header and the note, with no rule, no streak and no week row", () => {
+      for (const [, copy] of MOOD_LOCALES) {
+        const message = build(copy, null);
+        const pick = pickMood(copy, { seed: SEED, bucket: "breakfast", stats: null });
+
+        expect(textsOf(message)).toEqual([MOOD_EMOJI.breakfast, pick.shortLine, pick.note]);
+        expect(nodesWhere(message, (node) => node.type === "separator")).toEqual([]);
+        expect(nodesWhere(message, (node) => node.cornerRadius === "14px")).toEqual([]);
+        expect(JSON.stringify(message)).not.toContain(MOOD_EMOJI.streak);
+      }
+    });
+  });
+
+  test("altText is what it was given - the short line and the streak", () => {
+    const pick = pickMood(ZH, { seed: SEED, bucket: "dinner", stats: STATS });
+    expect(moodCard(ZH, { pick, stats: STATS, altText: moodAltText(pick) }).altText).toBe(`${pick.shortLine}\n連續記帳 4 天`);
+
+    const english = LINE_MOOD_TEXT.en;
+    const enPick = pickMood(english, { seed: SEED, bucket: "dinner", stats: null });
+    expect(moodCard(english, { pick: enPick, stats: null, altText: moodAltText(enPick) }).altText).toBe(enPick.shortLine);
+  });
+
+  test("two cards built from the same inputs are identical", () => {
+    expect(build()).toEqual(build());
   });
 });

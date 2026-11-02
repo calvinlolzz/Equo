@@ -10,6 +10,7 @@ import {
   linkedCard,
   monthCard,
   monthLabelText,
+  moodCard,
   recordCard,
 } from "./lineCards.js";
 import { redactForLog } from "./lineCrypto.js";
@@ -22,6 +23,8 @@ import type {
   LineTextMessage,
 } from "./lineFlex.js";
 import type { LineLinks } from "./lineLinks.js";
+import { type LineStreakStats, type MoodPick, moodAltText, moodPlainText } from "./lineMood.js";
+import type { LineMoodCopy } from "./lineMoodText.js";
 import { encodeLinePostback } from "./linePostback.js";
 import type { LineDictionary } from "./lineText.js";
 import type { LineMonthTotals, RecordLineEntryResult } from "./lineRepository.js";
@@ -38,7 +41,7 @@ export function textMessage(text: string, quickReply?: LineQuickReply): LineText
 }
 
 /** The closed set of card names. They are the only thing about a card that reaches a log line. */
-export type LineCardName = "record" | "month" | "budget" | "help" | "link" | "linked";
+export type LineCardName = "record" | "mood" | "month" | "budget" | "help" | "link" | "linked";
 
 /**
  * A Flex card together with what to send if LINE refuses it. `fallback` is
@@ -231,16 +234,24 @@ function recordedText(
 }
 
 /**
- * The reply for a successful record (expense or income): the record card, with
- * 編輯 and 刪除 in its footer, and the undo/month/records/analysis quick reply
- * under the last message. `dateKey` is the Taiwan-time date the entry was
- * recorded under (the same value sent as p_expense_date); `entryKey` is the
- * event key it was recorded under, which both footer buttons name. If LINE
- * refuses the card, the same shortcuts go under today's text - which has no
- * buttons, so nothing in the fallback can send a postback.
+ * The reply for a successful record (expense or income): two messages. The
+ * record card, with 編輯 and 刪除 in its footer, then the mood card (a line for
+ * the moment, an encouragement and - when `stats` is there - the streak). The
+ * undo/month/records/analysis quick reply goes under the LAST message, the mood
+ * card, because LINE removes a quick reply when the account sends another
+ * message after it. `dateKey` is the Taiwan-time date the entry was recorded
+ * under (the same value sent as p_expense_date); `entryKey` is the event key it
+ * was recorded under, which both footer buttons name.
+ *
+ * If LINE refuses the cards, the same two messages go out as text - the record
+ * as today's one-liner, the mood as its lines - and the shortcuts under the
+ * second. Neither text has buttons, so nothing in the fallback can send a postback.
+ * A mood card that cannot be built degrades to that text by itself, and the
+ * record card is untouched by it.
  */
 export function recordedReply(
   dict: LineDictionary,
+  mood: LineMoodCopy,
   args: {
     kind: "expense" | "income";
     title: string;
@@ -252,6 +263,8 @@ export function recordedReply(
     dateKey: string;
     entryKey: string;
     links: LineLinks;
+    pick: MoodPick;
+    stats: LineStreakStats | null;
   },
 ): LineOutgoing[] {
   const altText = recordedText(dict, { ...args, categoryLabel: args.category.label });
@@ -275,7 +288,13 @@ export function recordedReply(
     [textMessage(altText)],
   );
 
-  return withQuickReply([record], recordQuickReply(dict, args.links));
+  const moodMessage = cardOrFallback(
+    "mood",
+    () => moodCard(mood, { pick: args.pick, stats: args.stats, altText: moodAltText(args.pick) }),
+    [textMessage(moodPlainText(args.pick))],
+  );
+
+  return withQuickReply([record, moodMessage], recordQuickReply(dict, args.links));
 }
 
 /**

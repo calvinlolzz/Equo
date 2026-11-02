@@ -8,13 +8,14 @@ import { fill } from "../push/pushText.js";
 import { LineApiError, type LineClient, type LineMessage } from "./lineClient.js";
 import { sha256Hex } from "./lineCrypto.js";
 import { actionsOf, lineReplyProblems, plainTextOf, postbacksOf, uriActionsOf } from "./lineFlexValidator.js";
+import { LINE_MOOD_TEXT } from "./lineMoodText.js";
 import { encodeLinePostback, parseLinePostback } from "./linePostback.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 import { handleLineWebhook, type LineWebhookDeps } from "./lineWebhook.js";
 
 // lineCards.ts is mocked only so a test can make the record card's builder
 // throw on cue; every other card, and every other export, is the real thing.
-const cardFaults = vi.hoisted(() => ({ recordCard: false }));
+const cardFaults = vi.hoisted(() => ({ recordCard: false, moodCard: false }));
 vi.mock("./lineCards.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lineCards.js")>();
   return {
@@ -22,6 +23,10 @@ vi.mock("./lineCards.js", async (importOriginal) => {
     recordCard: (...args: Parameters<typeof actual.recordCard>) => {
       if (cardFaults.recordCard) throw new Error("recordCard exploded");
       return actual.recordCard(...args);
+    },
+    moodCard: (...args: Parameters<typeof actual.moodCard>) => {
+      if (cardFaults.moodCard) throw new Error("moodCard exploded");
+      return actual.moodCard(...args);
     },
   };
 });
@@ -136,6 +141,16 @@ const ENTRY_SNAPSHOT = {
   expense_date: "2026-09-21",
 };
 
+/** What line_streak says by default: the third day in a row, two entries today, a Monday-to-Wednesday week. */
+const STREAK_STATS = {
+  streak_days: 3,
+  week: [true, true, true, false, false, false, false],
+  today_index: 2,
+  month_days: 12,
+  today_entries: 1,
+  total_entries: 40,
+};
+
 type RpcHandler = (args: Record<string, unknown>) => unknown;
 
 function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {}) {
@@ -196,6 +211,7 @@ function createLineFakeClient(overrides: Partial<Record<string, RpcHandler>> = {
       replay: false,
       expense: { id: "exp_undo", title: "早餐", amount_minor: 6000, currency: "TWD" },
     }),
+    line_streak: () => ({ ok: true, stats: STREAK_STATS }),
     line_entry_status: () => ({ ok: true, status: "live", edited: false, expense: ENTRY_SNAPSHOT }),
     line_delete_entry: () => ({ ok: true, replay: false, expense: ENTRY_SNAPSHOT }),
   };
@@ -269,6 +285,7 @@ beforeEach(() => {
   resetSiteNoticeCache();
   replyProblems = [];
   cardFaults.recordCard = false;
+  cardFaults.moodCard = false;
 });
 
 afterEach(() => {
@@ -345,8 +362,10 @@ describe("handleLineWebhook - recording", () => {
 
     expect(line.calls.reply).toHaveLength(1);
     expect(line.calls.reply[0].replyToken).toBe("rt1");
-    const message = line.calls.reply[0].messages[0] as { quickReply?: { items: unknown[] } };
-    expect(message.quickReply?.items.length).toBeGreaterThan(0);
+    const messages = line.calls.reply[0].messages as Array<{ quickReply?: { items: unknown[] } }>;
+    expect(messages).toHaveLength(2);
+    expect(messages[0].quickReply).toBeUndefined();
+    expect(messages[1].quickReply?.items.length).toBeGreaterThan(0);
   });
 
   // [MV]: redelivery must reuse the SAME event id both times. If the
@@ -1062,6 +1081,8 @@ describe("handleLineWebhook - record, month and budget cards", () => {
     return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
   };
   const lastMessage = (line: ReturnType<typeof fakeLineClient>) => line.calls.reply.at(-1)!.messages[0];
+  /** A record is answered with two messages; this is the last reply's whole list. */
+  const lastMessages = (line: ReturnType<typeof fakeLineClient>) => line.calls.reply.at(-1)!.messages;
   const labelsOf = (message: LineMessage) => (message.quickReply?.items ?? []).map((item) => item.action.label);
   const cardTexts = (message: LineMessage): string[] => {
     const found: string[] = [];
@@ -1108,11 +1129,14 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       await send(cardDeps(client, line.client), [messageEvent({ text: "早餐 60" })]);
 
       expect(line.calls.reply).toHaveLength(1);
-      expect(line.calls.reply[0].messages).toHaveLength(1);
-      const message = lastMessage(line);
+      expect(line.calls.reply[0].messages).toHaveLength(2);
+      const [message, mood] = lastMessages(line);
       expect(message.type).toBe("flex");
+      expect(mood.type).toBe("flex");
       expect(plainTextOf(message)).toBe("已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940");
-      expect(labelsOf(message)).toEqual(["復原", "本月", "明細", "分析"]);
+      // The shortcuts belong to the LAST message: LINE drops them when another message follows.
+      expect(labelsOf(message)).toEqual([]);
+      expect(labelsOf(mood)).toEqual(["復原", "本月", "明細", "分析"]);
       // The date on the card is the date the entry was recorded under.
       expect(cardTexts(message)).toContain("9月21日");
       expect(client.rpcCall("line_record_entry")?.args.p_expense_date).toBe("2026-09-21");
@@ -1127,11 +1151,11 @@ describe("handleLineWebhook - record, month and budget cards", () => {
 
       await send(cardDeps(client, line.client), [messageEvent({ text: "+52000 薪水" })]);
 
-      const message = lastMessage(line);
+      const [message, mood] = lastMessages(line);
       expect(message.type).toBe("flex");
       expect(plainTextOf(message)).toBe("已記下收入：薪水 $52,000（薪資）\n本月收入 $52,000");
       expect(cardTexts(message)).toContain("+$52,000");
-      expect(labelsOf(message)).toEqual(["復原", "本月", "明細", "分析"]);
+      expect(labelsOf(mood)).toEqual(["復原", "本月", "明細", "分析"]);
     });
 
     test("an English-locale user's category reads in English on the card and in the altText", async () => {
@@ -1180,9 +1204,12 @@ describe("handleLineWebhook - record, month and budget cards", () => {
         expect(result.status).toBe(200);
         expect(client.rpcCall("line_record_entry")).toBeDefined();
         expect(line.calls.reply).toHaveLength(1);
-        const message = lastMessage(line);
+        const [message, mood] = lastMessages(line);
         expect(message).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
-        expect(labelsOf(message)).toEqual(["復原", "本月", "明細", "分析"]);
+        expect(labelsOf(message)).toEqual([]);
+        // The mood card is not the record card's problem: it is still a card, and it still carries the shortcuts.
+        expect(mood.type).toBe("flex");
+        expect(labelsOf(mood)).toEqual(["復原", "本月", "明細", "分析"]);
         expect(plainTextOf(message)).not.toBe(ZH_HANT.genericError);
         expect(errorSpy.mock.calls.map((call) => call.join(" "))).toEqual(["[line] card build failed (record): recordCard exploded"]);
       } finally {
@@ -1381,7 +1408,8 @@ describe("handleLineWebhook - record, month and budget cards", () => {
     }
 
     const cards = line.calls.reply.flatMap((call) => call.messages).filter((message) => message.type === "flex");
-    expect(cards).toHaveLength(6);
+    // Two records are two cards each (the record card and its mood card), then month, budget x2 and help.
+    expect(cards).toHaveLength(8);
     for (const card of cards) {
       expect(JSON.stringify(actionsOf(card))).not.toContain("復原");
       for (const action of actionsOf(card)) {
@@ -1396,9 +1424,9 @@ describe("handleLineWebhook - record, month and budget cards", () => {
         expect(JSON.stringify((card as { contents: unknown }).contents)).not.toContain("復原");
       }
     }
-    // ... and the one place it does appear is under the record cards - which are also the only cards with a postback, one each.
+    // ... and the one place it does appear is under the mood cards (the last message of a record) - while the record cards are the only ones with a postback, one each.
     expect(cards.filter((card) => labelsOf(card).includes("復原"))).toHaveLength(2);
-    expect(cards.map((card) => postbacksOf(card).length)).toEqual([1, 1, 0, 0, 0, 0]);
+    expect(cards.map((card) => postbacksOf(card).length)).toEqual([1, 0, 1, 0, 0, 0, 0, 0]);
   });
 
   describe("when LINE refuses the card", () => {
@@ -1428,19 +1456,17 @@ describe("handleLineWebhook - record, month and budget cards", () => {
       expect(client.calls.filter((call) => call.op === "rpc" && call.fn === "line_record_entry")).toHaveLength(1);
       expect(line.calls.reply).toHaveLength(2);
       const [first, second] = line.calls.reply;
-      expect(first.messages[0].type).toBe("flex");
+      expect(first.messages.map((m) => m.type)).toEqual(["flex", "flex"]);
       expect(second.replyToken).toBe("rt-secret");
-      expect(second.messages).toEqual([
-        {
-          type: "text",
-          text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940",
-          quickReply: first.messages[0].quickReply,
-        },
-      ]);
-      expect(labelsOf(second.messages[0])).toEqual(["復原", "本月", "明細", "分析"]);
+      // Both messages come back as text, and the shortcuts are under the second one only.
+      expect(second.messages).toHaveLength(2);
+      expect(second.messages[0]).toEqual({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
+      expect(second.messages[1]).toMatchObject({ type: "text", quickReply: first.messages[1].quickReply });
+      expect((second.messages[1] as { text: string }).text).toContain("連續記帳 3 天");
+      expect(labelsOf(second.messages[1])).toEqual(["復原", "本月", "明細", "分析"]);
 
-      expect(logged()).toContain("[line] flex reply rejected (status 400; cards: record), resending as text");
-      expect(logged()).toContain("[line] text fallback delivered (cards: record)");
+      expect(logged()).toContain("[line] flex reply rejected (status 400; cards: record, mood), resending as text");
+      expect(logged()).toContain("[line] text fallback delivered (cards: record, mood)");
       expect(logged()).not.toContain("早餐");
       expect(logged()).not.toContain("rt-secret");
       expect(logged()).not.toContain(LINE_USER_ID);
@@ -1461,8 +1487,9 @@ describe("handleLineWebhook - record, month and budget cards", () => {
     });
 
     // [MV]: drop the `message !== null` filter in safeReply and this reply is sent twice, identical both times.
-    test("a card that could not be built went out as text already: a 400 on it is not retried", async () => {
+    test("cards that could not be built went out as text already: a 400 on them is not retried", async () => {
       cardFaults.recordCard = true;
+      cardFaults.moodCard = true;
       const { client } = createLineFakeClient({
         line_context: () => LINKED_CONTEXT,
         line_record_entry: recordWithBudget({ expense_minor: 606_000, income_minor: 0 }),
@@ -1473,8 +1500,9 @@ describe("handleLineWebhook - record, month and budget cards", () => {
 
       expect(result.status).toBe(200);
       expect(line.calls.reply).toHaveLength(1);
-      expect(line.calls.reply[0].messages[0].type).toBe("text");
+      expect(line.calls.reply[0].messages.map((m) => m.type)).toEqual(["text", "text"]);
       expect(logged()).toContain("[line] card build failed (record)");
+      expect(logged()).toContain("[line] card build failed (mood)");
       expect(logged()).toContain("[line] reply failed: LINE API request failed with status 400");
       expect(logged()).not.toContain("flex reply rejected");
     });
@@ -1965,12 +1993,16 @@ describe("handleLineWebhook - the record card's 編輯 / 刪除 and the delete f
 
     // The key must fit the 8-80 grammar to be a button at all; one that cannot costs the buttons, never the record.
     test("a key too short to be a button (never a real LINE id) still records, as plain text with the same shortcuts", async () => {
-      const { client, message } = await record({ webhookEventId: "short" }, "1");
+      const { client, line, message } = await record({ webhookEventId: "short" }, "1");
+      const [, mood] = line.calls.reply[0].messages;
 
       expect(client.rpcCall("line_record_entry")?.args.p_event_id).toBe("msg:1");
       expect(message.type).toBe("text");
       expect(JSON.stringify(message)).not.toContain("postback");
-      expect(labels(message)).toEqual(["復原", "本月", "明細", "分析"]);
+      expect(labels(message)).toEqual([]);
+      // The mood card is not about the key: it is still there, and it still carries the shortcuts.
+      expect(mood.type).toBe("flex");
+      expect(labels(mood)).toEqual(["復原", "本月", "明細", "分析"]);
     });
 
     // [MV]: a postback in the text fallback is a button nobody can tap - and one that would be handled if they could.
@@ -1983,16 +2015,17 @@ describe("handleLineWebhook - the record card's 編輯 / 刪除 and the delete f
       const [first, retry] = line.calls.reply;
       expect(first.messages[0].type).toBe("flex");
       expect(retry.replyToken).toBe(first.replyToken);
-      expect(retry.messages).toHaveLength(1);
-      expect(retry.messages[0].type).toBe("text");
+      expect(retry.messages.map((m) => m.type)).toEqual(["text", "text"]);
       expect(JSON.stringify(retry.messages)).not.toContain("postback");
-      expect(labels(retry.messages[0])).toEqual(["復原", "本月", "明細", "分析"]);
+      expect(labels(retry.messages[0])).toEqual([]);
+      expect(labels(retry.messages[1])).toEqual(["復原", "本月", "明細", "分析"]);
     });
 
-    // [MV]: the shortcuts sit on the one message of the reply, so LINE keeps them.
-    test("the shortcuts are on the last (here: only) message of the record reply", async () => {
+    // [MV]: the shortcuts sit on the LAST message of the reply (the mood card), so LINE keeps them.
+    test("the shortcuts are on the last message of the record reply, and on no other", async () => {
       const { line } = await record();
       const messages = line.calls.reply[0].messages;
+      expect(messages).toHaveLength(2);
       expect(messages.slice(0, -1).every((m) => m.quickReply === undefined)).toBe(true);
       expect(labels(messages.at(-1))).toEqual(["復原", "本月", "明細", "分析"]);
     });
@@ -2305,5 +2338,231 @@ describe("handleLineWebhook - the record card's 編輯 / 刪除 and the delete f
       });
       expect(plainTextOf(line.calls.reply[2].messages[0])).toBe("已刪除：早餐 $60");
     });
+  });
+});
+
+describe("handleLineWebhook - the mood card after a record", () => {
+  const send = (d: LineWebhookDeps, events: unknown[]) => {
+    const body = webhookBody(events);
+    return handleLineWebhook(d, { rawBody: bytes(body), signature: sign(body) });
+  };
+  const dateDeps = (client: FakePostgrest, line: LineClient): LineWebhookDeps => ({ ...deps(client, line), now: () => 1790000000000 });
+  const labels = (message: LineMessage | undefined) => (message?.quickReply?.items ?? []).map((item) => item.action.label);
+  const textsOf = (message: LineMessage): string[] => {
+    const found: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) node.forEach(walk);
+      else if (typeof node === "object" && node !== null) {
+        const record = node as Record<string, unknown>;
+        if (record.type === "text" && typeof record.text === "string") found.push(record.text);
+        Object.values(record).forEach(walk);
+      }
+    };
+    if (message.type === "flex") walk(message.contents);
+    return found;
+  };
+
+  const ZH_MOOD = LINE_MOOD_TEXT["zh-Hant"];
+  const EN_MOOD = LINE_MOOD_TEXT.en;
+  /** 2026-09-21 07:00 in Taiwan (2026-09-20 23:00 UTC). */
+  const SEVEN_AM = Date.parse("2026-09-20T23:00:00Z");
+  /** 2026-09-22 01:30 in Taiwan, still 2026-09-21 in UTC. */
+  const AFTER_MIDNIGHT = Date.parse("2026-09-21T17:30:00Z");
+
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+  const logged = () => [...warnSpy.mock.calls, ...errorSpy.mock.calls].map((call) => call.join(" ")).join("\n");
+
+  async function record(
+    text: string,
+    options: { timestamp?: number; webhookEventId?: string; overrides?: Partial<Record<string, RpcHandler>>; context?: unknown } = {},
+  ) {
+    const { client, state } = createLineFakeClient({
+      line_context: () => options.context ?? LINKED_CONTEXT,
+      ...options.overrides,
+    });
+    const line = fakeLineClient();
+    await send(dateDeps(client, line.client), [
+      messageEvent({ text, timestamp: options.timestamp, webhookEventId: options.webhookEventId }),
+    ]);
+    const messages = line.calls.reply.at(-1)?.messages ?? [];
+    return { client, state, line, messages, mood: messages[1] };
+  }
+
+  test("a record is answered with two messages - the record card, then the mood card with the streak - and the shortcuts only on the second", async () => {
+    const { messages, mood } = await record("早餐 60");
+
+    expect(messages.map((m) => m.type)).toEqual(["flex", "flex"]);
+    expect(plainTextOf(messages[0])).toBe("已記下支出：早餐 $60（餐飲）\n本月支出 $60");
+    expect(labels(messages[0])).toEqual([]);
+    expect(labels(mood)).toEqual(["復原", "本月", "明細", "分析"]);
+    expect(plainTextOf(mood).split("\n")[1]).toBe("連續記帳 3 天");
+    expect(textsOf(mood)).toContain("連續記帳 3 天");
+    expect(textsOf(mood)).toContain("本月記帳 12 天 · 今天第 1 筆");
+  });
+
+  test("line_streak is asked AFTER the entry was written, for this user and the Taiwan date of the entry", async () => {
+    const { client } = await record("早餐 60", { timestamp: AFTER_MIDNIGHT });
+
+    const order = client.calls.filter((c) => c.op === "rpc").map((c) => (c as { fn: string }).fn);
+    expect(order.indexOf("line_streak")).toBeGreaterThan(order.indexOf("line_record_entry"));
+    expect(client.rpcCall("line_streak")?.args).toEqual({ p_line_user_id: LINE_USER_ID, p_today: "2026-09-22" });
+    expect(client.rpcCall("line_record_entry")?.args.p_expense_date).toBe("2026-09-22");
+  });
+
+  describe("the words", () => {
+    // [MV]: use the UTC clock for the hour, or drop the keyword rule, and a row goes red.
+    test.each<[string, string, number, keyof typeof ZH_MOOD.short]>([
+      ["a breakfast word at breakfast time", "早餐 60", SEVEN_AM, "breakfast"],
+      ["a coffee at 07:00 is the afternoon-tea mood (the word beats the clock)", "咖啡 60", SEVEN_AM, "afternoon"],
+      ["a food with no meal word (category given), in the morning", "麵包 60 餐飲", SEVEN_AM, "breakfast"],
+      ["a food with no meal word, at 01:30 Taiwan time (not UTC)", "麵 60 餐飲", AFTER_MIDNIGHT, "lateNight"],
+      ["a big purchase (NT$3,000)", "買鞋 3000", SEVEN_AM, "large"],
+      ["a bus fare", "捷運 30", SEVEN_AM, "transport"],
+    ])("%s", async (_label, text, timestamp, bucket) => {
+      const { mood } = await record(text, { timestamp });
+      expect(ZH_MOOD.short[bucket]).toContain(plainTextOf(mood).split("\n")[0]);
+    });
+
+    test("an income gets the income lines", async () => {
+      const { mood } = await record("+52000 薪水");
+      expect(ZH_MOOD.short.income).toContain(plainTextOf(mood).split("\n")[0]);
+    });
+
+    test("an English-locale user gets the English lines, the English streak, and English weekday letters", async () => {
+      const { mood } = await record("breakfast 60", { context: { ...LINKED_CONTEXT, locale: "en" } });
+      expect(EN_MOOD.short.breakfast).toContain(plainTextOf(mood).split("\n")[0]);
+      expect(textsOf(mood)).toContain("3-day streak");
+      expect(textsOf(mood)).toContain("12 days logged this month · entry 1 today");
+    });
+
+    test("a total of one entry is the first-ever milestone", async () => {
+      const { mood } = await record("早餐 60", {
+        overrides: { line_streak: () => ({ ok: true, stats: { ...STREAK_STATS, total_entries: 1, streak_days: 1, month_days: 5 } }) },
+      });
+      expect(textsOf(mood)).toContain(ZH_MOOD.milestones.firstEver);
+    });
+
+    test("a 7-day streak is the one-week milestone", async () => {
+      const { mood } = await record("早餐 60", {
+        overrides: { line_streak: () => ({ ok: true, stats: { ...STREAK_STATS, streak_days: 7 } }) },
+      });
+      expect(textsOf(mood)).toContain(ZH_MOOD.milestones.streak7);
+    });
+  });
+
+  describe("a redelivery", () => {
+    // [MV]: a variant chosen with Math.random / Date.now, or a seed that is not the event key, and the two differ.
+    test("the same event delivered twice gets a byte-identical mood card", async () => {
+      const { client } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+      const d = dateDeps(client, line.client);
+      const event = messageEvent({ text: "麵 60", webhookEventId: "01J0000000000000000000000M", timestamp: SEVEN_AM });
+
+      await send(d, [event]);
+      await send(d, [{ ...event, deliveryContext: { isRedelivery: true } }]);
+
+      expect(line.calls.reply).toHaveLength(2);
+      expect(JSON.stringify(line.calls.reply[1].messages[1])).toBe(JSON.stringify(line.calls.reply[0].messages[1]));
+      expect(JSON.stringify(line.calls.reply[1].messages)).toBe(JSON.stringify(line.calls.reply[0].messages));
+    });
+
+    test("the words stay the same when the streak numbers have moved on, and the numbers are read again", async () => {
+      let entriesToday = 1;
+      const { client } = createLineFakeClient({
+        line_context: () => LINKED_CONTEXT,
+        line_streak: () => ({ ok: true, stats: { ...STREAK_STATS, today_entries: entriesToday } }),
+      });
+      const line = fakeLineClient();
+      const d = dateDeps(client, line.client);
+      const event = messageEvent({ text: "麵 60", webhookEventId: "01J0000000000000000000000M" });
+
+      await send(d, [event]);
+      entriesToday = 4;
+      await send(d, [event]);
+
+      const [first, second] = line.calls.reply.map((call) => textsOf(call.messages[1]));
+      expect(first).toContain("本月記帳 12 天 · 今天第 1 筆");
+      expect(second).toContain("本月記帳 12 天 · 今天第 4 筆");
+      expect(second.slice(0, 3)).toEqual(first.slice(0, 3));
+      expect(client.calls.filter((c) => c.op === "rpc" && c.fn === "line_streak")).toHaveLength(2);
+    });
+
+    test("only one entry is written, however often it is delivered, and each delivery is still answered with two messages", async () => {
+      const { client, state } = createLineFakeClient({ line_context: () => LINKED_CONTEXT });
+      const line = fakeLineClient();
+      const d = dateDeps(client, line.client);
+      const event = messageEvent({ text: "早餐 60", webhookEventId: "01J0000000000000000000000M" });
+
+      await send(d, [event]);
+      await send(d, [event]);
+      await send(d, [event]);
+
+      expect(state.recordedEntries.size).toBe(1);
+      expect(client.calls.filter((c) => c.op === "rpc" && c.fn === "line_record_entry")).toHaveLength(3);
+      expect(line.calls.reply.map((call) => call.messages.length)).toEqual([2, 2, 2]);
+    });
+  });
+
+  describe("when the streak cannot be had", () => {
+    /** A message that carries a LINE user id, to prove the log redacts it. */
+    const boom = () => {
+      throw new Error(`rpc line_streak failed for ${LINE_USER_ID}`);
+    };
+
+    // [MV]: let the failure propagate and the saved entry is answered with genericError.
+    test.each<[string, RpcHandler]>([
+      ["the RPC throws", boom],
+      ["the RPC says it is not ok", () => ({ ok: false, reason: "no_ledger" })],
+      ["the RPC returns nothing", () => null],
+      ["the stats are not an object", () => ({ ok: true, stats: "3 days" })],
+      ["the week has six days", () => ({ ok: true, stats: { ...STREAK_STATS, week: [true, true, true, false, false, false] } })],
+      ["today_index is out of range", () => ({ ok: true, stats: { ...STREAK_STATS, today_index: 7 } })],
+      ["a count is a string", () => ({ ok: true, stats: { ...STREAK_STATS, streak_days: "3" } })],
+    ])("%s: the entry is saved, both messages are sent, the mood card has no streak section", async (_label, handler) => {
+      const { client, messages, mood } = await record("早餐 60", { overrides: { line_streak: handler } });
+
+      expect(client.calls.filter((c) => c.op === "rpc" && c.fn === "line_record_entry")).toHaveLength(1);
+      expect(messages).toHaveLength(2);
+      expect(messages.map((m) => m.type)).toEqual(["flex", "flex"]);
+      expect(plainTextOf(messages[0])).toContain("已記下支出：早餐 $60");
+      expect(plainTextOf(mood)).not.toBe(ZH_HANT.genericError);
+      // Just the two lines: no streak, no month line, no week row.
+      expect(textsOf(mood)).toHaveLength(3);
+      expect(JSON.stringify(mood)).not.toContain("連續記帳");
+      expect(JSON.stringify(mood)).not.toContain("本月記帳");
+      expect(plainTextOf(mood).includes("\n")).toBe(false);
+      // The shortcuts do not depend on the streak.
+      expect(labels(mood)).toEqual(["復原", "本月", "明細", "分析"]);
+      // One closed-vocabulary log line.
+      expect(logged()).toContain("[line] streak unavailable");
+      expect(logged()).not.toContain("早餐");
+      expect(logged()).not.toContain(LINE_USER_ID);
+    });
+
+    test("logs exactly one streak line per record", async () => {
+      await record("早餐 60", { overrides: { line_streak: boom } });
+      expect(logged().match(/streak unavailable/g)).toHaveLength(1);
+    });
+
+    test("a working streak logs nothing", async () => {
+      await record("早餐 60");
+      expect(logged()).not.toContain("streak unavailable");
+    });
+  });
+
+  test("the whole reply, in both locales, passes the reply-level check (the afterEach also checks every reply)", async () => {
+    for (const context of [LINKED_CONTEXT, { ...LINKED_CONTEXT, locale: "en" }]) {
+      const { messages } = await record(context.locale === "en" ? "breakfast 60" : "早餐 60", { context });
+      expect(lineReplyProblems(messages)).toEqual([]);
+    }
   });
 });

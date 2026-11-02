@@ -7,7 +7,7 @@ import { categoryDisplay } from "./lineCardTheme.js";
 import type { MonthCategory } from "./lineCards.js";
 import { lineUserTag, redactForLog, sha256Hex, verifyLineSignature } from "./lineCrypto.js";
 import { type LineCommandErrorReason, parseLineCommand } from "./lineCommand.js";
-import { lineDateKey, lineMonthStart } from "./lineDates.js";
+import { lineDateKey, lineMonthStart, lineTaiwanMinuteOfDay } from "./lineDates.js";
 import { type LineLinks, lineLinks } from "./lineLinks.js";
 import {
   type LineOutgoing,
@@ -28,6 +28,8 @@ import {
   textMessage,
   wireMessages,
 } from "./lineMessages.js";
+import { type LineStreakStats, moodBucket, parseStreakStats, pickMood } from "./lineMood.js";
+import { lineMoodText } from "./lineMoodText.js";
 import { parseLinePostback } from "./linePostback.js";
 import {
   type LineContext,
@@ -38,6 +40,7 @@ import {
   getLineContext,
   lineEntryStatus,
   lineMonthSummary,
+  lineStreak,
   recordLineEntry,
   registerLinkToken,
   setLineBudget,
@@ -397,6 +400,32 @@ async function isMaintenanceOn(deps: LineWebhookDeps): Promise<boolean> {
   return notice.maintenance.enabled;
 }
 
+/**
+ * The streak numbers for the mood card, or null - and null is fine: the card
+ * is sent without its streak section. Fail-soft in every way the call can go
+ * wrong (the RPC throws, answers "not ok", or answers something that is not the
+ * promised shape), because it runs AFTER the entry was written and must never
+ * turn a saved entry into an error message. One log line, with the reason from
+ * a closed list or the redacted error message - never text from the user.
+ */
+async function readStreak(deps: LineWebhookDeps, lineUserId: string, today: string): Promise<LineStreakStats | null> {
+  try {
+    const result = await lineStreak(deps.client, lineUserId, today);
+    if (!result.ok) {
+      console.warn(`[line] streak unavailable: ${result.reason}`);
+      return null;
+    }
+
+    const stats = parseStreakStats(result.stats);
+    if (stats === null) console.warn("[line] streak unavailable: unexpected stats");
+    return stats;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[line] streak unavailable: ${redactForLog(message)}`);
+    return null;
+  }
+}
+
 async function handleRecord(
   deps: LineWebhookDeps,
   event: LineEvent,
@@ -437,7 +466,22 @@ async function handleRecord(
     return;
   }
 
-  const messages = recordedReply(dict, {
+  // After the write, never before: the entry is saved whatever the streak says.
+  const stats = await readStreak(deps, lineUserId, dateKey);
+  const bucket = moodBucket({
+    kind: command.kind,
+    category: command.category,
+    title: command.title,
+    amountMinor: command.amountMinor,
+    currency: result.currency,
+    budgetMinor: result.budget_minor,
+    taiwanMinuteOfDay: lineTaiwanMinuteOfDay(event.timestamp),
+  });
+  // The words are a function of the event key alone, so a redelivery says the same; the streak numbers are read again.
+  const mood = lineMoodText(context.locale);
+  const pick = pickMood(mood, { seed: eventKey, bucket, stats });
+
+  const messages = recordedReply(dict, mood, {
     kind: command.kind,
     title: command.title,
     amountMinor: command.amountMinor,
@@ -448,6 +492,8 @@ async function handleRecord(
     dateKey,
     entryKey: eventKey,
     links: lineLinks({ appOrigin: deps.appOrigin, ledgerId: result.ledger_id }),
+    pick,
+    stats,
   });
   await safeReply(deps, event.replyToken, messages);
 }

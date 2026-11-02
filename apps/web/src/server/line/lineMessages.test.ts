@@ -27,6 +27,8 @@ import {
   withQuickReply,
 } from "./lineMessages.js";
 import { lineLinks } from "./lineLinks.js";
+import { type LineStreakStats, moodAltText, moodPlainText, pickMood } from "./lineMood.js";
+import { LINE_MOOD_TEXT } from "./lineMoodText.js";
 import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js";
 
 // lineCards.ts is mocked only to be able to make a card builder throw on cue;
@@ -34,6 +36,7 @@ import { LINE_TEXT_EN as EN, LINE_TEXT_ZH_HANT as ZH_HANT } from "./lineText.js"
 const faults = vi.hoisted(() => ({
   helpCard: false,
   recordCard: false,
+  moodCard: false,
   monthCard: false,
   budgetCard: false,
   linkCard: false,
@@ -50,6 +53,10 @@ vi.mock("./lineCards.js", async (importOriginal) => {
     recordCard: (...args: Parameters<typeof actual.recordCard>) => {
       if (faults.recordCard) throw new Error("recordCard exploded");
       return actual.recordCard(...args);
+    },
+    moodCard: (...args: Parameters<typeof actual.moodCard>) => {
+      if (faults.moodCard) throw new Error("moodCard exploded");
+      return actual.moodCard(...args);
     },
     monthCard: (...args: Parameters<typeof actual.monthCard>) => {
       if (faults.monthCard) throw new Error("monthCard exploded");
@@ -88,6 +95,7 @@ beforeEach(() => {
   Object.assign(faults, {
     helpCard: false,
     recordCard: false,
+    moodCard: false,
     monthCard: false,
     budgetCard: false,
     linkCard: false,
@@ -282,10 +290,19 @@ function labelsOf(quickReply: LineQuickReply | undefined): string[] {
 }
 
 describe("recordedReply", () => {
+  const STATS: LineStreakStats = {
+    streakDays: 2,
+    week: [true, true, false, false, false, false, false],
+    todayIndex: 1,
+    monthDays: 12,
+    todayEntries: 2,
+    totalEntries: 40,
+  };
+
   const recordArgs = (
     locale: "zh-Hant" | "en",
-    overrides: Partial<Parameters<typeof recordedReply>[1]> = {},
-  ): Parameters<typeof recordedReply>[1] => ({
+    overrides: Partial<Parameters<typeof recordedReply>[2]> = {},
+  ): Parameters<typeof recordedReply>[2] => ({
     kind: "expense",
     title: locale === "en" ? "Breakfast" : "早餐",
     amountMinor: 6000,
@@ -296,15 +313,22 @@ describe("recordedReply", () => {
     dateKey: "2026-09-21",
     entryKey: ENTRY_KEY,
     links: LINKS,
+    pick: pickMood(LINE_MOOD_TEXT[locale], { seed: ENTRY_KEY, bucket: "breakfast", stats: STATS }),
+    stats: STATS,
     ...overrides,
   });
 
-  // The reply is a list so the shortcuts have a "last message" to sit on; today it is the card alone.
-  const recordCardOf = (dict: typeof ZH_HANT, args: Parameters<typeof recordedReply>[1]): LineCard => {
-    const reply = recordedReply(dict, args);
-    expect(reply).toHaveLength(1);
-    return asCard(reply[0]);
+  const reply = (dict: typeof ZH_HANT, locale: "zh-Hant" | "en", args: Parameters<typeof recordedReply>[2]): LineOutgoing[] =>
+    recordedReply(dict, LINE_MOOD_TEXT[locale], args);
+
+  // A record is two messages: the record card, then the mood card that carries the shortcuts.
+  const cardsOf = (dict: typeof ZH_HANT, locale: "zh-Hant" | "en", args: Parameters<typeof recordedReply>[2]): [LineCard, LineCard] => {
+    const out = reply(dict, locale, args);
+    expect(out).toHaveLength(2);
+    return [asCard(out[0]), asCard(out[1])];
   };
+  const recordCardOf = (dict: typeof ZH_HANT, args: Parameters<typeof recordedReply>[2], locale: "zh-Hant" | "en" = "zh-Hant"): LineCard =>
+    cardsOf(dict, locale, args)[0];
 
   // [MV]: change any card altText and the literal below goes red.
   test.each([
@@ -363,59 +387,66 @@ describe("recordedReply", () => {
       "Recorded income: Salary $52,000 (Salary)\nIncome this month: $52,000",
     ],
   ])("%s: the card's altText and the text fallback are today's plain text", (_label, dict, locale, overrides, expected) => {
-    const reply = recordCardOf(dict, recordArgs(locale, overrides));
+    const record = recordCardOf(dict, recordArgs(locale, overrides), locale);
 
-    expect(reply.name).toBe("record");
-    expect(reply.message?.altText).toBe(expected);
-    expect(reply.fallback).toHaveLength(1);
-    expect(reply.fallback[0]).toMatchObject({ type: "text", text: expected });
-    expect(lineMessageProblems(reply.message)).toEqual([]);
+    expect(record.name).toBe("record");
+    expect(record.message?.altText).toBe(expected);
+    expect(record.fallback).toHaveLength(1);
+    expect(record.fallback[0]).toMatchObject({ type: "text", text: expected });
+    expect(lineMessageProblems(record.message)).toEqual([]);
   });
 
-  // [MV]: drop the quick reply from the card, or from the fallback, and this goes red.
-  test("the undo, month, records and analysis quick replies sit under the card and under the fallback alike", () => {
-    const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
+  // [MV]: leave the quick reply on the record card and LINE drops it the moment the mood card arrives.
+  test("the shortcuts are on the mood card, in the Flex message and in the fallback, and NOT on the record card", () => {
+    const [record, mood] = cardsOf(ZH_HANT, "zh-Hant", recordArgs("zh-Hant"));
 
-    expect(labelsOf(reply.message?.quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
-    expect(reply.message?.quickReply?.items[0].action).toEqual({ type: "message", label: "復原", text: "復原" });
-    expect(reply.message?.quickReply?.items[2].action).toEqual({ type: "uri", label: "明細", uri: RECORDS });
-    expect(reply.message?.quickReply?.items[3].action).toEqual({ type: "uri", label: "分析", uri: ANALYSIS });
-    expect((reply.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(reply.message?.quickReply);
+    expect(record.message?.quickReply).toBeUndefined();
+    expect((record.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toBeUndefined();
+
+    expect(labelsOf(mood.message?.quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
+    expect(mood.message?.quickReply?.items[0].action).toEqual({ type: "message", label: "復原", text: "復原" });
+    expect(mood.message?.quickReply?.items[2].action).toEqual({ type: "uri", label: "明細", uri: RECORDS });
+    expect(mood.message?.quickReply?.items[3].action).toEqual({ type: "uri", label: "分析", uri: ANALYSIS });
+    expect((mood.fallback[0] as { quickReply?: LineQuickReply }).quickReply).toEqual(mood.message?.quickReply);
   });
 
   test("the card shows the date the entry was recorded under, in the dictionary's own format", () => {
     expect(JSON.stringify(recordCardOf(ZH_HANT, recordArgs("zh-Hant")).message)).toContain("9月21日");
-    expect(JSON.stringify(recordCardOf(EN, recordArgs("en")).message)).toContain("9/21");
+    expect(JSON.stringify(recordCardOf(EN, recordArgs("en"), "en").message)).toContain("9/21");
   });
 
   test("a date key that is not a date draws a dash instead of a broken date", () => {
-    const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant", { dateKey: "not a date" }));
-    expect(lineMessageProblems(reply.message)).toEqual([]);
-    expect(JSON.stringify(reply.message)).not.toContain("NaN");
+    const record = recordCardOf(ZH_HANT, recordArgs("zh-Hant", { dateKey: "not a date" }));
+    expect(lineMessageProblems(record.message)).toEqual([]);
+    expect(JSON.stringify(record.message)).not.toContain("NaN");
   });
 
   // [MV]: remove the try/catch in cardOrFallback and a throwing builder takes the reply down with it.
-  test("a card that cannot be built is still a reply: today's text, with the same quick replies", () => {
+  test("a record card that cannot be built is still a reply: today's text, and the mood card still carries the shortcuts", () => {
     faults.recordCard = true;
 
-    const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
-    const [wire] = wireMessages([reply]);
+    const out = reply(ZH_HANT, "zh-Hant", recordArgs("zh-Hant"));
+    const wire = wireMessages(out);
 
-    expect(reply.message).toBeNull();
-    expect(wire).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
-    expect(labelsOf((wire as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
+    expect(asCard(out[0]).message).toBeNull();
+    expect(wire).toHaveLength(2);
+    expect(wire[0]).toMatchObject({ type: "text", text: "已記下支出：早餐 $60（餐飲）\n本月支出 $6,060，預算剩 $8,940" });
+    expect((wire[0] as { quickReply?: LineQuickReply }).quickReply).toBeUndefined();
+    expect(wire[1].type).toBe("flex");
+    expect(labelsOf((wire[1] as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
+    expect(lineReplyProblems(wire)).toEqual([]);
     expect(errorSpy.mock.calls).toEqual([["[line] card build failed (record): recordCard exploded"]]);
   });
 
   describe("the footer buttons and where the shortcuts sit", () => {
     // [MV]: point 編輯 at the ledger home, or at another key, and this goes red.
     test("編輯 opens the entry by its key; 刪除 asks to delete that same key - nothing else is in the card", () => {
-      const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
+      const record = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
 
-      expect(uriActionsOf(reply.message as LineFlexMessage)).toEqual([
+      expect(uriActionsOf(record.message as LineFlexMessage)).toEqual([
         { type: "uri", label: "編輯", uri: `${ORIGIN}/group/ledger_1?entry=${encodeURIComponent(ENTRY_KEY)}&openExternalBrowser=1` },
       ]);
-      const postbacks = postbacksOf(reply.message as LineFlexMessage);
+      const postbacks = postbacksOf(record.message as LineFlexMessage);
       expect(postbacks).toHaveLength(1);
       expect(postbacks[0]).toMatchObject({ type: "postback", label: "刪除", displayText: "刪除這筆" });
       expect(parseLinePostback(postbacks[0].data)).toEqual({ action: "delete_ask", entryKey: ENTRY_KEY });
@@ -423,8 +454,8 @@ describe("recordedReply", () => {
 
     // [MV]: put a delete_confirm on the card and the user could delete with one tap, no question asked.
     test("the card can only ever ASK: its single postback is delete_ask, never the confirm", () => {
-      const reply = recordCardOf(EN, recordArgs("en"));
-      for (const postback of postbacksOf(reply.message as LineFlexMessage)) {
+      const record = recordCardOf(EN, recordArgs("en"), "en");
+      for (const postback of postbacksOf(record.message as LineFlexMessage)) {
         expect(parseLinePostback(postback.data)?.action).toBe("delete_ask");
       }
     });
@@ -432,25 +463,81 @@ describe("recordedReply", () => {
     // [MV]: a plain-text fallback with a postback in it is a button that cannot be honoured.
     test("the text fallback carries no buttons at all - and so no postback it cannot honour", () => {
       faults.recordCard = true;
-      const reply = recordCardOf(ZH_HANT, recordArgs("zh-Hant"));
+      faults.moodCard = true;
+      const out = reply(ZH_HANT, "zh-Hant", recordArgs("zh-Hant"));
 
-      expect(reply.message).toBeNull();
-      expect(reply.fallback).toHaveLength(1);
-      const wire = wireMessages([reply]);
+      const wire = wireMessages(out);
+      expect(wire.map((m) => m.type)).toEqual(["text", "text"]);
       expect(JSON.stringify(wire)).not.toContain("postback");
       expect(JSON.stringify(wire)).not.toContain("delete_ask");
     });
 
     // [MV]: leave the quick reply off the last message and LINE removes it as soon as the next message goes out.
     test("the quick reply is on the last message of the reply, and the whole reply passes the reply-level check", () => {
-      const reply = recordedReply(ZH_HANT, recordArgs("zh-Hant"));
-      expect(lineReplyProblems(wireMessages(reply))).toEqual([]);
-      expect(labelsOf((wireMessages(reply).at(-1) as { quickReply?: LineQuickReply }).quickReply)).toEqual([
+      const out = reply(ZH_HANT, "zh-Hant", recordArgs("zh-Hant"));
+      expect(lineReplyProblems(wireMessages(out))).toEqual([]);
+      expect(lineReplyProblems(fallbackMessages(out))).toEqual([]);
+      expect(labelsOf((wireMessages(out).at(-1) as { quickReply?: LineQuickReply }).quickReply)).toEqual([
         "復原",
         "本月",
         "明細",
         "分析",
       ]);
+      expect(labelsOf((fallbackMessages(out).at(-1) as { quickReply?: LineQuickReply }).quickReply)).toEqual([
+        "復原",
+        "本月",
+        "明細",
+        "分析",
+      ]);
+    });
+  });
+
+  describe("the mood card", () => {
+    test("it is the second message, named mood, with the pick's altText, and passes the validator", () => {
+      const args = recordArgs("zh-Hant");
+      const [, mood] = cardsOf(ZH_HANT, "zh-Hant", args);
+
+      expect(mood.name).toBe("mood");
+      expect(mood.message?.altText).toBe(moodAltText(args.pick));
+      expect(mood.message?.altText).toBe(`${args.pick.shortLine}\n連續記帳 2 天`);
+      expect(lineMessageProblems(mood.message)).toEqual([]);
+    });
+
+    // [MV]: drop the mood card from the text fallback and a refused reply loses half of what it said.
+    test("its text fallback has the lines of the card: short line, note, streak and stats", () => {
+      const args = recordArgs("zh-Hant");
+      const [, mood] = cardsOf(ZH_HANT, "zh-Hant", args);
+
+      expect(mood.fallback).toHaveLength(1);
+      expect(mood.fallback[0]).toMatchObject({ type: "text", text: moodPlainText(args.pick) });
+      expect((mood.fallback[0] as { text: string }).text).toBe(
+        [args.pick.shortLine, args.pick.note, "連續記帳 2 天", "本月記帳 12 天 · 今天第 2 筆"].join("\n"),
+      );
+    });
+
+    test("without stats the card and its text are just the two lines, and the reply is still two messages", () => {
+      const pick = pickMood(LINE_MOOD_TEXT["zh-Hant"], { seed: ENTRY_KEY, bucket: "breakfast", stats: null });
+      const [, mood] = cardsOf(ZH_HANT, "zh-Hant", recordArgs("zh-Hant", { pick, stats: null }));
+
+      expect(mood.message?.altText).toBe(pick.shortLine);
+      expect((mood.fallback[0] as { text: string }).text).toBe(`${pick.shortLine}\n${pick.note}`);
+      expect(JSON.stringify(mood.message)).not.toContain("連續記帳");
+      expect(lineMessageProblems(mood.message)).toEqual([]);
+    });
+
+    // [MV]: a mood card that fails to build must degrade to text on its own and leave the record card alone.
+    test("a mood card that cannot be built degrades to its text; the record card is still a card and the shortcuts stay last", () => {
+      faults.moodCard = true;
+
+      const out = reply(ZH_HANT, "zh-Hant", recordArgs("zh-Hant"));
+      const wire = wireMessages(out);
+
+      expect(asCard(out[1]).message).toBeNull();
+      expect(wire.map((m) => m.type)).toEqual(["flex", "text"]);
+      expect((wire[0] as { quickReply?: LineQuickReply }).quickReply).toBeUndefined();
+      expect(labelsOf((wire[1] as { quickReply?: LineQuickReply }).quickReply)).toEqual(["復原", "本月", "明細", "分析"]);
+      expect(lineReplyProblems(wire)).toEqual([]);
+      expect(errorSpy.mock.calls).toEqual([["[line] card build failed (mood): moodCard exploded"]]);
     });
   });
 });
